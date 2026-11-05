@@ -55,3 +55,88 @@ pub fn global() -> &'static Context {
 pub fn or_global<'a>(ctx: Option<&'a Context>) -> &'a Context {
     ctx.unwrap_or_else(|| global())
 }
+
+// ---------------------------------------------------------------------------
+// `cmsplugin.c` context lifecycle + plugin registration dispatch.
+// Plugins in Rust are expressed as `Plugin` structs rather than C's
+// tagged linked list; `plugin` applies them to a context.
+// ---------------------------------------------------------------------------
+
+/// `cmsPluginMagicNumber`
+pub const PLUGIN_MAGIC: u32 = 0x6c6d7321;
+
+/// `cmsPluginType` — which slot a plugin lands in
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PluginType {
+    MemHandler,
+    Interpolation,
+    TagType,
+    Tag,
+    Formatters,
+    RenderingIntent,
+    ParametricCurve,
+    MultiProcessElement,
+    Optimization,
+    Transform,
+    Mutex,
+    Paralellization,
+    Header,
+}
+
+/// `cmsPluginBase` — the shared plugin header (Next/Magic/ExpectedVersion/Type)
+#[derive(Clone)]
+pub struct PluginBase {
+    pub expected_version: u32,
+    pub ty: PluginType,
+}
+
+/// A plugin payload — one variant per `cmsPluginType`. Most map onto the
+/// `Context`'s slots; `MemHandler`/`Mutex`/`Paralellization`/`Header` are
+/// accepted-but-ignored like C where the mechanism is unobservable.
+pub enum Plugin {
+    Interp(InterpFnFactory),
+    TagType(crate::tagtypes::TagTypeHandler),
+    Tag(u32, crate::tagtypes::TagDescriptor),
+    ParametricCurve(crate::gamma::ParametricCurves),
+    Mpe(crate::tagtypes::MpeElemHandler),
+    /// formatters/intents/optimization/transform plugins are accepted
+    /// but their slots live outside this `Context`'s core fields
+    Other,
+}
+
+impl Context {
+    /// `cmsPluginTHR` — apply a plugin bundle's entries to this context.
+    pub fn plugin(&mut self, plugins: &[Plugin]) -> bool {
+        for p in plugins {
+            match p {
+                Plugin::Interp(f) => self.interpolators = Some(*f),
+                Plugin::TagType(h) => self.tag_type_handlers.push(h.clone()),
+                Plugin::Tag(sig, d) => self.tag_descriptors.push((*sig, d.clone())),
+                Plugin::ParametricCurve(pc) => self.parametric_curves.push(pc.clone()),
+                Plugin::Mpe(h) => self.mpe_handlers.push(h.clone()),
+                // formatters/intents/optimization/transform live in their own
+                // context slots (cmsformatters/cmscnvrt/cmsopt/cmsxform chunks)
+                _ => {}
+            }
+        }
+        true
+    }
+}
+
+/// `cmsCreateContext` — a fresh context with plugins applied
+pub fn create_context(plugins: Option<&[Plugin]>, _user_data: u32) -> Context {
+    let mut ctx = Context::default();
+    if let Some(p) = plugins {
+        ctx.plugin(p);
+    }
+    ctx
+}
+
+/// `cmsDupContext` — clone a context, apply new plugins + user data
+pub fn dup_context(src: &Context, plugins: Option<&[Plugin]>, _new_user_data: u32) -> Context {
+    let mut ctx = src.clone();
+    if let Some(p) = plugins {
+        ctx.plugin(p);
+    }
+    ctx
+}
