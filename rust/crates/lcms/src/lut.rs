@@ -1107,7 +1107,9 @@ impl Pipeline {
         }
         let mut mpe = l2.elements.as_deref();
         while let Some(s) = mpe {
-            if !self.insert_stage(StageLoc::AtEnd, (*s).clone()) {
+            let mut dup = (*s).clone();
+            dup.next = None;
+            if !self.insert_stage(StageLoc::AtEnd, dup) {
                 return false;
             }
             mpe = s.next.as_deref();
