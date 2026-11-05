@@ -38,10 +38,14 @@ pub enum Interpolation {
 }
 
 /// The borrowed LUT a params struct points at.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum InterpTable<'a> {
     U16(&'a [u16]),
     F32(&'a [f32]),
+    /// Owned `Rc` table — makes `InterpParams<'static>` storable (C bakes
+    /// `cmsInterpParams` inside the stage data; this is the safe-Rust shape).
+    U16Rc(std::rc::Rc<[u16]>),
+    F32Rc(std::rc::Rc<[f32]>),
 }
 
 /// `cmsInterpParams` — `ContextID` lives on the constructor call in Rust;
@@ -60,16 +64,18 @@ pub struct InterpParams<'a> {
 
 impl<'a> InterpParams<'a> {
     #[inline]
-    fn table_u16(&self) -> &'a [u16] {
-        match self.table {
+    fn table_u16(&self) -> &[u16] {
+        match &self.table {
             InterpTable::U16(t) => t,
+            InterpTable::U16Rc(t) => t,
             _ => unreachable!("u16 interp on float table"),
         }
     }
     #[inline]
-    fn table_f32(&self) -> &'a [f32] {
-        match self.table {
+    fn table_f32(&self) -> &[f32] {
+        match &self.table {
             InterpTable::F32(t) => t,
+            InterpTable::F32Rc(t) => t,
             _ => unreachable!("float interp on u16 table"),
         }
     }

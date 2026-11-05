@@ -8,6 +8,15 @@
 use crate::context::Context;
 use crate::lut::Pipeline;
 
+/// `OptData::ClutOnly` payload — the CLUT plus a baked `InterpParams` built
+/// once at optimization time (C's `Data->Params`). The params' table is an
+/// `Rc` copy of the sampled `tab16` — identical values, built after sampling.
+#[derive(Clone)]
+pub struct ClutOnly {
+    pub clut: crate::lut::CLutData,
+    pub params16: crate::intrp::InterpParams<'static>,
+}
+
 /// Optimization payload — C's `Eval16Fn` data union, closed-world enum
 #[derive(Clone)]
 pub enum OptData {
@@ -15,7 +24,8 @@ pub enum OptData {
     MatShaper(Box<MatShaper8Data>),
     Prelin16(Box<Prelin16Data>),
     Prelin8(Box<Prelin8Data>),
-    ClutOnly(Box<crate::lut::CLutData>),
+    ClutOnly(Box<ClutOnly>),
+
     Identity,
 }
 
@@ -743,18 +753,7 @@ fn clut_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> bool {
     let OptData::ClutOnly(c) = d else {
         return false;
     };
-    use crate::intrp::{InterpParams, InterpTable};
-    let p = InterpParams {
-        dw_flags: c.dw_flags,
-        n_inputs: c.n_inputs,
-        n_outputs: c.n_outputs,
-        n_samples: c.n_samples,
-        domain: c.domain,
-        opta: c.opta,
-        table: InterpTable::U16(c.tab16.as_deref().unwrap_or(&[])),
-        interpolation: c.interpolation,
-    };
-    p.eval16(input, output);
+    c.params16.eval16(input, output);
     true
 }
 
@@ -1458,7 +1457,22 @@ fn optimize_by_resampling(
         })
         .unwrap_or_default();
     if data_in.is_empty() && data_out.is_empty() {
-        dest.opt_data = Some(OptData::ClutOnly(Box::new(clut_data)));
+        let params16 = crate::intrp::InterpParams {
+            dw_flags: clut_data.dw_flags,
+            n_inputs: clut_data.n_inputs,
+            n_outputs: clut_data.n_outputs,
+            n_samples: clut_data.n_samples,
+            domain: clut_data.domain,
+            opta: clut_data.opta,
+            table: crate::intrp::InterpTable::U16Rc(
+                std::rc::Rc::from(clut_data.tab16.as_deref().unwrap_or(&[])),
+            ),
+            interpolation: clut_data.interpolation,
+        };
+        dest.opt_data = Some(OptData::ClutOnly(Box::new(ClutOnly {
+            clut: clut_data,
+            params16,
+        })));
         dest.eval16_fn = |i, o, l| {
             if let Some(d) = &l.opt_data {
                 clut_eval16(i, o, d);
