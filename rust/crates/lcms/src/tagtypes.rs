@@ -1125,7 +1125,8 @@ pub static SUPPORTED_TAG_TYPES: &[TagTypeHandler] = &[
         type_datetime_read,
         type_datetime_write
     ),
-    // LUT8/LUT16/A2B/B2A/MPE handlers land in slice C (see below).
+    handler!(tsig::SigLut8Type, type_lut8_read, type_lut8_write),
+    handler!(tsig::SigLut16Type, type_lut16_read, type_lut16_write),
     handler!(
         tsig::SigColorantTableType,
         type_colorant_table_read,
@@ -1157,7 +1158,6 @@ pub static SUPPORTED_TAG_TYPES: &[TagTypeHandler] = &[
         type_measurement_write
     ),
     handler!(tsig::SigDataType, type_data_read, type_data_write),
-    // LUTA2B/LUTB2A/UcrBg land in slice C
     handler!(
         tsig::SigCrdInfoType,
         type_crd_info_read,
@@ -1914,4 +1914,632 @@ fn type_viewing_conditions_write(
     io::write_xyz(io, &vc.illuminant_xyz)
         && io::write_xyz(io, &vc.surround_xyz)
         && io::write_u32(io, vc.illuminant_type)
+}
+
+// ---------------------------------------------------------------------------
+// LUT8 / LUT16 (mft1 / mft2) — slice C
+// ---------------------------------------------------------------------------
+
+use crate::lut::{
+    Pipeline, Stage, StageData, StageLoc, pipeline_alloc, stage_alloc_clut16bit,
+    stage_alloc_clut16bit_granular, stage_alloc_matrix, stage_alloc_tone_curves,
+};
+
+/// `FROM_8_TO_16`
+#[inline]
+fn from_8_to_16(x: u8) -> u16 {
+    ((x as u16) << 8) | x as u16
+}
+
+/// `FROM_16_TO_8`
+#[inline]
+fn from_16_to_8(x: u16) -> u8 {
+    (((x as u32) * 65281 + 8388608) >> 24) as u8
+}
+
+/// `uipow` — n*a^b with C's overflow checks (-1 on overflow)
+fn uipow(n: u32, a: u32, b: u32) -> u32 {
+    if a == 0 || n == 0 {
+        return 0;
+    }
+    let mut rv = 1u32;
+    for _ in 0..b {
+        rv = rv.wrapping_mul(a);
+        if rv > u32::MAX / a {
+            return u32::MAX;
+        }
+    }
+    let rc = rv.wrapping_mul(n);
+    if rv != rc / n {
+        return u32::MAX;
+    }
+    rc
+}
+
+/// `Read8bitTables` — nChannels 256-entry u8 tables → u16 tone curves
+fn read_8bit_tables(io: &mut IoHandler, lut: &mut Pipeline, n_channels: u32) -> bool {
+    if n_channels > CMS_MAX_CHANNELS as u32 || n_channels == 0 {
+        return false;
+    }
+    let mut temp = [0u8; 256];
+    let mut tables = Vec::with_capacity(n_channels as usize);
+    for _ in 0..n_channels {
+        let Some(t) = build_tabulated_tone_curve16(None, 256, None) else {
+            return false;
+        };
+        tables.push(t);
+    }
+    for t in &mut tables {
+        if io.read(&mut temp, 256, 1) != 1 {
+            return false;
+        }
+        for j in 0..256 {
+            t.table16[j] = from_8_to_16(temp[j]);
+        }
+    }
+    let refs: Vec<&ToneCurve> = tables.iter().collect();
+    let Some(stage) = stage_alloc_tone_curves(None, n_channels, Some(&refs)) else {
+        return false;
+    };
+    lut.insert_stage(StageLoc::AtEnd, stage)
+}
+
+/// `Write8bitTables` — C quirk: NULL Tables writes NOTHING (loop no-ops)
+fn write_8bit_tables(io: &mut IoHandler, n: u32, tables: Option<&Vec<ToneCurve>>) -> bool {
+    for i in 0..n as usize {
+        if let Some(t) = tables {
+            let c = &t[i];
+            if c.n_entries == 2 && c.table16[0] == 0 && c.table16[1] == 65535 {
+                for j in 0..256u32 {
+                    if !io::write_u8(io, j as u8) {
+                        return false;
+                    }
+                }
+            } else if c.n_entries != 256 {
+                err::signal_error(
+                    None,
+                    ERROR_RANGE,
+                    "LUT8 needs 256 entries on prelinearization",
+                );
+                return false;
+            } else {
+                for j in 0..256 {
+                    if !io::write_u8(io, from_16_to_8(c.table16[j])) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
+/// `Read16bitTables`
+fn read_16bit_tables(
+    io: &mut IoHandler,
+    lut: &mut Pipeline,
+    n_channels: u32,
+    n_entries: u32,
+) -> bool {
+    let mut tables = Vec::with_capacity(n_channels as usize);
+    for _ in 0..n_channels {
+        let Some(mut t) = build_tabulated_tone_curve16(None, n_entries, None) else {
+            return false;
+        };
+        if !io::read_u16_array(io, n_entries, Some(&mut t.table16)) {
+            return false;
+        }
+        tables.push(t);
+    }
+    let refs: Vec<&ToneCurve> = tables.iter().collect();
+    let Some(stage) = stage_alloc_tone_curves(None, n_channels, Some(&refs)) else {
+        return false;
+    };
+    lut.insert_stage(StageLoc::AtEnd, stage)
+}
+
+/// `Write16bitTables`
+fn write_16bit_tables(io: &mut IoHandler, tables: &Vec<ToneCurve>) -> bool {
+    for c in tables {
+        for j in 0..c.n_entries as usize {
+            if !io::write_u16(io, c.table16[j]) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// `mat3isIdentity` on a flat 9-double matrix
+fn mat3_is_identity(m: &[f64; 9]) -> bool {
+    let ident = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    m.iter().zip(&ident).all(|(a, b)| a == b)
+}
+
+/// `Type_LUT8_Read` — mft1
+fn type_lut8_read(
+    _s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
+    *n_items = 0;
+    let (mut inch, mut outch, mut clutpts, mut pad) = (0u8, 0u8, 0u8, 0u8);
+    if !io::read_u8(io, &mut inch) || !io::read_u8(io, &mut outch) || !io::read_u8(io, &mut clutpts)
+    {
+        return None;
+    }
+    if clutpts == 1 {
+        return None;
+    }
+    if !io::read_u8(io, &mut pad) {
+        return None;
+    }
+    if inch == 0 || inch > CMS_MAX_CHANNELS as u8 || outch == 0 || outch > CMS_MAX_CHANNELS as u8 {
+        return None;
+    }
+
+    let mut lut = pipeline_alloc(None, inch as u32, outch as u32)?;
+    let mut matrix = [0.0f64; 9];
+    for m in &mut matrix {
+        if !io::read_15_fixed16(io, m) {
+            return None;
+        }
+    }
+    // Only operates if not identity
+    if inch == 3 && !mat3_is_identity(&matrix) {
+        let Some(st) = stage_alloc_matrix(None, 3, 3, &matrix, None) else {
+            return None;
+        };
+        if !lut.insert_stage(StageLoc::AtBegin, st) {
+            return None;
+        }
+    }
+    if !read_8bit_tables(io, &mut lut, inch as u32) {
+        return None;
+    }
+    let n_tab = uipow(outch as u32, clutpts as u32, inch as u32);
+    if n_tab == u32::MAX {
+        return None;
+    }
+    if n_tab > 0 {
+        let mut temp = vec![0u8; n_tab as usize];
+        if io.read(&mut temp, n_tab, 1) != 1 {
+            return None;
+        }
+        let t: Vec<u16> = temp.iter().map(|&b| from_8_to_16(b)).collect();
+        let Some(stage) =
+            stage_alloc_clut16bit(None, clutpts as u32, inch as u32, outch as u32, Some(&t))
+        else {
+            return None;
+        };
+        if !lut.insert_stage(StageLoc::AtEnd, stage) {
+            return None;
+        }
+    }
+    if !read_8bit_tables(io, &mut lut, outch as u32) {
+        return None;
+    }
+    *n_items = 1;
+    Some(TagObject::Lut8(lut))
+}
+
+/// `Type_LUT8_Write` — only [matrix,] curveset, clut, curveset allowed
+fn type_lut8_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let (TagObject::Lut8(lut)
+    | TagObject::Lut16(lut)
+    | TagObject::LutA2B(lut)
+    | TagObject::LutB2A(lut)
+    | TagObject::Mpe(lut)) = p
+    else {
+        return false;
+    };
+
+    // Disassemble: walk the linked list matching C's allowed order
+    let mut pre: Option<&Vec<ToneCurve>> = None;
+    let mut post: Option<&Vec<ToneCurve>> = None;
+    let mut mat: Option<&[f64; 9]> = None;
+    let mut clut: Option<&crate::lut::CLutData> = None;
+
+    let mut mpe = lut.elements.as_deref();
+    let Some(mut m) = mpe else {
+        err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "empty LUT8 is not supported");
+        return false;
+    };
+    if m.stage_type() == crate::signatures::stage::SigMatrixElemType {
+        if m.input_channels != 3 || m.output_channels != 3 {
+            return false;
+        }
+        if let StageData::Matrix { double, .. } = &m.data {
+            mat = Some(double.as_slice().try_into().unwrap_or(&[0.0; 9]));
+        }
+        mpe = m.next.as_deref();
+    }
+    if let Some(m) = mpe {
+        if m.stage_type() == crate::signatures::stage::SigCurveSetElemType {
+            if let StageData::ToneCurves(c) = &m.data {
+                pre = Some(c);
+            }
+            mpe = m.next.as_deref();
+        }
+    }
+    if let Some(m) = mpe {
+        if m.stage_type() == crate::signatures::stage::SigCLutElemType {
+            if let StageData::CLut(c) = &m.data {
+                clut = Some(c);
+            }
+            mpe = m.next.as_deref();
+        }
+    }
+    if let Some(m) = mpe {
+        if m.stage_type() == crate::signatures::stage::SigCurveSetElemType {
+            if let StageData::ToneCurves(c) = &m.data {
+                post = Some(c);
+            }
+            mpe = m.next.as_deref();
+        }
+    }
+    if mpe.is_some() {
+        err::signal_error(
+            None,
+            ERROR_UNKNOWN_EXTENSION,
+            "LUT is not suitable to be saved as LUT8",
+        );
+        return false;
+    }
+
+    let clut_points = match clut {
+        None => 0,
+        Some(c) => {
+            let pts = c.n_samples[0];
+            for i in 1..lut.input_channels as usize {
+                if c.n_samples[i] != pts {
+                    err::signal_error(
+                        None,
+                        ERROR_UNKNOWN_EXTENSION,
+                        "different samples per dimension",
+                    );
+                    return false;
+                }
+            }
+            pts
+        }
+    };
+
+    if !io::write_u8(io, lut.input_channels as u8)
+        || !io::write_u8(io, lut.output_channels as u8)
+        || !io::write_u8(io, clut_points as u8)
+        || !io::write_u8(io, 0)
+    {
+        return false;
+    }
+
+    let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    let m_out: &[f64; 9] = mat.unwrap_or(&identity);
+    for &v in m_out {
+        if !io::write_15_fixed16(io, v) {
+            return false;
+        }
+    }
+    if !write_8bit_tables(io, lut.input_channels, pre) {
+        return false;
+    }
+    let n_tab = uipow(lut.output_channels, clut_points, lut.input_channels);
+    if n_tab == u32::MAX {
+        return false;
+    }
+    if n_tab > 0 {
+        if let Some(c) = clut {
+            for j in 0..n_tab as usize {
+                if !io::write_u8(io, from_16_to_8(c.tab16.as_deref().unwrap_or(&[])[j])) {
+                    return false;
+                }
+            }
+        }
+    }
+    write_8bit_tables(io, lut.output_channels, post)
+}
+
+/// `Type_LUT16_Read` — mft2
+fn type_lut16_read(
+    _s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
+    *n_items = 0;
+    let (mut inch, mut outch, mut clutpts, mut pad) = (0u8, 0u8, 0u8, 0u8);
+    if !io::read_u8(io, &mut inch)
+        || !io::read_u8(io, &mut outch)
+        || !io::read_u8(io, &mut clutpts)
+        || !io::read_u8(io, &mut pad)
+    {
+        return None;
+    }
+    if inch == 0 || inch > CMS_MAX_CHANNELS as u8 || outch == 0 || outch > CMS_MAX_CHANNELS as u8 {
+        return None;
+    }
+
+    let mut lut = pipeline_alloc(None, inch as u32, outch as u32)?;
+    let mut matrix = [0.0f64; 9];
+    for m in &mut matrix {
+        if !io::read_15_fixed16(io, m) {
+            return None;
+        }
+    }
+    if inch == 3 && !mat3_is_identity(&matrix) {
+        let Some(st) = stage_alloc_matrix(None, 3, 3, &matrix, None) else {
+            return None;
+        };
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    let (mut in_entries, mut out_entries) = (0u16, 0u16);
+    if !io::read_u16(io, &mut in_entries) || !io::read_u16(io, &mut out_entries) {
+        return None;
+    }
+    if in_entries > 0x7FFF || out_entries > 0x7FFF || clutpts == 1 {
+        return None;
+    }
+    if !read_16bit_tables(io, &mut lut, inch as u32, in_entries as u32) {
+        return None;
+    }
+    let n_tab = uipow(outch as u32, clutpts as u32, inch as u32);
+    if n_tab == u32::MAX {
+        return None;
+    }
+    if n_tab > 0 {
+        let mut t = vec![0u16; n_tab as usize];
+        if !io::read_u16_array(io, n_tab, Some(&mut t)) {
+            return None;
+        }
+        let Some(stage) =
+            stage_alloc_clut16bit(None, clutpts as u32, inch as u32, outch as u32, Some(&t))
+        else {
+            return None;
+        };
+        if !lut.insert_stage(StageLoc::AtEnd, stage) {
+            return None;
+        }
+    }
+    if !read_16bit_tables(io, &mut lut, outch as u32, out_entries as u32) {
+        return None;
+    }
+    *n_items = 1;
+    Some(TagObject::Lut16(lut))
+}
+
+/// `Type_LUT16_Write`
+fn type_lut16_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let (TagObject::Lut16(lut)
+    | TagObject::Lut8(lut)
+    | TagObject::LutA2B(lut)
+    | TagObject::LutB2A(lut)
+    | TagObject::Mpe(lut)) = p
+    else {
+        return false;
+    };
+
+    let mut pre: Option<&Vec<ToneCurve>> = None;
+    let mut post: Option<&Vec<ToneCurve>> = None;
+    let mut mat: Option<&[f64; 9]> = None;
+    let mut clut: Option<&crate::lut::CLutData> = None;
+
+    let mut mpe = lut.elements.as_deref();
+    if let Some(m) = mpe {
+        if m.stage_type() == crate::signatures::stage::SigMatrixElemType {
+            if m.input_channels != 3 || m.output_channels != 3 {
+                return false;
+            }
+            if let StageData::Matrix { double, .. } = &m.data {
+                mat = Some(double.as_slice().try_into().unwrap_or(&[0.0; 9]));
+            }
+            mpe = m.next.as_deref();
+        }
+    }
+    if let Some(m) = mpe {
+        if m.stage_type() == crate::signatures::stage::SigCurveSetElemType {
+            if let StageData::ToneCurves(c) = &m.data {
+                pre = Some(c);
+            }
+            mpe = m.next.as_deref();
+        }
+    }
+    if let Some(m) = mpe {
+        if m.stage_type() == crate::signatures::stage::SigCLutElemType {
+            if let StageData::CLut(c) = &m.data {
+                clut = Some(c);
+            }
+            mpe = m.next.as_deref();
+        }
+    }
+    if let Some(m) = mpe {
+        if m.stage_type() == crate::signatures::stage::SigCurveSetElemType {
+            if let StageData::ToneCurves(c) = &m.data {
+                post = Some(c);
+            }
+            mpe = m.next.as_deref();
+        }
+    }
+    if mpe.is_some() {
+        err::signal_error(
+            None,
+            ERROR_UNKNOWN_EXTENSION,
+            "LUT is not suitable to be saved as LUT16",
+        );
+        return false;
+    }
+
+    let (in_ch, out_ch) = (lut.input_channels, lut.output_channels);
+    let clut_points = match clut {
+        None => 0,
+        Some(c) => {
+            let pts = c.n_samples[0];
+            for i in 1..in_ch as usize {
+                if c.n_samples[i] != pts {
+                    err::signal_error(
+                        None,
+                        ERROR_UNKNOWN_EXTENSION,
+                        "different samples per dimension",
+                    );
+                    return false;
+                }
+            }
+            pts
+        }
+    };
+
+    if !io::write_u8(io, in_ch as u8)
+        || !io::write_u8(io, out_ch as u8)
+        || !io::write_u8(io, clut_points as u8)
+        || !io::write_u8(io, 0)
+    {
+        return false;
+    }
+    let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    for &v in mat.unwrap_or(&identity) {
+        if !io::write_15_fixed16(io, v) {
+            return false;
+        }
+    }
+    let in_entries = pre.map(|c| c[0].n_entries).unwrap_or(2);
+    let out_entries = post.map(|c| c[0].n_entries).unwrap_or(2);
+    if !io::write_u16(io, in_entries as u16) || !io::write_u16(io, out_entries as u16) {
+        return false;
+    }
+    match pre {
+        Some(t) => {
+            if !write_16bit_tables(io, t) {
+                return false;
+            }
+        }
+        None => {
+            for _ in 0..in_ch {
+                if !io::write_u16(io, 0) || !io::write_u16(io, 0xffff) {
+                    return false;
+                }
+            }
+        }
+    }
+    let n_tab = uipow(out_ch, clut_points, in_ch);
+    if n_tab == u32::MAX {
+        return false;
+    }
+    if n_tab > 0 {
+        if let Some(c) = clut {
+            if !io::write_u16_array(io, &c.tab16.as_deref().unwrap_or(&[])[..n_tab as usize]) {
+                return false;
+            }
+        }
+    }
+    match post {
+        Some(t) => write_16bit_tables(io, t),
+        None => {
+            for _ in 0..out_ch {
+                if !io::write_u16(io, 0) || !io::write_u16(io, 0xffff) {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+}
+
+/// `ReadMatrix` — seek + 9 doubles + 3 offsets
+fn read_matrix(io: &mut IoHandler, offset: u32) -> Option<Stage> {
+    if !io.seek(offset) {
+        return None;
+    }
+    let mut dmat = [0.0f64; 9];
+    let mut doff = [0.0f64; 3];
+    for v in &mut dmat {
+        if !io::read_15_fixed16(io, v) {
+            return None;
+        }
+    }
+    for v in &mut doff {
+        if !io::read_15_fixed16(io, v) {
+            return None;
+        }
+    }
+    stage_alloc_matrix(None, 3, 3, &dmat, Some(&doff))
+}
+
+/// `ReadCLUT` — v4 CLUT: seek + 16B grid + precision + 3 pads
+fn read_clut(io: &mut IoHandler, offset: u32, in_ch: u32, out_ch: u32) -> Option<Stage> {
+    if !io.seek(offset) {
+        return None;
+    }
+    let mut grid8 = [0u8; CMS_MAX_CHANNELS];
+    if io.read(&mut grid8, CMS_MAX_CHANNELS as u32, 1) != 1 {
+        return None;
+    }
+    let mut grid = [0u32; CMS_MAX_CHANNELS];
+    for i in 0..CMS_MAX_CHANNELS {
+        if grid8[i] == 1 {
+            return None;
+        }
+        grid[i] = grid8[i] as u32;
+    }
+    let mut precision = 0u8;
+    if !io::read_u8(io, &mut precision) {
+        return None;
+    }
+    let mut pad = 0u8;
+    for _ in 0..3 {
+        if !io::read_u8(io, &mut pad) {
+            return None;
+        }
+    }
+    let mut clut = stage_alloc_clut16bit_granular(None, &grid, in_ch, out_ch, None)?;
+    if let StageData::CLut(d) = &mut clut.data {
+        match precision {
+            1 => {
+                for i in 0..d.n_entries as usize {
+                    let mut v = 0u8;
+                    if io.read(std::slice::from_mut(&mut v), 1, 1) != 1 {
+                        return None;
+                    }
+                    if let Some(t) = &mut d.tab16 {
+                        t[i] = from_8_to_16(v);
+                    }
+                }
+            }
+            2 => {
+                if let Some(t) = &mut d.tab16 {
+                    if !io::read_u16_array(io, d.n_entries, Some(t)) {
+                        return None;
+                    }
+                }
+            }
+            _ => {
+                err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown precision");
+                return None;
+            }
+        }
+    }
+    Some(clut)
+}
+
+/// `ReadEmbeddedCurve`
+fn read_embedded_curve(s: &TagTypeHandler, io: &mut IoHandler) -> Option<ToneCurve> {
+    let base = io::read_type_base(io);
+    let mut n = 0u32;
+    match base {
+        b if b == tsig::SigCurveType => match type_curve_read(s, io, &mut n, 0) {
+            Some(TagObject::Curve(c)) => Some(c),
+            _ => None,
+        },
+        b if b == tsig::SigParametricCurveType => {
+            match type_parametric_curve_read(s, io, &mut n, 0) {
+                Some(TagObject::ParametricCurve(c)) => Some(c),
+                _ => None,
+            }
+        }
+        _ => {
+            err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown curve type");
+            None
+        }
+    }
 }
