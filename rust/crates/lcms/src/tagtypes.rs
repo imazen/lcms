@@ -1158,6 +1158,8 @@ pub static SUPPORTED_TAG_TYPES: &[TagTypeHandler] = &[
         type_measurement_write
     ),
     handler!(tsig::SigDataType, type_data_read, type_data_write),
+    handler!(tsig::SigLutAtoBType, type_lut_a2b_read, type_lut_a2b_write),
+    handler!(tsig::SigLutBtoAType, type_lut_b2a_read, type_lut_b2a_write),
     handler!(
         tsig::SigCrdInfoType,
         type_crd_info_read,
@@ -2142,7 +2144,7 @@ fn type_lut8_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u
     let mut clut: Option<&crate::lut::CLutData> = None;
 
     let mut mpe = lut.elements.as_deref();
-    let Some(mut m) = mpe else {
+    let Some(m) = mpe else {
         err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "empty LUT8 is not supported");
         return false;
     };
@@ -2542,4 +2544,487 @@ fn read_embedded_curve(s: &TagTypeHandler, io: &mut IoHandler) -> Option<ToneCur
             None
         }
     }
+}
+
+/// `ReadSetOfCurves` — v4: type-base'd curves at an offset
+fn read_set_of_curves(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    offset: u32,
+    n_curves: u32,
+) -> Option<Stage> {
+    if n_curves > CMS_MAX_CHANNELS as u32 || !io.seek(offset) {
+        return None;
+    }
+    let mut curves = Vec::with_capacity(n_curves as usize);
+    for _ in 0..n_curves {
+        let c = read_embedded_curve(s, io)?;
+        curves.push(c);
+        if !io::read_alignment(io) {
+            return None;
+        }
+    }
+    let refs: Vec<&ToneCurve> = curves.iter().collect();
+    stage_alloc_tone_curves(None, n_curves, Some(&refs))
+}
+
+/// `Type_LUTA2B_Read` — 'mAB '
+fn type_lut_a2b_read(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
+    *n_items = 0;
+    let base_offset = io.tell().wrapping_sub(8);
+    let (mut inch, mut outch, mut pad) = (0u8, 0u8, 0u16);
+    if !io::read_u8(io, &mut inch) || !io::read_u8(io, &mut outch) || !io::read_u16(io, &mut pad) {
+        return None;
+    }
+    let mut off_b = 0u32;
+    let mut off_mat = 0u32;
+    let mut off_m = 0u32;
+    let mut off_c = 0u32;
+    let mut off_a = 0u32;
+    if !io::read_u32(io, &mut off_b)
+        || !io::read_u32(io, &mut off_mat)
+        || !io::read_u32(io, &mut off_m)
+        || !io::read_u32(io, &mut off_c)
+        || !io::read_u32(io, &mut off_a)
+    {
+        return None;
+    }
+    if inch == 0 || inch >= CMS_MAX_CHANNELS as u8 || outch == 0 || outch >= CMS_MAX_CHANNELS as u8
+    {
+        return None;
+    }
+    let mut lut = pipeline_alloc(None, inch as u32, outch as u32)?;
+    // A, CLUT, M, Matrix, B order
+    for (off, nc) in [
+        (off_a, inch as u32),
+        (0, 0), // clut handled below
+        (off_m, outch as u32),
+        (0, 0), // matrix below
+        (off_b, outch as u32),
+    ] {
+        let _ = (off, nc);
+    }
+    if off_a != 0 {
+        let st = read_set_of_curves(s, io, base_offset.wrapping_add(off_a), inch as u32)?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_c != 0 {
+        let st = read_clut(
+            io,
+            base_offset.wrapping_add(off_c),
+            inch as u32,
+            outch as u32,
+        )?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_m != 0 {
+        let st = read_set_of_curves(s, io, base_offset.wrapping_add(off_m), outch as u32)?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_mat != 0 {
+        let st = read_matrix(io, base_offset.wrapping_add(off_mat))?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_b != 0 {
+        let st = read_set_of_curves(s, io, base_offset.wrapping_add(off_b), outch as u32)?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    *n_items = 1;
+    Some(TagObject::LutA2B(lut))
+}
+
+/// `Type_LUTB2A_Read` — 'mBA '
+fn type_lut_b2a_read(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
+    *n_items = 0;
+    let base_offset = io.tell().wrapping_sub(8);
+    let (mut inch, mut outch, mut pad) = (0u8, 0u8, 0u16);
+    if !io::read_u8(io, &mut inch) || !io::read_u8(io, &mut outch) {
+        return None;
+    }
+    if inch == 0 || inch >= CMS_MAX_CHANNELS as u8 || outch == 0 || outch >= CMS_MAX_CHANNELS as u8
+    {
+        return None;
+    }
+    if !io::read_u16(io, &mut pad) {
+        return None;
+    }
+    let mut off_b = 0u32;
+    let mut off_mat = 0u32;
+    let mut off_m = 0u32;
+    let mut off_c = 0u32;
+    let mut off_a = 0u32;
+    if !io::read_u32(io, &mut off_b)
+        || !io::read_u32(io, &mut off_mat)
+        || !io::read_u32(io, &mut off_m)
+        || !io::read_u32(io, &mut off_c)
+        || !io::read_u32(io, &mut off_a)
+    {
+        return None;
+    }
+    let mut lut = pipeline_alloc(None, inch as u32, outch as u32)?;
+    // B, Matrix, M, CLUT, A order
+    if off_b != 0 {
+        let st = read_set_of_curves(s, io, base_offset.wrapping_add(off_b), inch as u32)?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_mat != 0 {
+        let st = read_matrix(io, base_offset.wrapping_add(off_mat))?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_m != 0 {
+        let st = read_set_of_curves(s, io, base_offset.wrapping_add(off_m), inch as u32)?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_c != 0 {
+        let st = read_clut(
+            io,
+            base_offset.wrapping_add(off_c),
+            inch as u32,
+            outch as u32,
+        )?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    if off_a != 0 {
+        let st = read_set_of_curves(s, io, base_offset.wrapping_add(off_a), outch as u32)?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+    *n_items = 1;
+    Some(TagObject::LutB2A(lut))
+}
+
+/// `WriteMatrix` — n doubles + out offsets (zeros if none)
+fn write_matrix(io: &mut IoHandler, mpe: &Stage) -> bool {
+    let StageData::Matrix { double, offset } = &mpe.data else {
+        return false;
+    };
+    let n = (mpe.input_channels * mpe.output_channels) as usize;
+    for v in &double[..n] {
+        if !io::write_15_fixed16(io, *v) {
+            return false;
+        }
+    }
+    match offset {
+        Some(off) => {
+            for &v in &off[..mpe.output_channels as usize] {
+                if !io::write_15_fixed16(io, v) {
+                    return false;
+                }
+            }
+        }
+        None => {
+            for _ in 0..mpe.output_channels {
+                if !io::write_15_fixed16(io, 0.0) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// `WriteSetOfCurves` — each curve type-base'd; tabulated → 'curv', else 'para'
+fn write_set_of_curves(s: &TagTypeHandler, io: &mut IoHandler, typ: u32, mpe: &Stage) -> bool {
+    let StageData::ToneCurves(curves) = &mpe.data else {
+        return false;
+    };
+    for c in curves.iter().take(mpe.output_channels as usize) {
+        let current = if c.segments.is_empty()
+            || (c.segments.len() == 3 && c.segments[1].r#type == 0)
+            || (!c.segments.is_empty() && c.segments[0].r#type < 0)
+        {
+            tsig::SigCurveType
+        } else {
+            typ
+        };
+        let ok = if !io::write_type_base(io, current) {
+            return false;
+        } else if current == tsig::SigCurveType {
+            type_curve_write(s, io, &TagObject::Curve(c.clone()), 1)
+        } else if current == tsig::SigParametricCurveType {
+            type_parametric_curve_write(s, io, &TagObject::ParametricCurve(c.clone()), 1)
+        } else {
+            err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown curve type");
+            false
+        };
+        if !ok || !io::write_alignment(io) {
+            return false;
+        }
+    }
+    true
+}
+
+/// `WriteCLUT` — grid + precision + data
+fn write_clut(io: &mut IoHandler, precision: u8, mpe: &Stage) -> bool {
+    let StageData::CLut(clut) = &mpe.data else {
+        return false;
+    };
+    if clut.has_float_values {
+        err::signal_error(
+            None,
+            ERROR_NOT_SUITABLE,
+            "Cannot save floating point data, CLUT are 8 or 16 bit only",
+        );
+        return false;
+    }
+    let mut grid = [0u8; CMS_MAX_CHANNELS];
+    for i in 0..clut.n_inputs as usize {
+        grid[i] = clut.n_samples[i] as u8;
+    }
+    if !io.write(CMS_MAX_CHANNELS as u32, &grid)
+        || !io::write_u8(io, precision)
+        || !io::write_u8(io, 0)
+        || !io::write_u8(io, 0)
+        || !io::write_u8(io, 0)
+    {
+        return false;
+    }
+    let tab = clut.tab16.as_deref().unwrap_or(&[]);
+    match precision {
+        1 => {
+            for &v in &tab[..clut.n_entries as usize] {
+                if !io::write_u8(io, from_16_to_8(v)) {
+                    return false;
+                }
+            }
+        }
+        2 => {
+            if !io::write_u16_array(io, &tab[..clut.n_entries as usize]) {
+                return false;
+            }
+        }
+        _ => {
+            err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown precision");
+            return false;
+        }
+    }
+    io::write_alignment(io)
+}
+
+/// `cmsPipelineCheckAndRetreiveStages` — match the whole stage list to a signature sequence
+fn pipeline_stage_match<'a>(lut: &'a Pipeline, sigs: &[u32]) -> Option<Vec<&'a Stage>> {
+    let mut out = Vec::with_capacity(sigs.len());
+    let mut mpe = lut.elements.as_deref();
+    for &s in sigs {
+        let m = mpe?;
+        if m.stage_type() != s {
+            return None;
+        }
+        out.push(m);
+        mpe = m.next.as_deref();
+    }
+    mpe?;
+    Some(out)
+}
+
+use crate::signatures::stage as ssig;
+
+/// Shared A2B/B2A writer — same section layout; `is_b2a` picks the stage patterns.
+fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b2a: bool) -> bool {
+    let (TagObject::LutA2B(lut)
+    | TagObject::LutB2A(lut)
+    | TagObject::Lut8(lut)
+    | TagObject::Lut16(lut)
+    | TagObject::Mpe(lut)) = p
+    else {
+        return false;
+    };
+    let base_offset = io.tell().wrapping_sub(8);
+
+    // Resolve A/B/M/Matrix/CLUT stages via the allowed shape checks
+    let (mut a, mut b, mut m, mut matrix, mut clut) = (None, None, None, None, None);
+    if lut.elements.is_some() {
+        let ok = if is_b2a {
+            if let Some(v) = pipeline_stage_match(lut, &[ssig::SigCurveSetElemType]) {
+                b = v.get(0).copied();
+                true
+            } else if let Some(v) = pipeline_stage_match(
+                lut,
+                &[
+                    ssig::SigCurveSetElemType,
+                    ssig::SigMatrixElemType,
+                    ssig::SigCurveSetElemType,
+                ],
+            ) {
+                b = v.get(0).copied();
+                matrix = v.get(1).copied();
+                m = v.get(2).copied();
+                true
+            } else if let Some(v) = pipeline_stage_match(
+                lut,
+                &[
+                    ssig::SigCurveSetElemType,
+                    ssig::SigCLutElemType,
+                    ssig::SigCurveSetElemType,
+                ],
+            ) {
+                b = v.get(0).copied();
+                clut = v.get(1).copied();
+                a = v.get(2).copied();
+                true
+            } else if let Some(v) = pipeline_stage_match(
+                lut,
+                &[
+                    ssig::SigCurveSetElemType,
+                    ssig::SigMatrixElemType,
+                    ssig::SigCurveSetElemType,
+                    ssig::SigCLutElemType,
+                    ssig::SigCurveSetElemType,
+                ],
+            ) {
+                b = v.get(0).copied();
+                matrix = v.get(1).copied();
+                m = v.get(2).copied();
+                clut = v.get(3).copied();
+                a = v.get(4).copied();
+                true
+            } else {
+                false
+            }
+        } else if let Some(v) = pipeline_stage_match(lut, &[ssig::SigCurveSetElemType]) {
+            b = v.get(0).copied();
+            true
+        } else if let Some(v) = pipeline_stage_match(
+            lut,
+            &[
+                ssig::SigCurveSetElemType,
+                ssig::SigMatrixElemType,
+                ssig::SigCurveSetElemType,
+            ],
+        ) {
+            m = v.get(0).copied();
+            matrix = v.get(1).copied();
+            b = v.get(2).copied();
+            true
+        } else if let Some(v) = pipeline_stage_match(
+            lut,
+            &[
+                ssig::SigCurveSetElemType,
+                ssig::SigCLutElemType,
+                ssig::SigCurveSetElemType,
+            ],
+        ) {
+            a = v.get(0).copied();
+            clut = v.get(1).copied();
+            b = v.get(2).copied();
+            true
+        } else if let Some(v) = pipeline_stage_match(
+            lut,
+            &[
+                ssig::SigCurveSetElemType,
+                ssig::SigCLutElemType,
+                ssig::SigCurveSetElemType,
+                ssig::SigMatrixElemType,
+                ssig::SigCurveSetElemType,
+            ],
+        ) {
+            a = v.get(0).copied();
+            clut = v.get(1).copied();
+            m = v.get(2).copied();
+            matrix = v.get(3).copied();
+            b = v.get(4).copied();
+            true
+        } else {
+            false
+        };
+        if !ok {
+            err::signal_error(
+                None,
+                ERROR_NOT_SUITABLE,
+                "LUT is not suitable to be saved as v4",
+            );
+            return false;
+        }
+    }
+
+    let (inch, outch) = (lut.input_channels, lut.output_channels);
+    if !io::write_u8(io, inch as u8) || !io::write_u8(io, outch as u8) || !io::write_u16(io, 0) {
+        return false;
+    }
+    let dir_pos = io.tell();
+    for _ in 0..5 {
+        if !io::write_u32(io, 0) {
+            return false;
+        }
+    }
+
+    let (mut off_a, mut off_b, mut off_m, mut off_mat, mut off_c) = (0u32, 0u32, 0u32, 0u32, 0u32);
+    if let Some(st) = a {
+        off_a = io.tell().wrapping_sub(base_offset);
+        if !write_set_of_curves(s, io, tsig::SigParametricCurveType, st) {
+            return false;
+        }
+    }
+    if let Some(st) = clut {
+        off_c = io.tell().wrapping_sub(base_offset);
+        if !write_clut(io, if lut.save_as_8bits { 1 } else { 2 }, st) {
+            return false;
+        }
+    }
+    if let Some(st) = m {
+        off_m = io.tell().wrapping_sub(base_offset);
+        if !write_set_of_curves(s, io, tsig::SigParametricCurveType, st) {
+            return false;
+        }
+    }
+    if let Some(st) = matrix {
+        off_mat = io.tell().wrapping_sub(base_offset);
+        if !write_matrix(io, st) {
+            return false;
+        }
+    }
+    if let Some(st) = b {
+        off_b = io.tell().wrapping_sub(base_offset);
+        if !write_set_of_curves(s, io, tsig::SigParametricCurveType, st) {
+            return false;
+        }
+    }
+
+    let cur_pos = io.tell();
+    if !io.seek(dir_pos)
+        || !io::write_u32(io, off_b)
+        || !io::write_u32(io, off_mat)
+        || !io::write_u32(io, off_m)
+        || !io::write_u32(io, off_c)
+        || !io::write_u32(io, off_a)
+    {
+        return false;
+    }
+    io.seek(cur_pos)
+}
+
+fn type_lut_a2b_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    type_lut_v4_write(s, io, p, false)
+}
+fn type_lut_b2a_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    type_lut_v4_write(s, io, p, true)
 }
