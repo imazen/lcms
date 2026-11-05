@@ -158,30 +158,65 @@ fn emit_lab2xyz(w: &mut PsWriter) {
 
 /// `Emit1Gamma` — a single tone curve as a PS function
 fn emit_1_gamma(w: &mut PsWriter, table: &ToneCurve) {
-    // C emits the tabulated curve as a /Function /SampledFunction —
-    // or the parametric equivalent. Port the tabulated path.
-    let n = table.n_entries as usize;
-    w.out(&format!("/Size {n} def\n"));
-    w.out("/BitsPerSample 8 def\n");
-    w.out("{ currentfile /ReversedDecode false /Interpolation true /Domain [0 1] /Size 256\n");
-    if !table.table16.is_empty() {
-        let t16 = &table.table16;
-        for &v in t16.iter() {
-            w.write_byte(word2byte(v));
-        }
+    // C: empty/linear → `{ 1 } bind `; a positive gamma estimate →
+    // `{ %g exp } bind `; else the tabulated-table interpolating fn.
+    if table.table16.is_empty() || crate::gamma::is_tone_curve_linear(table) {
+        w.out("{ 1 } bind ");
+        return;
     }
-    w.out("} bind def\n");
+    let gamma = crate::gamma::estimate_gamma(table, 0.001);
+    if gamma > 0.0 {
+        // TODO(cmsps2): C's %g — Rust's {} gives shortest round-trip but a
+        // different exponent style; needs a C-printf %g helper for byte parity
+        w.out(&format!("{{ {gamma} exp }} bind "));
+        return;
+    }
+    w.out("{ ");
+    emit_range_check(w);
+    w.out(" [");
+    for (i, &v) in table.table16.iter().enumerate() {
+        if i % 10 == 0 {
+            w.out("\n  ");
+        }
+        w.out(&format!("{v} "));
+    }
+    w.out("] ");
+    w.out("dup ");
+    w.out("length 1 sub ");
+    w.out("3 -1 roll ");
+    w.out("mul ");
+    w.out("dup ");
+    w.out("dup ");
+    w.out("floor cvi ");
+    w.out("exch ");
+    w.out("ceiling cvi ");
+    w.out("3 index ");
+    w.out("exch ");
+    w.out("get\n  ");
+    w.out("4 -1 roll ");
+    w.out("3 -1 roll ");
+    w.out("get ");
+    w.out("dup ");
+    w.out("3 1 roll ");
+    w.out("sub ");
+    w.out("3 -1 roll ");
+    w.out("dup ");
+    w.out("floor cvi ");
+    w.out("sub ");
+    w.out("mul ");
+    w.out("add ");
+    w.out("65535 div\n");
+    w.out(" } bind ");
 }
 
-/// `GammaTableEquals`
-fn gamma_table_equals(g1: &[u16], g2: &[u16]) -> bool {
-    g1 == g2
-}
-
-/// `EmitNGamma` — N tone curves
+/// `EmitNGamma` — N tone curves, collapsing runs of equal tables
 fn emit_n_gamma(w: &mut PsWriter, curves: &[&ToneCurve]) {
-    for c in curves {
-        emit_1_gamma(w, c);
+    for (i, c) in curves.iter().enumerate() {
+        if i > 0 && curves[i - 1].table16 == c.table16 {
+            w.out("dup ");
+        } else {
+            emit_1_gamma(w, c);
+        }
     }
 }
 
