@@ -87,6 +87,13 @@ pub fn double_to_s15_fixed16(v: f64) -> i32 {
     (v * 65536.0 + 0.5).floor() as i32
 }
 
+/// `_cmsQuantizeVal` — quantize 0 <= i < MaxSamples to 0..0xffff.
+#[inline]
+pub fn quantize_val(i: f64, max_samples: u32) -> u16 {
+    let x = i * 65535.0 / (max_samples - 1) as f64;
+    quick_saturate_word(x)
+}
+
 /// `_cms8Fixed8toDouble`
 #[inline]
 pub fn u8_fixed8_to_double(fixed8: u16) -> f64 {

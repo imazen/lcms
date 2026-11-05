@@ -84,9 +84,23 @@ pub struct ProfileID {
     pub id8: [U8; 16],
 }
 
+/// Opaque `cmsToneCurve`
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ToneCurve; // opaque cmsToneCurve
+pub struct ToneCurve {
+    _private: [u8; 0],
+}
+
+/// `cmsCurveSegment` (lcms2.h)
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct CurveSegment {
+    pub x0: F32,
+    pub x1: F32,
+    pub r#type: i32,
+    pub params: [F64; 10],
+    pub n_grid_points: U32,
+    pub sampled_points: *const F32,
+}
 
 // ---- cmsInterpParams (lcms2_plugin.h) ----
 
@@ -199,8 +213,136 @@ unsafe extern "C" {
         primrs: *const CiexyYTriple,
     ) -> Bool;
 
+    // ---- cmsgamma.c ----
+    pub fn cmsBuildParametricToneCurve(
+        context_id: Context,
+        r#type: i32,
+        params: *const F64,
+    ) -> *mut ToneCurve;
+    pub fn cmsBuildGamma(context_id: Context, gamma: F64) -> *mut ToneCurve;
+    pub fn cmsBuildTabulatedToneCurve16(
+        context_id: Context,
+        n_entries: U32,
+        values: *const U16,
+    ) -> *mut ToneCurve;
+    pub fn cmsBuildTabulatedToneCurveFloat(
+        context_id: Context,
+        n_entries: U32,
+        values: *const F32,
+    ) -> *mut ToneCurve;
+    pub fn cmsBuildSegmentedToneCurve(
+        context_id: Context,
+        n_segments: U32,
+        segments: *const CurveSegment,
+    ) -> *mut ToneCurve;
+    pub fn cmsEvalToneCurveFloat(curve: *const ToneCurve, v: F32) -> F32;
+    pub fn cmsEvalToneCurve16(curve: *const ToneCurve, v: U16) -> U16;
+    pub fn cmsIsToneCurveLinear(curve: *const ToneCurve) -> Bool;
+    pub fn cmsIsToneCurveMonotonic(curve: *const ToneCurve) -> Bool;
+    pub fn cmsIsToneCurveDescending(curve: *const ToneCurve) -> Bool;
+    pub fn cmsIsToneCurveMultisegment(curve: *const ToneCurve) -> Bool;
+    pub fn cmsGetToneCurveParametricType(curve: *const ToneCurve) -> i32;
+    pub fn cmsEstimateGamma(curve: *const ToneCurve, precision: F64) -> F64;
+    pub fn cmsReverseToneCurveEx(n_result_samples: U32, curve: *const ToneCurve) -> *mut ToneCurve;
+    pub fn cmsReverseToneCurve(curve: *const ToneCurve) -> *mut ToneCurve;
+    pub fn cmsJoinToneCurve(
+        context_id: Context,
+        x: *const ToneCurve,
+        y: *const ToneCurve,
+        n_points: U32,
+    ) -> *mut ToneCurve;
+    pub fn cmsSmoothToneCurve(tab: *mut ToneCurve, lambda: F64) -> Bool;
+    pub fn cmsGetToneCurveEstimatedTableEntries(curve: *const ToneCurve) -> U32;
+    pub fn cmsGetToneCurveEstimatedTable(curve: *const ToneCurve) -> *const U16;
+    pub fn cmsDupToneCurve(curve: *const ToneCurve) -> *mut ToneCurve;
+    pub fn cmsFreeToneCurve(curve: *mut ToneCurve);
+
     // ---- cmserr.c / cmsplugin.c misc ----
     pub fn cmsGetHeaderRenderingIntent(h_profile: HProfile) -> U32;
+
+    // ---- cmslut.c ----
+    pub fn cmsStageAllocIdentity(context_id: Context, n_channels: U32) -> Handle;
+    pub fn cmsStageAllocToneCurves(
+        context_id: Context,
+        n_channels: U32,
+        curves: *const *mut ToneCurve,
+    ) -> Handle;
+    pub fn cmsStageAllocMatrix(
+        context_id: Context,
+        rows: U32,
+        cols: U32,
+        matrix: *const F64,
+        offset: *const F64,
+    ) -> Handle;
+    pub fn cmsStageAllocCLut16bit(
+        context_id: Context,
+        n_grid_points: U32,
+        input_chan: U32,
+        output_chan: U32,
+        table: *const U16,
+    ) -> Handle;
+    pub fn cmsStageAllocCLut16bitGranular(
+        context_id: Context,
+        clut_points: *const U32,
+        input_chan: U32,
+        output_chan: U32,
+        table: *const U16,
+    ) -> Handle;
+    pub fn cmsStageAllocCLutFloat(
+        context_id: Context,
+        n_grid_points: U32,
+        input_chan: U32,
+        output_chan: U32,
+        table: *const F32,
+    ) -> Handle;
+    pub fn cmsStageDup(mpe: Handle) -> Handle;
+    pub fn cmsStageFree(mpe: Handle);
+    pub fn cmsStageInputChannels(mpe: Handle) -> U32;
+    pub fn cmsStageOutputChannels(mpe: Handle) -> U32;
+    pub fn cmsStageType(mpe: Handle) -> U32;
+    pub fn cmsStageNext(mpe: Handle) -> Handle;
+    pub fn cmsStageSampleCLut16bit(
+        mpe: Handle,
+        sampler: unsafe extern "C" fn(*const U16, *mut U16, *mut c_void) -> i32,
+        cargo: *mut c_void,
+        dw_flags: U32,
+    ) -> i32;
+    pub fn cmsSliceSpace16(
+        n_inputs: U32,
+        clut_points: *const U32,
+        sampler: unsafe extern "C" fn(*const U16, *mut U16, *mut c_void) -> i32,
+        cargo: *mut c_void,
+    ) -> i32;
+    pub fn _cmsStageAllocLab2XYZ(context_id: Context) -> Handle;
+    pub fn _cmsStageAllocXYZ2Lab(context_id: Context) -> Handle;
+    pub fn _cmsStageAllocLabV2ToV4(context_id: Context) -> Handle;
+    pub fn _cmsStageAllocLabV4ToV2(context_id: Context) -> Handle;
+    pub fn _cmsStageAllocLabV2ToV4curves(context_id: Context) -> Handle;
+    pub fn _cmsStageAllocLabPrelin(context_id: Context) -> Handle;
+    pub fn _cmsStageAllocIdentityCLut(context_id: Context, n_chan: U32) -> Handle;
+    pub fn _cmsStageClipNegatives(context_id: Context, n_channels: U32) -> Handle;
+    pub fn _cmsStageNormalizeFromLabFloat(context_id: Context) -> Handle;
+    pub fn _cmsStageNormalizeFromXyzFloat(context_id: Context) -> Handle;
+    pub fn _cmsStageNormalizeToLabFloat(context_id: Context) -> Handle;
+    pub fn _cmsStageNormalizeToXyzFloat(context_id: Context) -> Handle;
+    pub fn cmsPipelineAlloc(context_id: Context, in_chans: U32, out_chans: U32) -> Handle;
+    pub fn cmsPipelineFree(lut: Handle);
+    pub fn cmsPipelineDup(lut: Handle) -> Handle;
+    pub fn cmsPipelineEval16(in_: *const U16, out: *mut U16, lut: Handle);
+    pub fn cmsPipelineEvalFloat(in_: *const F32, out: *mut F32, lut: Handle);
+    pub fn cmsPipelineEvalReverseFloat(
+        target: *mut F32,
+        result: *mut F32,
+        hint: *mut F32,
+        lut: Handle,
+    ) -> i32;
+    pub fn cmsPipelineInsertStage(lut: Handle, loc: i32, mpe: Handle) -> i32;
+    pub fn cmsPipelineUnlinkStage(lut: Handle, loc: i32, mpe: *mut Handle);
+    pub fn cmsPipelineCat(l1: Handle, l2: Handle) -> i32;
+    pub fn cmsPipelineStageCount(lut: Handle) -> U32;
+    pub fn cmsPipelineInputChannels(lut: Handle) -> U32;
+    pub fn cmsPipelineOutputChannels(lut: Handle) -> U32;
+    pub fn _cmsQuantizeVal(i: F64, max_samples: U32) -> U16;
 
     // ---- cmsmd5.c ----
     pub fn cmsMD5alloc(context_id: Context) -> Handle;
