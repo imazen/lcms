@@ -41,18 +41,18 @@ Done: types/signatures → fixed-point helpers → `mtrx` → `pcs` → `wtpnt` 
 | 5 | `lcms2_internal.h` inlines + `cmsplugin.c` helpers | `fixed`, `context`, `err` | done (minimal Context; slots grow) |
 | 6 | `cmsintrp.c` | `intrp` | done — all kernels, dims 1–15 |
 | 7 | `cmsgamma.c` | `gamma` | done — parametric/segmented/tabulated + smooth/reverse/join |
-| 8 | `cmslut.c` | `lut` | in progress — stage/pipeline machinery + MPE elements |
-| 9 | `cmsio0.c` | `io` | profile read/write + tag dir + endian IO |
-| 10 | `cmstypes.c` | `tagtypes` | all tag type handlers (~6.3k C lines) |
+| 8 | `cmslut.c` | `lut` | done — all stage types + pipeline + Newton reverse |
+| 9 | `cmsio0.c` | `io` | IO layer done (handlers + primitives); profile/tag machinery next |
+| 10 | `cmstypes.c` | `tagtypes` | next — all tag type handlers (~6.3k C lines) |
 | 11 | `cmsmd5.c` | `md5` | done (computeID waits on cmsio0) |
-| 12 | `cmsnamed.c`, `cmsio1.c` | `named`, `io1` | named colors, profile sequence |
+| 12 | `cmsnamed.c`, `cmsio1.c` | `named` | cmsnamed done; io1 pending |
 | 13 | `cmspack.c` | `pack` | pixel formatters (~4k lines) |
 | 14 | `cmsalpha.c` | `alpha` | alpha channel copy |
 | 15 | `cmsxform.c` | `xform` | transforms, cache, proofing |
 | 16 | `cmsopt.c` | `opt` | optimizer — reproduces C's *decisions* |
 | 17 | `cmscnvrt.c` | `cnvrt` | profile linking, intents, BPC |
 | 18 | `cmsvirt.c` | `virt` | sRGB/Lab/XYZ/abstract/BCHSW virtual profiles |
-| 19 | `cmscam02.c` | `cam02` | CIECAM02 |
+| 19 | `cmscam02.c` | `cam02` | done |
 | 20 | `cmssm.c`, `cmsgmt.c` | `sm`, `gmt` | gamut boundary descriptor, gamut check |
 | 21 | `cmscgats.c` | `cgats` | CGATS/IT8 parser (~3.3k) |
 | 22 | `cmssamp.c`, `cmsps2.c` | `samp`, `ps2` | sampling, PostScript CSA/CRD |
