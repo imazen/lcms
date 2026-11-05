@@ -626,3 +626,21 @@ REMAINING: generic-path perf (~2x), residual coverage edges.
   (MatShaper fused path) and both K-intents.
 REMAINING: 16-bit CLUT eval ~1.8x (interp16 fixed-point loops —
   candidate for per-node fused kernels), generic-path edge cases.
+
+## NEXT PERF TARGET — interp16 table-read bounds checks (~1.8x on 16-bit CLUT)
+
+16-bit CMYK→sRGB (CLUT path) sits at ~1.8x of C: `eval4_inputs` /
+`tetrahedral_interp16` / `trilinear_interp16` each do ~4 `tbl_get16`
+bounds-checked reads per output channel (C uses raw pointer arithmetic).
+
+Fix recipe (SAFE, no unchecked): per pixel, after ordering the offsets
+(cumulative: x1 ≤ y1 ≤ z1 in tetra16; eval4_inputs similar), slice once
+`let cell = &lut[base .. base + n_out + z_max]` — then reads
+`cell[ch + off]` for ch in 0..n_out, off ∈ {0,x1,y1,z1} are all
+provably ≤ n_out-1+z1 < cell.len() → LLVM elides the ~16 checks/px.
+Same shape for trilinear (2^3 nodes, offsets opta products) and
+eval4_inputs (2^4). Verify byte-exact via c_parity_realprofile +
+c_parity_intrp gates. Est. CMYK 16-bit ~1.8x → ~1.1-1.3x.
+
+Also open: f32-path fused fast paths (xform_f32 equivalents) if a real
+workload needs them; residual coverage edges per the C-file checklist.
