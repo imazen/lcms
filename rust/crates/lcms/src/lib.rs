@@ -31,5 +31,6 @@ pub mod tagtypes;
 pub mod types;
 pub mod wtpnt;
 
+pub mod io1;
 pub mod profile;
 pub mod virt;
