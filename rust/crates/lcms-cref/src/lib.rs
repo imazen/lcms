@@ -321,6 +321,7 @@ unsafe extern "C" {
     pub fn cmsSaveProfileToMem(p: *mut c_void, mem: *mut c_void, size: *mut u32) -> i32;
     // --- cmsvirt ---
     pub fn cmsCreate_sRGBProfile() -> *mut c_void;
+    pub fn cmsCreateRGBProfileTHR(ctx: Context, white: *const c_void, primaries: *const c_void, transfer: *const *mut c_void) -> *mut c_void;
     pub fn cmsCreateLab2Profile(wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateLab4Profile(wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateXYZProfile() -> *mut c_void;

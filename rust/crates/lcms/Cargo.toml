@@ -12,3 +12,8 @@ repository.workspace = true
 
 [dev-dependencies]
 lcms-cref = { path = "../lcms-cref" }
+zenbench = "0.1.10"
+
+[[bench]]
+name = "perf_zenbench"
+harness = false
