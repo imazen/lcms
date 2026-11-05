@@ -711,3 +711,15 @@ gamut/cached-gamut workers keep the generic loop. Parity green; CMYK16
 ~1.6x (unchanged — the tetra16 interp math dominates, not dispatch).
 Remaining 16-bit CLUT gap is inside eval4_inputs/tetra16 itself (16
 dependent node reads + lerp per channel — memory-latency bound like C).
+
+## PERF — concrete-kernel dispatch landed (CMYK16 ~1.25-1.6x)
+
+xform16 ClutOnly arm resolves params16.interpolation fn ptr once (==
+against eval4_inputs/tetrahedral/trilinear/bilinear/lin_lerp_1d/
+eval1_input — now pub(crate) + #[inline] in intrp.rs) → monomorphized
+loop calls the concrete kernel. #[inline] isn't enough to fold the
+~150-line kernels (14 calls remain in disasm); the residual gap is the
+tetra math itself (16 dependent node reads + lerp per channel — same
+latency-bound work as C, ~1.3-1.6x residual is codegen arithmetic not
+dispatch). Options not pursued: inline(always), archmage attune batch
+SIMD (interp is gather-bound, poor fit), Kernel16 tag.

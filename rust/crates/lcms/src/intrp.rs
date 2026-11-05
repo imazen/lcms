@@ -494,6 +494,7 @@ fn trilinear_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
 }
 
 /// `TrilinearInterp16` — trilinear, fixed point.
+#[inline]
 pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let total_out = p.n_outputs as usize;
@@ -653,6 +654,7 @@ fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams)
 /// `x = (Rest + ((Rest+0x7fff)/0xFFFF) + 0x8000) >> 16` replaced by
 /// `t = Rest+0x8001; x = (t + (t>>16)) >> 16` — off by one at 0x7fff/0x17ffe,
 /// which is C's actual behaviour and is preserved.
+#[inline]
 pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut total_out = p.n_outputs as usize;
@@ -822,6 +824,7 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
 }
 
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
+#[inline]
 pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut tmp1 = [0u16; MAX_STAGE_CHANNELS];
