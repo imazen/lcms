@@ -10,11 +10,29 @@ use std::ffi::CString;
 
 const BUF: usize = 4 * 1024 * 1024;
 
-fn c_ps(f: unsafe extern "C" fn(*mut std::ffi::c_void, *mut std::ffi::c_void, u32, u32, *mut std::ffi::c_void, u32) -> u32,
-        prof: *mut std::ffi::c_void, intent: u32, flags: u32) -> Vec<u8> {
+fn c_ps(
+    f: unsafe extern "C" fn(
+        *mut std::ffi::c_void,
+        *mut std::ffi::c_void,
+        u32,
+        u32,
+        *mut std::ffi::c_void,
+        u32,
+    ) -> u32,
+    prof: *mut std::ffi::c_void,
+    intent: u32,
+    flags: u32,
+) -> Vec<u8> {
     unsafe {
         let mut buf = vec![0u8; BUF];
-        let n = f(std::ptr::null_mut(), prof, intent, flags, buf.as_mut_ptr() as *mut _, BUF as u32);
+        let n = f(
+            std::ptr::null_mut(),
+            prof,
+            intent,
+            flags,
+            buf.as_mut_ptr() as *mut _,
+            BUF as u32,
+        );
         assert!(n > 0, "C PS emission failed");
         buf.truncate(n as usize);
         buf
@@ -100,7 +118,8 @@ fn srgb_crd() {
 
 #[test]
 fn cmyk_csa_crd() {
-    let bytes = std::fs::read("/home/lilith/work/zen/lcms/reference/lcms2/testbed/test1.icc").expect("test1.icc");
+    let bytes = std::fs::read("/home/lilith/work/zen/lcms/reference/lcms2/testbed/test1.icc")
+        .expect("test1.icc");
     unsafe {
         let prof = c::cmsOpenProfileFromMem(bytes.as_ptr() as *const _, bytes.len() as u32);
         assert!(!prof.is_null());
@@ -150,21 +169,36 @@ fn c_named_profile_bytes() -> Vec<u8> {
         );
         for ((name, (l, a, b)), col) in names.iter().zip(labs.iter()).zip(cols.iter()) {
             let name_c = CString::new(*name).unwrap();
-            let lab = c::CieLab { L: *l, a: *a, b: *b };
+            let lab = c::CieLab {
+                L: *l,
+                a: *a,
+                b: *b,
+            };
             let mut pcs = [0u16; 3];
             c::cmsFloat2LabEncodedV2(pcs.as_mut_ptr(), &lab);
             let mut dev = [0u16; 16];
             dev[..4].copy_from_slice(col);
             assert_eq!(
-                c::cmsAppendNamedColor(list, name_c.as_ptr() as *const _, pcs.as_ptr(), dev.as_ptr()),
+                c::cmsAppendNamedColor(
+                    list,
+                    name_c.as_ptr() as *const _,
+                    pcs.as_ptr(),
+                    dev.as_ptr()
+                ),
                 1
             );
         }
         assert_eq!(c::cmsWriteTag(p, SIG_NCL2, list as *const _), 1);
         let mut size = 0u32;
-        assert_eq!(c::cmsSaveProfileToMem(p, std::ptr::null_mut(), &mut size), 1);
+        assert_eq!(
+            c::cmsSaveProfileToMem(p, std::ptr::null_mut(), &mut size),
+            1
+        );
         let mut buf = vec![0u8; size as usize];
-        assert_eq!(c::cmsSaveProfileToMem(p, buf.as_mut_ptr() as *mut _, &mut size), 1);
+        assert_eq!(
+            c::cmsSaveProfileToMem(p, buf.as_mut_ptr() as *mut _, &mut size),
+            1
+        );
         buf.truncate(size as usize);
         c::cmsFreeNamedColorList(list);
         c::cmsCloseProfile(p);

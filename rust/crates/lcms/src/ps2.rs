@@ -234,14 +234,14 @@ fn output_value_sampler(
     out: &mut [u16],
     sc: &mut PsSamplerCargo,
 ) -> i32 {
-    if sc.fix_white && inp[0] == 0xffff
+    if sc.fix_white
+        && inp[0] == 0xffff
         && inp[1] >= 0x7800
         && inp[1] <= 0x8800
         && inp[2] >= 0x7800
         && inp[2] <= 0x8800
     {
-        let Some((white, _black, n_outs)) = crate::pcs::end_points_by_space(sc.color_space)
-        else {
+        let Some((white, _black, n_outs)) = crate::pcs::end_points_by_space(sc.color_space) else {
             return 0;
         };
         for (i, &wp) in white.iter().enumerate().take(n_outs as usize) {
@@ -486,7 +486,10 @@ fn ctime_now() -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = if m <= 2 { y + 1 } else { y };
     let wday = DAYS[days.rem_euclid(7) as usize];
-    format!("{wday} {} {d:2} {hh:02}:{mm:02}:{ss:02} {year}\n", MONTHS[(m - 1) as usize])
+    format!(
+        "{wday} {} {d:2} {hh:02}:{mm:02}:{ss:02} {year}\n",
+        MONTHS[(m - 1) as usize]
+    )
 }
 
 /// Serialize + reopen — the transform API needs owned profile boxes.
@@ -540,7 +543,9 @@ fn write_input_lut(w: &mut PsWriter, icc: &mut IccProfile, intent: u32, mut dw_f
     let Some(hlab) = crate::virt::create_lab4_profile(None, None) else {
         return false;
     };
-    let Some(p_dup) = dup_profile(icc) else { return false };
+    let Some(p_dup) = dup_profile(icc) else {
+        return false;
+    };
     let mut profs = vec![p_dup, hlab];
     let mut bpc = [false, false];
     let intents = [intent, intent];
@@ -581,7 +586,12 @@ fn write_input_lut(w: &mut PsWriter, icc: &mut IccProfile, intent: u32, mut dw_f
             let mut infmt = input_format;
             // C ignores the optimizer's return value here
             let _ = crate::opt::optimize_pipeline(
-                None, &mut link, intent, &mut infmt, &mut out_frm, &mut dw_flags,
+                None,
+                &mut link,
+                intent,
+                &mut infmt,
+                &mut out_frm,
+                &mut dw_flags,
             );
             if emit_cie_based_def(w, &mut link, intent, &black_point) == 0 {
                 return false;
@@ -645,7 +655,9 @@ fn write_named_color_csa(w: &mut PsWriter, icc: &mut IccProfile, intent: u32) ->
     let Some(hlab) = crate::virt::create_lab4_profile(None, None) else {
         return 0;
     };
-    let Some(p_dup) = dup_profile(icc) else { return 0 };
+    let Some(p_dup) = dup_profile(icc) else {
+        return 0;
+    };
     let mut profs = vec![p_dup, hlab];
     let mut bpc = [false, false];
     let intents = [intent, intent];
@@ -695,7 +707,12 @@ fn write_named_color_csa(w: &mut PsWriter, icc: &mut IccProfile, intent: u32) ->
 }
 
 /// `GenerateCSA` — CSA on XYZ colorspace
-fn generate_csa(icc: &mut IccProfile, intent: u32, dw_flags: u32, io: &mut IoHandler) -> Option<u32> {
+fn generate_csa(
+    icc: &mut IccProfile,
+    intent: u32,
+    dw_flags: u32,
+    io: &mut IoHandler,
+) -> Option<u32> {
     let mut w = PsWriter::new(io);
     if icc.device_class == crate::signatures::profileclass::SigNamedColorClass {
         if write_named_color_csa(&mut w, icc, intent) == 0 {
@@ -728,7 +745,6 @@ fn generate_csa(icc: &mut IccProfile, intent: u32, dw_flags: u32, io: &mut IoHan
         } else if !write_input_lut(&mut w, icc, intent, dw_flags) {
             return None;
         }
-
     }
     Some(io_used_space(&mut w))
 }
@@ -782,9 +798,15 @@ fn emit_pqr_stage(w: &mut PsWriter, icc: &mut IccProfile, do_bpc: bool, is_absol
 fn emit_xyz2lab(w: &mut PsWriter) {
     w.out("/RangeLMN [ -0.635 2.0 0 2 -0.635 2.0 ]\n");
     w.out("/EncodeLMN [\n");
-    w.out("{ 0.964200  div dup 0.008856 le {7.787 mul 16 116 div add}{1 3 div exp} ifelse } bind\n");
-    w.out("{ 1.000000  div dup 0.008856 le {7.787 mul 16 116 div add}{1 3 div exp} ifelse } bind\n");
-    w.out("{ 0.824900  div dup 0.008856 le {7.787 mul 16 116 div add}{1 3 div exp} ifelse } bind\n");
+    w.out(
+        "{ 0.964200  div dup 0.008856 le {7.787 mul 16 116 div add}{1 3 div exp} ifelse } bind\n",
+    );
+    w.out(
+        "{ 1.000000  div dup 0.008856 le {7.787 mul 16 116 div add}{1 3 div exp} ifelse } bind\n",
+    );
+    w.out(
+        "{ 0.824900  div dup 0.008856 le {7.787 mul 16 116 div add}{1 3 div exp} ifelse } bind\n",
+    );
     w.out("]\n");
     w.out("/MatrixABC [ 0 1 0 1 -1 1 0 0 -1 ]\n");
     w.out("/EncodeABC [\n");
@@ -795,7 +817,12 @@ fn emit_xyz2lab(w: &mut PsWriter) {
 }
 
 /// `WriteOutputLUT` — Lab → profile CLUT as a CRD RenderTable
-fn write_output_lut(w: &mut PsWriter, icc: &mut IccProfile, intent: u32, mut dw_flags: u32) -> bool {
+fn write_output_lut(
+    w: &mut PsWriter,
+    icc: &mut IccProfile,
+    intent: u32,
+    mut dw_flags: u32,
+) -> bool {
     let output_format = crate::sm::formatter_for_colorspace(icc, 2, false);
     let n_channels = crate::pack::t_channels(output_format);
     let color_space = icc.color_space;
@@ -811,7 +838,9 @@ fn write_output_lut(w: &mut PsWriter, icc: &mut IccProfile, intent: u32, mut dw_
     } else {
         intent
     };
-    let Some(p_dup) = dup_profile(icc) else { return false };
+    let Some(p_dup) = dup_profile(icc) else {
+        return false;
+    };
     let mut profs = vec![hlab, p_dup];
     let mut bpc = [false, false];
     let intents = [rel_intent, rel_intent];
@@ -848,7 +877,12 @@ fn write_output_lut(w: &mut PsWriter, icc: &mut IccProfile, intent: u32, mut dw_
     let mut in_frm = TYPE_LAB_16;
     let mut outfmt = output_format;
     if !crate::opt::optimize_pipeline(
-        None, &mut link, rel_intent, &mut in_frm, &mut outfmt, &mut dw_flags,
+        None,
+        &mut link,
+        rel_intent,
+        &mut in_frm,
+        &mut outfmt,
+        &mut dw_flags,
     ) {
         crate::err::signal_error(
             None,
@@ -863,7 +897,12 @@ fn write_output_lut(w: &mut PsWriter, icc: &mut IccProfile, intent: u32, mut dw_
 
     let black_point = crate::sm::detect_black_point(icc, intent, 0).unwrap_or_default();
     emit_white_black_d50(w, &black_point);
-    emit_pqr_stage(w, icc, do_bpc, intent == crate::types::INTENT_ABSOLUTE_COLORIMETRIC);
+    emit_pqr_stage(
+        w,
+        icc,
+        do_bpc,
+        intent == crate::types::INTENT_ABSOLUTE_COLORIMETRIC,
+    );
     emit_xyz2lab(w);
 
     // FIXUP: map Lab(100,0,0) to perfect white
@@ -915,7 +954,9 @@ fn write_named_color_crd(
 ) -> i32 {
     let output_format = crate::sm::formatter_for_colorspace(icc, 2, false);
     let n_colorant = crate::pack::t_channels(output_format) as usize;
-    let Some(p_dup) = dup_profile(icc) else { return 0 };
+    let Some(p_dup) = dup_profile(icc) else {
+        return 0;
+    };
     let mut profs = vec![p_dup];
     let mut bpc = [false];
     let intents = [intent];
@@ -970,10 +1011,20 @@ fn write_named_color_crd(
 }
 
 /// `GenerateCRD` — always LUT-based
-fn generate_crd(icc: &mut IccProfile, intent: u32, dw_flags: u32, io: &mut IoHandler) -> Option<u32> {
+fn generate_crd(
+    icc: &mut IccProfile,
+    intent: u32,
+    dw_flags: u32,
+    io: &mut IoHandler,
+) -> Option<u32> {
     let mut w = PsWriter::new(io);
     if dw_flags & crate::types::FLAGS_NODEFAULTRESOURCEDEF == 0 {
-        emit_header(&mut w, "Color Rendering Dictionary (CRD)", icc, &ctime_now());
+        emit_header(
+            &mut w,
+            "Color Rendering Dictionary (CRD)",
+            icc,
+            &ctime_now(),
+        );
     }
     if icc.device_class == crate::signatures::profileclass::SigNamedColorClass {
         if write_named_color_crd(&mut w, icc, intent, dw_flags) == 0 {

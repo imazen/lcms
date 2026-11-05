@@ -132,7 +132,12 @@ fn xform16_eval_loop<E: Fn(&[u16], &mut [u16])>(
                     cache_out[..MAX_CHANNELS].copy_from_slice(&w_out[..MAX_CHANNELS]);
                 }
             }
-            out_pos += pack(info, &w_out, &mut output[out_pos..], stride.bytes_per_plane_out);
+            out_pos += pack(
+                info,
+                &w_out,
+                &mut output[out_pos..],
+                stride.bytes_per_plane_out,
+            );
         }
         i_off += stride.bytes_per_line_in as usize;
         o_off += stride.bytes_per_line_out as usize;
@@ -320,13 +325,7 @@ impl Transform {
     /// pixel cache. The eval state is `Sync` (read-only `lut`/`opt_data`/
     /// `fmt`/`worker`), so this is safe and byte-exact vs `do_transform`.
     /// `threads <= 1` or `n < threads` falls back to the serial path.
-    pub fn do_transform_par(
-        &mut self,
-        input: &[u8],
-        output: &mut [u8],
-        n: u32,
-        threads: usize,
-    ) {
+    pub fn do_transform_par(&mut self, input: &[u8], output: &mut [u8], n: u32, threads: usize) {
         let px_in = (crate::pack::t_channels(self.input_format)
             + crate::pack::t_extra(self.input_format)) as usize
             * pixel_size(self.input_format) as usize;
@@ -503,48 +502,51 @@ impl Transform {
             }
             if self.input_format == RGB8 && self.output_format == RGB8 {
                 if let Some(l) = self.lut.as_mut() {
-                if let Some(crate::opt::OptData::MatShaper(p)) = l.opt_data.as_ref() {
-                    let ppl3 = ppl as usize * 3;
-                    let mut i_off = 0usize;
-                    let mut o_off = 0usize;
-                    for _ in 0..lines {
-                        let iline = &input[i_off..i_off + ppl3];
-                        let oline = &mut output[o_off..o_off + ppl3];
-                        for i in 0..ppl as usize {
-                            let px = i * 3;
-                            let r = p.shaper1[0][iline[px] as usize];
-                            let g = p.shaper1[1][iline[px + 1] as usize];
-                            let b = p.shaper1[2][iline[px + 2] as usize];
-                            let l1 = (p.mat[0][0].wrapping_mul(r)
-                                + p.mat[0][1].wrapping_mul(g)
-                                + p.mat[0][2].wrapping_mul(b)
-                                + p.off[0]
-                                + 0x2000)
-                                >> 14;
-                            let l2 = (p.mat[1][0].wrapping_mul(r)
-                                + p.mat[1][1].wrapping_mul(g)
-                                + p.mat[1][2].wrapping_mul(b)
-                                + p.off[1]
-                                + 0x2000)
-                                >> 14;
-                            let l3 = (p.mat[2][0].wrapping_mul(r)
-                                + p.mat[2][1].wrapping_mul(g)
-                                + p.mat[2][2].wrapping_mul(b)
-                                + p.off[2]
-                                + 0x2000)
-                                >> 14;
-                            oline[px] = crate::pack::f16to8(p.shaper2[l1.clamp(0, 16384) as usize]);
-                            oline[px + 1] =
-                                crate::pack::f16to8(p.shaper2[16385 + l2.clamp(0, 16384) as usize]);
-                            oline[px + 2] =
-                                crate::pack::f16to8(p.shaper2[2 * 16385 + l3.clamp(0, 16384) as usize]);
+                    if let Some(crate::opt::OptData::MatShaper(p)) = l.opt_data.as_ref() {
+                        let ppl3 = ppl as usize * 3;
+                        let mut i_off = 0usize;
+                        let mut o_off = 0usize;
+                        for _ in 0..lines {
+                            let iline = &input[i_off..i_off + ppl3];
+                            let oline = &mut output[o_off..o_off + ppl3];
+                            for i in 0..ppl as usize {
+                                let px = i * 3;
+                                let r = p.shaper1[0][iline[px] as usize];
+                                let g = p.shaper1[1][iline[px + 1] as usize];
+                                let b = p.shaper1[2][iline[px + 2] as usize];
+                                let l1 = (p.mat[0][0].wrapping_mul(r)
+                                    + p.mat[0][1].wrapping_mul(g)
+                                    + p.mat[0][2].wrapping_mul(b)
+                                    + p.off[0]
+                                    + 0x2000)
+                                    >> 14;
+                                let l2 = (p.mat[1][0].wrapping_mul(r)
+                                    + p.mat[1][1].wrapping_mul(g)
+                                    + p.mat[1][2].wrapping_mul(b)
+                                    + p.off[1]
+                                    + 0x2000)
+                                    >> 14;
+                                let l3 = (p.mat[2][0].wrapping_mul(r)
+                                    + p.mat[2][1].wrapping_mul(g)
+                                    + p.mat[2][2].wrapping_mul(b)
+                                    + p.off[2]
+                                    + 0x2000)
+                                    >> 14;
+                                oline[px] =
+                                    crate::pack::f16to8(p.shaper2[l1.clamp(0, 16384) as usize]);
+                                oline[px + 1] = crate::pack::f16to8(
+                                    p.shaper2[16385 + l2.clamp(0, 16384) as usize],
+                                );
+                                oline[px + 2] = crate::pack::f16to8(
+                                    p.shaper2[2 * 16385 + l3.clamp(0, 16384) as usize],
+                                );
+                            }
+                            i_off += stride.bytes_per_line_in as usize;
+                            o_off += stride.bytes_per_line_out as usize;
                         }
-                        i_off += stride.bytes_per_line_in as usize;
-                        o_off += stride.bytes_per_line_out as usize;
+                        return;
                     }
-                    return;
                 }
-            }
             }
         }
         let info = PackInfo {
@@ -571,8 +573,17 @@ impl Transform {
                             macro_rules! run {
                                 ($k:expr) => {
                                     return xform16_eval_loop(
-                                        unroll, pack, &info, input, output, ppl,
-                                        lines, stride, cache, ci, co,
+                                        unroll,
+                                        pack,
+                                        &info,
+                                        input,
+                                        output,
+                                        ppl,
+                                        lines,
+                                        stride,
+                                        cache,
+                                        ci,
+                                        co,
                                         |i, o| $k(i, o, &c.params16),
                                     )
                                 };
@@ -593,56 +604,110 @@ impl Transform {
                                 run!(ip::eval1_input)
                             } else {
                                 return xform16_eval_loop(
-                                    unroll, pack, &info, input, output, ppl,
-                                    lines, stride, cache, ci, co,
+                                    unroll,
+                                    pack,
+                                    &info,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
+                                    cache,
+                                    ci,
+                                    co,
                                     |i, o| f(i, o, &c.params16),
-                                )
+                                );
                             }
                         }
                         crate::opt::OptData::MatShaper(_) => {
                             return xform16_eval_loop(
-                                unroll, pack, &info, input, output, ppl, lines,
-                                stride, cache, ci, co,
+                                unroll,
+                                pack,
+                                &info,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                cache,
+                                ci,
+                                co,
                                 |i, o| {
                                     crate::opt::mat_shaper_eval16(i, o, od);
                                 },
-                            )
+                            );
                         }
                         crate::opt::OptData::Curves16(_) => {
                             return xform16_eval_loop(
-                                unroll, pack, &info, input, output, ppl, lines,
-                                stride, cache, ci, co,
+                                unroll,
+                                pack,
+                                &info,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                cache,
+                                ci,
+                                co,
                                 |i, o| {
                                     crate::opt::fast_eval_curves16(i, o, od);
                                 },
-                            )
+                            );
                         }
                         crate::opt::OptData::Prelin16(_) => {
                             return xform16_eval_loop(
-                                unroll, pack, &info, input, output, ppl, lines,
-                                stride, cache, ci, co,
+                                unroll,
+                                pack,
+                                &info,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                cache,
+                                ci,
+                                co,
                                 |i, o| {
                                     crate::opt::prelin_eval16(i, o, od);
                                 },
-                            )
+                            );
                         }
                         crate::opt::OptData::Prelin8(_) => {
                             return xform16_eval_loop(
-                                unroll, pack, &info, input, output, ppl, lines,
-                                stride, cache, ci, co,
+                                unroll,
+                                pack,
+                                &info,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                cache,
+                                ci,
+                                co,
                                 |i, o| {
                                     crate::opt::prelin_eval8(i, o, od);
                                 },
-                            )
+                            );
                         }
                         crate::opt::OptData::Identity => {
                             return xform16_eval_loop(
-                                unroll, pack, &info, input, output, ppl, lines,
-                                stride, cache, ci, co,
+                                unroll,
+                                pack,
+                                &info,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                cache,
+                                ci,
+                                co,
                                 |i, o| {
                                     crate::opt::fast_identity16(i, o, od);
                                 },
-                            )
+                            );
                         }
                     }
                 }
@@ -1100,29 +1165,37 @@ pub fn create_extended_transform(
     t.exit_white_point = set_white_point(Some(&wp_out));
     // Try to read input and output colorant table (cmsxform.c:1241-1264)
     if crate::profile::cms_is_tag(&profiles[0], crate::signatures::tag::SigColorantTableTag) {
-        if let Some(crate::tagtypes::TagObject::ColorantTable(list)) =
-            crate::profile::cms_read_tag(profiles[0].as_mut(), crate::signatures::tag::SigColorantTableTag)
-        {
+        if let Some(crate::tagtypes::TagObject::ColorantTable(list)) = crate::profile::cms_read_tag(
+            profiles[0].as_mut(),
+            crate::signatures::tag::SigColorantTableTag,
+        ) {
             t.input_colorants = crate::named::dup_named_color_list(list);
         }
     }
     // Output is a little bit more complex.
     if profiles[n - 1].device_class == crate::signatures::profileclass::SigLinkClass {
         // This tag may exist only on devicelink profiles.
-        if crate::profile::cms_is_tag(&profiles[n - 1], crate::signatures::tag::SigColorantTableOutTag)
-        {
-            if let Some(crate::tagtypes::TagObject::ColorantTable(list)) = crate::profile::cms_read_tag(
-                profiles[n - 1].as_mut(),
-                crate::signatures::tag::SigColorantTableOutTag,
-            ) {
+        if crate::profile::cms_is_tag(
+            &profiles[n - 1],
+            crate::signatures::tag::SigColorantTableOutTag,
+        ) {
+            if let Some(crate::tagtypes::TagObject::ColorantTable(list)) =
+                crate::profile::cms_read_tag(
+                    profiles[n - 1].as_mut(),
+                    crate::signatures::tag::SigColorantTableOutTag,
+                )
+            {
                 t.output_colorants = crate::named::dup_named_color_list(list);
             }
         }
-    } else if crate::profile::cms_is_tag(&profiles[n - 1], crate::signatures::tag::SigColorantTableTag)
-    {
-        if let Some(crate::tagtypes::TagObject::ColorantTable(list)) =
-            crate::profile::cms_read_tag(profiles[n - 1].as_mut(), crate::signatures::tag::SigColorantTableTag)
-        {
+    } else if crate::profile::cms_is_tag(
+        &profiles[n - 1],
+        crate::signatures::tag::SigColorantTableTag,
+    ) {
+        if let Some(crate::tagtypes::TagObject::ColorantTable(list)) = crate::profile::cms_read_tag(
+            profiles[n - 1].as_mut(),
+            crate::signatures::tag::SigColorantTableTag,
+        ) {
             t.output_colorants = crate::named::dup_named_color_list(list);
         }
     }
@@ -1130,16 +1203,12 @@ pub fn create_extended_transform(
 }
 
 /// `cmsGetTransformInputColorants` — input colorant table (borrowed)
-pub fn get_transform_input_colorants(
-    xform: &Transform,
-) -> Option<&crate::named::NamedColorList> {
+pub fn get_transform_input_colorants(xform: &Transform) -> Option<&crate::named::NamedColorList> {
     xform.input_colorants.as_ref()
 }
 
 /// `cmsGetTransformOutputColorants` — output colorant table (borrowed)
-pub fn get_transform_output_colorants(
-    xform: &Transform,
-) -> Option<&crate::named::NamedColorList> {
+pub fn get_transform_output_colorants(xform: &Transform) -> Option<&crate::named::NamedColorList> {
     xform.output_colorants.as_ref()
 }
 

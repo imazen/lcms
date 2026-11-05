@@ -20,8 +20,8 @@ use crate::intrp::{
     InterpFn16, InterpFnFloat, InterpParams, InterpTable, Interpolation, LERP_FLAGS_16BITS,
     LERP_FLAGS_FLOAT, compute_interp_params,
 };
-use crate::types::{ERROR_RANGE, ERROR_UNKNOWN_EXTENSION};
 use crate::types::CpowExt;
+use crate::types::{ERROR_RANGE, ERROR_UNKNOWN_EXTENSION};
 
 /// `MAX_NODES_IN_CURVE`
 pub const MAX_NODES_IN_CURVE: usize = 4097;
@@ -268,7 +268,11 @@ fn sigmoid_base(k: f64, t: f64) -> f64 {
 }
 
 /// `inverted_sigmoid_base`
-#[inline]
+// `#[inline(never)]`: inlining `-inner.cln()/k` into `inverse_sigmoid_factory`
+// produced the wrong NaN sign (`-NaN` where glibc `log(neg)` gives `-NaN`,
+// negated to `+NaN`). Keeping the call out-of-line matches C bit-for-bit;
+// this path is cold (type -109 curves only).
+#[inline(never)]
 fn inverted_sigmoid_base(k: f64, t: f64) -> f64 {
     -((1.0 / (t + 0.5)) - 1.0).cln() / k
 }
@@ -284,7 +288,8 @@ fn sigmoid_factory(k: f64, t: f64) -> f64 {
 #[inline]
 fn inverse_sigmoid_factory(k: f64, t: f64) -> f64 {
     let correction = 0.5 / sigmoid_base(k, 1.0);
-    (inverted_sigmoid_base(k, (t - 0.5) / correction) + 1.0) / 2.0
+    let isb = inverted_sigmoid_base(k, (t - 0.5) / correction);
+    (isb + 1.0) / 2.0
 }
 
 /// `DefaultEvalParametricFn` — types 1..8, 108, 109 and their negatives.

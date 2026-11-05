@@ -55,7 +55,12 @@ fn c_named_profile_bytes(
             let mut dev = [0u16; 16];
             dev[..4].copy_from_slice(col);
             assert_eq!(
-                c::cmsAppendNamedColor(list, name_c.as_ptr() as *const _, pcs.as_ptr(), dev.as_ptr()),
+                c::cmsAppendNamedColor(
+                    list,
+                    name_c.as_ptr() as *const _,
+                    pcs.as_ptr(),
+                    dev.as_ptr()
+                ),
                 1
             );
         }
@@ -64,7 +69,10 @@ fn c_named_profile_bytes(
         assert_eq!(c::cmsWriteTag(p, SIG_CLRT, list as *const _), 1);
 
         let mut size = 0u32;
-        assert_eq!(c::cmsSaveProfileToMem(p, std::ptr::null_mut(), &mut size), 1);
+        assert_eq!(
+            c::cmsSaveProfileToMem(p, std::ptr::null_mut(), &mut size),
+            1
+        );
         let mut buf = vec![0u8; size as usize];
         assert_eq!(
             c::cmsSaveProfileToMem(p, buf.as_mut_ptr() as *mut _, &mut size),
@@ -202,7 +210,11 @@ fn named_color_index_to_lab() {
     for (i, (cname, cpcs, ccol)) in c_info.iter().enumerate() {
         let e = &rlist.list[i];
         let nend = e.name.iter().position(|&b| b == 0).unwrap_or(e.name.len());
-        assert_eq!(&String::from_utf8_lossy(&e.name[..nend]), cname, "name[{i}]");
+        assert_eq!(
+            &String::from_utf8_lossy(&e.name[..nend]),
+            cname,
+            "name[{i}]"
+        );
         assert_eq!(&e.pcs, cpcs, "pcs[{i}]");
         assert_eq!(&e.device_colorant[..4], ccol, "colorant[{i}]");
     }

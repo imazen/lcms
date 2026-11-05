@@ -623,3 +623,9 @@ unsafe extern "C" {
     pub fn cref_isb_bits(k: f64, t: f64) -> u64;
     pub fn cref_inverse_sigmoid_bits(k: f64, t: f64) -> u64;
 }
+
+unsafe extern "C" {
+    pub fn cref_seg_param(curve: *mut ToneCurve, seg: i32, p: i32) -> f64;
+    pub fn cref_seg_type(curve: *mut ToneCurve, seg: i32) -> i32;
+    pub fn cref_seg_ngrid(curve: *mut ToneCurve, seg: i32) -> u32;
+}

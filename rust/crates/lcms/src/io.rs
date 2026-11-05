@@ -273,7 +273,10 @@ pub fn io_handler_from_file(_ctx: Option<&Context>, path: &str, access: &str) ->
             }
             (f, len as u32)
         }
-        b'w' => (std::io::BufReader::new(std::fs::File::create(path).ok()?), 0),
+        b'w' => (
+            std::io::BufReader::new(std::fs::File::create(path).ok()?),
+            0,
+        ),
         _ => return None,
     };
 

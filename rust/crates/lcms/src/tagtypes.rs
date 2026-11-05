@@ -18,7 +18,7 @@ use crate::gamma::{
 use crate::io::{self, IoHandler};
 use crate::named::{Mlu, Wchar, mlu_get_ascii, mlu_get_wide, mlu_set_ascii, mlu_set_wide};
 use crate::signatures::tagtype as tsig;
-use crate::types::{*, CpowExt};
+use crate::types::{CpowExt, *};
 
 /// `cmsNoLanguage`/`cmsNoCountry` — two NUL bytes
 pub const NO_LANG: &[u8] = b"\0\0";

@@ -7,8 +7,8 @@
 //! `forward`, `reverse` (the object is a `Box`-owned value; "Done" is `Drop`).
 
 use crate::types::{
-    CpowExt,
-    CUTSHEET_SURROUND, CieXyz, D_CALCULATE, DARK_SURROUND, DIM_SURROUND, JCh, ViewingConditions,
+    CUTSHEET_SURROUND, CieXyz, CpowExt, D_CALCULATE, DARK_SURROUND, DIM_SURROUND, JCh,
+    ViewingConditions,
 };
 
 /// `CAM02COLOR` — the working color record.
@@ -161,9 +161,8 @@ fn compute_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     let t = (e * (a * a + b * b).cpow(0.5))
         / (clr.rgbpa[0] + clr.rgbpa[1] + (21.0 / 20.0) * clr.rgbpa[2]);
 
-    clr.c_upper = t.cpow(0.9)
-        * (clr.j_upper / 100.0).cpow(0.5)
-        * (1.64 - 0.29_f64.cpow(m.n)).cpow(0.73);
+    clr.c_upper =
+        t.cpow(0.9) * (clr.j_upper / 100.0).cpow(0.5) * (1.64 - 0.29_f64.cpow(m.n)).cpow(0.73);
     clr.m_upper = clr.c_upper * m.fl.cpow(0.25);
     clr.s = 100.0 * (clr.m_upper / clr.q_upper).cpow(0.5);
     clr.a = a;

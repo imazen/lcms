@@ -83,3 +83,18 @@ uint64_t cref_inverse_sigmoid_bits(double k,double t){
     double r = (isb_(k,(t-0.5)/corr)+1.0)/2.0;
     return ((union{double d; uint64_t u;}){r}).u;
 }
+#include "../include/lcms2.h"
+/* read Seg->Params / Evals for a parametric curve */
+double cref_seg_param(void* curve, int seg, int p){
+    cmsToneCurve* g = (cmsToneCurve*)curve;
+    if (!g || seg<0 || seg>=(int)g->nSegments) return -1e30;
+    return g->Segments[seg].Params[p];
+}
+int cref_seg_type(void* curve, int seg){
+    cmsToneCurve* g=(cmsToneCurve*)curve;
+    return g->Segments[seg].Type;
+}
+uint32_t cref_seg_ngrid(void* curve, int seg){
+    cmsToneCurve* g=(cmsToneCurve*)curve;
+    return g->Segments[seg].nGridPoints;
+}

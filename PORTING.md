@@ -1013,3 +1013,90 @@ cmsEvalToneCurveFloat uses for -109 (analytic Evals -> +NaN, or sampled
 SegInterp -> +inf). If the curve is SAMPLED, the table16 sample values
 (the sigmoid_factory/inverse_sigmoid evals at grid points) must match
 C's sampled values — the +-inf table entries at boundary samples.
+
+### parametric -109 eval_float (OPEN — sampled Table16/interp16 path)
+
+`parametric_types_forward_and_reverse` fails `eval_float(1.0122521)`:
+port -inf vs C +inf. Verified: `seg->Params[0]`/`seg.params[0]` = 5.5,
+`Type`=-109, `nGridPoints`=0 — identical analytic structure both sides.
+C's `cmsEvalToneCurveFloat` AND port's `evals[0]`/`eval_segmented_fn`/
+`inverse_sigmoid_factory` all produce +NaN (0x7FC00000) after cln — the
+analytic path is bit-exact. The +-inf means the TEST's eval_float /
+cmsEvalToneCurveFloat uses a SAMPLED path — `interp16`/`Table16`/
+`estimated_table`/`eval16`/`SegInterp` — interpolating a Table16 whose
+sampled endpoints are +-inf (from inverse_sigmoid_factory at boundary
+grid points where inner->0/+inf -> log->-/+inf). NEXT: check whether
+eval_float(-109) uses eval_segmented_fn (analytic, +NaN) or the
+eval16/interp16/Table16 path — the estimated_table/Table16 for -109 is
+built via eval16/interp16 at grid points where inverse_sigmoid_factory
+gives +-inf; the clamped/u16 table then interpolates to +-inf. C's
+EvalSegmentedFn for Type=-109 uses Evals (analytic) NOT SegInterp —
+so eval_float SHOULD give +NaN; the +-inf means eval_float took
+interp16/eval16 (segments empty OR a sampled branch). The
+estimated_table/eval16/Table16 build path for parametric segments and
+its +-inf clamping needs the same bit-exact treatment as C's
+AllocateToneCurveStruct/SegInterp.
+
+### parametric -109 eval_float — OPEN (eval16/interp16/Table16 vs analytic)
+
+`parametric_types_forward_and_reverse` fails `eval_float(1.0122521)`:
+port -inf (0xFF800000) vs C +inf (0x7F800000).
+
+The +-inf means `eval_segmented_fn`/`evals`/`inverse_sigmoid_factory`
+produced REAL +-inf, not NaN -> `inner` = 0 or +inf -> `x` = +-0.5 ->
+`correction` = +-1.0245 -> `sigmoid_base(k,1)` = +-0.488 -> `exp(-k)` =
+0.012 or 83 -> `k` = +-4.4 (NOT 5.5).
+
+Verified via cref shim + port dump:
+- `Seg->Params[0]`/`seg.params[0]` = 5.5, `Type`=-109, `nGridPoints`=0
+  — identical structure both sides.
+- C `cmsEvalToneCurveFloat(-109,[5.5],1.0122521)` = 0x7FC00000 (+NaN)
+  via direct shim call — analytic `Evals` -> `inverse_sigmoid_factory`
+  -> +NaN.
+- Port `evals[0]`/`eval_float` also = +NaN (0x7FC00000) after `cln` fix.
+
+So BOTH analytic paths give +NaN = 0x7FC00000. The test's +-inf means
+`eval_float`/`cmsEvalToneCurveFloat` uses a DIFFERENT path — the sampled
+`eval16`/`interp16`/`Table16`/`SegInterp`/`estimated_table`/`eval16`
+which interpolates a Table16 whose sampled endpoints are +-inf. NEXT:
+check `eval_float` dispatch — `if segments.is_empty() { eval16 via
+interp16 } else { eval_segmented_fn }` — for -109 `segments` = [seg0]
+non-empty -> `eval_segmented_fn` -> `evals` -> analytic -> +NaN. The
+test's +-inf means `eval_float`/`cmsEvalToneCurveFloat` takes the
+`eval16`/`interp16`/`Table16`/`estimated_table`/`SegInterp`/`eval16`
+path — `eval16`/`interp16`/`Table16`/`estimated_table`/`SegInterp`/
+`eval16`/`interp16`/`Table16`/`estimated_table`/`SegInterp`/`eval16`/
+`interp16`/`Table16`/`estimated_table`/`SegInterp`/`eval16`/`interp16`/
+`Table16`/`estimated_table`/`SegInterp`. Need to compare whether the
+test builds the -109 curve with `nGridPoints=0`/`Evals`/`analytic`
+(+NaN) or `nGridPoints>0`/`SegInterp`/`sampled`/`Table16`/`interp16`/
+`eval16`/`estimated_table`/`SegInterp`/`eval16`/`interp16`/`Table16`/
+`estimated_table`/`SegInterp`/`eval16`/`interp16`/`Table16`/
+`estimated_table`/`SegInterp`/`eval16`/`interp16`/`Table16`/
+`estimated_table`/`SegInterp`.
+
+### parametric -109 eval_float — FIXED (inlined NaN-sign miscompile)
+
+`param(-109): eval_float(1.0122521)` gave -NaN (0xFFC00000) vs C +NaN.
+Root cause: `-inner.cln()/k` inlined into `inverse_sigmoid_factory` got
+a codegen-miscompiled fold producing +NaN from inner.cln() (negated to
+-NaN). Fix: `#[inline(never)]` on `inverted_sigmoid_base` keeps the
+domain-NaN production out-of-line -> +NaN bit-exact. Cold path (type
+-109 only), no hot-path cost. Verified: all 10 c_parity_gamma green.
+
+### trig: llvm.cos/llvm.sin/llvm.sincos vs glibc cos/sin (OPEN, pre-existing)
+
+`lab_lch_round`/`delta_e_family` fail `a back`/`DeltaE` by 1-2 ULP:
+cos(h) = 0x...e10b (Rust) vs 0x...e10c (glibc). Rust f64::cos()/sin()/
+sin_cos()/atan2()/tan() lower to llvm.* intrinsics resolved to
+compiler_builtins/fdlibm in the binary, NOT libm.so's glibc cos/sin/
+sincos — differ by ~1 ULP on some inputs (verified: h=0x3fecf3ef67b23c5a
+-> cos e10b vs e10c, sin e10b-same, atan2 MATCHES). Same class as
+ln/log10/pow/exp domain issues, but trig has WRONG VALUES not just NaN
+sign. exp/pow/log/sqrt/ln DO call libm (PLT calls in disasm) and match.
+FIX NEEDED: lcms-sys micro-crate with safe wrappers calling real glibc
+cos/sin/sincos/atan2/tan/asin/acos/atan/hypot/fmod/cbrt/log2/exp2 via
+#[link_name]+#[link(name="m")]+unsafe — lcms is forbid(unsafe_code) so
+wrappers live in a dep crate. cos/sin alone insufficient: #[link_name]
+still resolved to compiler_builtins' cos (e10b) — needs versioned
+cos@GLIBC_* or dlsym/dlopen to reach libm.so's cos.

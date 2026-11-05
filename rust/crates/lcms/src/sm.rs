@@ -36,16 +36,41 @@ pub(crate) fn is_matrix_shaper(icc: &IccProfile) -> bool {
 /// `isInkColorspace` (cmssamp.c) — ink/MCH color-space signatures
 pub fn is_ink_colorspace(c: u32) -> bool {
     use crate::signatures::colorspace as cs;
-    matches!(c,
-        cs::SigCmykData | cs::SigCmyData
-        | cs::SigMCH1Data | cs::SigMCH2Data | cs::SigMCH3Data | cs::SigMCH4Data
-        | cs::SigMCH5Data | cs::SigMCH6Data | cs::SigMCH7Data | cs::SigMCH8Data
-        | cs::SigMCH9Data | cs::SigMCHAData | cs::SigMCHBData | cs::SigMCHCData
-        | cs::SigMCHDData | cs::SigMCHEData | cs::SigMCHFData
-        | cs::Sig1colorData | cs::Sig2colorData | cs::Sig3colorData | cs::Sig4colorData
-        | cs::Sig5colorData | cs::Sig6colorData | cs::Sig7colorData | cs::Sig8colorData
-        | cs::Sig9colorData | cs::Sig10colorData | cs::Sig11colorData | cs::Sig12colorData
-        | cs::Sig13colorData | cs::Sig14colorData | cs::Sig15colorData)
+    matches!(
+        c,
+        cs::SigCmykData
+            | cs::SigCmyData
+            | cs::SigMCH1Data
+            | cs::SigMCH2Data
+            | cs::SigMCH3Data
+            | cs::SigMCH4Data
+            | cs::SigMCH5Data
+            | cs::SigMCH6Data
+            | cs::SigMCH7Data
+            | cs::SigMCH8Data
+            | cs::SigMCH9Data
+            | cs::SigMCHAData
+            | cs::SigMCHBData
+            | cs::SigMCHCData
+            | cs::SigMCHDData
+            | cs::SigMCHEData
+            | cs::SigMCHFData
+            | cs::Sig1colorData
+            | cs::Sig2colorData
+            | cs::Sig3colorData
+            | cs::Sig4colorData
+            | cs::Sig5colorData
+            | cs::Sig6colorData
+            | cs::Sig7colorData
+            | cs::Sig8colorData
+            | cs::Sig9colorData
+            | cs::Sig10colorData
+            | cs::Sig11colorData
+            | cs::Sig12colorData
+            | cs::Sig13colorData
+            | cs::Sig14colorData
+            | cs::Sig15colorData
+    )
 }
 
 /// `cmsFormatterForColorspaceOfProfile` — bytes=2 nonfloat
