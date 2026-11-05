@@ -44,8 +44,8 @@ pub enum InterpTable<'a> {
     F32(&'a [f32]),
     /// Owned `Rc` table — makes `InterpParams<'static>` storable (C bakes
     /// `cmsInterpParams` inside the stage data; this is the safe-Rust shape).
-    U16Rc(std::rc::Rc<[u16]>),
-    F32Rc(std::rc::Rc<[f32]>),
+    U16Rc(std::sync::Arc<[u16]>),
+    F32Rc(std::sync::Arc<[f32]>),
 }
 
 /// `cmsInterpParams` — `ContextID` lives on the constructor call in Rust;

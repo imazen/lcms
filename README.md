@@ -22,11 +22,14 @@ Early port. Ported and byte-gated today:
 | `lcms2_internal.h` + `cmsplugin.c` fixed-point helpers | `lcms::fixed` | `tests/c_parity_fixed.rs` |
 | signature enums (`lcms2.h`) | `lcms::signatures` | generated, `tools/gen_signatures.py` |
 
-Still unported: `cmsio0` (profile I/O), `cmstypes` (tag handlers),
-`cmslut`/`cmsintrp`/`cmsgamma` (pipelines, interpolation, tone curves),
-`cmsopt`/`cmsxform`/`cmspack`/`cmsalpha` (transforms), `cmscnvrt`/`cmssm`/
-`cmsgmt` (linking, gamut), `cmsnamed`/`cmscgats`/`cmsio1`/`cmsmd5`/`cmsps2`/
-`cmssamp`/`cmscam02`/`cmsvirt` — see `PORTING.md` for the order and why.
+All lcms2 C modules are ported: `cmsio0` (profile I/O), `cmstypes` (tag
+handlers), `cmslut`/`cmsintrp`/`cmsgamma` (pipelines, interpolation, tone
+curves), `cmsopt`/`cmsxform`/`cmspack`/`cmsalpha` (transforms + optimizer),
+`cmscnvrt`/`cmssm`/`cmsgmt` (linking, gamut, black point),
+`cmsnamed`/`cmscgats`/`cmsio1`/`cmsmd5`/`cmsps2`/`cmssamp`/`cmscam02`/`cmsvirt`.
+`Transform` is `Send`. Differential coverage vs the C oracle spans profile
+I/O, tag serialization, pipelines, transforms, plugins, optimizer variants,
+and numeric edge cases — see `PORTING.md` for the mapping and per-module gate.
 
 ## Testing on a fresh box
 

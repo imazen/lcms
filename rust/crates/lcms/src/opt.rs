@@ -1489,7 +1489,7 @@ fn optimize_by_resampling(
             domain: clut_data.domain,
             opta: clut_data.opta,
             table: crate::intrp::InterpTable::U16Rc(
-                std::rc::Rc::from(clut_data.tab16.as_deref().unwrap_or(&[])),
+                std::sync::Arc::from(clut_data.tab16.as_deref().unwrap_or(&[])),
             ),
             interpolation: clut_data.interpolation,
         };

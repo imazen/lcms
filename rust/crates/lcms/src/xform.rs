@@ -82,7 +82,7 @@ pub struct Transform {
     pub entry_white_point: CieXyz,
     pub exit_white_point: CieXyz,
     /// transform-plugin user data
-    pub user_data: Option<Box<dyn std::any::Any>>,
+    pub user_data: Option<Box<dyn std::any::Any + Send + Sync>>,
     /// `_cmsTRANSFORM::InputColorant` — dup of the input profile's colorant table
     pub input_colorants: Option<crate::named::NamedColorList>,
     /// `_cmsTRANSFORM::OutputColorant` — dup of the output profile's colorant table
