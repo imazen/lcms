@@ -78,6 +78,7 @@ pub struct Transform {
     pub entry_color_space: u32,
     pub exit_color_space: u32,
     pub rendering_intent: u32,
+    pub dw_flags: u32,
     pub entry_white_point: CieXyz,
     pub exit_white_point: CieXyz,
     /// transform-plugin user data
@@ -174,7 +175,7 @@ fn pack_nothing(_i: &PackInfo, _w: &[u16], _o: &mut [u8], _s: u32) -> usize {
     0
 }
 
-/// `_cmsHandleExtraChannels` — copy the extra channels input→output
+/// `_cmsHandleExtraChannels` — delegates to alpha.rs's converter-matrix impl
 fn handle_extra_channels(
     input: &[u8],
     output: &mut [u8],
@@ -183,30 +184,12 @@ fn handle_extra_channels(
     stride: &Stride,
     in_fmt: u32,
     out_fmt: u32,
+    dw_flags: u32,
+    ctx: Option<&Context>,
 ) {
-    let extra_in = crate::pack::t_extra(in_fmt);
-    let extra_out = crate::pack::t_extra(out_fmt);
-    if extra_in != extra_out || extra_in == 0 {
-        return;
-    }
-    let in_ch = crate::pack::t_channels(in_fmt);
-    let out_ch = crate::pack::t_channels(out_fmt);
-    let _ = out_ch;
-    let copy_size = extra_in * pixel_size(in_fmt);
-    let mut s_in = stride.bytes_per_line_in as usize;
-    let mut s_out = stride.bytes_per_line_out as usize;
-    for _ in 0..lines {
-        let mut src = s_in + (in_ch * pixel_size(in_fmt)) as usize;
-        let mut dst = s_out + (out_ch * pixel_size(out_fmt)) as usize;
-        let copy_size = copy_size as usize;
-        for _ in 0..ppl {
-            output[dst..dst + copy_size].copy_from_slice(&input[src..src + copy_size]);
-            src += ((in_ch + extra_in) * pixel_size(in_fmt)) as usize;
-            dst += ((out_ch + extra_out) * pixel_size(out_fmt)) as usize;
-        }
-        s_in += stride.bytes_per_line_in as usize;
-        s_out += stride.bytes_per_line_out as usize;
-    }
+    crate::alpha::handle_extra_channels(
+        ctx, input, output, ppl, lines, stride, in_fmt, out_fmt, dw_flags,
+    );
 }
 
 impl Transform {
@@ -263,6 +246,8 @@ impl Transform {
             stride,
             self.input_format,
             self.output_format,
+            self.dw_flags,
+            self.ctx.as_ref(),
         );
         match self.worker {
             Worker::Null => self.null_xform(input, output, ppl, lines, stride),
@@ -629,6 +614,7 @@ fn alloc_empty_transform(
         entry_color_space: 0,
         exit_color_space: 0,
         rendering_intent: intent,
+        dw_flags: flags,
         entry_white_point: CieXyz {
             X: 0.0,
             Y: 0.0,
