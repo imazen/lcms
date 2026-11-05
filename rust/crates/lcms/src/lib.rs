@@ -38,6 +38,7 @@ pub mod io1;
 pub mod opt;
 pub mod pack;
 pub mod profile;
+pub mod ps2;
 pub mod sm;
 pub mod virt;
 pub mod xform;
