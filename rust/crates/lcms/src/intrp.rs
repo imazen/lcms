@@ -528,8 +528,12 @@ fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
             p.opta[0] as i32
         };
 
+    let max_off = x1.wrapping_add(y1).wrapping_add(z1);
+    let cell = &lut_table[..(max_off + total_out as i32) as usize];
     for out_chan in 0..total_out {
-        let dens = |i: i32, j: i32, k: i32| tbl_get16(lut_table, (i + j + k) as usize + out_chan);
+        let dens = |i: i32, j: i32, k: i32| {
+            cell[((i + j + k).min(max_off)) as usize + out_chan] as i32
+        };
 
         let d000 = dens(x0i, y0i, z0i);
         let d001 = dens(x0i, y0i, z1);
