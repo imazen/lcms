@@ -383,3 +383,21 @@ compare the TRC eval + colorant matrix Rust-vs-C on that profile.
 REMAINING: ibm-t61 root cause, named-color transform eval stub,
 %g PostScript formatting, perf parity (2.4-3x structural gap),
 more real-profile coverage (test2-5, crayons, v4 profiles).
+
+## ibm-t61 divergence bisect (for next context)
+
+ibm-t61.icc = v3.4 RGB matrix-shaper monitor, XYZ PCS.
+TRCs = `curv` type, 256-entry tables (same tag family as sRGB —
+NOT a parametric/para divergence). Colorants present (rXYZ/gXYZ/bXYZ).
+
+At input 0u8: C=[0,0,8], Rust=[2,4,12] — consistent small offset,
+Rust brighter. Bisect in read_input_lut's matrix-shaper path:
+1. eval rTRC[0] Rust-vs-C on the parsed profile (curv table interp
+   at the low end — LinearInterp16 edge handling?)
+2. compare the read colorant matrix Rust-vs-C
+3. v3.4 XYZ-PCS path vs v4's (xyz2lab adjacency differs by PCS type)
+Likely a low-end curv-table interpolation or a PCS-domain handling
+difference, not a structural bug (test1.icc CMYK/Lab-prtr is exact).
+
+All prior state committed/pushed; full workspace green except the
+single c_parity_realprofile::monitor_rgb_to_srgb assert.
