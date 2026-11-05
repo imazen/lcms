@@ -683,7 +683,7 @@ pub fn create_extended_transform(
     bpc: &mut [bool],
     intents: &[u32],
     adaptation_states: &[f64],
-    gamut_profile: Option<&mut IccProfile>,
+    mut gamut_profile: Option<&mut IccProfile>,
     gamut_pcs_position: u32,
     input_format: u32,
     output_format: u32,
@@ -710,7 +710,8 @@ pub fn create_extended_transform(
             flags,
         );
     }
-    if flags & FLAGS_GAMUTCHECK != 0 && gamut_profile.is_none() {
+    let has_gamut = flags & FLAGS_GAMUTCHECK != 0 && gamut_profile.is_some();
+    if !has_gamut {
         flags &= !FLAGS_GAMUTCHECK;
     }
     if flags & FLAGS_GAMUTCHECK != 0

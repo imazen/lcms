@@ -359,3 +359,236 @@ fn root_of_least_squares_fit_quadratic(n: usize, x: &[f64], y: &[f64]) -> f64 {
         }
     }
 }
+
+/// `cmsDesaturateLab` — clip Lab a/b into the [amin,amax]×[bmin,bmax] box
+pub fn desaturate_lab(lab: &mut CieLab, amax: f64, amin: f64, bmax: f64, bmin: f64) -> bool {
+    if lab.L < 0.0 {
+        lab.L = 0.0;
+        lab.a = 0.0;
+        lab.b = 0.0;
+        return false;
+    }
+    if lab.L > 100.0 {
+        lab.L = 100.0;
+    }
+    if lab.a < amin || lab.a > amax || lab.b < bmin || lab.b > bmax {
+        if lab.a == 0.0 {
+            lab.b = if lab.b < 0.0 { bmin } else { bmax };
+            return true;
+        }
+        let lch = crate::pcs::lab2lch(lab);
+        let slope = lab.b / lab.a;
+        let h = lch.h;
+        if (h >= 0.0 && h < 45.0) || (h >= 315.0 && h <= 360.0) {
+            lab.a = amax;
+            lab.b = amax * slope;
+        } else if h >= 45.0 && h < 135.0 {
+            lab.b = bmax;
+            lab.a = bmax / slope;
+        } else if h >= 135.0 && h < 225.0 {
+            lab.a = amin;
+            lab.b = amin * slope;
+        } else if h >= 225.0 && h < 315.0 {
+            lab.b = bmin;
+            lab.a = bmin / slope;
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+/// `GAMUTCHAIN` — the three gamut-check transforms + threshold
+struct GamutChain {
+    h_input: crate::xform::Transform,
+    h_forward: crate::xform::Transform,
+    h_reverse: crate::xform::Transform,
+    threshold: f64,
+}
+
+/// `GamutSampler` — round-trip each Lab point and score the drift
+fn gamut_sampler(inp: &[u16], out: &mut [u16], chain: &mut GamutChain) -> i32 {
+    use crate::types::CieLab;
+    let mut lab_in1 = [0u8; 24];
+    let mut proof = [0u8; 32];
+    let mut lab_out1 = [0u8; 24];
+    let mut proof2 = [0u8; 32];
+    let mut lab_out2 = [0u8; 24];
+    let err_threshold = 5.0;
+    let _ = err_threshold;
+    let mut buf = Vec::new();
+    for &b in inp.iter().take(3) {
+        buf.extend_from_slice(&b.to_le_bytes());
+    }
+    chain.h_input.do_transform(&buf, &mut lab_in1, 1);
+    chain.h_forward.do_transform(&lab_in1, &mut proof, 1);
+    chain.h_reverse.do_transform(&proof, &mut lab_out1, 1);
+    let lab_in2 = lab_out1;
+    chain.h_forward.do_transform(&lab_out1, &mut proof2, 1);
+    chain.h_reverse.do_transform(&proof2, &mut lab_out2, 1);
+    let d = |a: &[u8], b: &[u8]| {
+        crate::pcs::delta_e(
+            &CieLab {
+                L: f64::from_le_bytes(a[0..8].try_into().unwrap()),
+                a: f64::from_le_bytes(a[8..16].try_into().unwrap()),
+                b: f64::from_le_bytes(a[16..24].try_into().unwrap()),
+            },
+            &CieLab {
+                L: f64::from_le_bytes(b[0..8].try_into().unwrap()),
+                a: f64::from_le_bytes(b[8..16].try_into().unwrap()),
+                b: f64::from_le_bytes(b[16..24].try_into().unwrap()),
+            },
+        )
+    };
+    let d_e1 = d(&lab_in1, &lab_out1);
+    let d_e2 = d(&lab_in2, &lab_out2);
+    let t = chain.threshold;
+    let mut error_ratio = 1.0f64;
+    if d_e1 < t && d_e2 < t {
+        out[0] = 0;
+    } else if d_e1 < t && d_e2 > t {
+        out[0] = 0;
+    } else if d_e1 > t && d_e2 < t {
+        out[0] = (d_e1 - t + 0.5).floor() as u16;
+    } else {
+        if d_e2 == 0.0 {
+            error_ratio = d_e1;
+        } else {
+            error_ratio = d_e1 / d_e2;
+        }
+        if error_ratio > t {
+            out[0] = (error_ratio - t + 0.5).floor() as u16;
+        } else {
+            out[0] = 0;
+        }
+    }
+    1
+}
+
+/// serialize+reopen a profile (for `create_extended_transform`'s owned vec)
+fn dup_profile(icc: &mut IccProfile) -> Option<IccProfile> {
+    let bytes = crate::profile::save_profile_to_mem(icc)?;
+    crate::profile::open_profile_from_mem(None, &bytes).map(|p| *p)
+}
+
+/// `_cmsCreateGamutCheckPipeline` — the proof chain → a 3→1 CLUT
+pub fn create_gamut_check_pipeline(
+    ctx: Option<&crate::context::Context>,
+    profiles: &mut [Box<IccProfile>],
+    bpc: &mut [bool],
+    intents: &[u32],
+    adaptation_states: &[f64],
+    n_gamut_pcs_position: u32,
+    h_gamut: &mut IccProfile,
+) -> Option<crate::lut::Pipeline> {
+    use crate::pack;
+    use crate::signatures::colorspace as cs;
+    let n = profiles.len();
+    if n_gamut_pcs_position == 0 || n_gamut_pcs_position > 255 {
+        crate::err::signal_error(ctx, crate::types::ERROR_RANGE, "Wrong position of PCS");
+        return None;
+    }
+    let pos = n_gamut_pcs_position as usize;
+    let mut hlab = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
+    let threshold = if is_matrix_shaper(h_gamut) { 1.0 } else { 5.0 };
+    // input chain: profiles[0..pos] + Lab4 → Lab_DBL
+    let mut chain: Vec<Box<IccProfile>> = Vec::new();
+    for i in 0..pos.min(n) {
+        chain.push(Box::new(dup_profile(&mut profiles[i])?));
+    }
+    chain.push(hlab);
+    let mut bpc_l = vec![false; pos + 1];
+    bpc_l[..pos].copy_from_slice(&bpc[..pos]);
+    let mut intents_l = intents[..pos].to_vec();
+    intents_l.push(INTENT_RELATIVE_COLORIMETRIC);
+    let mut states_l = adaptation_states[..pos].to_vec();
+    states_l.push(1.0);
+    let input_cs = chain[0].color_space;
+    let n_in = pack::t_channels(formatter_for_colorspace(&chain[0], 2, false)) as usize;
+    let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3 | 0;
+    let dw_fmt = ((n_in as u32) << 3) | 2;
+    let mut h_input = crate::xform::create_extended_transform(
+        ctx.cloned(),
+        &mut chain,
+        &mut bpc_l,
+        &intents_l,
+        &states_l,
+        None,
+        0,
+        dw_fmt,
+        type_lab_dbl,
+        crate::xform::FLAGS_NOCACHE,
+    )?;
+    // forward: Lab → gamut-profile output
+    let gamut_cs = h_gamut.color_space;
+    let n_ch = crate::pcs::channels_of_color_space(gamut_cs) as usize;
+    let dw_fmt2 = ((n_ch as u32) << 3) | 2;
+    let mut hlab2 = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
+    let mut pf = vec![hlab2, Box::new(dup_profile(h_gamut)?)];
+    let mut bpc2 = [false; 2];
+    let intents2 = [INTENT_RELATIVE_COLORIMETRIC; 2];
+    let states2 = [1.0f64; 2];
+    let mut h_forward = crate::xform::create_extended_transform(
+        ctx.cloned(),
+        &mut pf,
+        &mut bpc2,
+        &intents2,
+        &states2,
+        None,
+        0,
+        type_lab_dbl,
+        dw_fmt2,
+        crate::xform::FLAGS_NOCACHE,
+    )?;
+    // reverse: gamut → Lab
+    let mut hlab3 = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
+    let mut pr = vec![Box::new(dup_profile(h_gamut)?), hlab3];
+    let mut h_reverse = crate::xform::create_extended_transform(
+        ctx.cloned(),
+        &mut pr,
+        &mut bpc2,
+        &intents2,
+        &states2,
+        None,
+        0,
+        dw_fmt2,
+        type_lab_dbl,
+        crate::xform::FLAGS_NOCACHE,
+    )?;
+    let mut chain_obj = GamutChain {
+        h_input: *h_input,
+        h_forward: *h_forward,
+        h_reverse: *h_reverse,
+        threshold,
+    };
+    let mut gamut = crate::lut::pipeline_alloc(ctx, 3, 1)?;
+    let n_grid = crate::pcs::reasonable_gridpoints_by_colorspace(
+        gamut_cs,
+        crate::xform::FLAGS_HIGHRESPRECALC,
+    );
+    let mut clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, n_ch as u32, 1, None)?;
+    if !gamut.insert_stage(crate::lut::StageLoc::AtBegin, clut) {
+        return None;
+    }
+    let grid = vec![n_grid; n_ch];
+    let ok = crate::lut::slice_space16(n_ch as u32, &grid, &mut |inp: &[u16], _o: &mut [u16]| {
+        let mut out = [0u16; 1];
+        gamut_sampler(inp, &mut out, &mut chain_obj);
+        let mut node = 0usize;
+        for t in 0..n_ch {
+            node = node * n_grid as usize + (inp[t] as u32 * (n_grid - 1) / 0xffff) as usize;
+        }
+        if let Some(s) = gamut.elements.as_deref_mut() {
+            if let crate::lut::StageData::CLut(d) = &mut s.data {
+                if let Some(tab) = d.tab16.as_deref_mut() {
+                    tab[node] = out[0];
+                }
+            }
+        }
+        1
+    });
+    if !ok {
+        return None;
+    }
+    Some(gamut)
+}
