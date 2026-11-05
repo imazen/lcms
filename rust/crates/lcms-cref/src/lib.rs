@@ -561,6 +561,10 @@ unsafe extern "C" {
     pub fn orc_get_input_fmtfl(ty: u32) -> *mut c_void;
     pub fn orc_get_output_fmt16(ty: u32) -> *mut c_void;
     pub fn orc_get_output_fmtfl(ty: u32) -> *mut c_void;
+    // --- transform ---
+    pub fn cmsCreateTransform(input: *mut c_void, input_format: u32, output: *mut c_void, output_format: u32, intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsDoTransform(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32);
+    pub fn cmsDeleteTransform(t: *mut c_void);
 }
 
 /// cmsGetEncodedCMMversion sanity: returns LCMS_VERSION (2200).

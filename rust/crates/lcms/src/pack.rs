@@ -625,7 +625,7 @@ pub fn unroll_xyz_float_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32)
 // Float/double input → u16
 // ---------------------------------------------------------------------------
 
-fn is_ink_space(fmt: u32) -> bool {
+pub fn is_ink_space(fmt: u32) -> bool {
     matches!(t_colorspace(fmt), 5 | 6 | 19..=29)
 }
 fn pixel_size(fmt: u32) -> u32 {
