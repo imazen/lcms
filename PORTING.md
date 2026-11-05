@@ -165,3 +165,18 @@ transform + cmsChangeBuffersFormat + alarm/gamut; cmscnvrt K-only/
 K-plane intents (need cmsDetectTAC + precalc stages); cmsalpha.c;
 cmscgats.c; cmsps2.c; cmssm.c GBD API; cmserr/cmsplugin residuals;
 then: wider parity (formats x intents x profiles), perf parity.
+
+## State @ 69e6540 (cmsxform complete — all workers)
+
+cmsxform.c DONE: Worker dispatch (Precalculated/Cached/GamutCheck/Null
+x 16|float), AllocEmptyTransform, HandleExtraChannels, all 3 stride
+APIs, cmsChangeBuffersFormat, GetXFormColorSpaces/IsProperColorSpace,
+gamma-detect NOOPTIMIZE gate, SetWhitePoint/NormalizeXYZ, alpha-copy
+check, CAN_CHANGE_FORMATTER. Context: adaptation_state + alarm_codes.
+sRGB->sRGB still byte-identical with the full rewrite.
+
+NEXT: BlackPreservingKOnlyIntents (cmscnvrt.c:732) + KPlane (:965) —
+the two remaining stubs in cnvrt.rs. Each ~230 lines; needs
+cmsDetectTAC + precalculated K-curves + BuildGrayOutputPipeline/
+BuildRGB2CMYK helpers (also in cmscnvrt). Then cmssamp TAC /
+cmsalpha / cmscgats / cmsps2 / cmssm GBD for full coverage.
