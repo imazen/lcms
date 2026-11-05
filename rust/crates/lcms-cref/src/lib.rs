@@ -188,6 +188,7 @@ unsafe extern "C" {
     pub fn cmsFloat2LabEncodedV2(w_lab: *mut U16, f_lab: *const CieLab);
     pub fn cmsFloat2LabEncoded(w_lab: *mut U16, f_lab: *const CieLab);
     pub fn cmsLab2LCh(lch: *mut CieLCh, lab: *const CieLab);
+    pub fn dbg_lab2lch(lab: *const CieLab, out: *mut f64);
     pub fn cmsLCh2Lab(lab: *mut CieLab, lch: *const CieLCh);
     pub fn cmsFloat2XYZEncoded(xyz: *mut U16, f_xyz: *const CieXyz);
     pub fn cmsXYZEncoded2Float(f_xyz: *mut CieXyz, xyz: *const U16);

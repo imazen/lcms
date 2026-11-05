@@ -1124,3 +1124,15 @@ neither fully. Likely hypot or a different internal path for some
 inputs, OR oracle cc emits fma inconsistently. Needs systematic
 mul_add matching of the oracle's per-site contraction trees.
 Pre-existing; not from cpow/cln/trig work.
+
+### pow-vs-sqrt: lab_lch/delta_e `C` — FIXED (cpow vs sqrt per-site)
+
+`lch.C`/`delta_e` `C`/`dhsq` diverged ~1 ULP: `lch.C=sqrt(a^2+b^2)` gave
+568f vs oracle 5690. `dbg_lab2lch` shim showed oracle a/b/a^2/b^2/sum
+all matched two-op path (sum=c202 -> sqrt=568f) yet `C`=5690. Root
+cause: lcms2 calls `pow(x,0.5)` NOT `sqrt` at cmspcs.c:352 (cmsLab2LCh
+`C`), :446 (cmsDeltaE), :469 (dhsq) — `pow(c202,0.5)`=5690/`pow(c4,0.5)`
+=f116 differ from `sqrt` by ~1 ULP. Restored `.cpow(0.5)` at exactly
+those 3 sites (lcms-sys-consistent glibc `pow`); `sqrt` sites stay
+`.sqrt()`. All 8 c_parity_pcs green. Net: audit cpow-vs-sqrt is
+per-C-callsite (pow!=sqrt != interchangeable).

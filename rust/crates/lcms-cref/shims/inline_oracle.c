@@ -98,3 +98,16 @@ uint32_t cref_seg_ngrid(void* curve, int seg){
     cmsToneCurve* g=(cmsToneCurve*)curve;
     return g->Segments[seg].nGridPoints;
 }
+
+/* Dump cmsLab2LCh intermediates for the sqrt(a^2+b^2) divergence. */
+void dbg_lab2lch(const cmsCIELab* Lab, cmsFloat64Number* out) {
+    cmsFloat64Number sa = Lab->a * Lab->a;
+    cmsFloat64Number sb = Lab->b * Lab->b;
+    cmsFloat64Number s = sa + sb;
+    cmsFloat64Number c = sqrt(s);
+    out[0] = Lab->a; out[1] = Lab->b; out[2] = sa; out[3] = sb; out[4] = s; out[5] = c;
+    {
+        cmsCIELCh lch; cmsLab2LCh(&lch, Lab);
+        out[6] = lch.C; out[7] = lch.h;
+    }
+}

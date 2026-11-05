@@ -237,7 +237,7 @@ fn sqr(v: f64) -> f64 {
 pub fn lab2lch(lab: &CieLab) -> CieLCh {
     CieLCh {
         L: lab.L,
-        C: (sqr(lab.a) + sqr(lab.b)).sqrt(),
+        C: (sqr(lab.a) + sqr(lab.b)).cpow(0.5),
         h: atan2deg(lab.b, lab.a),
     }
 }
@@ -318,7 +318,7 @@ pub fn delta_e(lab1: &CieLab, lab2: &CieLab) -> f64 {
     let da = (lab1.a - lab2.a).abs();
     let db = (lab1.b - lab2.b).abs();
 
-    (sqr(dl) + sqr(da) + sqr(db)).sqrt()
+    (sqr(dl) + sqr(da) + sqr(db)).cpow(0.5)
 }
 
 /// `cmsCIE94DeltaE`
@@ -332,7 +332,7 @@ pub fn cie94_delta_e(lab1: &CieLab, lab2: &CieLab) -> f64 {
     let de = delta_e(lab1, lab2);
 
     let dhsq = sqr(de) - sqr(dl) - sqr(dc);
-    let dh = if dhsq < 0.0 { 0.0 } else { dhsq.sqrt() };
+    let dh = if dhsq < 0.0 { 0.0 } else { dhsq.cpow(0.5) };
 
     let c12 = (lch1.C * lch2.C).sqrt();
 
