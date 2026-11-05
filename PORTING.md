@@ -366,3 +366,20 @@ REMAINING:
   calls + bounds checks vs C raw pointers; needs scanline-batch eval
   or unsafe to close)
 - more parity expansion (CMYK profiles, gamut-check xform, .cube)
+
+## State @ 14388bd — 100% coverage, real-profile parity started
+
+ALL modules ported. Gates green: sRGB identity, intents×4, RGB8/16,
+BGR8, Lab4→sRGB, sRGB→XYZ, Lab2→sRGB, FLAGS_FORCE_CLUT (resampling),
+test1.icc CMYK-prtr→sRGB (557KB real LUT-heavy profile — byte-exact),
+IT8, GBD, cam02, cube devicelink. ~93 tests green.
+
+OPEN THREAD — ibm-t61.icc divergence: v3.4 RGB matrix-shaper monitor
+→ sRGB gives C=[0,0,8] vs Rust=[2,4,12]. Likely a TRC tag-type or
+colorant-matrix path that differs for v3.x profiles (test1.icc v2.1
+works). Bisect read_input_lut's matrix-shaper builder on ibm-t61 —
+compare the TRC eval + colorant matrix Rust-vs-C on that profile.
+
+REMAINING: ibm-t61 root cause, named-color transform eval stub,
+%g PostScript formatting, perf parity (2.4-3x structural gap),
+more real-profile coverage (test2-5, crayons, v4 profiles).
