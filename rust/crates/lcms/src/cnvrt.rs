@@ -588,20 +588,216 @@ fn black_preserving_k_only_intents(
     Some(result)
 }
 
+/// `BlackPreservingKPlaneIntents` — CMYK→CMYK preserving the K plane
 fn black_preserving_k_plane_intents(
-    _ctx: Option<&Context>,
-    _profiles: &mut [Box<IccProfile>],
-    _intents: &[u32],
-    _bpc: &mut [bool],
-    _adaptation_states: &[f64],
-    _dw_flags: u32,
+    ctx: Option<&Context>,
+    profiles: &mut [Box<IccProfile>],
+    intents: &[u32],
+    bpc: &mut [bool],
+    adaptation_states: &[f64],
+    dw_flags: u32,
 ) -> Option<Pipeline> {
-    crate::err::signal_error(
-        _ctx,
-        crate::types::ERROR_UNKNOWN_EXTENSION,
-        "K-plane intent not yet ported",
-    );
-    None
+    use crate::signatures::colorspace as cs;
+    use crate::signatures::profileclass as pc;
+    let n = profiles.len();
+    if n == 0 || n > 255 {
+        return None;
+    }
+    let icc_intents: Vec<u32> = intents.iter().map(|&i| translate_non_icc_intents(i)).collect();
+    let mut last_pos = n - 1;
+    let mut last = last_pos;
+    while is_cmyk_devicelink(&profiles[last]) {
+        if last < 2 {
+            break;
+        }
+        last -= 1;
+    }
+    last_pos = last;
+    let preservation_count = last_pos + 1;
+    if profiles[0].color_space != cs::SigCmykData
+        || !(profiles[last_pos].color_space == cs::SigCmykData
+            || profiles[last_pos].device_class == pc::SigOutputClass)
+    {
+        return default_icc_intents(
+            ctx,
+            profiles,
+            &icc_intents,
+            bpc,
+            adaptation_states,
+            dw_flags,
+        );
+    }
+    // LabK→cmyk: the last profile's input LUT (searched inverse)
+    let mut labk2cmyk = crate::io1::read_input_lut(
+        &mut profiles[last_pos],
+        crate::types::INTENT_RELATIVE_COLORIMETRIC,
+    )?;
+    // total area coverage in 0..1
+    let max_tac = detect_tac(&mut profiles[last_pos]) / 100.0;
+    if max_tac <= 0.0 {
+        return None;
+    }
+    let mut cmyk2cmyk = default_icc_intents(
+        ctx,
+        &mut profiles[..preservation_count],
+        &icc_intents[..preservation_count],
+        &mut bpc[..preservation_count],
+        &adaptation_states[..preservation_count],
+        dw_flags,
+    )?;
+    let k_tone = build_k_tone_curve(
+        ctx,
+        4096,
+        preservation_count,
+        &icc_intents,
+        profiles,
+        bpc,
+        adaptation_states,
+        dw_flags,
+    )?;
+    // proof transforms on the last profile: CMYK→Lab (u16 and f32)
+    let mut proof_u16 = make_last_proof(
+        &mut profiles[last_pos],
+        (6 << 16) | (4 << 3) | 2,
+        TYPE_LAB_DBL,
+    )?;
+    let mut cmyk2lab = make_last_proof(
+        &mut profiles[last_pos],
+        (1 << 22) | (6 << 16) | (4 << 3) | 4,
+        (1 << 22) | (10 << 16) | (3 << 3) | 4,
+    )?;
+    let n_grid = crate::pcs::reasonable_gridpoints_by_colorspace(cs::SigCmykData, dw_flags);
+    let mut clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, 4, 4, None)?;
+    let mut max_error = 0f64;
+    // BlackPreservingSampler
+    let mut sampler = move |inp: &[u16], out: &mut [u16]| -> i32 {
+        let mut inf = [0f32; 4];
+        for i in 0..4 {
+            inf[i] = inp[i] as f32 / 65535.0;
+        }
+        let labk3 = k_tone.eval_float(inf[3]);
+        if inp[0] == 0 && inp[1] == 0 && inp[2] == 0 {
+            out[0] = 0;
+            out[1] = 0;
+            out[2] = 0;
+            out[3] = crate::fixed::quick_saturate_word((labk3 * 65535.0) as f64);
+            return 1;
+        }
+        let mut outf = [0f32; 4];
+        cmyk2cmyk.eval_float(&inf, &mut outf);
+        for i in 0..4 {
+            out[i] = crate::fixed::quick_saturate_word((outf[i] * 65535.0) as f64);
+        }
+        if (outf[3] - labk3).abs() < 3.0 / 65535.0 {
+            return 1;
+        }
+        // measure the colorimetric Lab of the transform output
+        let o4: [u16; 4] = out[..4].try_into().unwrap();
+        let colorimetric = run_lab_transform(&mut proof_u16, &o4);
+        // Lab of output cmyk via the float transform
+        let mut labk = [0f32; 4];
+        labk[..3].copy_from_slice(&run_lab_transform_f(&mut cmyk2lab, &outf));
+        labk[3] = labk3;
+        // reverse-interpolate Lab+K → CMY(K fixed)
+        let mut outf2 = [0f32; 4];
+        if !labk2cmyk.eval_reverse_float(&labk, &mut outf2, Some(&outf)) {
+            return 1; // fall back to colorimetric
+        }
+        outf2[3] = labk[3];
+        // TAC clamp
+        let sum_cmy = outf2[0] as f64 + outf2[1] as f64 + outf2[2] as f64;
+        let sum_cmyk = sum_cmy + outf2[3] as f64;
+        let ratio = if sum_cmyk > max_tac {
+            let mut r = 1.0 - ((sum_cmyk - max_tac) / sum_cmy);
+            if r < 0.0 {
+                r = 0.0;
+            }
+            r
+        } else {
+            1.0
+        };
+        out[0] = crate::fixed::quick_saturate_word((outf2[0] * ratio as f32 * 65535.0) as f64);
+        out[1] = crate::fixed::quick_saturate_word((outf2[1] * ratio as f32 * 65535.0) as f64);
+        out[2] = crate::fixed::quick_saturate_word((outf2[2] * ratio as f32 * 65535.0) as f64);
+        out[3] = crate::fixed::quick_saturate_word((outf2[3] * 65535.0) as f64);
+        // error estimate
+        let bp_lab = run_lab_transform(&mut proof_u16, &o4);
+        let err = crate::pcs::delta_e(&colorimetric, &bp_lab);
+        if err > max_error {
+            max_error = err;
+        }
+        1
+    };
+    if !crate::lut::stage_sample_clut16bit(&mut clut, &mut sampler, 0) {
+        return None;
+    }
+    let mut result = crate::lut::pipeline_alloc(ctx, 4, 4)?;
+    if !result.insert_stage(crate::lut::StageLoc::AtBegin, clut) {
+        return None;
+    }
+    for i in last_pos + 1..n {
+        let devlink = crate::io1::read_devicelink_lut(&mut profiles[i], icc_intents[i])?;
+        if !result.cat(&devlink) {
+            return None;
+        }
+    }
+    Some(result)
+}
+
+/// a CMYK→Lab transform on the last profile for proofing
+fn make_last_proof(
+    p: &mut IccProfile,
+    in_fmt: u32,
+    out_fmt: u32,
+) -> Option<Box<crate::xform::Transform>> {
+    let lab = crate::virt::create_lab4_profile(None, None)?;
+    let pd = dup_box(p)?;
+    let mut profs = vec![pd, lab];
+    let mut bpc = [false, false];
+    let intents = [crate::types::INTENT_RELATIVE_COLORIMETRIC; 2];
+    let adapt = [1.0f64, 1.0];
+    crate::xform::create_extended_transform(
+        None,
+        &mut profs,
+        &mut bpc,
+        &intents,
+        &adapt,
+        None,
+        0,
+        in_fmt,
+        out_fmt,
+        crate::types::FLAGS_NOOPTIMIZE | crate::types::FLAGS_NOCACHE,
+    )
+}
+
+/// run a u16-CMYK → Lab(dbl) transform, return CieLab
+fn run_lab_transform(t: &mut crate::xform::Transform, cmyk16: &[u16; 4]) -> crate::types::CieLab {
+    let mut inb = Vec::with_capacity(8);
+    for &v in cmyk16.iter().take(4) {
+        inb.extend_from_slice(&v.to_ne_bytes());
+    }
+    let mut outb = vec![0u8; 24];
+    t.do_transform(&inb, &mut outb, 1);
+    crate::types::CieLab {
+        L: f64::from_ne_bytes(outb[0..8].try_into().unwrap()),
+        a: f64::from_ne_bytes(outb[8..16].try_into().unwrap()),
+        b: f64::from_ne_bytes(outb[16..24].try_into().unwrap()),
+    }
+}
+
+/// run an f32-CMYK → Lab(f32) transform, return [L,a,b]
+fn run_lab_transform_f(t: &mut crate::xform::Transform, cmyk: &[f32; 4]) -> [f32; 3] {
+    let mut inb = Vec::with_capacity(16);
+    for &v in cmyk.iter() {
+        inb.extend_from_slice(&v.to_ne_bytes());
+    }
+    let mut outb = vec![0u8; 12];
+    t.do_transform(&inb, &mut outb, 1);
+    [
+        f32::from_ne_bytes(outb[0..4].try_into().unwrap()),
+        f32::from_ne_bytes(outb[4..8].try_into().unwrap()),
+        f32::from_ne_bytes(outb[8..12].try_into().unwrap()),
+    ]
 }
 
 // ---------------------------------------------------------------------------
@@ -764,4 +960,91 @@ fn translate_non_icc_intents(intent: u32) -> u32 {
         INTENT_PRESERVE_K_ONLY_SATURATION | INTENT_PRESERVE_K_PLANE_SATURATION => INTENT_SATURATION,
         _ => intent,
     }
+}
+
+/// `cmsFormatterForColorspaceOfProfile`
+fn formatter_for_colorspace_of_profile(p: &IccProfile, n_bytes: u32, is_float: bool) -> u32 {
+    let color_space_bits = crate::pcs::lcms_color_space(p.color_space) as u32;
+    let n_out = crate::pcs::channels_of_color_space(p.color_space);
+    if n_out < 0 {
+        return 0;
+    }
+    let float = if is_float { 1u32 } else { 0 };
+    (float << 22) | (color_space_bits << 16) | ((n_bytes & 7) << 0) | ((n_out as u32) << 3)
+}
+
+/// `cmsDetectTAC` — total area coverage via a Lab→profile roundtrip sampled
+/// over Lab space; returns the max ink sum in %
+#[doc(hidden)]
+pub fn dbg_detect_tac(p: &mut IccProfile) -> f64 { detect_tac(p) }
+fn detect_tac(p: &mut IccProfile) -> f64 {
+    use crate::signatures::profileclass as pc;
+    if p.device_class != pc::SigOutputClass {
+        return 0.0;
+    }
+    let formatter = formatter_for_colorspace_of_profile(p, 4, true);
+    if formatter == 0 {
+        return 0.0;
+    }
+    let n_out = crate::pcs::channels_of_color_space(p.color_space);
+    if n_out < 0 || n_out as usize >= crate::lut::MAX_CHANNELS {
+        return 0.0;
+    }
+    let n_out = n_out as usize;
+    // Lab → profile transform (perceptual, no opt/cache)
+    let lab = match crate::virt::create_lab4_profile(None, None) {
+        Some(l) => l,
+        None => return 0.0,
+    };
+    let pdup = match dup_box(&mut *p) { Some(b) => b, None => return 0.0 };
+    let mut profs = vec![lab, pdup];
+    let mut bpc = [false, false];
+    let intents = [crate::types::INTENT_PERCEPTUAL, crate::types::INTENT_PERCEPTUAL];
+    let adapt = [1.0f64, 1.0];
+    let type_lab_16: u32 = (10 << 16) | (3 << 3) | 2;
+    let mut rt = match crate::xform::create_extended_transform(
+        None,
+        &mut profs,
+        &mut bpc,
+        &intents,
+        &adapt,
+        None,
+        0,
+        type_lab_16,
+        formatter,
+        crate::types::FLAGS_NOOPTIMIZE | crate::types::FLAGS_NOCACHE,
+    ) {
+        Some(t) => t,
+        None => { eprintln!("[tac] transform failed"); return 0.0; }
+    };
+    // sample Lab space [6,74,74] — track max total ink
+    let grid = [6u32, 74, 74];
+    let mut max_tac = 0f32;
+    let mut sampler = move |inp: &[u16], _out: &mut [u16]| -> i32 {
+        // In is Lab16 (3ch); run the roundtrip, sum the f32 colorant
+        let mut inb = Vec::with_capacity(6);
+        for &v in inp.iter().take(3) {
+            inb.extend_from_slice(&v.to_ne_bytes());
+        }
+        let n_b = n_out * 4; // f32 per channel
+        let mut outb = vec![0u8; n_b];
+        rt.do_transform(&inb, &mut outb, 1);
+        let mut sum = 0f32;
+        for i in 0..n_out {
+            sum += f32::from_ne_bytes(outb[i * 4..i * 4 + 4].try_into().unwrap());
+        }
+        if sum > max_tac {
+            max_tac = sum;
+        }
+        1
+    };
+    if !crate::lut::slice_space16(3, &grid, &mut sampler) {
+        return 0.0;
+    }
+    max_tac as f64
+}
+
+fn dup_box(p: &mut IccProfile) -> Option<Box<IccProfile>> {
+    let bytes = crate::profile::save_profile_to_mem(p)?;
+    crate::profile::open_profile_from_mem(None, &bytes)
 }

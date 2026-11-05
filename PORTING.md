@@ -445,3 +445,14 @@ Helpers needed: _cmsBuildKToneCurve (NEW — builds K→K curve by
 evaluating the chain on pure-K inputs), stage_sample_clut16bit (exists,
 Sampler16 = FnMut(&[u16],&mut[u16])->i32), eval_reverse_float (exists),
 detect_tac (exists in sm.rs).
+
+## K-plane intent — in progress (detect_tac roundtrip produces 0)
+
+K-only intent WORKS (byte-exact, cmyk_to_cmyk_konly passes).
+K-plane intent compiles but transform returns None — bisected to
+detect_tac returning 0. slice_space16 runs (returns true) but max_tac
+stays 0 → the roundtrip Lab16→f32-CMYK do_transform produces no CMYK
+output into outb. Likely the input format (type_lab_16, u16) unroll or
+the f32 output pack path produces zeros — check do_transform's Fmt
+dispatch for mixed u16-in/f32-out (Fmt::F16 vs Fmt::Flt mismatch).
+Files: cnvrt.rs detect_tac (~line 782), make_last_proof, run_lab_transform*.
