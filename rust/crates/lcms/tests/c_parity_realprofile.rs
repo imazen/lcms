@@ -79,3 +79,49 @@ fn more_profiles_to_srgb() {
         assert_eq!(c, r, "{name}→sRGB mismatch");
     }
 }
+
+fn run_c_out(out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
+    let mut out = vec![0u8; 85 * 4];
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let p_out = {
+            let cs = std::ffi::CString::new(out_path).unwrap();
+            c::cmsOpenProfileFromFile(cs.as_ptr(), std::ffi::CString::new("r").unwrap().as_ptr() as *const u8)
+        };
+        assert!(!p_out.is_null(), "C open {out_path} failed");
+        let t = c::cmsCreateTransform(srgb, in_fmt, p_out, out_fmt, intent, 0);
+        assert!(!t.is_null(), "C transform failed");
+        let inp = vec![0u8; 85 * 3];
+        c::cmsDoTransform(t, inp.as_ptr() as *const _, out.as_mut_ptr() as *mut _, 85);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(p_out);
+    }
+    out
+}
+
+fn run_rust_out(out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
+    let mut out = vec![0u8; 85 * 4];
+    let srgb = virt::create_srgb_profile(None).expect("srgb");
+    let p_out = profile::open_profile_from_file(None, out_path, "r").expect("rust open");
+    let mut profs = vec![srgb, p_out];
+    let mut bpc = [false, false];
+    let intents = [intent, intent];
+    let adapt = [1.0f64, 1.0];
+    let mut t = xform::create_extended_transform(
+        None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+    )
+    .expect("rust transform");
+    let inp = vec![0u8; 85 * 3];
+    t.do_transform(&inp, &mut out, 85);
+    out
+}
+
+#[test]
+fn srgb_to_cmyk_prtr() {
+    // sRGB → CMYK printer exercises read_output_lut + K-generation +
+    // the B2A pipeline of a real LUT-heavy profile
+    let path = format!("{TESTBED}/test1.icc");
+    let c = run_c_out(&path, TYPE_RGB_8, TYPE_CMYK_8, 0);
+    let r = run_rust_out(&path, TYPE_RGB_8, TYPE_CMYK_8, 0);
+    assert_eq!(c, r, "sRGB→CMYK prtr mismatch");
+}
