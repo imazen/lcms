@@ -195,3 +195,33 @@ fn lab2_to_srgb() {
     t.do_transform(&inp, &mut rust_out, 85);
     assert_eq!(c_out, rust_out, "Lab2→sRGB mismatch");
 }
+
+#[test]
+fn srgb_forced_clut() {
+    // cmsFLAGS_FORCE_CLUT exercises OptimizeByResampling + PrelinEval
+    // paths that the matrix-shaper shortcut skips
+    const FLAGS_FORCE_CLUT: u32 = 0x0002;
+    let mut c_out = vec![0u8; 85 * 3];
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        let t = c::cmsCreateTransform(prof, TYPE_RGB_8, prof, TYPE_RGB_8, 0, FLAGS_FORCE_CLUT);
+        assert!(!t.is_null(), "C sRGB FORCED_CLUT failed");
+        let inp = vec![0u8; 85 * 3];
+        c::cmsDoTransform(t, inp.as_ptr() as *const _, c_out.as_mut_ptr() as *mut _, 85);
+        c::cmsCloseProfile(prof);
+    }
+    let mut rust_out = vec![0u8; 85 * 3];
+    let p1 = virt::create_srgb_profile(None).expect("srgb");
+    let p2 = virt::create_srgb_profile(None).expect("srgb");
+    let mut profs = vec![p1, p2];
+    let mut bpc = [false, false];
+    let intents = [0u32, 0];
+    let adapt = [1.0f64, 1.0];
+    let mut t = xform::create_extended_transform(
+        None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+        TYPE_RGB_8, TYPE_RGB_8, FLAGS_FORCE_CLUT,
+    ).expect("rust sRGB FORCED_CLUT failed");
+    let inp = vec![0u8; 85 * 3];
+    t.do_transform(&inp, &mut rust_out, 85);
+    assert_eq!(c_out, rust_out, "sRGB FORCED_CLUT mismatch");
+}
