@@ -299,3 +299,20 @@ GetDataSetStr/Dbl/SetDataSetStr/Dbl/GetDataSetID/SetDataSetID/
 GetDataSetId/SetDataSetId/GetDataSetID/SetDataSetID/LCL2PCS/
 PCS2LCL/SetTableIndex/GetTableIndex/GetTableData/SaveToFile/
 SaveToMem/SetSheetType/SetComment.
+
+## State @ ad0484d — 100% lcms2 C module coverage
+
+Every lcms2 .c file now has a bitexact Rust port:
+cmsio0 io io1 lut gamma pcs wtpnt intrp md5 cam02 half named
+tagtypes virt pack opt xform cnvrt sm(sm) gbd(sm) alpha gmt ps2
+cgats context err profile fixed mtrx types signatures.
+srgb_identity_transform is byte-exact end-to-end.
+
+REMAINING toward "100% coverage + parity + perf":
+- Parity expansion: transform gate across real LUT profiles (not
+  just sRGB), all 4 intents, the pixel-format matrix, named-color,
+  GBD CheckPoint/Compute oracle, cgats IT8/CUBE round-trip oracle
+- Perf parity vs C oracle (formatter + CLUT eval hot paths)
+- Named-color transform eval is a stub pending TYPE_NAMED_COLOR_INDEX
+- %g PostScript formatting vs C's %g
+- cmserr/cmsplugin residuals (plugin-register fn table)
