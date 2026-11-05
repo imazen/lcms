@@ -180,3 +180,17 @@ the two remaining stubs in cnvrt.rs. Each ~230 lines; needs
 cmsDetectTAC + precalculated K-curves + BuildGrayOutputPipeline/
 BuildRGB2CMYK helpers (also in cmscnvrt). Then cmssamp TAC /
 cmsalpha / cmscgats / cmsps2 / cmssm GBD for full coverage.
+
+## State @ fe086fa (cmscnvrt complete — all intents)
+
+BlackPreservingKOnlyIntents + BlackPreservingKPlaneIntents + full
+support: TranslateNonICCIntents, is_cmyk_devicelink, GrayOnlySampler,
+slice_space16, detect_tac (EstimateTAC over Lab->profile transform),
+ComputeKToLstar/_cmsBuildKToneCurve, PreserveKPlaneParams sampler with
+eval_reverse_float + TAC limiting + deltaE. dup_profile bridges the
+transform's owned-vec signature.
+
+Remaining modules: cmssamp.c residual (cmsDesaturateLab, gamut
+checks), cmsalpha.c, cmscgats.c, cmsps2.c, cmssm.c GBD API,
+cmserr/cmsplugin residuals. cmsio0/io1/lut/gamma/pcs/wtpnt/intrp/
+md5/cam02/half/named/tagtypes/virt/pack/opt/xform/cnvrt/sm DONE.
