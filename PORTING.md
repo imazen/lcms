@@ -262,3 +262,20 @@ GetPtrToMatrix:953, WriteInputMatrixShaper:963,
 WriteNamedColorCSA:1010, GenerateCSA:1063, EmitPQRStage:1193,
 EmitXYZ2Lab:1266, WriteOutputLUT:1295, BuildColorantList:1418,
 WriteNamedColorCRD:1443, GenerateCRD:1510, 3 exports:1557-1635.
+
+## State @ f2f738c (cmsps2 complete — ps2.rs done)
+
+All PostScript emitters ported: EmitPQRStage, EmitXYZ2Lab,
+WriteInputLUT/OutputLUT, WriteInputMatrixShaper, WriteNamedColorCSA/
+CRD, BuildColorantList, EmitCIEBasedA/ABC/DEF, ExtractGray2Y,
+GenerateCSA (named/matrix-shaper/LUT dispatch), GenerateCRD, plus
+the 3 exports (get_post_script_color_resource/crd/csa). Named-color
+transform eval is a stub pending TYPE_NAMED_COLOR_INDEX formatter.
+
+ONLY UNPORTED MODULE LEFT: cmscgats.c (3339 lines, 39 exports —
+the IT8/CGATS file format: reader, writer, sampler, patch/label
+machinery). cmserr/cmsplugin residuals remain small.
+
+After cmscgats: 100% lcms2 C coverage. Then: parity expansion
+(LUT profiles, all intents, all pixel formats, edge values),
+perf parity vs C oracle.
