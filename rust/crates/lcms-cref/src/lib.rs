@@ -596,6 +596,18 @@ unsafe extern "C" {
     // --- black point ---
     pub fn cmsDetectBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
     pub fn cmsDetectDestinationBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
+
+    // transform-internals shims for the prelin8 divergence bisect
+    pub fn cref_xform_lut(t: *mut c_void) -> *mut c_void;
+    pub fn cref_pipeline_first_stage(lut: *mut c_void) -> *mut c_void;
+    pub fn cref_stage_data(mpe: *mut c_void) -> *mut c_void;
+    pub fn cref_clut_u16_table(clutdata: *mut c_void) -> *mut c_void;
+    pub fn cref_clut_nodes(clutdata: *mut c_void) -> u32;
+    pub fn cref_stage_next(mpe: *mut c_void) -> *mut c_void;
+    pub fn cref_stage_type(mpe: *mut c_void) -> u32;
+    pub fn cref_lut_private_data(lut: *mut c_void) -> *mut c_void;
+    pub fn cref_p8_r(p8: *mut c_void, which: i32) -> *mut u16;
+    pub fn cref_p8_x(p8: *mut c_void, which: i32) -> *mut u32;
 }
 
 /// cmsGetEncodedCMMversion sanity: returns LCMS_VERSION (2200).

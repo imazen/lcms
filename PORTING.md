@@ -746,3 +746,83 @@ differs on test3.icc -> same stage-eval divergence, not just float clip.
 
 Also pending from brief: Transform: Send (Rc->Arc, Box<dyn Any+Send+Sync>,
 check perf), README status table (transforms ported).
+
+## test3.icc U8-opt bisect UPDATE — eval_float feeds the resampler
+
+FLAGS_NONEGATIVES (0x40->0x8000, dd8c01b) removed the clp stage and
+cleared ALL F32 diffs to 0. U8-opt still 4960/12288, worst byte diff
+254 (port 255 vs C 1). qs16/quick_saturate_word clamps correctly (no
+wrap). port-noopt (lut_eval16, u16 path) is bit-exact vs C — so the
+divergence is inside `eval_float` (the resampler eval's the linked
+pipeline in float then saturates). At the bad node my float eval gives
+~0.996 (->255) where C gives ~0.004 (->1) — a real eval_float error at
+scattered nodes, not a clip. test3.icc = RGB spac, mft1, Lab PCS ->
+Lab->XYZ->RGB matrix+curves chain. Check: eval4_inputs_float/
+tetrahedral_interp_float for the mft1 CLUT, Lab2XYZ/XYZ2Lab float
+stages, and the cvst curve eval (eval16->float conversion for table
+curves).
+
+## test3.icc U8-opt bisect — Prelin8, structure verified
+
+Fired optimizer is `optimize_by_computing_linearization` (Prelin8), NOT
+resampling. Rust structure matches C's `OptimizeByComputingLinearization`
+exactly: Trans[i] gray-ramp eval_float -> slope_limiting -> monotonic/
+degenerate gate -> TransReverse[i] = reverse_tone_curve_ex(Trans[i]) ->
+LutPlusCurves = dup(Original) + TransReverse prepended -> OptimizedLUT =
+Trans (prelin) + CLUT sampled over LutPlusCurves.
+
+Bad node (32,31,28): opt R=0 vs true R~1.0. Structure identical, so the
+divergence is inside `reverse_tone_curve_ex` or `build_tabulated_tone_curve16`:
+test3.icc's gray-ramp Trans has flat/saturated regions (non-strictly-
+monotonic) — C's cmsReverseToneCurveEx picks a specific inverse; if my
+port's tie-breaking/interpolation differs the sampled CLUT inputs differ
+-> wrong table entries at scattered nodes -> the 255-vs-1 wraparound.
+NEXT: compare reverse_tone_curve_ex output vs C's cmsReverseToneCurveEx
+on the actual Trans curves (non-monotonic sections), esp. endpoints and
+flat regions. Also verify build_tabulated_tone_curve16 + eval_float of
+the gray ramp match C's Trans (the eval_float divergence could ALSO feed
+Trans wrong -> different reverse).
+
+## test3.icc U8-opt — FULL bisect, residual localized to LutPlusCurves eval
+
+FORCE_CLUT (optimize_by_resampling) = 0 diffs -> eval_float on the
+ORIGINAL pipeline is bit-exact, and the sampler/indexing is correct.
+The bug is strictly inside optimize_by_computing_linearization's
+LutPlusCurves path. Verified bit-exact vs C:
+- Trans[i] gray-ramp eval_float -> qs16 (0 diffs, F32 transform too)
+- slope_limiting == C's SlopeLimiting
+- reverse_tone_curve_ex bit-exact on the actual Trans (0/4096 diffs)
+- get_interval == C's GetInterval
+- is_tone_curve_monotonic == C's (all true -> both use Prelin8)
+- is_degenerated == C's IsDegenerated
+- prelin_opt8alloc / prelin_eval8 structure == C's
+- Pipeline::dup == cmsPipelineDup (clones stages, order preserved)
+
+Data: node (32,31,28) — my table [65535,63281,57337] stores my
+LutPlusCurves.eval_float([1.0,.969,.875])=[1.0017,.9656,.8749]->qs16.
+C's table there ~[256,...] -> C's LutPlusCurves eval ~0.004 -> C's
+TransReverse(1.0) maps 1.0 to a different input than mine. So
+TransReverse IS built from the same Trans but the sampled composite
+eval differs -> residual inside the TransReverse TONE-CURVE STAGE
+eval_float (eval_curve_set on the prepended reversed table) or a
+boundary case in ToneCurve::eval_float at the 4095 table end. Check:
+eval_curve_set/stage_alloc_tone_curves on the prepended TransReverse,
+and whether eval16 of a 4096-entry table curve at index ~4095 matches
+cmsEvalToneCurve16 (the X0[255] path gives opta*32 correctly, but the
+float-path eval_float of the same curve may diverge at the top).
+
+## test3.icc U8-opt — residual: TransReverse stage eval at table top
+
+Narrowed further: my resampled table at (32,31,28)=[65535,63281,57337]
+matches MY LutPlusCurves.eval_float exactly. C's table ~256 means C's
+TransReverse(1.0) maps 1.0 to a different input. The TransReverse is a
+4096-entry TABLE curve; TransReverse.eval_float(1.0) =
+eval16(qs16(65535)) = eval16(65535) = table lookup at the LAST entry —
+the boundary case. If my eval16(65535)/eval1_input at the top
+(n_entries-1 index) or C's cmsEvalToneCurve16(65535) diverge by even 1
+ulp, the inverse at the top shifts a whole CLUT edge row -> the 255-vs-1
+wraparound. ALSO: Trans[4095] depends on eval_float(gray_ramp i=4095,
+v=1.0) — if my eval_float gives exactly 1.0 (qs16->65535) but C gives
+0.9998 (qs16->65422), the top interval of GetInterval differs -> whole
+edge of the reverse shifts. Check eval1_input/Eval1Input top-of-table
+handling and eval_float at v>=1.0 for the spac pipeline.

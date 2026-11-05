@@ -1099,7 +1099,7 @@ pub(crate) fn prelin_eval8(input: &[u16], output: &mut [u16], d: &OptData) -> bo
             (
                 dens(x1, y1, z1, oc) - dens(x0, y1, z1, oc),
                 dens(x0, y1, z0, oc) - c0,
-                dens(x0, y1, z1, oc) - dens(x0, y0, z1, oc),
+                dens(x0, y1, z1, oc) - dens(x0, y1, z0, oc),
             )
         } else {
             (
