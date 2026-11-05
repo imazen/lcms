@@ -1,0 +1,138 @@
+58:#define t, x) { (t
+5936:{cmsSigChromaticityType, Chromaticity
+5937:{cmsSigColorantOrderType, ColorantOrderType
+5938:{cmsSigS15Fixed16ArrayType, S15Fixed16
+5939:{cmsSigU16Fixed16ArrayType, U16Fixed16
+5940:{cmsSigTextType, Text
+5941:{cmsSigTextDescriptionType, Text_Description
+5942:{cmsSigCurveType, Curve
+5943:{cmsSigParametricCurveType, ParametricCurve
+5944:{cmsSigDateTimeType, DateTime
+5945:{cmsSigLut8Type, LUT8
+5946:{cmsSigLut16Type, LUT16
+5947:{cmsSigColorantTableType, ColorantTable
+5948:{cmsSigNamedColor2Type, NamedColor
+5949:{cmsSigMultiLocalizedUnicodeType, MLU
+5950:{cmsSigProfileSequenceDescType, ProfileSequenceDesc
+5951:{cmsSigSignatureType, Signature
+5952:{cmsSigMeasurementType, Measurement
+5953:{cmsSigDataType, Data
+5954:{cmsSigLutAtoBType, LUTA2B
+5955:{cmsSigLutBtoAType, LUTB2A
+5956:{cmsSigUcrBgType, UcrBg
+5957:{cmsSigCrdInfoType, CrdInfo
+5958:{cmsSigMultiProcessElementType, MPE
+5959:{cmsSigScreeningType, Screening
+5960:{cmsSigViewingConditionsType, ViewingConditions
+5961:{cmsSigXYZType, XYZ
+5962:{cmsCorbisBrokenXYZtype, XYZ
+5963:{cmsMonacoBrokenCurveType, Curve
+5964:{cmsSigProfileSequenceIdType, ProfileSequenceId
+5965:{cmsSigDictType, Dictionary
+5966:{cmsSigcicpType, VideoSignal
+5967:{cmsSigVcgtType, vcgt
+5968:{cmsSigMHC2Type, MHC2
+5969:{cmsSigUInt8ArrayType, UInt8
+5970:{cmsSigUInt32ArrayType, UInt32
+5971:{cmsSigUInt64ArrayType, UInt64
+=== SupportedTags ===
+n
+cmsSigAToB0Tag
+cmsSigLut16Type
+cmsSigLutAtoBType
+cmsSigLut8Type
+cmsSigAToB1Tag
+cmsSigLut16Type
+cmsSigLutAtoBType
+cmsSigLut8Type
+cmsSigAToB2Tag
+cmsSigLut16Type
+cmsSigLutAtoBType
+cmsSigLut8Type
+cmsSigBToA0Tag
+cmsSigLut16Type
+cmsSigLutBtoAType
+cmsSigLut8Type
+cmsSigBToA1Tag
+cmsSigLut16Type
+cmsSigLutBtoAType
+cmsSigLut8Type
+cmsSigBToA2Tag
+cmsSigLut16Type
+cmsSigLutBtoAType
+cmsSigLut8Type
+n
+n
+cmsSigRedColorantTag
+cmsSigXYZType
+n
+cmsSigGreenColorantTag
+cmsSigXYZType
+n
+cmsSigBlueColorantTag
+cmsSigXYZType
+n
+cmsSigRedTRCTag
+cmsSigCurveType
+cmsSigParametricCurveType
+n
+n
+cmsSigGreenTRCTag
+cmsSigCurveType
+cmsSigParametricCurveType
+n
+n
+cmsSigBlueTRCTag
+cmsSigCurveType
+cmsSigParametricCurveType
+n
+n
+cmsSigCalibrationDateTimeTag
+cmsSigDateTimeType
+cmsSigCharTargetTag
+cmsSigTextType
+cmsSigChromaticAdaptationTag
+cmsSigS15Fixed16ArrayType
+cmsSigChromaticityTag
+cmsSigChromaticityType
+cmsSigColorantOrderTag
+cmsSigColorantOrderType
+cmsSigColorantTableTag
+cmsSigColorantTableType
+cmsSigColorantTableOutTag
+cmsSigColorantTableType
+cmsSigCopyrightTag
+cmsSigTextType
+cmsSigMultiLocalizedUnicodeType
+cmsSigTextDescriptionType
+cmsSigDateTimeTag
+cmsSigDateTimeType
+cmsSigDeviceMfgDescTag
+cmsSigTextDescriptionType
+cmsSigMultiLocalizedUnicodeType
+cmsSigTextType
+cmsSigDeviceModelDescTag
+cmsSigTextDescriptionType
+cmsSigMultiLocalizedUnicodeType
+cmsSigTextType
+cmsSigGamutTag
+cmsSigLut16Type
+cmsSigLutBtoAType
+cmsSigLut8Type
+cmsSigGrayTRCTag
+cmsSigCurveType
+cmsSigParametricCurveType
+cmsSigLuminanceTag
+cmsSigXYZType
+cmsSigMediaBlackPointTag
+cmsSigXYZType
+n
+cmsSigMediaWhitePointTag
+cmsSigXYZType
+n
+cmsSigNamedColor2Tag
+cmsSigNamedColor2Type
+cmsSigPreview0Tag
+cmsSigLut16Type
+cmsSigLutBtoAType
+cmsSigLut8Type
