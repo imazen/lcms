@@ -580,6 +580,9 @@ unsafe extern "C" {
     pub fn cmsGDBCompute(gbd: *mut c_void, flags: u32) -> i32;
     // --- cube / devicelink ---
     pub fn cmsCreateDeviceLinkFromCubeFile(path: *const i8) -> *mut c_void;
+    // --- black point ---
+    pub fn cmsDetectBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
+    pub fn cmsDetectDestinationBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
 }
 
 /// cmsGetEncodedCMMversion sanity: returns LCMS_VERSION (2200).
