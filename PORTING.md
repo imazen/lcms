@@ -233,3 +233,17 @@ biggest unported piece), cmsps2.c (1635 lines, 3 exports — PostScript
 CSA/CRD/ColorResource), cmserr residual plugin-register functions,
 cmsplugin.c, then: parity expansion (formats x intents x profiles,
 LUT-heavy real profiles) + perf parity vs C.
+
+## State @ 0dd397d (ps2 scaffold)
+
+ps2.rs: PsWriter + mechanical emitters (header, PS escaping, Lab2XYZ
+decode dict, gamma emitters, intent/range/white-black). The heavy
+emitters (EmitCIEBased*/WriteInputLUT/OutputLUT/NamedColorCSA+CRD/
+EmitPQRStage/EmitXYZ2Lab/GenerateCSA+CRD/3 exports) are next.
+
+REMAINING MODULES:
+- cmscgats.c (3339 ln, 39 exports — IT8 file format; biggest piece)
+- cmsps2.c rest (~1100 ln of emitters + GenerateCSA/GenerateCRD)
+- cmserr/cmsplugin residuals (plugin-register fn table)
+- Parity: expand xform gate beyond sRGB->sRGB (LUT profiles, all
+  intents, all formats), perf parity vs C oracle
