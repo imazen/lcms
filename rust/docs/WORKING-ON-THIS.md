@@ -2,6 +2,24 @@
 
 Adapted from `zenav1-svt/rust/docs/WORKING-ON-THIS.md`; the same traps apply.
 
+## Landing (gitlink preservation — MANDATORY)
+
+jj working copies **do not model git submodules**. A `jj describe` commit
+omits `reference/lcms2` from the tree — pushing it would DELETE the submodule
+pin upstream. Verified 2026-10: every jj-described commit drops `160000
+reference/lcms2`; graft it back before pushing:
+
+```bash
+tools/land.sh "commit message"   # describe+graft+push+verify in one step
+```
+
+It grafts via `git commit-tree` (index synced to worktree + gitlink staged),
+points `main` at the graft, `jj git import`s, pushes, and prints `GITLINK OK`.
+If you must do it by hand: `git update-index --add --cacheinfo
+160000,$(git -C reference/lcms2 rev-parse HEAD),reference/lcms2`, then
+`git write-tree`/`git commit-tree` onto the pushed tip. **Never** `jj git
+push` a tip whose tree lacks the gitlink.
+
 ## The one-minute loop
 
 ```bash
