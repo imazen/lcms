@@ -565,6 +565,16 @@ unsafe extern "C" {
     pub fn cmsCreateTransform(input: *mut c_void, input_format: u32, output: *mut c_void, output_format: u32, intent: u32, flags: u32) -> *mut c_void;
     pub fn cmsDoTransform(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32);
     pub fn cmsDeleteTransform(t: *mut c_void);
+    pub fn cmsGetTransformInputColorants(t: *mut c_void) -> Handle;
+    pub fn cmsGetTransformOutputColorants(t: *mut c_void) -> Handle;
+    pub fn cmsGetNamedColorList(t: *mut c_void) -> Handle;
+    // --- null-profile / header setters (named-color gate) ---
+    pub fn cmsCreateNULLProfile() -> *mut c_void;
+    pub fn cmsSetDeviceClass(p: *mut c_void, sig: u32);
+    pub fn cmsSetColorSpace(p: *mut c_void, sig: u32);
+    pub fn cmsSetPCS(p: *mut c_void, sig: u32);
+    pub fn cmsSetProfileVersion(p: *mut c_void, version: f64);
+    pub fn cmsSetHeaderRenderingIntent(p: *mut c_void, intent: u32);
     // --- cgats / IT8 ---
     pub fn cmsIT8LoadFromMem(ctx: *mut c_void, ptr: *const c_void, len: u32) -> *mut c_void;
     pub fn cmsIT8SaveToMem(h: *mut c_void, buffer: *mut c_void, buf_len: u32) -> u32;

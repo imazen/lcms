@@ -83,6 +83,10 @@ pub struct Transform {
     pub exit_white_point: CieXyz,
     /// transform-plugin user data
     pub user_data: Option<Box<dyn std::any::Any>>,
+    /// `_cmsTRANSFORM::InputColorant` — dup of the input profile's colorant table
+    pub input_colorants: Option<crate::named::NamedColorList>,
+    /// `_cmsTRANSFORM::OutputColorant` — dup of the output profile's colorant table
+    pub output_colorants: Option<crate::named::NamedColorList>,
     _pad: (),
 }
 
@@ -121,7 +125,7 @@ fn get_xform_color_spaces(profiles: &[Box<IccProfile>]) -> Option<(u32, u32)> {
         return None;
     }
     let mut post_color_space = profiles[0].color_space;
-    let input = post_color_space;
+    let mut input = post_color_space;
     for (i, prof) in profiles.iter().enumerate() {
         let is_input = post_color_space != cs::SigXYZData && post_color_space != cs::SigLabData;
         let cls = prof.device_class;
@@ -135,8 +139,10 @@ fn get_xform_color_spaces(profiles: &[Box<IccProfile>]) -> Option<(u32, u32)> {
         } else {
             (prof.pcs, prof.color_space)
         };
+        if i == 0 {
+            input = cs_in;
+        }
         post_color_space = cs_out;
-        let _ = cs_in;
     }
     Some((input, post_color_space))
 }
@@ -626,6 +632,8 @@ fn alloc_empty_transform(
             Z: 0.0,
         },
         user_data: None,
+        input_colorants: None,
+        output_colorants: None,
         _pad: (),
     });
     // seed the 16-bit cache (transform of all-zeros)
@@ -804,5 +812,58 @@ pub fn create_extended_transform(
     let wp_out = crate::io1::read_media_white_point(&mut profiles[n - 1]);
     t.entry_white_point = set_white_point(Some(&wp_in));
     t.exit_white_point = set_white_point(Some(&wp_out));
+    // Try to read input and output colorant table (cmsxform.c:1241-1264)
+    if crate::profile::cms_is_tag(&profiles[0], crate::signatures::tag::SigColorantTableTag) {
+        if let Some(crate::tagtypes::TagObject::ColorantTable(list)) =
+            crate::profile::cms_read_tag(profiles[0].as_mut(), crate::signatures::tag::SigColorantTableTag)
+        {
+            t.input_colorants = crate::named::dup_named_color_list(list);
+        }
+    }
+    // Output is a little bit more complex.
+    if profiles[n - 1].device_class == crate::signatures::profileclass::SigLinkClass {
+        // This tag may exist only on devicelink profiles.
+        if crate::profile::cms_is_tag(&profiles[n - 1], crate::signatures::tag::SigColorantTableOutTag)
+        {
+            if let Some(crate::tagtypes::TagObject::ColorantTable(list)) = crate::profile::cms_read_tag(
+                profiles[n - 1].as_mut(),
+                crate::signatures::tag::SigColorantTableOutTag,
+            ) {
+                t.output_colorants = crate::named::dup_named_color_list(list);
+            }
+        }
+    } else if crate::profile::cms_is_tag(&profiles[n - 1], crate::signatures::tag::SigColorantTableTag)
+    {
+        if let Some(crate::tagtypes::TagObject::ColorantTable(list)) =
+            crate::profile::cms_read_tag(profiles[n - 1].as_mut(), crate::signatures::tag::SigColorantTableTag)
+        {
+            t.output_colorants = crate::named::dup_named_color_list(list);
+        }
+    }
     Some(t)
+}
+
+/// `cmsGetTransformInputColorants` — input colorant table (borrowed)
+pub fn get_transform_input_colorants(
+    xform: &Transform,
+) -> Option<&crate::named::NamedColorList> {
+    xform.input_colorants.as_ref()
+}
+
+/// `cmsGetTransformOutputColorants` — output colorant table (borrowed)
+pub fn get_transform_output_colorants(
+    xform: &Transform,
+) -> Option<&crate::named::NamedColorList> {
+    xform.output_colorants.as_ref()
+}
+
+/// `cmsGetNamedColorList` — the named-color list of a named-color transform.
+/// Should be the first element in the LUT.
+pub fn get_named_color_list(xform: &Transform) -> Option<&crate::named::NamedColorList> {
+    let mpe = xform.lut.as_ref()?.elements.as_ref()?;
+    if let crate::lut::StageData::NamedColor(list) = &mpe.data {
+        Some(list)
+    } else {
+        None
+    }
 }
