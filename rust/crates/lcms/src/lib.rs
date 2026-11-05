@@ -17,6 +17,7 @@ pub mod context;
 pub mod err;
 pub mod fixed;
 pub mod gamma;
+pub mod gbd;
 pub mod half;
 pub mod half_tables;
 pub mod intrp;
