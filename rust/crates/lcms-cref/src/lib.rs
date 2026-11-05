@@ -572,6 +572,12 @@ unsafe extern "C" {
     pub fn cmsIT8GetProperty(h: *mut c_void, key: *const i8) -> *const i8;
     pub fn cmsIT8GetData(h: *mut c_void, patch: *const i8, sample: *const i8) -> *const i8;
     pub fn cmsIT8Free(h: *mut c_void);
+    // --- gbd / gamut boundary descriptor ---
+    pub fn cmsGBDAlloc(ctx: *mut c_void) -> *mut c_void;
+    pub fn cmsGBDFree(gbd: *mut c_void);
+    pub fn cmsGDBAddPoint(gbd: *mut c_void, lab: *const c_void) -> i32;
+    pub fn cmsGDBCheckPoint(gbd: *mut c_void, lab: *const c_void) -> i32;
+    pub fn cmsGDBCompute(gbd: *mut c_void, flags: u32) -> i32;
 }
 
 /// cmsGetEncodedCMMversion sanity: returns LCMS_VERSION (2200).
