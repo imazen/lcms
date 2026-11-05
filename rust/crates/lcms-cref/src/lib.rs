@@ -319,6 +319,11 @@ unsafe extern "C" {
     pub fn cmsReadTag(p: *mut c_void, sig: u32) -> *mut c_void;
     pub fn cmsWriteTag(p: *mut c_void, sig: u32, data: *const c_void) -> i32;
     pub fn cmsSaveProfileToMem(p: *mut c_void, mem: *mut c_void, size: *mut u32) -> i32;
+    // --- cmsvirt ---
+    pub fn cmsCreate_sRGBProfile() -> *mut c_void;
+    pub fn cmsCreateLab2Profile(wp: *const c_void) -> *mut c_void;
+    pub fn cmsCreateLab4Profile(wp: *const c_void) -> *mut c_void;
+    pub fn cmsCreateXYZProfile() -> *mut c_void;
     pub fn _cmsReadUInt8Number(io: Handle, n: *mut U8) -> i32;
     pub fn _cmsReadUInt16Number(io: Handle, n: *mut U16) -> i32;
     pub fn _cmsReadUInt32Number(io: Handle, n: *mut U32) -> i32;

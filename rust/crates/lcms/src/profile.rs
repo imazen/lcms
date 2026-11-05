@@ -542,21 +542,21 @@ pub fn open_profile_from_mem(ctx: Option<Context>, data: &[u8]) -> Option<Box<Ic
 }
 
 /// `cmsCreateProfilePlaceholder` — an empty write-side profile
+/// `cmsCreateProfilePlaceholder` — defaults per C: CMM/creator='lcms',
+/// platform='APPL' (non-Windows), class=Display, version=2.1.
+/// `Created` stays epoch (C fills `time()`; deterministic for the port —
+/// tests mask bytes 24..36).
 pub fn create_profile_placeholder(ctx: Option<Context>) -> Box<IccProfile> {
     let mut icc = Box::new(IccProfile::default());
     icc.ctx = ctx;
-    icc.device_class = crate::signatures::profileclass::SigAbstractClass;
+    icc.device_class = crate::signatures::profileclass::SigDisplayClass;
     icc.color_space = 0;
     icc.pcs = crate::signatures::colorspace::SigXYZData;
     icc.rendering_intent = 0;
-    icc.platform = 0;
-    icc.flags = 0;
-    icc.manufacturer = 0;
-    icc.model = 0;
-    icc.attributes = 0;
-    icc.creator = 0;
+    icc.platform = 0x4150504C; // 'APPL' = cmsSigMacintosh
+    icc.cmm = 0x6C636D73; // 'lcms'
+    icc.creator = 0x6C636D73;
     icc.version = 0x02100000;
-    // created = current time — deterministic for port: leave epoch
     icc
 }
 

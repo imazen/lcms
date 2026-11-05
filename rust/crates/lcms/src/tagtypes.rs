@@ -768,7 +768,7 @@ fn type_text_description_write(
     p: &TagObject,
     _n: u32,
 ) -> bool {
-    let TagObject::TextDescription(mlu) = p else {
+    let (TagObject::TextDescription(mlu) | TagObject::Text(mlu) | TagObject::Mlu(mlu)) = p else {
         return false;
     };
     let filler = [0u8; 68];
@@ -2017,9 +2017,7 @@ fn read_8bit_tables(io: &mut IoHandler, lut: &mut Pipeline, n_channels: u32) -> 
         return false;
     };
     let ok = lut.insert_stage(StageLoc::AtEnd, stage);
-    if !ok {
-        eprintln!("r8t: insert failed");
-    }
+    if !ok {}
     ok
 }
 
@@ -2803,6 +2801,12 @@ fn write_set_of_curves(s: &TagTypeHandler, io: &mut IoHandler, typ: u32, mpe: &S
         } else {
             typ
         };
+        eprintln!(
+            "v4w: curve segs={} types={:?} → {:#x}",
+            c.segments.len(),
+            c.segments.iter().map(|s| s.r#type).collect::<Vec<_>>(),
+            current
+        );
         let ok = if !io::write_type_base(io, current) {
             return false;
         } else if current == tsig::SigCurveType {
@@ -2879,7 +2883,10 @@ fn pipeline_stage_match<'a>(lut: &'a Pipeline, sigs: &[u32]) -> Option<Vec<&'a S
         out.push(m);
         mpe = m.next.as_deref();
     }
-    mpe?;
+    // C requires the stage count to match exactly — fail if any remain
+    if mpe.is_some() {
+        return None;
+    }
     Some(out)
 }
 
@@ -2896,6 +2903,10 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
         return false;
     };
     let base_offset = io.tell().wrapping_sub(8);
+    eprintln!(
+        "v4w: enter is_b2a={is_b2a} elems={}",
+        lut.elements.is_some()
+    );
 
     // Resolve A/B/M/Matrix/CLUT stages via the allowed shape checks
     let (mut a, mut b, mut m, mut matrix, mut clut) = (None, None, None, None, None);

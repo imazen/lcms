@@ -25,7 +25,7 @@ pub type ParametricCurveEvaluator = fn(r#type: i32, params: &[f64; 10], r: f64) 
 /// plugin-pointer fields (memory management excluded — the port allocates
 /// with Rust allocators, matching C semantics where the allocator is
 /// unobservable in outputs).
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Context {
     /// `LogErrorHandler` plugin slot (cmserr.c)
     pub log_error_handler: Option<LogErrorHandler>,
