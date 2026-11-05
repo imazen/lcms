@@ -507,4 +507,38 @@ colorant lists in AllocEmptyTransform (cmsxform.c:1241-1264). The
 NamedColorList type + alloc/dup/append already exist in named.rs.
 
 REMAINING (other): %g PostScript formatting, perf parity (2.4-3x
-structural), named-color gate once eval works.
+structural). Named-color transform DONE @9498e9ab: clrt/ncl2 colorant
+lists + TYPE_NAMED_COLOR_INDEX + get_xform_color_spaces fix
+(*Input = profile[0] computed ColorSpaceIn).
+
+## State — cmsps2.c complete, named-CRD upstream quirk found
+
+ps2.rs now has the full module: ExtractGray2Y, WriteInputLUT,
+WriteInputMatrixShaper, WriteNamedColorCSA, GenerateCSA, EmitPQRStage,
+EmitXYZ2Lab, WriteOutputLUT, BuildColorantList, WriteNamedColorCRD,
+GenerateCRD, get_post_script_color_resource/CRD/CSA + format_g (C %g)
++ ctime_now. Gates: srgb_csa, cmyk_csa_crd (CSA+CRD on test1.icc),
+named_csa_crd — all byte-exact (Created line masked, ctime-dependent).
+
+Real bugs fixed this session:
+- sm::detect_black_point unconditionally used perceptual-black for the
+  fall-through; C only does for Intent==REL && class==Output &&
+  isInkColorspace — else BlackPointAsDarkerColorant(Intent). sRGB
+  relative gave -1.27e-16 vs C's exact 0.0.
+- sm::detect_destination_black_point fed a color-space SIGNATURE to
+  pack::is_ink_space (a pixel-format helper) — new sm::is_ink_colorspace.
+- cnvrt::link_profiles was missing C's final check
+  channels_of(ColorSpaceOut) != Result.output_channels → Rust's n=1
+  named→CMYK transform succeeded where C fails "Couldn't link".
+  Upstream quirk: WriteNamedColorCRD unreachable for non-Lab named
+  profiles (recorded in private ledger lcms-C-BUGS.md).
+- ps2 WriteCLUT iterated tab16 directly w/o In[] grouping and would
+  panic on inp[0]; now uses stage_sample_clut16bit like C. FixWhite
+  assigned nothing to out + skipped row-grouping.
+- _cmsIOPrintf ','→'.' replacement replicated in PsWriter::out.
+- emit_range_check text was wrong ({dup 0 lt...} bind vs C's
+  'dup 0.0 lt { pop 0.0 } if dup 1.0 gt { pop 1.0 } if ').
+
+OPEN: srgb_crd (Lab→sRGB devicelink FORCE_CLUT resample) has ~167
+±1-LSB CLUT-word divergences — bisect pending. Test ignored meanwhile.
+REMAINING: perf parity (~2.4-3x structural), that CLUT bisect.

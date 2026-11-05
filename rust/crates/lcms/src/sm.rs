@@ -33,8 +33,23 @@ fn is_matrix_shaper(icc: &IccProfile) -> bool {
     }
 }
 
+/// `isInkColorspace` (cmssamp.c) — ink/MCH color-space signatures
+pub fn is_ink_colorspace(c: u32) -> bool {
+    use crate::signatures::colorspace as cs;
+    matches!(c,
+        cs::SigCmykData | cs::SigCmyData
+        | cs::SigMCH1Data | cs::SigMCH2Data | cs::SigMCH3Data | cs::SigMCH4Data
+        | cs::SigMCH5Data | cs::SigMCH6Data | cs::SigMCH7Data | cs::SigMCH8Data
+        | cs::SigMCH9Data | cs::SigMCHAData | cs::SigMCHBData | cs::SigMCHCData
+        | cs::SigMCHDData | cs::SigMCHEData | cs::SigMCHFData
+        | cs::Sig1colorData | cs::Sig2colorData | cs::Sig3colorData | cs::Sig4colorData
+        | cs::Sig5colorData | cs::Sig6colorData | cs::Sig7colorData | cs::Sig8colorData
+        | cs::Sig9colorData | cs::Sig10colorData | cs::Sig11colorData | cs::Sig12colorData
+        | cs::Sig13colorData | cs::Sig14colorData | cs::Sig15colorData)
+}
+
 /// `cmsFormatterForColorspaceOfProfile` — bytes=2 nonfloat
-fn formatter_for_colorspace(icc: &IccProfile, n_bytes: u32, is_float: bool) -> u32 {
+pub(crate) fn formatter_for_colorspace(icc: &IccProfile, n_bytes: u32, is_float: bool) -> u32 {
     let color_space = icc.color_space;
     let color_bits = crate::pcs::lcms_color_space(color_space);
     if color_bits < 0 {
@@ -199,8 +214,16 @@ pub fn detect_black_point(icc: &mut IccProfile, intent: u32, dw_flags: u32) -> O
         }
         return Some(PERCEPTUAL_BLACK);
     }
-    // fall through: perceptual-black round-trip or the tag path
-    black_point_using_perceptual_black(icc)
+    // If output profile, discount ink-limiting and that's all
+    if intent == INTENT_RELATIVE_COLORIMETRIC
+        && icc.device_class == pc::SigOutputClass
+        && is_ink_colorspace(icc.color_space)
+    {
+        return black_point_using_perceptual_black(icc);
+    }
+    // Nope, compute BP using current intent.
+    let _ = dw_flags;
+    black_point_as_darker_colorant(icc, intent)
 }
 
 /// `cmsDetectDestinationBlackPoint` — the ink-space round-trip ramp
@@ -229,7 +252,7 @@ pub fn detect_destination_black_point(
         return Some(PERCEPTUAL_BLACK);
     }
     let space = icc.color_space;
-    let ink = crate::pack::is_ink_space(space);
+    let ink = is_ink_colorspace(space);
     if !ink
         && space != crate::signatures::colorspace::SigGrayData
         && space != crate::signatures::colorspace::SigRgbData

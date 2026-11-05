@@ -575,6 +575,9 @@ unsafe extern "C" {
     pub fn cmsSetPCS(p: *mut c_void, sig: u32);
     pub fn cmsSetProfileVersion(p: *mut c_void, version: f64);
     pub fn cmsSetHeaderRenderingIntent(p: *mut c_void, intent: u32);
+    // --- PostScript CSA/CRD ---
+    pub fn cmsGetPostScriptCSA(ctx: *mut c_void, p: *mut c_void, intent: u32, flags: u32, buf: *mut c_void, len: u32) -> u32;
+    pub fn cmsGetPostScriptCRD(ctx: *mut c_void, p: *mut c_void, intent: u32, flags: u32, buf: *mut c_void, len: u32) -> u32;
     // --- cgats / IT8 ---
     pub fn cmsIT8LoadFromMem(ctx: *mut c_void, ptr: *const c_void, len: u32) -> *mut c_void;
     pub fn cmsIT8SaveToMem(h: *mut c_void, buffer: *mut c_void, buf_len: u32) -> u32;

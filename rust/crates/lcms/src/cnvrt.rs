@@ -422,6 +422,9 @@ fn default_icc_intents(
             return None;
         }
     }
+    if crate::pcs::channels_of_color_space(color_space_out) != result.output_channels as i32 {
+        return None;
+    }
     Some(result)
 }
 
