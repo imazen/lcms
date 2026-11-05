@@ -1,0 +1,20 @@
+# lcms port — common recipes
+
+# Run all gates (unit + C-parity tests)
+test:
+    cargo test --workspace
+
+# Run one module's parity gate: `just gate pcs`
+gate name:
+    cargo test -p lcms --test c_parity_{{name}}
+
+# Regenerate tables/signatures after a submodule rebase
+regen:
+    python3 tools/gen_signatures.py > crates/lcms/src/signatures.rs
+    python3 tools/gen_half_tables.py > crates/lcms/src/half_tables.rs
+
+fmt:
+    cargo fmt -p lcms -p lcms-cref
+
+check:
+    cargo check --workspace

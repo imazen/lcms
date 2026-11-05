@@ -1,0 +1,12 @@
+[package]
+name = "lcms-cref"
+version = "0.0.0"
+description = "Test-only C oracle: links the reference lcms2 C library for differential testing"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[build-dependencies]
+cc = "1"

@@ -1,0 +1,14 @@
+[package]
+name = "lcms"
+version = "0.0.0"
+description = "Pure-Rust, bit-exact port of Little CMS (lcms2) 2.20"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# unsafe_code is forbidden in the library itself via #![forbid] in lib.rs;
+# tests call the C oracle through lcms-cref and need unsafe FFI.
+
+[dev-dependencies]
+lcms-cref = { path = "../lcms-cref" }

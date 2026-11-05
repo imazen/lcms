@@ -1,0 +1,3 @@
+[submodule "reference/lcms2"]
+	path = reference/lcms2
+	url = https://github.com/mm2/Little-CMS
