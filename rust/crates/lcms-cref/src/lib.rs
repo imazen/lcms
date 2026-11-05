@@ -22,7 +22,7 @@ pub type S15Fixed16 = i32; // cmsS15Fixed16Number
 pub type F64 = f64; // cmsFloat64Number
 pub type F32 = f32; // cmsFloat32Number
 pub type Context = *mut c_void; // cmsContext
-pub type Handle = *mut c_void; // cmsHANDLE
+pub type Handle = *mut c_void; // Handle
 pub type HProfile = *mut c_void; // cmsHPROFILE
 pub type ColorSpaceSignature = u32;
 
@@ -201,6 +201,11 @@ unsafe extern "C" {
 
     // ---- cmserr.c / cmsplugin.c misc ----
     pub fn cmsGetHeaderRenderingIntent(h_profile: HProfile) -> U32;
+
+    // ---- cmsmd5.c ----
+    pub fn cmsMD5alloc(context_id: Context) -> Handle;
+    pub fn cmsMD5add(handle: Handle, buf: *const U8, len: U32);
+    pub fn cmsMD5finish(profile_id: *mut ProfileID, handle: Handle);
 
     // ---- cmsintrp.c ----
     pub fn _cmsComputeInterpParamsEx(

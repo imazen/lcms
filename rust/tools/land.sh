@@ -16,7 +16,9 @@ MSG="${1:?commit message required}"
 git add -A
 git update-index --add --cacheinfo "160000,$SUB_SHA,reference/lcms2"
 TREE=$(git write-tree)
-PARENT=$(git rev-parse HEAD)
+# Parent on the last pushed tip, not HEAD — in a colocated jj repo git HEAD
+# can lag behind main@origin.
+PARENT=$(git rev-parse origin/main 2>/dev/null || git rev-parse HEAD)
 NEW=$(git commit-tree "$TREE" -p "$PARENT" -m "$MSG")
 git update-ref refs/heads/main "$NEW"
 jj git import
