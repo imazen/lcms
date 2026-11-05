@@ -207,7 +207,12 @@ fn srgb_forced_clut() {
         let t = c::cmsCreateTransform(prof, TYPE_RGB_8, prof, TYPE_RGB_8, 0, FLAGS_FORCE_CLUT);
         assert!(!t.is_null(), "C sRGB FORCED_CLUT failed");
         let inp = vec![0u8; 85 * 3];
-        c::cmsDoTransform(t, inp.as_ptr() as *const _, c_out.as_mut_ptr() as *mut _, 85);
+        c::cmsDoTransform(
+            t,
+            inp.as_ptr() as *const _,
+            c_out.as_mut_ptr() as *mut _,
+            85,
+        );
         c::cmsCloseProfile(prof);
     }
     let mut rust_out = vec![0u8; 85 * 3];
@@ -218,9 +223,18 @@ fn srgb_forced_clut() {
     let intents = [0u32, 0];
     let adapt = [1.0f64, 1.0];
     let mut t = xform::create_extended_transform(
-        None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-        TYPE_RGB_8, TYPE_RGB_8, FLAGS_FORCE_CLUT,
-    ).expect("rust sRGB FORCED_CLUT failed");
+        None,
+        &mut profs,
+        &mut bpc,
+        &intents,
+        &adapt,
+        None,
+        0,
+        TYPE_RGB_8,
+        TYPE_RGB_8,
+        FLAGS_FORCE_CLUT,
+    )
+    .expect("rust sRGB FORCED_CLUT failed");
     let inp = vec![0u8; 85 * 3];
     t.do_transform(&inp, &mut rust_out, 85);
     assert_eq!(c_out, rust_out, "sRGB FORCED_CLUT mismatch");

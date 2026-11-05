@@ -512,7 +512,10 @@ fn black_preserving_k_only_intents(
     if n == 0 || n > 255 {
         return None;
     }
-    let icc_intents: Vec<u32> = intents.iter().map(|&i| translate_non_icc_intents(i)).collect();
+    let icc_intents: Vec<u32> = intents
+        .iter()
+        .map(|&i| translate_non_icc_intents(i))
+        .collect();
     // Trim trailing CMYK→CMYK devicelinks
     let mut last_pos = n - 1;
     let mut last = last_pos;
@@ -603,7 +606,10 @@ fn black_preserving_k_plane_intents(
     if n == 0 || n > 255 {
         return None;
     }
-    let icc_intents: Vec<u32> = intents.iter().map(|&i| translate_non_icc_intents(i)).collect();
+    let icc_intents: Vec<u32> = intents
+        .iter()
+        .map(|&i| translate_non_icc_intents(i))
+        .collect();
     let mut last_pos = n - 1;
     let mut last = last_pos;
     while is_cmyk_devicelink(&profiles[last]) {
@@ -668,7 +674,7 @@ fn black_preserving_k_plane_intents(
     )?;
     let n_grid = crate::pcs::reasonable_gridpoints_by_colorspace(cs::SigCmykData, dw_flags);
     let mut clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, 4, 4, None)?;
-    let mut max_error = 0f64;
+    let max_error = std::cell::Cell::new(0f64);
     // BlackPreservingSampler
     let mut sampler = move |inp: &[u16], out: &mut [u16]| -> i32 {
         let mut inf = [0f32; 4];
@@ -723,8 +729,8 @@ fn black_preserving_k_plane_intents(
         // error estimate
         let bp_lab = run_lab_transform(&mut proof_u16, &o4);
         let err = crate::pcs::delta_e(&colorimetric, &bp_lab);
-        if err > max_error {
-            max_error = err;
+        if err > max_error.get() {
+            max_error.set(err);
         }
         1
     };
@@ -976,7 +982,9 @@ fn formatter_for_colorspace_of_profile(p: &IccProfile, n_bytes: u32, is_float: b
 /// `cmsDetectTAC` — total area coverage via a Lab→profile roundtrip sampled
 /// over Lab space; returns the max ink sum in %
 #[doc(hidden)]
-pub fn dbg_detect_tac(p: &mut IccProfile) -> f64 { detect_tac(p) }
+pub fn dbg_detect_tac(p: &mut IccProfile) -> f64 {
+    detect_tac(p)
+}
 fn detect_tac(p: &mut IccProfile) -> f64 {
     use crate::signatures::profileclass as pc;
     if p.device_class != pc::SigOutputClass {
@@ -996,10 +1004,16 @@ fn detect_tac(p: &mut IccProfile) -> f64 {
         Some(l) => l,
         None => return 0.0,
     };
-    let pdup = match dup_box(&mut *p) { Some(b) => b, None => return 0.0 };
+    let pdup = match dup_box(&mut *p) {
+        Some(b) => b,
+        None => return 0.0,
+    };
     let mut profs = vec![lab, pdup];
     let mut bpc = [false, false];
-    let intents = [crate::types::INTENT_PERCEPTUAL, crate::types::INTENT_PERCEPTUAL];
+    let intents = [
+        crate::types::INTENT_PERCEPTUAL,
+        crate::types::INTENT_PERCEPTUAL,
+    ];
     let adapt = [1.0f64, 1.0];
     let type_lab_16: u32 = (10 << 16) | (3 << 3) | 2;
     let mut rt = match crate::xform::create_extended_transform(
@@ -1015,11 +1029,15 @@ fn detect_tac(p: &mut IccProfile) -> f64 {
         crate::types::FLAGS_NOOPTIMIZE | crate::types::FLAGS_NOCACHE,
     ) {
         Some(t) => t,
-        None => { eprintln!("[tac] transform failed"); return 0.0; }
+        None => {
+            eprintln!("[tac] transform failed");
+            return 0.0;
+        }
     };
     // sample Lab space [6,74,74] — track max total ink
     let grid = [6u32, 74, 74];
-    let mut max_tac = 0f32;
+    let max_tac = std::rc::Rc::new(std::cell::Cell::new(0f32));
+    let max_tac2 = max_tac.clone();
     let mut sampler = move |inp: &[u16], _out: &mut [u16]| -> i32 {
         // In is Lab16 (3ch); run the roundtrip, sum the f32 colorant
         let mut inb = Vec::with_capacity(6);
@@ -1033,15 +1051,15 @@ fn detect_tac(p: &mut IccProfile) -> f64 {
         for i in 0..n_out {
             sum += f32::from_ne_bytes(outb[i * 4..i * 4 + 4].try_into().unwrap());
         }
-        if sum > max_tac {
-            max_tac = sum;
+        if sum > max_tac2.get() {
+            max_tac2.set(sum);
         }
         1
     };
     if !crate::lut::slice_space16(3, &grid, &mut sampler) {
         return 0.0;
     }
-    max_tac as f64
+    max_tac.get() as f64
 }
 
 fn dup_box(p: &mut IccProfile) -> Option<Box<IccProfile>> {

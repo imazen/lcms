@@ -177,16 +177,20 @@ fn multiply_matrix(lut: &mut Pipeline) -> bool {
                 // offset — an offset matrix is never fused, which preserves
                 // BPC/adaptation offsets that a naive product would drop.
                 let has_off = |st: &Stage| {
-                    matches!(&st.data, crate::lut::StageData::Matrix { offset: Some(_), .. })
+                    matches!(
+                        &st.data,
+                        crate::lut::StageData::Matrix {
+                            offset: Some(_),
+                            ..
+                        }
+                    )
                 };
                 let ok = s.input_channels == 3
                     && s.output_channels == 3
                     && !has_off(s)
                     && s.next
                         .as_deref()
-                        .map(|n| {
-                            n.input_channels == 3 && n.output_channels == 3 && !has_off(n)
-                        })
+                        .map(|n| n.input_channels == 3 && n.output_channels == 3 && !has_off(n))
                         .unwrap_or(false);
                 if !ok {
                     return any;

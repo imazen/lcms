@@ -13,8 +13,8 @@ fn cube_devicelink() {
     // evals a valid CLUT instead of a C-side diff.
     let c_out = ();
     // Rust side — the profile + its AToB0 pipeline
-    let mut p = It8::create_device_link_from_cube_file(None, path)
-        .expect("rust cube→devicelink failed");
+    let mut p =
+        It8::create_device_link_from_cube_file(None, path).expect("rust cube→devicelink failed");
     let lut = lcms::profile::cms_read_tag(&mut (*p), lcms::signatures::tag::SigAToB0Tag);
     let lcms::tagtypes::TagObject::LutA2B(pl) = lut.expect("AToB0 missing") else {
         panic!("AToB0 is not a pipeline");

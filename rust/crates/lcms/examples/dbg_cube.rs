@@ -7,7 +7,10 @@ fn main() {
         if let Some(lcms::tagtypes::TagObject::LutA2B(pl)) = lut {
             let mut out = [0u16; 3];
             pl.eval16(&[0x4000, 0x4000, 0x4000], &mut out);
-            println!("eval 0x4000 -> {:04x} {:04x} {:04x}", out[0], out[1], out[2]);
+            println!(
+                "eval 0x4000 -> {:04x} {:04x} {:04x}",
+                out[0], out[1], out[2]
+            );
         }
     }
 }

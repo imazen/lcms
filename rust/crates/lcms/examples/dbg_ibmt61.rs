@@ -18,12 +18,19 @@ fn main() {
         }
         // first few table entries
         if !tc.table16.is_empty() {
-            println!("rTRC table[0..4] = {:?}", &tc.table16[..4.min(tc.table16.len())]);
+            println!(
+                "rTRC table[0..4] = {:?}",
+                &tc.table16[..4.min(tc.table16.len())]
+            );
         }
         println!("rTRC n_entries={}", tc.table16.len());
     }
     // colorant matrix
-    for sig in [tag::SigRedColorantTag, tag::SigGreenColorantTag, tag::SigBlueColorantTag] {
+    for sig in [
+        tag::SigRedColorantTag,
+        tag::SigGreenColorantTag,
+        tag::SigBlueColorantTag,
+    ] {
         if let Some(TagObject::Xyz(x)) = profile::cms_read_tag(&mut p, sig) {
             println!("{sig:?} = {:.6} {:.6} {:.6}", x.X, x.Y, x.Z);
         }

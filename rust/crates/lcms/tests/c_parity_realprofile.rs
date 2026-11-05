@@ -15,7 +15,10 @@ fn run_c(in_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
     unsafe {
         let p_in = {
             let cs = std::ffi::CString::new(in_path).unwrap();
-            c::cmsOpenProfileFromFile(cs.as_ptr(), std::ffi::CString::new("r").unwrap().as_ptr() as *const u8)
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+            )
         };
         assert!(!p_in.is_null(), "C open {in_path} failed");
         let srgb = c::cmsCreate_sRGBProfile();
@@ -86,7 +89,10 @@ fn run_c_out(out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> 
         let srgb = c::cmsCreate_sRGBProfile();
         let p_out = {
             let cs = std::ffi::CString::new(out_path).unwrap();
-            c::cmsOpenProfileFromFile(cs.as_ptr(), std::ffi::CString::new("r").unwrap().as_ptr() as *const u8)
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+            )
         };
         assert!(!p_out.is_null(), "C open {out_path} failed");
         let t = c::cmsCreateTransform(srgb, in_fmt, p_out, out_fmt, intent, 0);
@@ -129,8 +135,20 @@ fn srgb_to_cmyk_prtr() {
 fn run_cmm(in_path: &str, out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
     let mut out = vec![0u8; 85 * 4];
     unsafe {
-        let p_in = { let cs = std::ffi::CString::new(in_path).unwrap(); c::cmsOpenProfileFromFile(cs.as_ptr(), std::ffi::CString::new("r").unwrap().as_ptr() as *const u8) };
-        let p_out = { let cs = std::ffi::CString::new(out_path).unwrap(); c::cmsOpenProfileFromFile(cs.as_ptr(), std::ffi::CString::new("r").unwrap().as_ptr() as *const u8) };
+        let p_in = {
+            let cs = std::ffi::CString::new(in_path).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+            )
+        };
+        let p_out = {
+            let cs = std::ffi::CString::new(out_path).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+            )
+        };
         assert!(!p_in.is_null() && !p_out.is_null());
         let t = c::cmsCreateTransform(p_in, in_fmt, p_out, out_fmt, intent, 0);
         assert!(!t.is_null(), "C transform failed");
@@ -152,7 +170,8 @@ fn run_rustmm(in_path: &str, out_path: &str, in_fmt: u32, out_fmt: u32, intent: 
     let adapt = [1.0f64, 1.0];
     let mut t = xform::create_extended_transform(
         None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
-    ).expect("rust transform");
+    )
+    .expect("rust transform");
     let inp = vec![0u8; 85 * 4];
     t.do_transform(&inp, &mut out, 85);
     out
