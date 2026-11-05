@@ -354,6 +354,80 @@ impl Transform {
         gamut: bool,
         cache: bool,
     ) {
+        // Fused fast paths — same math as the generic unroll→eval→pack
+        // chain but with the whole pixel transform inlined.
+        const RGB8: u32 = 4 << 16 | 3 << 3 | 1;
+        if !cache && !gamut {
+            // Identity + identical non-planar formats: unroll→copy→pack is a
+            // byte-exact round trip, so the whole transform is a line copy.
+            if self.input_format == self.output_format
+                && crate::pack::t_planar(self.input_format) == 0
+            {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::Identity) = l.opt_data.as_ref() {
+                        let pplb = ppl as usize
+                            * (crate::pack::t_channels(self.input_format)
+                                + crate::pack::t_extra(self.input_format))
+                                as usize
+                            * pixel_size(self.input_format) as usize;
+                        let mut i_off = 0usize;
+                        let mut o_off = 0usize;
+                        for _ in 0..lines {
+                            output[o_off..o_off + pplb]
+                                .copy_from_slice(&input[i_off..i_off + pplb]);
+                            i_off += stride.bytes_per_line_in as usize;
+                            o_off += stride.bytes_per_line_out as usize;
+                        }
+                        return;
+                    }
+                }
+            }
+            if self.input_format == RGB8 && self.output_format == RGB8 {
+                if let Some(l) = self.lut.as_mut() {
+                if let Some(crate::opt::OptData::MatShaper(p)) = l.opt_data.as_ref() {
+                    let ppl3 = ppl as usize * 3;
+                    let mut i_off = 0usize;
+                    let mut o_off = 0usize;
+                    for _ in 0..lines {
+                        let iline = &input[i_off..i_off + ppl3];
+                        let oline = &mut output[o_off..o_off + ppl3];
+                        for i in 0..ppl as usize {
+                            let px = i * 3;
+                            let r = p.shaper1[0][iline[px] as usize];
+                            let g = p.shaper1[1][iline[px + 1] as usize];
+                            let b = p.shaper1[2][iline[px + 2] as usize];
+                            let l1 = (p.mat[0][0].wrapping_mul(r)
+                                + p.mat[0][1].wrapping_mul(g)
+                                + p.mat[0][2].wrapping_mul(b)
+                                + p.off[0]
+                                + 0x2000)
+                                >> 14;
+                            let l2 = (p.mat[1][0].wrapping_mul(r)
+                                + p.mat[1][1].wrapping_mul(g)
+                                + p.mat[1][2].wrapping_mul(b)
+                                + p.off[1]
+                                + 0x2000)
+                                >> 14;
+                            let l3 = (p.mat[2][0].wrapping_mul(r)
+                                + p.mat[2][1].wrapping_mul(g)
+                                + p.mat[2][2].wrapping_mul(b)
+                                + p.off[2]
+                                + 0x2000)
+                                >> 14;
+                            oline[px] = crate::pack::f16to8(p.shaper2[0][l1.clamp(0, 16384) as usize]);
+                            oline[px + 1] =
+                                crate::pack::f16to8(p.shaper2[1][l2.clamp(0, 16384) as usize]);
+                            oline[px + 2] =
+                                crate::pack::f16to8(p.shaper2[2][l3.clamp(0, 16384) as usize]);
+                        }
+                        i_off += stride.bytes_per_line_in as usize;
+                        o_off += stride.bytes_per_line_out as usize;
+                    }
+                    return;
+                }
+            }
+            }
+        }
         let info = PackInfo {
             input_format: self.input_format,
             output_format: self.output_format,

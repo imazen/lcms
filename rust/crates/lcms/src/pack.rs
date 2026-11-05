@@ -55,7 +55,7 @@ pub fn pack_factor(fmt: u32) -> u32 {
 fn f8to16(v: u8) -> u16 {
     ((v as u16) << 8) | v as u16
 }
-fn f16to8(v: u16) -> u8 {
+pub(crate) fn f16to8(v: u16) -> u8 {
     (((v as u32) * 65281 + 8388608) >> 24 & 0xff) as u8
 }
 /// `_cmsToFixedDomain`
@@ -71,10 +71,10 @@ pub struct PackInfo {
     pub stride: u32,
 }
 
-pub type Unpack16Fn = fn(&PackInfo, &mut [u16], &[u8], u32) -> usize;
-pub type Pack16Fn = fn(&PackInfo, &[u16], &mut [u8], u32) -> usize;
-pub type UnpackF32Fn = fn(&PackInfo, &mut [f32], &[u8], u32) -> usize;
-pub type PackF32Fn = fn(&PackInfo, &[f32], &mut [u8], u32) -> usize;
+pub type Unpack16Fn = fn(&PackInfo, &mut [u16; crate::xform::MAX_CHANNELS], &[u8], u32) -> usize;
+pub type Pack16Fn = fn(&PackInfo, &[u16; crate::xform::MAX_CHANNELS], &mut [u8], u32) -> usize;
+pub type UnpackF32Fn = fn(&PackInfo, &mut [f32; crate::xform::MAX_CHANNELS], &[u8], u32) -> usize;
+pub type PackF32Fn = fn(&PackInfo, &[f32; crate::xform::MAX_CHANNELS], &mut [u8], u32) -> usize;
 pub type UnpackDblFn = fn(&PackInfo, &mut [f64], &[u8], u32) -> usize;
 
 // ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ pub type UnpackDblFn = fn(&PackInfo, &mut [f64], &[u8], u32) -> usize;
 // ---------------------------------------------------------------------------
 
 /// `UnrollChunkyBytes`
-pub fn unroll_chunky_bytes(info: &PackInfo, w_in: &mut [u16], accum: &[u8], _stride: u32) -> usize {
+pub fn unroll_chunky_bytes(info: &PackInfo, w_in: &mut [u16; crate::xform::MAX_CHANNELS], accum: &[u8], _stride: u32) -> usize {
     let n_chan = t_channels(info.input_format) as usize;
     let do_swap = t_doswap(info.input_format) != 0;
     let reverse = t_flavor(info.input_format) != 0;
@@ -127,7 +127,7 @@ pub fn unroll_chunky_bytes(info: &PackInfo, w_in: &mut [u16], accum: &[u8], _str
 }
 
 /// `UnrollPlanarBytes`
-pub fn unroll_planar_bytes(info: &PackInfo, w_in: &mut [u16], accum: &[u8], stride: u32) -> usize {
+pub fn unroll_planar_bytes(info: &PackInfo, w_in: &mut [u16; crate::xform::MAX_CHANNELS], accum: &[u8], stride: u32) -> usize {
     let n_chan = t_channels(info.input_format) as usize;
     let do_swap = t_doswap(info.input_format) != 0;
     let swap_first = t_swapfirst(info.input_format) != 0;
@@ -203,7 +203,9 @@ fn qs8(v: f32) -> u8 {
 
 macro_rules! unroll8 {
     ($name:ident, [$($idx:expr),+], $skip:expr) => {
-        pub fn $name(_i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+        pub fn $name(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
+            const N: usize = 0usize $(+ {let _ = $idx; 1})+ + $skip;
+            let a = &a[..N];
             let mut o = 0;
             $(
                 if $idx == 255 { o += 1; } else {
@@ -214,7 +216,9 @@ macro_rules! unroll8 {
         }
     };
     ($name:ident, [$($idx:expr),+], $skip:expr, rev) => {
-        pub fn $name(_i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+        pub fn $name(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
+            const N: usize = 0usize $(+ {let _ = $idx; 1})+ + $skip;
+            let a = &a[..N];
             let mut o = 0;
             $(
                 if $idx == 255 { o += 1; } else {
@@ -234,7 +238,7 @@ unroll8!(unroll4_bytes_swap_swap_first, [2, 1, 0, 3], 0);
 unroll8!(unroll3_bytes, [0, 1, 2], 0);
 unroll8!(unroll3_bytes_skip1_swap, [2, 1, 0], 1);
 // A B G R → skip A first, then B,G,R into w[2],w[1],w[0]
-pub fn unroll3_bytes_skip1_swap_real(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll3_bytes_skip1_swap_real(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let mut o = 1;
     w[2] = f8to16(a[o]);
     o += 1;
@@ -250,7 +254,7 @@ unroll8!(unroll3_bytes_skip1_swap_swap_first, [2, 1, 0, 255], 0);
 // B G R A — w[2]w[1]w[0] then skip A
 pub fn unroll3_bytes_skip1_swap_swap_first_real(
     i: &PackInfo,
-    w: &mut [u16],
+    w: &mut [u16; crate::xform::MAX_CHANNELS],
     a: &[u8],
     s: u32,
 ) -> usize {
@@ -261,7 +265,7 @@ pub fn unroll3_bytes_skip1_swap_swap_first_real(
     w[0] = f8to16(a[2]);
     4
 }
-pub fn unroll3_bytes_skip1_swap_first(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll3_bytes_skip1_swap_first(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = f8to16(a[1]);
@@ -270,7 +274,7 @@ pub fn unroll3_bytes_skip1_swap_first(i: &PackInfo, w: &mut [u16], a: &[u8], s: 
     4
 }
 unroll8!(unroll3_bytes_swap, [2, 1, 0], 0);
-pub fn unroll_lab_v2_8(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll_lab_v2_8(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = fom_lab_v2_to_v4(f8to16(a[0]));
@@ -278,7 +282,7 @@ pub fn unroll_lab_v2_8(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
     w[2] = fom_lab_v2_to_v4(f8to16(a[2]));
     3
 }
-pub fn unroll_alab_v2_8(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll_alab_v2_8(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = fom_lab_v2_to_v4(f8to16(a[1]));
@@ -286,7 +290,7 @@ pub fn unroll_alab_v2_8(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize 
     w[2] = fom_lab_v2_to_v4(f8to16(a[3]));
     4
 }
-pub fn unroll_lab_v2_16(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll_lab_v2_16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = fom_lab_v2_to_v4(rd16(a, 0));
@@ -294,14 +298,14 @@ pub fn unroll_lab_v2_16(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize 
     w[2] = fom_lab_v2_to_v4(rd16(a, 4));
     6
 }
-pub fn unroll2_bytes(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll2_bytes(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = f8to16(a[0]);
     w[1] = f8to16(a[1]);
     2
 }
-pub fn unroll1_byte(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll1_byte(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = f8to16(a[0]);
@@ -309,7 +313,7 @@ pub fn unroll1_byte(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
     w[2] = w[0];
     1
 }
-pub fn unroll1_byte_skip1(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll1_byte_skip1(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = f8to16(a[0]);
@@ -317,7 +321,7 @@ pub fn unroll1_byte_skip1(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usiz
     w[2] = w[0];
     2
 }
-pub fn unroll1_byte_skip2(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll1_byte_skip2(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = f8to16(a[0]);
@@ -325,7 +329,7 @@ pub fn unroll1_byte_skip2(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usiz
     w[2] = w[0];
     3
 }
-pub fn unroll1_byte_reversed(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll1_byte_reversed(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     let _ = i;
     let _ = s;
     w[0] = f8to16(0xff - a[0]);
@@ -335,7 +339,7 @@ pub fn unroll1_byte_reversed(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> u
 }
 
 /// `UnrollAnyWords` — generic 16-bit chunky decoder
-pub fn unroll_any_words(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+pub fn unroll_any_words(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let swap_endian = t_endian16(i.input_format) != 0;
     let do_swap = t_doswap(i.input_format) != 0;
@@ -365,7 +369,7 @@ pub fn unroll_any_words(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize
 }
 
 /// `UnrollAnyWordsPremul`
-pub fn unroll_any_words_premul(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+pub fn unroll_any_words_premul(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let swap_endian = t_endian16(i.input_format) != 0;
     let do_swap = t_doswap(i.input_format) != 0;
@@ -398,7 +402,7 @@ pub fn unroll_any_words_premul(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -
 }
 
 /// `UnrollPlanarWords` — C: channels at Stride/word boundaries, returns accum+2
-pub fn unroll_planar_words(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32) -> usize {
+pub fn unroll_planar_words(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let swap_endian = t_endian16(i.input_format) != 0;
     let do_swap = t_doswap(i.input_format) != 0;
@@ -421,7 +425,7 @@ pub fn unroll_planar_words(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32) -
 }
 
 /// `UnrollPlanarWordsPremul`
-pub fn unroll_planar_words_premul(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32) -> usize {
+pub fn unroll_planar_words_premul(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let swap_endian = t_endian16(i.input_format) != 0;
     let do_swap = t_doswap(i.input_format) != 0;
@@ -453,7 +457,9 @@ pub fn unroll_planar_words_premul(i: &PackInfo, w: &mut [u16], a: &[u8], stride:
 
 macro_rules! unrollw {
     ($name:ident, [$($idx:expr),+], $adv:expr) => {
-        pub fn $name(_i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+        pub fn $name(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
+            const N: usize = 0usize $(+ {let _ = $idx; 2})+ + $adv;
+            let a = &a[..N];
             let mut o = 0;
             $(
                 if $idx == 255 { o += 2; } else {
@@ -464,7 +470,9 @@ macro_rules! unrollw {
         }
     };
     ($name:ident, [$($idx:expr),+], $adv:expr, be) => {
-        pub fn $name(_i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+        pub fn $name(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
+            const N: usize = 0usize $(+ {let _ = $idx; 2})+ + $adv;
+            let a = &a[..N];
             let mut o = 0;
             $(
                 if $idx == 255 { o += 2; } else {
@@ -485,19 +493,19 @@ unrollw!(unroll3_words, [0, 1, 2], 0);
 unrollw!(unroll3_words_swap, [2, 1, 0], 0);
 unrollw!(unroll3_words_skip1_swap, [2, 1, 0], 2);
 unrollw!(unroll3_words_skip1_swap_first, [255, 0, 1, 2], 0);
-pub fn unroll1_word(_i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+pub fn unroll1_word(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     w[0] = rd16(a, 0);
     w[1] = w[0];
     w[2] = w[0];
     2
 }
-pub fn unroll1_word_reversed(_i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+pub fn unroll1_word_reversed(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     w[0] = 0xffff - rd16(a, 0);
     w[1] = w[0];
     w[2] = w[0];
     2
 }
-pub fn unroll1_word_skip3(_i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+pub fn unroll1_word_skip3(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     w[0] = rd16(a, 0);
     w[1] = w[0];
     w[2] = w[0];
@@ -509,7 +517,7 @@ unrollw!(unroll2_words, [0, 1], 0);
 // Lab / XYZ encoded input → u16
 // ---------------------------------------------------------------------------
 
-pub fn unroll_lab_double_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32) -> usize {
+pub fn unroll_lab_double_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     use crate::pcs::float2lab_encoded;
     if t_planar(i.input_format) != 0 {
         let s = stride as usize;
@@ -537,7 +545,7 @@ pub fn unroll_lab_double_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32
     }
 }
 
-pub fn unroll_lab_float_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32) -> usize {
+pub fn unroll_lab_float_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     use crate::pcs::float2lab_encoded;
     if t_planar(i.input_format) != 0 {
         let s = stride as usize;
@@ -565,7 +573,7 @@ pub fn unroll_lab_float_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32)
     }
 }
 
-pub fn unroll_xyz_double_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32) -> usize {
+pub fn unroll_xyz_double_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     use crate::pcs::float2xyz_encoded;
     if t_planar(i.input_format) != 0 {
         let s = stride as usize;
@@ -593,7 +601,7 @@ pub fn unroll_xyz_double_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32
     }
 }
 
-pub fn unroll_xyz_float_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32) -> usize {
+pub fn unroll_xyz_float_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     use crate::pcs::float2xyz_encoded;
     if t_planar(i.input_format) != 0 {
         let s = stride as usize;
@@ -633,7 +641,7 @@ fn pixel_size(fmt: u32) -> u32 {
     if b == 0 { 8 } else { b }
 }
 
-fn unroll_fd_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32, is_double: bool) -> usize {
+fn unroll_fd_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32, is_double: bool) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let do_swap = t_doswap(i.input_format) != 0;
     let reverse = t_flavor(i.input_format) != 0;
@@ -680,14 +688,14 @@ fn unroll_fd_to16(i: &PackInfo, w: &mut [u16], a: &[u8], stride: u32, is_double:
     if planar { esz } else { (n_chan + extra) * esz }
 }
 
-pub fn unroll_double_to16(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll_double_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     unroll_fd_to16(i, w, a, s, true)
 }
-pub fn unroll_float_to16(i: &PackInfo, w: &mut [u16], a: &[u8], s: u32) -> usize {
+pub fn unroll_float_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     unroll_fd_to16(i, w, a, s, false)
 }
 /// `UnrollDouble1Chan`
-pub fn unroll_double_1chan(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+pub fn unroll_double_1chan(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     let extra = t_extra(i.input_format) as usize;
     w[0] = qs16(rd64f(a, 0) * 65535.0);
     (1 + extra) * 8
@@ -697,7 +705,7 @@ pub fn unroll_double_1chan(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> us
 // Byte/word/float/double input → f32
 // ---------------------------------------------------------------------------
 
-fn unroll_fd_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: u32, esz: usize) -> usize {
+fn unroll_fd_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32, esz: usize) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let do_swap = t_doswap(i.input_format) != 0;
     let reverse = t_flavor(i.input_format) != 0;
@@ -772,23 +780,23 @@ fn unroll_fd_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: u32, esz: u
 }
 
 /// `Unroll8ToFloat` (premul via scale, not alpha div — C has no premul here)
-pub fn unroll8_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], s: u32) -> usize {
+pub fn unroll8_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     unroll_fd_to_float(i, w, a, s, 1)
 }
-pub fn unroll16_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], s: u32) -> usize {
+pub fn unroll16_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     unroll_fd_to_float(i, w, a, s, 2)
 }
-pub fn unroll_floats_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], s: u32) -> usize {
+pub fn unroll_floats_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     unroll_fd_to_float(i, w, a, s, 4)
 }
-pub fn unroll_doubles_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], s: u32) -> usize {
+pub fn unroll_doubles_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], s: u32) -> usize {
     unroll_fd_to_float(i, w, a, s, 8)
 }
 
 const MAX_ENC_XYZ: f64 = (2.0 * 65535.0) / 65536.0;
 
 /// `UnrollLabDoubleToFloat`
-pub fn unroll_lab_double_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: u32) -> usize {
+pub fn unroll_lab_double_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     if t_planar(i.input_format) != 0 {
         let s = stride as usize / pixel_size(i.input_format) as usize;
         w[0] = (rd64f(a, 0) / 100.0) as f32;
@@ -803,7 +811,7 @@ pub fn unroll_lab_double_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride:
     }
 }
 /// `UnrollLabFloatToFloat`
-pub fn unroll_lab_float_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: u32) -> usize {
+pub fn unroll_lab_float_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     if t_planar(i.input_format) != 0 {
         let s = stride as usize / pixel_size(i.input_format) as usize;
         w[0] = rd32f(a, 0) / 100.0;
@@ -818,7 +826,7 @@ pub fn unroll_lab_float_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: 
     }
 }
 /// `UnrollXYZDoubleToFloat`
-pub fn unroll_xyz_double_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: u32) -> usize {
+pub fn unroll_xyz_double_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     if t_planar(i.input_format) != 0 {
         let s = stride as usize / pixel_size(i.input_format) as usize;
         w[0] = (rd64f(a, 0) / MAX_ENC_XYZ) as f32;
@@ -833,7 +841,7 @@ pub fn unroll_xyz_double_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride:
     }
 }
 /// `UnrollXYZFloatToFloat`
-pub fn unroll_xyz_float_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: u32) -> usize {
+pub fn unroll_xyz_float_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], stride: u32) -> usize {
     if t_planar(i.input_format) != 0 {
         let s = stride as usize / pixel_size(i.input_format) as usize;
         w[0] = rd32f(a, 0) / MAX_ENC_XYZ as f32;
@@ -848,7 +856,7 @@ pub fn unroll_xyz_float_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], stride: 
     }
 }
 
-fn lab4_to_float(w: &mut [f32], lab4: [u16; 3]) {
+fn lab4_to_float(w: &mut [f32; crate::xform::MAX_CHANNELS], lab4: [u16; 3]) {
     let l = lab4[0] as f32 / 655.35;
     let a = (lab4[1] as f32 / 257.0) - 128.0;
     let b = (lab4[2] as f32 / 257.0) - 128.0;
@@ -857,7 +865,7 @@ fn lab4_to_float(w: &mut [f32], lab4: [u16; 3]) {
     w[2] = (b + 128.0) / 255.0;
 }
 
-pub fn unroll_lab_v2_8_to_float(_i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32) -> usize {
+pub fn unroll_lab_v2_8_to_float(_i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     lab4_to_float(
         w,
         [
@@ -868,7 +876,7 @@ pub fn unroll_lab_v2_8_to_float(_i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32)
     );
     3
 }
-pub fn unroll_alab_v2_8_to_float(_i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32) -> usize {
+pub fn unroll_alab_v2_8_to_float(_i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     lab4_to_float(
         w,
         [
@@ -879,7 +887,7 @@ pub fn unroll_alab_v2_8_to_float(_i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32
     );
     4
 }
-pub fn unroll_lab_v2_16_to_float(_i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32) -> usize {
+pub fn unroll_lab_v2_16_to_float(_i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     lab4_to_float(
         w,
         [
@@ -896,7 +904,7 @@ pub fn unroll_lab_v2_16_to_float(_i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32
 // ---------------------------------------------------------------------------
 
 /// `PackChunkyBytes`
-pub fn pack_chunky_bytes(i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack_chunky_bytes(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let do_swap = t_doswap(i.output_format) != 0;
     let reverse = t_flavor(i.output_format) != 0;
@@ -938,7 +946,7 @@ pub fn pack_chunky_bytes(i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
 }
 
 /// `PackChunkyWords`
-pub fn pack_chunky_words(i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack_chunky_words(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let swap_endian = t_endian16(i.output_format) != 0;
     let do_swap = t_doswap(i.output_format) != 0;
@@ -987,7 +995,7 @@ pub fn pack_chunky_words(i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
 }
 
 /// `PackPlanarBytes` — C returns output+1
-pub fn pack_planar_bytes(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_planar_bytes(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let do_swap = t_doswap(i.output_format) != 0;
     let reverse = t_flavor(i.output_format) != 0;
@@ -1017,7 +1025,7 @@ pub fn pack_planar_bytes(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -
 }
 
 /// `PackPlanarWords` — C returns output+sizeof(u16)
-pub fn pack_planar_words(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_planar_words(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let swap_endian = t_endian16(i.output_format) != 0;
     let do_swap = t_doswap(i.output_format) != 0;
@@ -1058,7 +1066,7 @@ pub fn pack_planar_words(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -
 
 macro_rules! pack8 {
     ($name:ident, [$($op:tt)*]) => {
-        pub fn $name(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+        pub fn $name(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
             let mut o = 0usize;
             $($op)*
             o
@@ -1070,7 +1078,7 @@ macro_rules! wr8 {
 }
 macro_rules! packw {
     ($name:ident, [$($op:tt)*]) => {
-        pub fn $name(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+        pub fn $name(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
             let mut o = 0usize;
             $($op)*
             o
@@ -1078,7 +1086,7 @@ macro_rules! packw {
     };
 }
 // specialized chunky packers (Pack* family)
-pub fn pack6_bytes(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack6_bytes(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[0]);
     o += 1;
@@ -1095,7 +1103,7 @@ pub fn pack6_bytes(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
     o + 0
 }
 
-pub fn pack6_bytes_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack6_bytes_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[5]);
     o += 1;
@@ -1112,7 +1120,7 @@ pub fn pack6_bytes_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack6_words(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack6_words(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
@@ -1135,7 +1143,7 @@ pub fn pack6_words(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
     o + 0
 }
 
-pub fn pack6_words_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack6_words_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[5] & 0xff) as u8;
     out[o + 1] = (w[5] >> 8) as u8;
@@ -1158,7 +1166,7 @@ pub fn pack6_words_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack4_bytes(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_bytes(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[0]);
     o += 1;
@@ -1171,7 +1179,7 @@ pub fn pack4_bytes(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
     o + 0
 }
 
-pub fn pack4_bytes_reverse(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_bytes_reverse(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = 0xff - f16to8(w[0]);
     o += 1;
@@ -1184,7 +1192,7 @@ pub fn pack4_bytes_reverse(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) ->
     o + 0
 }
 
-pub fn pack4_bytes_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_bytes_swap_first(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[3]);
     o += 1;
@@ -1197,7 +1205,7 @@ pub fn pack4_bytes_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32)
     o + 0
 }
 
-pub fn pack4_bytes_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_bytes_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[3]);
     o += 1;
@@ -1210,7 +1218,7 @@ pub fn pack4_bytes_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack4_bytes_swap_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_bytes_swap_swap_first(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[2]);
     o += 1;
@@ -1223,7 +1231,7 @@ pub fn pack4_bytes_swap_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s:
     o + 0
 }
 
-pub fn pack4_words(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_words(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
@@ -1240,7 +1248,7 @@ pub fn pack4_words(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
     o + 0
 }
 
-pub fn pack4_words_reverse(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_words_reverse(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     let v = 0xffffu16 - w[0];
     out[o] = (v & 0xff) as u8;
@@ -1261,7 +1269,7 @@ pub fn pack4_words_reverse(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) ->
     o + 0
 }
 
-pub fn pack4_words_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_words_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[3] & 0xff) as u8;
     out[o + 1] = (w[3] >> 8) as u8;
@@ -1278,7 +1286,7 @@ pub fn pack4_words_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack4_words_big_endian(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack4_words_big_endian(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[0] >> 8) as u8;
     out[o + 1] = (w[0] & 0xff) as u8;
@@ -1295,14 +1303,16 @@ pub fn pack4_words_big_endian(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32)
     o + 0
 }
 
-pub fn pack3_bytes(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_bytes(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
+    let out = &mut out[..3];
     out[0] = f16to8(w[0]);
     out[1] = f16to8(w[1]);
     out[2] = f16to8(w[2]);
     3
 }
 
-pub fn pack3_bytes_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_bytes_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
+    let out = &mut out[..3];
     let mut o = 0usize;
     out[o] = f16to8(w[2]);
     o += 1;
@@ -1313,7 +1323,8 @@ pub fn pack3_bytes_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack3_words(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_words(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
+    let out = &mut out[..6];
     let mut o = 0usize;
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
@@ -1327,7 +1338,8 @@ pub fn pack3_words(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
     o + 0
 }
 
-pub fn pack3_words_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_words_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
+    let out = &mut out[..6];
     let mut o = 0usize;
     out[o] = (w[2] & 0xff) as u8;
     out[o + 1] = (w[2] >> 8) as u8;
@@ -1341,7 +1353,8 @@ pub fn pack3_words_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack3_words_big_endian(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_words_big_endian(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
+    let out = &mut out[..6];
     let mut o = 0usize;
     out[o] = (w[0] >> 8) as u8;
     out[o + 1] = (w[0] & 0xff) as u8;
@@ -1355,7 +1368,7 @@ pub fn pack3_words_big_endian(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32)
     o + 0
 }
 
-pub fn pack3_bytes_and_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_bytes_and_skip1(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[0]);
     o += 1;
@@ -1369,7 +1382,7 @@ pub fn pack3_bytes_and_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) 
 
 pub fn pack3_bytes_and_skip1_swap_first(
     _i: &PackInfo,
-    w: &[u16],
+    w: &[u16; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
     _s: u32,
 ) -> usize {
@@ -1384,7 +1397,7 @@ pub fn pack3_bytes_and_skip1_swap_first(
     o + 0
 }
 
-pub fn pack3_bytes_and_skip1_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_bytes_and_skip1_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     o += 1;
     out[o] = f16to8(w[2]);
@@ -1398,7 +1411,7 @@ pub fn pack3_bytes_and_skip1_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: 
 
 pub fn pack3_bytes_and_skip1_swap_swap_first(
     _i: &PackInfo,
-    w: &[u16],
+    w: &[u16; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
     _s: u32,
 ) -> usize {
@@ -1413,7 +1426,7 @@ pub fn pack3_bytes_and_skip1_swap_swap_first(
     o + 0
 }
 
-pub fn pack3_words_and_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_words_and_skip1(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
@@ -1428,7 +1441,7 @@ pub fn pack3_words_and_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) 
     o + 0
 }
 
-pub fn pack3_words_and_skip1_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack3_words_and_skip1_swap(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     o += 2;
     out[o] = (w[2] & 0xff) as u8;
@@ -1445,7 +1458,7 @@ pub fn pack3_words_and_skip1_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: 
 
 pub fn pack3_words_and_skip1_swap_first(
     _i: &PackInfo,
-    w: &[u16],
+    w: &[u16; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
     _s: u32,
 ) -> usize {
@@ -1465,7 +1478,7 @@ pub fn pack3_words_and_skip1_swap_first(
 
 pub fn pack3_words_and_skip1_swap_swap_first(
     _i: &PackInfo,
-    w: &[u16],
+    w: &[u16; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
     _s: u32,
 ) -> usize {
@@ -1483,21 +1496,21 @@ pub fn pack3_words_and_skip1_swap_swap_first(
     o + 0
 }
 
-pub fn pack1_byte(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_byte(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[0]);
     o += 1;
     o + 0
 }
 
-pub fn pack1_byte_reversed(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_byte_reversed(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = 0xff - f16to8(w[0]);
     o += 1;
     o + 0
 }
 
-pub fn pack1_byte_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_byte_skip1(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = f16to8(w[0]);
     o += 1;
@@ -1505,7 +1518,7 @@ pub fn pack1_byte_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack1_byte_skip1_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_byte_skip1_swap_first(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     o += 1;
     out[o] = f16to8(w[0]);
@@ -1513,7 +1526,7 @@ pub fn pack1_byte_skip1_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s:
     o + 0
 }
 
-pub fn pack1_word(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_word(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
@@ -1521,7 +1534,7 @@ pub fn pack1_word(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
     o + 0
 }
 
-pub fn pack1_word_reversed(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_word_reversed(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     let v = 0xffffu16 - w[0];
     out[o] = (v & 0xff) as u8;
@@ -1530,7 +1543,7 @@ pub fn pack1_word_reversed(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) ->
     o + 0
 }
 
-pub fn pack1_word_big_endian(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_word_big_endian(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[0] >> 8) as u8;
     out[o + 1] = (w[0] & 0xff) as u8;
@@ -1538,7 +1551,7 @@ pub fn pack1_word_big_endian(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) 
     o + 0
 }
 
-pub fn pack1_word_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_word_skip1(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
@@ -1547,7 +1560,7 @@ pub fn pack1_word_skip1(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> us
     o + 0
 }
 
-pub fn pack1_word_skip1_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack1_word_skip1_swap_first(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let mut o = 0usize;
     o += 2;
     out[o] = (w[0] & 0xff) as u8;
@@ -1560,19 +1573,19 @@ pub fn pack1_word_skip1_swap_first(_i: &PackInfo, w: &[u16], out: &mut [u8], _s:
 // Lab v2 encode packers + Lab/XYZ/float/double from-16
 // ---------------------------------------------------------------------------
 
-pub fn pack_lab_v2_8(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack_lab_v2_8(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     out[0] = f16to8(fom_lab_v4_to_v2(w[0]));
     out[1] = f16to8(fom_lab_v4_to_v2(w[1]));
     out[2] = f16to8(fom_lab_v4_to_v2(w[2]));
     3
 }
-pub fn pack_alab_v2_8(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack_alab_v2_8(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     out[1] = f16to8(fom_lab_v4_to_v2(w[0]));
     out[2] = f16to8(fom_lab_v4_to_v2(w[1]));
     out[3] = f16to8(fom_lab_v4_to_v2(w[2]));
     4
 }
-pub fn pack_lab_v2_16(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack_lab_v2_16(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     for (c, &v) in w[..3].iter().enumerate() {
         let x = fom_lab_v4_to_v2(v);
         out[c * 2] = (x & 0xff) as u8;
@@ -1580,7 +1593,7 @@ pub fn pack_lab_v2_16(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usiz
     }
     6
 }
-pub fn pack_lab_double_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_lab_double_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let lab = crate::pcs::lab_encoded2float([w[0], w[1], w[2]]);
     if t_planar(i.output_format) != 0 {
         let s = stride as usize / pixel_size(i.output_format) as usize;
@@ -1595,7 +1608,7 @@ pub fn pack_lab_double_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u
         24 + t_extra(i.output_format) as usize * 8
     }
 }
-pub fn pack_lab_float_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_lab_float_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let lab = crate::pcs::lab_encoded2float([w[0], w[1], w[2]]);
     if t_planar(i.output_format) != 0 {
         let s = stride as usize / pixel_size(i.output_format) as usize;
@@ -1610,7 +1623,7 @@ pub fn pack_lab_float_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u3
         (3 + t_extra(i.output_format) as usize) * 4
     }
 }
-pub fn pack_xyz_double_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_xyz_double_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let xyz = crate::pcs::xyz_encoded2float([w[0], w[1], w[2]]);
     if t_planar(i.output_format) != 0 {
         let s = stride as usize / pixel_size(i.output_format) as usize;
@@ -1625,7 +1638,7 @@ pub fn pack_xyz_double_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u
         24 + t_extra(i.output_format) as usize * 8
     }
 }
-pub fn pack_xyz_float_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_xyz_float_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let xyz = crate::pcs::xyz_encoded2float([w[0], w[1], w[2]]);
     if t_planar(i.output_format) != 0 {
         let s = stride as usize / pixel_size(i.output_format) as usize;
@@ -1642,7 +1655,7 @@ pub fn pack_xyz_float_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u3
 }
 
 /// `PackDoubleFrom16` / `PackFloatFrom16` — generic numeric write
-fn pack_fd_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32, is_double: bool) -> usize {
+fn pack_fd_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32, is_double: bool) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let do_swap = t_doswap(i.output_format) != 0;
     let reverse = t_flavor(i.output_format) != 0;
@@ -1701,10 +1714,10 @@ fn pack_fd_from16(i: &PackInfo, w: &[u16], out: &mut [u8], stride: u32, is_doubl
     }
     if planar { esz } else { (n_chan + extra) * esz }
 }
-pub fn pack_double_from16(i: &PackInfo, w: &[u16], out: &mut [u8], s: u32) -> usize {
+pub fn pack_double_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], s: u32) -> usize {
     pack_fd_from16(i, w, out, s, true)
 }
-pub fn pack_float_from16(i: &PackInfo, w: &[u16], out: &mut [u8], s: u32) -> usize {
+pub fn pack_float_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], s: u32) -> usize {
     pack_fd_from16(i, w, out, s, false)
 }
 
@@ -1712,7 +1725,7 @@ pub fn pack_float_from16(i: &PackInfo, w: &[u16], out: &mut [u8], s: u32) -> usi
 // f32 → bytes/words/floats/doubles output
 // ---------------------------------------------------------------------------
 
-fn pack_fd_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride: u32, esz: usize) -> usize {
+fn pack_fd_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32, esz: usize) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let do_swap = t_doswap(i.output_format) != 0;
     let reverse = t_flavor(i.output_format) != 0;
@@ -1785,16 +1798,16 @@ fn pack_fd_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride: u32, esz:
     }
     if planar { esz } else { (n_chan + extra) * esz }
 }
-pub fn pack_bytes_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], s: u32) -> usize {
+pub fn pack_bytes_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], s: u32) -> usize {
     pack_fd_from_float(i, w, out, s, 1)
 }
-pub fn pack_words_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], s: u32) -> usize {
+pub fn pack_words_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], s: u32) -> usize {
     pack_fd_from_float(i, w, out, s, 2)
 }
-pub fn pack_floats_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], s: u32) -> usize {
+pub fn pack_floats_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], s: u32) -> usize {
     pack_fd_from_float(i, w, out, s, 4)
 }
-pub fn pack_doubles_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], s: u32) -> usize {
+pub fn pack_doubles_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], s: u32) -> usize {
     pack_fd_from_float(i, w, out, s, 8)
 }
 
@@ -1802,7 +1815,7 @@ pub fn pack_doubles_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], s: u32) 
 // Lab/XYZ float + LabV2 encode from f32
 // ---------------------------------------------------------------------------
 
-pub fn pack_lab_float_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_lab_float_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let l = w[0] * 100.0;
     let a = w[1] * 255.0 - 128.0;
     let b = w[2] * 255.0 - 128.0;
@@ -1819,7 +1832,7 @@ pub fn pack_lab_float_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride
         12 + t_extra(i.output_format) as usize * 4
     }
 }
-pub fn pack_lab_double_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_lab_double_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let l = w[0] as f64 * 100.0;
     let a = w[1] as f64 * 255.0 - 128.0;
     let b = w[2] as f64 * 255.0 - 128.0;
@@ -1836,7 +1849,7 @@ pub fn pack_lab_double_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], strid
         24 + t_extra(i.output_format) as usize * 8
     }
 }
-pub fn pack_xyz_float_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_xyz_float_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let (x, y, z) = (
         w[0] * MAX_ENC_XYZ as f32,
         w[1] * MAX_ENC_XYZ as f32,
@@ -1855,7 +1868,7 @@ pub fn pack_xyz_float_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride
         12 + t_extra(i.output_format) as usize * 4
     }
 }
-pub fn pack_xyz_double_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], stride: u32) -> usize {
+pub fn pack_xyz_double_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], stride: u32) -> usize {
     let (x, y, z) = (
         w[0] as f64 * MAX_ENC_XYZ,
         w[1] as f64 * MAX_ENC_XYZ,
@@ -1878,7 +1891,7 @@ pub fn pack_xyz_double_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], strid
 /// `PackEncodedBytesLabV2FromFloat` — f32 Lab → v2 encoded bytes
 pub fn pack_encoded_bytes_lab_v2_from_float(
     _i: &PackInfo,
-    w: &[f32],
+    w: &[f32; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
     _s: u32,
 ) -> usize {
@@ -1896,7 +1909,7 @@ pub fn pack_encoded_bytes_lab_v2_from_float(
 /// `PackEncodedWordsLabV2FromFloat`
 pub fn pack_encoded_words_lab_v2_from_float(
     _i: &PackInfo,
-    w: &[f32],
+    w: &[f32; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
     _s: u32,
 ) -> usize {
@@ -1918,7 +1931,7 @@ pub fn pack_encoded_words_lab_v2_from_float(
 // ---------------------------------------------------------------------------
 
 /// `UnrollHalfTo16` — generic half → u16 decoder
-pub fn unroll_half_to16(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize {
+pub fn unroll_half_to16(i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let do_swap = t_doswap(i.input_format) != 0;
     let reverse = t_flavor(i.input_format) != 0;
@@ -1949,7 +1962,7 @@ pub fn unroll_half_to16(i: &PackInfo, w: &mut [u16], a: &[u8], _s: u32) -> usize
 }
 
 /// `UnrollHalfToFloat`
-pub fn unroll_half_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32) -> usize {
+pub fn unroll_half_to_float(i: &PackInfo, w: &mut [f32; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let do_swap = t_doswap(i.input_format) != 0;
     let reverse = t_flavor(i.input_format) != 0;
@@ -1980,7 +1993,7 @@ pub fn unroll_half_to_float(i: &PackInfo, w: &mut [f32], a: &[u8], _s: u32) -> u
 }
 
 /// `PackHalfFrom16`
-pub fn pack_half_from16(i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
+pub fn pack_half_from16(i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let do_swap = t_doswap(i.output_format) != 0;
     let reverse = t_flavor(i.output_format) != 0;
@@ -2013,7 +2026,7 @@ pub fn pack_half_from16(i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usi
 }
 
 /// `PackHalfFromFloat`
-pub fn pack_half_from_float(i: &PackInfo, w: &[f32], out: &mut [u8], _s: u32) -> usize {
+pub fn pack_half_from_float(i: &PackInfo, w: &[f32; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
     let n_chan = t_channels(i.output_format) as usize;
     let do_swap = t_doswap(i.output_format) != 0;
     let reverse = t_flavor(i.output_format) != 0;

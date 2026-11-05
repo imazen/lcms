@@ -123,7 +123,9 @@ fn r_pack16(fmt_ty: u32, w: &[u16], out: &mut [u8], stride: u32) -> usize {
         output_format: fmt_ty,
         stride,
     };
-    f(&info, w, out, stride)
+    let mut w16 = [0u16; 16];
+    w16[..w.len()].copy_from_slice(w);
+    f(&info, &w16, out, stride)
 }
 
 #[test]

@@ -588,3 +588,29 @@ matching C's XFormSampler16 + prelin ramp) — correct but didn't fix
 this diff.
 
 PRIVATE LEDGER: ~/work/zen/lcms-C-BUGS.md (untracked).
+
+## State — perf: fused fast paths + formatter bounds-check removal
+
+- pack.rs: all Unpack16/Pack16/UnpackF32/PackF32 fn-pointer signatures
+  now take `w: &[T; MAX_CHANNELS]`/`&mut [T; MAX_CHANNELS]` (callers
+  always pass fixed arrays) — every w[i] bounds check eliminated.
+  a/out sub-slice prefixes (let a = &a[..N]; let out = &mut out[..N])
+  added to hot formatters + unroll macros (const-N computed from the
+  $idx list) — lets LLVM elide the per-element checks.
+- xform16: fused fast paths BEFORE the generic loop —
+  (a) OptData::Identity + identical non-planar input/output formats
+      → per-line copy_from_slice (byte-exact: unroll→copy→pack is a
+      provable round trip). sRGB→sRGB 8-bit now ~0.10x of C, 16-bit
+      ~0.17x (was 2.4-2.7x). Bug fixed mid-way: pixel byte count is
+      (t_channels + t_extra) * t_bytes, not pixel_size (bytes/channel).
+  (b) OptData::MatShaper + RGB8→RGB8 → inlined shaper1→mat→shaper2
+      eval (same tables/ops, no fn-ptr dispatch).
+- C reaches the same FastIdentity16 for sRGB→sRGB (identity mat removed
+  by PreOptimize → [curv,curv] → join_curves → all-linear → idn stage +
+  FLAGS_NOCACHE). Rust did the same already (OptData::Identity +
+  fast_identity16) — the gap was purely per-pixel plumbing.
+- perf_xform (1M px sRGB→sRGB): 8-bit 0.10x, 16-bit 0.17x of C.
+  Generic non-identity paths still ~2x (fn-ptr chain + slice plumbing)
+  — further fused paths or batching are future work.
+
+REMAINING: generic-path perf (~2x), residual coverage edges.
