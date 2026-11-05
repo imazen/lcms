@@ -61,3 +61,21 @@ fn monitor_rgb_to_srgb() {
     let r = run_rust(&path, TYPE_RGB_8, TYPE_RGB_8, 0);
     assert_eq!(c, r, "monitor→sRGB mismatch");
 }
+
+// test2.icc = CMYK/Lab-prtr (LUT-heavy like test1), test3 = RGB/Lab-spac v2.1,
+// test4/test5 = RGB/Lab-spac v4.2, crayons = RGB/XYZ-mntr v4
+#[test]
+fn more_profiles_to_srgb() {
+    for (name, in_fmt) in [
+        ("test2.icc", TYPE_CMYK_8),
+        ("test3.icc", TYPE_RGB_8),
+        ("test4.icc", TYPE_RGB_8),
+        ("test5.icc", TYPE_RGB_8),
+        ("crayons.icc", TYPE_RGB_8),
+    ] {
+        let path = format!("{TESTBED}/{name}");
+        let c = run_c(&path, in_fmt, TYPE_RGB_8, 0);
+        let r = run_rust(&path, in_fmt, TYPE_RGB_8, 0);
+        assert_eq!(c, r, "{name}→sRGB mismatch");
+    }
+}
