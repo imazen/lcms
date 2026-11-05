@@ -106,3 +106,15 @@ pub fn double_to_u8_fixed8(val: f64) -> u16 {
     let gamma_fixed32 = double_to_s15_fixed16(val);
     ((gamma_fixed32 >> 8) & 0xFFFF) as u16
 }
+
+/// `_cmsQuickSaturateByte`
+pub fn quick_saturate_byte(d: f64) -> u8 {
+    let d = d + 0.5;
+    if d <= 0.0 {
+        return 0;
+    }
+    if d >= 255.0 {
+        return 255;
+    }
+    quick_floor(d) as u8
+}

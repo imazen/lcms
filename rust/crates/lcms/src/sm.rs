@@ -10,6 +10,10 @@ pub fn detect_black_point(_icc: &mut IccProfile, _intent: u32, _flags: u32) -> O
 }
 
 /// `cmsDetectDestinationBlackPoint`
-pub fn detect_destination_black_point(_icc: &mut IccProfile, _intent: u32, _flags: u32) -> Option<CieXyz> {
+pub fn detect_destination_black_point(
+    _icc: &mut IccProfile,
+    _intent: u32,
+    _flags: u32,
+) -> Option<CieXyz> {
     None
 }

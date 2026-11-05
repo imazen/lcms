@@ -542,6 +542,25 @@ unsafe extern "C" {
     pub fn cref_quick_saturate_word(d: F64) -> U16;
     pub fn cref_to_fixed_domain(a: i32) -> S15Fixed16;
     pub fn cref_from_fixed_domain(a: S15Fixed16) -> i32;
+    // --- cmspack parity ---
+    pub fn orc_call_fmt16(
+        fmt: *mut c_void,
+        info: *const c_void,
+        w: *mut u16,
+        buf: *mut u8,
+        stride: u32,
+    ) -> *mut u8;
+    pub fn orc_call_fmtfl(
+        fmt: *mut c_void,
+        info: *const c_void,
+        w: *mut f32,
+        buf: *mut u8,
+        stride: u32,
+    ) -> *mut u8;
+    pub fn orc_get_input_fmt16(ty: u32) -> *mut c_void;
+    pub fn orc_get_input_fmtfl(ty: u32) -> *mut c_void;
+    pub fn orc_get_output_fmt16(ty: u32) -> *mut c_void;
+    pub fn orc_get_output_fmtfl(ty: u32) -> *mut c_void;
 }
 
 /// cmsGetEncodedCMMversion sanity: returns LCMS_VERSION (2200).

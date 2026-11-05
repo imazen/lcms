@@ -39,10 +39,25 @@ fn main() {
 
     // Rebuild only when the submodule HEAD (or this script) changes.
     let submodule_head = repo_root.join(".git/modules/reference/lcms2/HEAD");
-    let mut stamp_key = String::from("lcms-cref-v1:");
+    let mut stamp_key = String::from("lcms-cref-v2:");
     if submodule_head.exists() {
         println!("cargo:rerun-if-changed={}", submodule_head.display());
         stamp_key.push_str(&fs::read_to_string(&submodule_head).unwrap_or_default());
+    }
+    // Key the stamp on shim contents too — they change far more often
+    // than the pinned submodule
+    let shims_key_dir = manifest.join("shims");
+    if shims_key_dir.exists() {
+        let mut shim_files: Vec<PathBuf> = fs::read_dir(&shims_key_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "c").unwrap_or(false))
+            .collect();
+        shim_files.sort();
+        for f in &shim_files {
+            stamp_key.push_str(&fs::read_to_string(f).unwrap_or_default());
+        }
     }
     if fs::read_to_string(&stamp_path).unwrap_or_default() == stamp_key
         && out_dir.join("liblcms2cref.a").exists()

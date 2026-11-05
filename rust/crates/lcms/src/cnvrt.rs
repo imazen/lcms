@@ -3,7 +3,7 @@
 
 use crate::context::Context;
 use crate::io1;
-use crate::lut::{pipeline_alloc, stage_alloc_matrix, Pipeline, StageLoc};
+use crate::lut::{Pipeline, StageLoc, pipeline_alloc, stage_alloc_matrix};
 use crate::profile::{self, IccProfile};
 use crate::signatures::colorspace as cs;
 use crate::signatures::profileclass as pc;
@@ -49,10 +49,16 @@ fn chad2temp(chad: &Mat3) -> f64 {
         return -1.0;
     }
     let d50 = d50_xyz();
-    let s = Vec3 { n: [d50.X, d50.Y, d50.Z] };
+    let s = Vec3 {
+        n: [d50.X, d50.Y, d50.Z],
+    };
     let mut d = Vec3::default();
     crate::mtrx::mat3_eval(&mut d, &m2, &s);
-    let dest = CieXyz { X: d.n[0], Y: d.n[1], Z: d.n[2] };
+    let dest = CieXyz {
+        X: d.n[0],
+        Y: d.n[1],
+        Z: d.n[2],
+    };
     let ch = crate::pcs::xyz2xyy(&dest);
     temp_from_white_point(&ch).unwrap_or(-1.0)
 }
@@ -75,13 +81,25 @@ fn compute_absolute_intent(
 ) -> bool {
     let mut scale = Mat3::default();
     if adaptation_state == 1.0 {
-        m.v[0] = Vec3 { n: [wp_in.X / wp_out.X, 0.0, 0.0] };
-        m.v[1] = Vec3 { n: [0.0, wp_in.Y / wp_out.Y, 0.0] };
-        m.v[2] = Vec3 { n: [0.0, 0.0, wp_in.Z / wp_out.Z] };
+        m.v[0] = Vec3 {
+            n: [wp_in.X / wp_out.X, 0.0, 0.0],
+        };
+        m.v[1] = Vec3 {
+            n: [0.0, wp_in.Y / wp_out.Y, 0.0],
+        };
+        m.v[2] = Vec3 {
+            n: [0.0, 0.0, wp_in.Z / wp_out.Z],
+        };
     } else {
-        scale.v[0] = Vec3 { n: [wp_in.X / wp_out.X, 0.0, 0.0] };
-        scale.v[1] = Vec3 { n: [0.0, wp_in.Y / wp_out.Y, 0.0] };
-        scale.v[2] = Vec3 { n: [0.0, 0.0, wp_in.Z / wp_out.Z] };
+        scale.v[0] = Vec3 {
+            n: [wp_in.X / wp_out.X, 0.0, 0.0],
+        };
+        scale.v[1] = Vec3 {
+            n: [0.0, wp_in.Y / wp_out.Y, 0.0],
+        };
+        scale.v[2] = Vec3 {
+            n: [0.0, 0.0, wp_in.Z / wp_out.Z],
+        };
         if adaptation_state == 0.0 {
             let mut m2 = Mat3::default();
             crate::mtrx::mat3_per(&mut m2, chad_out, &scale);
@@ -159,7 +177,8 @@ fn compute_conversion(
         let Some(bp_in) = crate::sm::detect_black_point(before[i - 1].as_mut(), intent, 0) else {
             return false;
         };
-        let Some(bp_out) = crate::sm::detect_destination_black_point(after[0].as_mut(), intent, 0) else {
+        let Some(bp_out) = crate::sm::detect_destination_black_point(after[0].as_mut(), intent, 0)
+        else {
             return false;
         };
         if bp_in.X != bp_out.X || bp_in.Y != bp_out.Y || bp_in.Z != bp_out.Z {
@@ -173,7 +192,14 @@ fn compute_conversion(
 }
 
 /// `AddConversion` — insert the conversion stages between two PCSs
-fn add_conversion(ctx: Option<&Context>, result: &mut Pipeline, in_pcs: u32, out_pcs: u32, m: &Mat3, off: &Vec3) -> bool {
+fn add_conversion(
+    ctx: Option<&Context>,
+    result: &mut Pipeline,
+    in_pcs: u32,
+    out_pcs: u32,
+    m: &Mat3,
+    off: &Vec3,
+) -> bool {
     let mut m_flat = [0.0f64; 9];
     let mut o_flat = [0.0f64; 3];
     for r in 0..3 {
@@ -297,7 +323,11 @@ fn default_icc_intents(
         };
         color_space_out = co;
         if !color_space_is_compatible(color_space_in, current_color_space) {
-            crate::err::signal_error(ctx, crate::types::ERROR_COLORSPACE_CHECK, "ColorSpace mismatch");
+            crate::err::signal_error(
+                ctx,
+                crate::types::ERROR_COLORSPACE_CHECK,
+                "ColorSpace mismatch",
+            );
             return None;
         }
 
@@ -310,14 +340,29 @@ fn default_icc_intents(
                 return None;
             }
             if class_sig == pc::SigAbstractClass && i > 0 {
-                if !compute_conversion(i, profiles, intent, bpc[i], adaptation_states[i], &mut m, &mut off) {
+                if !compute_conversion(
+                    i,
+                    profiles,
+                    intent,
+                    bpc[i],
+                    adaptation_states[i],
+                    &mut m,
+                    &mut off,
+                ) {
                     return None;
                 }
             } else {
                 crate::mtrx::mat3_identity(&mut m);
                 off = Vec3 { n: [0.0, 0.0, 0.0] };
             }
-            if !add_conversion(ctx, &mut result, current_color_space, color_space_in, &m, &off) {
+            if !add_conversion(
+                ctx,
+                &mut result,
+                current_color_space,
+                color_space_in,
+                &m,
+                &off,
+            ) {
                 return None;
             }
         } else {
@@ -331,10 +376,25 @@ fn default_icc_intents(
                 if lut.is_none() {
                     return None;
                 }
-                if !compute_conversion(i, profiles, intent, bpc[i], adaptation_states[i], &mut m, &mut off) {
+                if !compute_conversion(
+                    i,
+                    profiles,
+                    intent,
+                    bpc[i],
+                    adaptation_states[i],
+                    &mut m,
+                    &mut off,
+                ) {
                     return None;
                 }
-                if !add_conversion(ctx, &mut result, current_color_space, color_space_in, &m, &off) {
+                if !add_conversion(
+                    ctx,
+                    &mut result,
+                    current_color_space,
+                    color_space_in,
+                    &m,
+                    &off,
+                ) {
                     return None;
                 }
             }
@@ -369,7 +429,11 @@ pub fn link_profiles(
 ) -> Option<Pipeline> {
     let n = profiles.len();
     if n == 0 || n > 255 {
-        crate::err::signal_error(ctx.as_ref(), crate::types::ERROR_RANGE, "Couldn't link profiles");
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_RANGE,
+            "Couldn't link profiles",
+        );
         return None;
     }
     for i in 0..n {
@@ -386,15 +450,32 @@ pub fn link_profiles(
     match intents[0] {
         INTENT_PRESERVE_K_ONLY_PERCEPTUAL
         | INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC
-        | INTENT_PRESERVE_K_ONLY_SATURATION => {
-            black_preserving_k_only_intents(ctx.as_ref(), profiles, intents, bpc, adaptation_states, dw_flags)
-        }
+        | INTENT_PRESERVE_K_ONLY_SATURATION => black_preserving_k_only_intents(
+            ctx.as_ref(),
+            profiles,
+            intents,
+            bpc,
+            adaptation_states,
+            dw_flags,
+        ),
         INTENT_PRESERVE_K_PLANE_PERCEPTUAL
         | INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC
-        | INTENT_PRESERVE_K_PLANE_SATURATION => {
-            black_preserving_k_plane_intents(ctx.as_ref(), profiles, intents, bpc, adaptation_states, dw_flags)
-        }
-        _ => default_icc_intents(ctx.as_ref(), profiles, intents, bpc, adaptation_states, dw_flags),
+        | INTENT_PRESERVE_K_PLANE_SATURATION => black_preserving_k_plane_intents(
+            ctx.as_ref(),
+            profiles,
+            intents,
+            bpc,
+            adaptation_states,
+            dw_flags,
+        ),
+        _ => default_icc_intents(
+            ctx.as_ref(),
+            profiles,
+            intents,
+            bpc,
+            adaptation_states,
+            dw_flags,
+        ),
     }
 }
 
@@ -409,7 +490,11 @@ fn black_preserving_k_only_intents(
 ) -> Option<Pipeline> {
     // TODO(cmscnvrt): BlackPreservingKOnlyIntents — needs cmsDetectTAC +
     // precalculated white/black curves over the transform engine
-    crate::err::signal_error(_ctx, crate::types::ERROR_UNKNOWN_EXTENSION, "K-only intent not yet ported");
+    crate::err::signal_error(
+        _ctx,
+        crate::types::ERROR_UNKNOWN_EXTENSION,
+        "K-only intent not yet ported",
+    );
     None
 }
 
@@ -421,6 +506,10 @@ fn black_preserving_k_plane_intents(
     _adaptation_states: &[f64],
     _dw_flags: u32,
 ) -> Option<Pipeline> {
-    crate::err::signal_error(_ctx, crate::types::ERROR_UNKNOWN_EXTENSION, "K-plane intent not yet ported");
+    crate::err::signal_error(
+        _ctx,
+        crate::types::ERROR_UNKNOWN_EXTENSION,
+        "K-plane intent not yet ported",
+    );
     None
 }
