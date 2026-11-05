@@ -230,3 +230,40 @@ pub const ERROR_NOT_SUITABLE: i32 = 13;
 
 /// LCMS_VERSION
 pub const LCMS_VERSION: u32 = 2200;
+
+/// `cmsJCh` — CIECAM02 JCh correlates.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[repr(C)]
+pub struct JCh {
+    #[allow(non_snake_case)]
+    pub J: f64,
+    #[allow(non_snake_case)]
+    pub C: f64,
+    pub h: f64,
+}
+
+/// `AVG_SURROUND`
+pub const AVG_SURROUND: u32 = 1;
+/// `DIM_SURROUND`
+pub const DIM_SURROUND: u32 = 2;
+/// `DARK_SURROUND`
+pub const DARK_SURROUND: u32 = 3;
+/// `CUTSHEET_SURROUND`
+pub const CUTSHEET_SURROUND: u32 = 4;
+/// `D_CALCULATE`
+pub const D_CALCULATE: f64 = -1.0;
+
+/// `cmsViewingConditions`
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[repr(C)]
+pub struct ViewingConditions {
+    #[allow(non_snake_case)]
+    pub white_point: CieXyz,
+    #[allow(non_snake_case)]
+    pub Yb: f64,
+    #[allow(non_snake_case)]
+    pub La: f64,
+    pub surround: u32,
+    #[allow(non_snake_case)]
+    pub D_value: f64,
+}

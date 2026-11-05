@@ -90,6 +90,26 @@ pub struct ToneCurve {
     _private: [u8; 0],
 }
 
+/// `cmsJCh`
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct JCh {
+    pub j: F64,
+    pub c_: F64,
+    pub h: F64,
+}
+
+/// `cmsViewingConditions`
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ViewingConditions {
+    pub white_point: CieXyz,
+    pub yb: F64,
+    pub la: F64,
+    pub surround: U32,
+    pub d_value: F64,
+}
+
 /// `cmsCurveSegment` (lcms2.h)
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -259,6 +279,12 @@ unsafe extern "C" {
 
     // ---- cmserr.c / cmsplugin.c misc ----
     pub fn cmsGetHeaderRenderingIntent(h_profile: HProfile) -> U32;
+
+    // ---- cmscam02.c ----
+    pub fn cmsCIECAM02Init(context_id: Context, vc: *const ViewingConditions) -> Handle;
+    pub fn cmsCIECAM02Done(model: Handle);
+    pub fn cmsCIECAM02Forward(model: Handle, in_: *const CieXyz, out: *mut JCh);
+    pub fn cmsCIECAM02Reverse(model: Handle, in_: *const JCh, out: *mut CieXyz);
 
     // ---- cmslut.c ----
     pub fn cmsStageAllocIdentity(context_id: Context, n_channels: U32) -> Handle;

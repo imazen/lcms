@@ -12,6 +12,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod cam02;
 pub mod context;
 pub mod err;
 pub mod fixed;
