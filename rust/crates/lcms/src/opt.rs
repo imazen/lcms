@@ -343,7 +343,7 @@ fn optimize_by_joining_curves(
     let mut out_float = [0f32; 16];
     for i in 0..PRELINEARIZATION_POINTS as usize {
         for j in 0..n_in as usize {
-            in_float[j] = i as f32 / (PRELINEARIZATION_POINTS - 1) as f32;
+            in_float[j] = (i as f64 / (PRELINEARIZATION_POINTS - 1) as f64) as f32;
         }
         lut.eval_float(&in_float[..n_in as usize], &mut out_float);
         for j in 0..n_in as usize {
@@ -1152,7 +1152,7 @@ fn optimize_by_computing_linearization(
     let mut in_f = [0f32; 16];
     let mut out_f = [0f32; 16];
     for i in 0..PRELINEARIZATION_POINTS as usize {
-        let v = i as f32 / (PRELINEARIZATION_POINTS - 1) as f32;
+        let v = (i as f64 / (PRELINEARIZATION_POINTS - 1) as f64) as f32;
         for t in 0..ni {
             in_f[t] = v;
         }
@@ -1227,7 +1227,7 @@ fn optimize_by_computing_linearization(
             let mut in_f = [0f32; 16];
             let mut out_f = [0f32; 16];
             for i in 0..ni {
-                in_f[i] = input[i] as f32 / 65535.0;
+                in_f[i] = (input[i] as f64 / 65535.0) as f32;
             }
             lut_plus_curves.eval_float(&in_f[..ni], &mut out_f);
             for i in 0..no {
@@ -1392,7 +1392,7 @@ fn optimize_by_resampling(
             let mut in_f = [0f32; 16];
             let mut out_f = [0f32; 16];
             for i in 0..ni {
-                in_f[i] = input[i] as f32 / 65535.0;
+                in_f[i] = (input[i] as f64 / 65535.0) as f32;
             }
             orig.eval_float(&in_f[..ni], &mut out_f);
             for i in 0..no {

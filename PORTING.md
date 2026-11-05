@@ -542,3 +542,45 @@ Real bugs fixed this session:
 OPEN: srgb_crd (Lab→sRGB devicelink FORCE_CLUT resample) has ~167
 ±1-LSB CLUT-word divergences — bisect pending. Test ignored meanwhile.
 REMAINING: perf parity (~2.4-3x structural), that CLUT bisect.
+
+## srgb_crd ±1-LSB bisect — root cause FOUND: dup_profile precision loss
+
+PROOF CHAIN (all verified):
+- C resampled tab16 (/tmp/c_resample2.c, _cmsOptimizePipeline FORCE_CLUT)
+  vs Rust replication (t.lut.clone + optimize_pipeline) — 0 diffs.
+- Emitted CRD stream: 175 byte diffs, each w2b(tab)±1 — C emits
+  w2b(tab), Rust emits different.
+- PS2DBG probe of output_value_sampler: the REAL write_output_lut
+  path's CLUT has e.g. out[1]=0x29e2 at node (0,5,10) where C and my
+  replication both have 0x29e1. So the real path's resampled TABLE
+  differs ±1 — not the emission.
+- ROOT CAUSE: ps2::dup_profile() = save_profile_to_mem +
+  open_profile_from_mem. Round-tripping through ICC serialization
+  quantizes float tags (XYZ colorants→s15Fixed16, etc). The transform
+  then evals a slightly different pipeline → ±1 CLUT entries.
+- C passes the SAME cmsHPROFILE (borrowed, full precision).
+- FIX NEEDED: create_extended_transform/link_profiles must accept
+  profile REFERENCES, not owned boxes. Plan: make
+  xform::create_extended_transform generic over
+  P: DerefMut<Target=IccProfile> (callers pass &mut [Box<IccProfile>]
+  or &mut [&mut IccProfile]), cascade to cnvrt::link_profiles +
+  get_xform_color_spaces + io1 readers. Then ps2 dup sites pass
+  &mut icc directly — no serialization.
+- Alternative (worse): IccProfile Clone impl — fails for lazily-loaded
+  tags when io=None.
+- Affected ps2 fns: write_input_lut, write_output_lut,
+  write_named_color_csa, write_named_color_crd, extract_gray2y —
+  ALL use dup_profile. Same pattern may exist in cnvrt K-intents +
+  sm::detect_black_point roundtrips (which PASSED so far — check if
+  they also need the reference fix for exactness).
+
+DEBUG ARTIFACTS: /tmp/c_resample2.c (C side bisect program),
+/tmp/psdiff (rust bisect), /tmp/c_tab16.bin /tmp/r_tab16.bin,
+/tmp/c_crd.txt /tmp/r_crd.txt, /tmp/c_named*.c.
+Also: ps2.rs has a TEMPORARY eprintln in output_value_sampler gated by
+env PS2DBG — remove before landing (or keep? it's harmless).
+Also: opt.rs got 4 f32-div fixes (input[i]/65535 now double-then-cast,
+matching C's XFormSampler16 + prelin ramp) — correct but didn't fix
+this diff.
+
+PRIVATE LEDGER: ~/work/zen/lcms-C-BUGS.md (untracked).
