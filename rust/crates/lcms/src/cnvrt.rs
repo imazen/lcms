@@ -172,15 +172,21 @@ fn compute_conversion(
             return false;
         }
     } else if bpc {
-        // black point detection lives in cmssamp — needs the transform engine
+        // C ignores the detectors' return values — a failure leaves the
+        // point at {0,0,0} and only the XYZ comparison runs
         let (before, after) = profiles.split_at_mut(i);
-        let Some(bp_in) = crate::sm::detect_black_point(before[i - 1].as_mut(), intent, 0) else {
-            return false;
-        };
-        let Some(bp_out) = crate::sm::detect_destination_black_point(after[0].as_mut(), intent, 0)
-        else {
-            return false;
-        };
+        let bp_in =
+            crate::sm::detect_black_point(before[i - 1].as_mut(), intent, 0).unwrap_or(CieXyz {
+                X: 0.0,
+                Y: 0.0,
+                Z: 0.0,
+            });
+        let bp_out = crate::sm::detect_destination_black_point(after[0].as_mut(), intent, 0)
+            .unwrap_or(CieXyz {
+                X: 0.0,
+                Y: 0.0,
+                Z: 0.0,
+            });
         if bp_in.X != bp_out.X || bp_in.Y != bp_out.Y || bp_in.Z != bp_out.Z {
             compute_black_point_compensation(&bp_in, &bp_out, m, off);
         }
@@ -292,6 +298,7 @@ fn color_space_is_compatible(a: u32, b: u32) -> bool {
 
 /// `DefaultICCintents` — link n profiles into one pipeline
 fn default_icc_intents(
+    /* traced */
     ctx: Option<&Context>,
     profiles: &mut [Box<IccProfile>],
     intents: &[u32],
@@ -420,6 +427,17 @@ fn default_icc_intents(
 
 /// `_cmsLinkProfiles` — intent lookup then link
 pub fn link_profiles(
+    ctx: Option<Context>,
+    profiles: &mut [Box<IccProfile>],
+    intents: &[u32],
+    bpc: &mut [bool],
+    adaptation_states: &[f64],
+    dw_flags: u32,
+) -> Option<Pipeline> {
+    link_profiles_inner(ctx, profiles, intents, bpc, adaptation_states, dw_flags)
+}
+
+fn link_profiles_inner(
     ctx: Option<Context>,
     profiles: &mut [Box<IccProfile>],
     intents: &[u32],
