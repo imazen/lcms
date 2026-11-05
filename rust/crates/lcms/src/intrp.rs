@@ -676,13 +676,14 @@ fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
         if ry >= rz {
             y1 += x1;
             z1 += y1;
+            let cell = &lut_table
+                [base..base + p.n_outputs as usize + (x1.max(y1).max(z1)) as usize];
             while total_out > 0 {
                 total_out -= 1;
-                let c1 = tbl_get16(lut_table, li + x1 as usize);
-                let mut c2 = tbl_get16(lut_table, li + y1 as usize);
-                let mut c3 = tbl_get16(lut_table, li + z1 as usize);
-                let c0 = lut_table[li] as i32;
-                li += 1;
+                let c1 = cell[oi + x1 as usize] as i32;
+                let mut c2 = cell[oi + y1 as usize] as i32;
+                let mut c3 = cell[oi + z1 as usize] as i32;
+                let c0 = cell[oi] as i32;
                 c3 -= c2;
                 c2 -= c1;
                 let c1 = c1 - c0;
@@ -697,13 +698,14 @@ fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
         } else if rz >= rx {
             x1 += z1;
             y1 += x1;
+            let cell = &lut_table
+                [base..base + p.n_outputs as usize + (x1.max(y1).max(z1)) as usize];
             while total_out > 0 {
                 total_out -= 1;
-                let mut c1 = tbl_get16(lut_table, li + x1 as usize);
-                let mut c2 = tbl_get16(lut_table, li + y1 as usize);
-                let mut c3 = tbl_get16(lut_table, li + z1 as usize);
-                let c0 = lut_table[li] as i32;
-                li += 1;
+                let mut c1 = cell[oi + x1 as usize] as i32;
+                let mut c2 = cell[oi + y1 as usize] as i32;
+                let mut c3 = cell[oi + z1 as usize] as i32;
+                let c0 = cell[oi] as i32;
                 c2 -= c1;
                 c1 -= c3;
                 c3 -= c0;
@@ -718,13 +720,14 @@ fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
         } else {
             z1 += x1;
             y1 += z1;
+            let cell = &lut_table
+                [base..base + p.n_outputs as usize + (x1.max(y1).max(z1)) as usize];
             while total_out > 0 {
                 total_out -= 1;
-                let c1 = tbl_get16(lut_table, li + x1 as usize);
-                let mut c2 = tbl_get16(lut_table, li + y1 as usize);
-                let mut c3 = tbl_get16(lut_table, li + z1 as usize);
-                let c0 = lut_table[li] as i32;
-                li += 1;
+                let c1 = cell[oi + x1 as usize] as i32;
+                let mut c2 = cell[oi + y1 as usize] as i32;
+                let mut c3 = cell[oi + z1 as usize] as i32;
+                let c0 = cell[oi] as i32;
                 c2 -= c3;
                 c3 -= c1;
                 let c1 = c1 - c0;
@@ -741,13 +744,14 @@ fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
         if rx >= rz {
             x1 += y1;
             z1 += x1;
+            let cell = &lut_table
+                [base..base + p.n_outputs as usize + (x1.max(y1).max(z1)) as usize];
             while total_out > 0 {
                 total_out -= 1;
-                let mut c1 = tbl_get16(lut_table, li + x1 as usize);
-                let mut c2 = tbl_get16(lut_table, li + y1 as usize);
-                let mut c3 = tbl_get16(lut_table, li + z1 as usize);
-                let c0 = lut_table[li] as i32;
-                li += 1;
+                let mut c1 = cell[oi + x1 as usize] as i32;
+                let mut c2 = cell[oi + y1 as usize] as i32;
+                let mut c3 = cell[oi + z1 as usize] as i32;
+                let c0 = cell[oi] as i32;
                 c3 -= c1;
                 c1 -= c2;
                 c2 -= c0;
@@ -762,13 +766,14 @@ fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
         } else if ry >= rz {
             z1 += y1;
             x1 += z1;
+            let cell = &lut_table
+                [base..base + p.n_outputs as usize + (x1.max(y1).max(z1)) as usize];
             while total_out > 0 {
                 total_out -= 1;
-                let mut c1 = tbl_get16(lut_table, li + x1 as usize);
-                let c2 = tbl_get16(lut_table, li + y1 as usize);
-                let mut c3 = tbl_get16(lut_table, li + z1 as usize);
-                let c0 = lut_table[li] as i32;
-                li += 1;
+                let mut c1 = cell[oi + x1 as usize] as i32;
+                let c2 = cell[oi + y1 as usize] as i32;
+                let mut c3 = cell[oi + z1 as usize] as i32;
+                let c0 = cell[oi] as i32;
                 c1 -= c3;
                 c3 -= c2;
                 let c2 = c2 - c0;
@@ -783,13 +788,14 @@ fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
         } else {
             y1 += z1;
             x1 += y1;
+            let cell = &lut_table
+                [base..base + p.n_outputs as usize + (x1.max(y1).max(z1)) as usize];
             while total_out > 0 {
                 total_out -= 1;
-                let mut c1 = tbl_get16(lut_table, li + x1 as usize);
-                let mut c2 = tbl_get16(lut_table, li + y1 as usize);
-                let mut c3 = tbl_get16(lut_table, li + z1 as usize);
-                let c0 = lut_table[li] as i32;
-                li += 1;
+                let mut c1 = cell[oi + x1 as usize] as i32;
+                let mut c2 = cell[oi + y1 as usize] as i32;
+                let mut c3 = cell[oi + z1 as usize] as i32;
+                let c0 = cell[oi] as i32;
                 c1 -= c2;
                 c2 -= c3;
                 c3 -= c0;
@@ -874,8 +880,14 @@ fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) {
         n_outputs: usize,
         out: &mut [u16],
     ) {
+        // One bounded slice: every corner index i+j+k ≤ x1+y1+z1 (each
+        // coord ≤ its far corner), so `.min` is a semantic no-op that lets
+        // LLVM elide the per-node bounds checks.
+        let max_off = x1.wrapping_add(y1).wrapping_add(z1);
+        let cell =
+            &lut_table[base as usize..(base + max_off + n_outputs as i32) as usize];
         let dens = |i: i32, j: i32, k: i32, out_chan: usize| {
-            tbl_get16(lut_table, (base + i + j + k) as usize + out_chan)
+            cell[((i + j + k).min(max_off)) as usize + out_chan] as i32
         };
         for out_chan in 0..n_outputs {
             let c0 = dens(x0i, y0i, z0i, out_chan);
