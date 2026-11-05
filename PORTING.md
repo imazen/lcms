@@ -194,3 +194,24 @@ Remaining modules: cmssamp.c residual (cmsDesaturateLab, gamut
 checks), cmsalpha.c, cmscgats.c, cmsps2.c, cmssm.c GBD API,
 cmserr/cmsplugin residuals. cmsio0/io1/lut/gamma/pcs/wtpnt/intrp/
 md5/cam02/half/named/tagtypes/virt/pack/opt/xform/cnvrt/sm DONE.
+
+## State @ 38165e2 (cmssm + cmsalpha done)
+
+cmssm.c → gbd.rs: 16x16 spherical-sector gamut boundary descriptor
+(ToSpherical/ToCartesian/QuantizeToSector/ClosestLineToLine/Spiral/
+InterpolateMissingSector). cmsGBDAlloc/Free/AddPoint/CheckPoint/Compute.
+
+cmsalpha.c → alpha.rs: the 6x6 FormattersAlpha matrix (8/16/16SE/HLF/
+FLT/DBL conversions), ComputeIncrementsForChunky/Planar, the real
+_cmsHandleExtraChannels (xform delegates to it; Transform gains
+dw_flags for the COPY_ALPHA check).
+
+DONE end-to-end: cmsio0 io1 lut gamma pcs wtpnt intrp md5 cam02 half
+named tagtypes virt pack opt xform cnvrt sm gbd alpha. The full
+profile->transform->eval path is byte-identical on sRGB->sRGB.
+
+NEXT: _cmsCreateGamutCheckPipeline (cmsgmt.c:287 — needs GAMUTCHAIN
+transforms + GamutSampler + cmsSliceSpace16; gates FLAGS_GAMUTCHECK in
+xform), cmsDesaturateLab (cmsgmt.c:515), cmscgats.c (3339 lines —
+IT8 file format, biggest remaining module), cmsps2.c (1635 lines —
+PostScript CSA/CRD), then parity expansion + perf.
