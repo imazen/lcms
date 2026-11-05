@@ -127,7 +127,12 @@ fn srgb_to_xyz() {
         let t = c::cmsCreateTransform(srgb, TYPE_RGB_8, xyz, TYPE_XYZ_DBL, 0, 0);
         assert!(!t.is_null(), "C sRGB→XYZ failed");
         let inp = vec![0u8; 85 * 3];
-        c::cmsDoTransform(t, inp.as_ptr() as *const _, c_out.as_mut_ptr() as *mut _, 85);
+        c::cmsDoTransform(
+            t,
+            inp.as_ptr() as *const _,
+            c_out.as_mut_ptr() as *mut _,
+            85,
+        );
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(xyz);
     }
@@ -139,8 +144,18 @@ fn srgb_to_xyz() {
     let intents = [0u32, 0];
     let adapt = [1.0f64, 1.0];
     let mut t = xform::create_extended_transform(
-        None, &mut profs, &mut bpc, &intents, &adapt, None, 0, TYPE_RGB_8, TYPE_XYZ_DBL, 0,
-    ).expect("rust sRGB→XYZ failed");
+        None,
+        &mut profs,
+        &mut bpc,
+        &intents,
+        &adapt,
+        None,
+        0,
+        TYPE_RGB_8,
+        TYPE_XYZ_DBL,
+        0,
+    )
+    .expect("rust sRGB→XYZ failed");
     let inp = vec![0u8; 85 * 3];
     t.do_transform(&inp, &mut rust_out, 85);
     assert_eq!(c_out, rust_out, "sRGB→XYZ mismatch");
@@ -156,7 +171,12 @@ fn lab2_to_srgb() {
         let t = c::cmsCreateTransform(lab, TYPE_LAB_8, srgb, TYPE_RGB_8, 0, 0);
         assert!(!t.is_null(), "C Lab2→sRGB failed");
         let inp = vec![0u8; 85 * 3];
-        c::cmsDoTransform(t, inp.as_ptr() as *const _, c_out.as_mut_ptr() as *mut _, 85);
+        c::cmsDoTransform(
+            t,
+            inp.as_ptr() as *const _,
+            c_out.as_mut_ptr() as *mut _,
+            85,
+        );
         c::cmsCloseProfile(lab);
         c::cmsCloseProfile(srgb);
     }
@@ -169,7 +189,8 @@ fn lab2_to_srgb() {
     let adapt = [1.0f64, 1.0];
     let mut t = xform::create_extended_transform(
         None, &mut profs, &mut bpc, &intents, &adapt, None, 0, TYPE_LAB_8, TYPE_RGB_8, 0,
-    ).expect("rust Lab2→sRGB failed");
+    )
+    .expect("rust Lab2→sRGB failed");
     let inp = vec![0u8; 85 * 3];
     t.do_transform(&inp, &mut rust_out, 85);
     assert_eq!(c_out, rust_out, "Lab2→sRGB mismatch");

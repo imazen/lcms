@@ -167,13 +167,13 @@ pub fn unroll_planar_bytes(info: &PackInfo, w_in: &mut [u16], accum: &[u8], stri
 }
 
 fn rd16(b: &[u8], o: usize) -> u16 {
-    u16::from_le_bytes([b[o], b[o + 1]])
+    u16::from_le_bytes(b[o..o + 2].try_into().unwrap())
 }
 fn rd16be(b: &[u8], o: usize) -> u16 {
-    u16::from_be_bytes([b[o], b[o + 1]])
+    u16::from_be_bytes(b[o..o + 2].try_into().unwrap())
 }
 fn rd32f(b: &[u8], o: usize) -> f32 {
-    f32::from_le_bytes([b[o], b[o + 1], b[o + 2], b[o + 3]])
+    f32::from_le_bytes(b[o..o + 4].try_into().unwrap())
 }
 fn rd64f(b: &[u8], o: usize) -> f64 {
     f64::from_le_bytes([
@@ -1296,14 +1296,10 @@ pub fn pack4_words_big_endian(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32)
 }
 
 pub fn pack3_bytes(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
-    let mut o = 0usize;
-    out[o] = f16to8(w[0]);
-    o += 1;
-    out[o] = f16to8(w[1]);
-    o += 1;
-    out[o] = f16to8(w[2]);
-    o += 1;
-    o + 0
+    out[0] = f16to8(w[0]);
+    out[1] = f16to8(w[1]);
+    out[2] = f16to8(w[2]);
+    3
 }
 
 pub fn pack3_bytes_swap(_i: &PackInfo, w: &[u16], out: &mut [u8], _s: u32) -> usize {
