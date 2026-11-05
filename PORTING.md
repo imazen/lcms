@@ -120,3 +120,18 @@ sincos merge; C wrapping int ops; wchar truncation (no WCHAR_MAX);
 'curf' not 'segf'; Mat3.v row-major; text handlers share cmsMLU*;
 header offsets version@8/magic@36/profileID@84; SaveTags blind-copies
 unmodified tags + relinks + re-decides types; Keep-restore of dir offsets.
+
+## State @ eede859 (cmspack landed)
+
+DONE now also: cmspack.c→pack (ALL ~120 formatters + 4 stock tables +
+_cmsGetFormatter; oracle-driven via fabricated info header). 77+ tests.
+
+BUG TRAIL additions: gray unrolls broadcast wIn[0..3]; T_COLORSPACE&31;
+FROM_16_TO_8=(v*65281+8388608)>>24; is_ink=CMY|CMYK|MCH5..15;
+cref stamp keys shim contents now.
+
+NEXT: cmsxform.c (engine: Transform struct, 16/float eval loops,
+cmsCreateExtendedTransform → cnvrt link + pack formatters + opt),
+then cmsopt.c (2k), cmssamp.c (black point/TAC via transforms),
+finish cnvrt K-intents. cmsio1/cnvrt are IN and compile.
+cmssamp/cmsps2/cmscgats/cmsalpha remain.
