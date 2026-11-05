@@ -489,3 +489,22 @@ REMAINING:
   unsafe to close
 - cmserr/cmsplugin residuals (Plugin/PluginType/create/dup_ctx done)
 - more parity expansion (gamut-check xform, named-color, ps2 text)
+
+## State @ f23e1b5 — 100% coverage, all intents + real profiles green
+
+Every lcms2 .c module ported and parity-verified. ALL gates green:
+xform (sRGB identity, intents×4, RGB8/16, BGR8, Lab4→sRGB, sRGB→XYZ,
+Lab2→sRGB, FLAGS_FORCE_CLUT), real-profile×6 (CMYK-prtr↔sRGB, ibm-t61,
+test3/4/5/crayons→sRGB, sRGB→CMYK, K-only + K-plane CMYK→CMYK), cgats,
+GBD, cam02, pack, cube. ~97 tests.
+
+REMAINING (last stub): named-color transform eval — Transform needs
+InputColorant/OutputColorant (cmsDupNamedColorList of the input
+profile's SigColorantTableTag + output's TableOut/Table tag), the
+TYPE_NAMED_COLOR_INDEX input formatter (index → colorant Lab via the
+list), and cmsGetTransformInput/OutputColorants accessors. C reads the
+colorant lists in AllocEmptyTransform (cmsxform.c:1241-1264). The
+NamedColorList type + alloc/dup/append already exist in named.rs.
+
+REMAINING (other): %g PostScript formatting, perf parity (2.4-3x
+structural), named-color gate once eval works.
