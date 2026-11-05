@@ -7,6 +7,7 @@
 //! `forward`, `reverse` (the object is a `Box`-owned value; "Done" is `Drop`).
 
 use crate::types::{
+    CpowExt,
     CUTSHEET_SURROUND, CieXyz, D_CALCULATE, DARK_SURROUND, DIM_SURROUND, JCh, ViewingConditions,
 };
 
@@ -91,10 +92,10 @@ fn cat02_to_hpe(mut clr: Cam02Color) -> Cam02Color {
 fn nonlinear_compression(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     for i in 0..3 {
         if clr.rgbp[i] < 0.0 {
-            let temp = (-1.0 * m.fl * clr.rgbp[i] / 100.0).powf(0.42);
+            let temp = (-1.0 * m.fl * clr.rgbp[i] / 100.0).cpow(0.42);
             clr.rgbpa[i] = (-1.0 * 400.0 * temp) / (temp + 27.13) + 0.1;
         } else {
-            let temp = (m.fl * clr.rgbp[i] / 100.0).powf(0.42);
+            let temp = (m.fl * clr.rgbp[i] / 100.0).cpow(0.42);
             clr.rgbpa[i] = (400.0 * temp) / (temp + 27.13) + 0.1;
         }
     }
@@ -150,20 +151,21 @@ fn compute_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
         clr.h_upper = 300.0 + ((100.0 * ((clr.h - 237.53) / 1.2)) / temp);
     }
 
-    clr.j_upper = 100.0 * (clr.a_upper / m.adopted_white.a_upper).powf(m.c * m.z);
+    clr.j_upper = 100.0 * (clr.a_upper / m.adopted_white.a_upper).cpow(m.c * m.z);
 
     clr.q_upper = (4.0 / m.c)
-        * (clr.j_upper / 100.0).powf(0.5)
+        * (clr.j_upper / 100.0).cpow(0.5)
         * (m.adopted_white.a_upper + 4.0)
-        * m.fl.powf(0.25);
+        * m.fl.cpow(0.25);
 
-    let t = (e * (a * a + b * b).powf(0.5))
+    let t = (e * (a * a + b * b).cpow(0.5))
         / (clr.rgbpa[0] + clr.rgbpa[1] + (21.0 / 20.0) * clr.rgbpa[2]);
 
-    clr.c_upper =
-        t.powf(0.9) * (clr.j_upper / 100.0).powf(0.5) * (1.64 - 0.29_f64.powf(m.n)).powf(0.73);
-    clr.m_upper = clr.c_upper * m.fl.powf(0.25);
-    clr.s = 100.0 * (clr.m_upper / clr.q_upper).powf(0.5);
+    clr.c_upper = t.cpow(0.9)
+        * (clr.j_upper / 100.0).cpow(0.5)
+        * (1.64 - 0.29_f64.cpow(m.n)).cpow(0.73);
+    clr.m_upper = clr.c_upper * m.fl.cpow(0.25);
+    clr.s = 100.0 * (clr.m_upper / clr.q_upper).cpow(0.5);
     clr.a = a;
     clr.b = b;
     clr
@@ -173,11 +175,11 @@ fn inverse_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     let d2r = 3.141592654 / 180.0;
 
     let t = (clr.c_upper
-        / ((clr.j_upper / 100.0).powf(0.5) * (1.64 - 0.29_f64.powf(m.n)).powf(0.73)))
-    .powf(1.0 / 0.9);
+        / ((clr.j_upper / 100.0).cpow(0.5) * (1.64 - 0.29_f64.cpow(m.n)).cpow(0.73)))
+    .cpow(1.0 / 0.9);
     let e = ((12500.0 / 13.0) * m.nc * m.ncb) * ((clr.h * d2r + 2.0).cos() + 3.8);
 
-    clr.a_upper = m.adopted_white.a_upper * (clr.j_upper / 100.0).powf(1.0 / (m.c * m.z));
+    clr.a_upper = m.adopted_white.a_upper * (clr.j_upper / 100.0).cpow(1.0 / (m.c * m.z));
 
     let p2 = (clr.a_upper / m.nbb) + 0.305;
 
@@ -222,7 +224,7 @@ fn inverse_nonlinearity(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
         clr.rgbp[i] = c1
             * (100.0 / m.fl)
             * ((27.13 * (clr.rgbpa[i] - 0.1).abs()) / (400.0 - (clr.rgbpa[i] - 0.1).abs()))
-                .powf(1.0 / 0.42);
+                .cpow(1.0 / 0.42);
     }
     clr
 }
@@ -310,13 +312,13 @@ impl CieCam02 {
         // compute_n
         m.n = m.yb / m.adopted_white.xyz[1];
         // compute_z
-        m.z = 1.48 + m.n.powf(0.5);
+        m.z = 1.48 + m.n.cpow(0.5);
         // computeNbb
-        m.nbb = 0.725 * (1.0 / m.n).powf(0.2);
+        m.nbb = 0.725 * (1.0 / m.n).cpow(0.2);
         // computeFL
         let k = 1.0 / (5.0 * m.la + 1.0);
-        m.fl = 0.2 * k.powf(4.0) * (5.0 * m.la)
-            + 0.1 * (1.0 - k.powf(4.0)).powf(2.0) * (5.0 * m.la).powf(1.0 / 3.0);
+        m.fl = 0.2 * k.cpow(4.0) * (5.0 * m.la)
+            + 0.1 * (1.0 - k.cpow(4.0)).cpow(2.0) * (5.0 * m.la).cpow(1.0 / 3.0);
 
         // computeD
         if m.d == D_CALCULATE {

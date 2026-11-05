@@ -18,7 +18,7 @@ use crate::gamma::{
 use crate::io::{self, IoHandler};
 use crate::named::{Mlu, Wchar, mlu_get_ascii, mlu_get_wide, mlu_set_ascii, mlu_set_wide};
 use crate::signatures::tagtype as tsig;
-use crate::types::*;
+use crate::types::{*, CpowExt};
 
 /// `cmsNoLanguage`/`cmsNoCountry` — two NUL bytes
 pub const NO_LANG: &[u8] = b"\0\0";
@@ -3705,7 +3705,7 @@ fn type_vcgt_read(
                 // Parametric type 5: a = (Max-Min)^(1/Gamma), e = Min
                 let mut params = [0.0f64; 10];
                 params[0] = gamma;
-                params[1] = (max - min).powf(1.0 / gamma);
+                params[1] = (max - min).cpow(1.0 / gamma);
                 params[5] = min;
                 let Some(tc) = build_parametric_tone_curve(None, 5, &params) else {
                     return None;
@@ -3740,7 +3740,7 @@ fn type_vcgt_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u
         for c in curves.iter() {
             let gamma = c.segments[0].params[0];
             let min = c.segments[0].params[5];
-            let max = c.segments[0].params[1].powf(gamma) + min;
+            let max = c.segments[0].params[1].cpow(gamma) + min;
             if !io::write_15_fixed16(io, gamma)
                 || !io::write_15_fixed16(io, min)
                 || !io::write_15_fixed16(io, max)

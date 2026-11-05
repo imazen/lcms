@@ -52,3 +52,34 @@ cmsUInt16Number* cref_p8_r(void* p8, int which) {   // which 0..2 = rx,ry,rz
 cmsUInt32Number* cref_p8_x(void* p8, int which) {   // which 0..2 = X0,Y0,Z0
     return (cmsUInt32Number*)((char*) p8 + 16 + 3 * 256 * sizeof(cmsUInt16Number)) + which * 256;
 }
+/* cam02/sigmoid debug — dump C's inverse_sigmoid intermediates */
+#include <math.h>
+#include <stdint.h>
+static double sb_(double k, double t){ return (1.0/(1.0+exp(-k*t)))-0.5; }
+static double isb_(double k, double t){ return -log((1.0/(t+0.5))-1.0)/k; }
+uint64_t cref_sigmoid_correction(double k){
+    double corr = 0.5/sb_(k,1.0);
+    return ((union{double d; uint64_t u;}){corr}).u;
+}
+uint64_t cref_sigmoid_base_bits(double k,double t){
+    return ((union{double d; uint64_t u;}){sb_(k,t)}).u;
+}
+uint64_t cref_inverse_sigmoid_x_bits(double k,double t){
+    double corr = 0.5/sb_(k,1.0);
+    double x = (t-0.5)/corr;
+    return ((union{double d; uint64_t u;}){x}).u;
+}
+uint64_t cref_inverse_sigmoid_inner_bits(double k,double t){
+    double corr = 0.5/sb_(k,1.0);
+    double x = (t-0.5)/corr;
+    double inner = (1.0/(x+0.5))-1.0;
+    return ((union{double d; uint64_t u;}){inner}).u;
+}
+uint64_t cref_isb_bits(double k,double t){
+    return ((union{double d; uint64_t u;}){isb_(k,t)}).u;
+}
+uint64_t cref_inverse_sigmoid_bits(double k,double t){
+    double corr = 0.5/sb_(k,1.0);
+    double r = (isb_(k,(t-0.5)/corr)+1.0)/2.0;
+    return ((union{double d; uint64_t u;}){r}).u;
+}

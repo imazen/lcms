@@ -615,3 +615,11 @@ unsafe extern "C" {
 pub fn encoded_version() -> U32 {
     unsafe { cmsGetEncodedCMMversion() }
 }
+unsafe extern "C" {
+    pub fn cref_sigmoid_correction(k: f64) -> u64;
+    pub fn cref_sigmoid_base_bits(k: f64, t: f64) -> u64;
+    pub fn cref_inverse_sigmoid_x_bits(k: f64, t: f64) -> u64;
+    pub fn cref_inverse_sigmoid_inner_bits(k: f64, t: f64) -> u64;
+    pub fn cref_isb_bits(k: f64, t: f64) -> u64;
+    pub fn cref_inverse_sigmoid_bits(k: f64, t: f64) -> u64;
+}

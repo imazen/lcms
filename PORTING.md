@@ -954,3 +954,62 @@ UNRESOLVED: which of xyz_to_cat02/chromatic_adaptation/model-state
 C-side shim dumping cmscam02's CAM02COLOR.RGBp/RGBpa intermediates at the
 failing input to bisect the exact stage. Narrow edge — only fires on
 out-of-range XYZ producing negative rgbp.
+
+## cam02 NaN-sign edge — bisect plan (next concrete step)
+
+Hand-verified for surround=1/D=-1/XYZ(8.79,0.35,143.21): all forward-chain
+formulas match C exactly (xyz_to_cat02, chromatic_adaptation w/ m.d=0.8584
+for D_CALCULATE@la=20, cat02_to_hpe M[9] products, nonlinear_compression,
+compute_correlates). The divergence must be a sign/ordering detail in one
+stage only visible via C-side intermediates.
+
+NEXT: add `cref_cam02_stages` shim in lcms-cref/shims/inline_oracle.c that
+replicates C's static XYZtoCAT02/ChromaticAdaptation/CAT02toHPE/
+NonlinearCompression/ComputeCorrelates on the failing input (struct
+CAM02COLOR {XYZ,RGB,RGBc,RGBp,RGBpa,a,b,h,...} at cmscam02.c:33) and dumps
+each; port's cam02.rs prints the same intermediates via a debug feature.
+First diverging field = the bug. Suspect: chromatic_adaptation's use of
+adopted_white.rgb[i] (model-init white CAT02 rgb) or a sign in
+nonlinear_compression's negative-rgbp branch ordering.
+
+## libm NaN-sign + pow->sqrt bit-exactness (CpowExt/cmath)
+
+Two distinct libm-parity bugs, both fixed via `CpowExt` (types.rs):
+
+1. **`powf(x, 0.5)` -> `sqrt` (LLVM fold)**: Rust `x.powf(0.5)` inlines a
+   literal `0.5` and LLVM lowers `pow` to the IEEE-exact `sqrt` instruction,
+   which is ~1 ULP different from glibc `pow(x, 0.5)`. Fix: `black_box(exp)`
+   in `cpow` keeps the exponent opaque -> real `pow` call.
+
+2. **NaN-sign propagation**: Rust `pow`/`ln`/`log10`/`acos`/`asin`/`atanh`/
+   `acosh` canonicalize NaN input AND domain errors to `+NaN` (0x7ff8).
+   glibc propagates the input-NaN sign for NaN inputs and returns `-NaN`
+   (0xfff8) for domain errors (log(-x), acos(2), pow(-x, frac)).
+   `sqrt` already matches (both give -NaN). Fix: `cpow`/`cln`/`clog10`/
+   `cacos`/`casin`/`catanh`/`cacosh` propagate input NaN and return
+   `domain_nan()` (0xfff8) for domain errors. Applied to cam02, gamma,
+   pcs, tagtypes `.powf` sites + gamma/pcs `.ln`/`log10` sites.
+
+VERIFIED GREEN: cam02::forward_all_surrounds (was pre-existing failure —
+both the NaN-sign case at extreme XYZ AND the ULP case), all 3 cam02 tests.
+parametric -109 evals[0]/eval_float now +NaN matching C.
+
+OPEN (parametric -109 eval_float): `parametric_types_forward_and_reverse`
+still fails `eval_float(1.0122521)` -> port -inf (0xFF800000) vs C +inf
+(0x7F800000). Real +-inf means eval_segmented_fn->evals->
+default_eval_parametric_fn(-109)->inverse_sigmoid_factory produced +-inf
+-> inverted_sigmoid_base produced +-inf -> log(inner)=+-inf -> inner=0 or
++inf -> x=+-0.5 -> correction=+-1.0245 -> sigmoid_base(5.5,1)=+-0.488.
+Mathematically sigmoid_base(5.5,1)=+0.496 -> correction=+1.008 -> x=+0.508
+-> inner=-0.008 -> cln=-NaN -> isb=+NaN -> inv_sig=+NaN (now matches C's
++NaN via shim). So the +-inf means seg.params[0]/sigmoid_base/exp or the
+eval path differs at THIS v. evals[0](-109,params,1.012) verified +NaN
+matching C — so the -inf/+inf is a DIFFERENT path (likely the
+estimated_table/Table16 sampled build or eval16/interp16, where the
+sampled inverse_sigmoid endpoints are +-inf). NEXT: check whether
+eval_float(-109) uses eval_segmented_fn (analytic, +NaN) or the
+interp16/Table16 sampled path (+-inf) — and which one C's
+cmsEvalToneCurveFloat uses for -109 (analytic Evals -> +NaN, or sampled
+SegInterp -> +inf). If the curve is SAMPLED, the table16 sample values
+(the sigmoid_factory/inverse_sigmoid evals at grid points) must match
+C's sampled values — the +-inf table entries at boundary samples.

@@ -267,3 +267,117 @@ pub struct ViewingConditions {
     #[allow(non_snake_case)]
     pub D_value: f64,
 }
+
+/// `pow` with C/glibc NaN semantics: a NaN base or exponent propagates the
+/// *input* NaN (with its sign), matching glibc `pow`. Rust's `f64::powf`
+/// canonicalizes any NaN input to a positive quiet NaN, which diverges in
+/// bit-exact tests whenever a NaN flows into `pow` (e.g. CIECAM02's
+/// `pow(J/100, 0.5)` where J=-NaN). `pow(x, 0)` returns 1.0 for any x
+/// including NaN, per IEEE/C. For non-NaN inputs this is identical to `powf`.
+pub(crate) trait CpowExt {
+    fn cpow(self, exp: Self) -> Self;
+    /// `log`/`ln` with glibc domain-error NaN sign (negative → `-NaN`).
+    fn cln(self) -> Self;
+    /// `log10` with glibc domain-error NaN sign.
+    fn clog10(self) -> Self;
+    /// `acos` with glibc domain-error NaN sign (|x|>1 → `-NaN`).
+    fn cacos(self) -> Self;
+    /// `asin` with glibc domain-error NaN sign.
+    fn casin(self) -> Self;
+    /// `atanh` with glibc domain-error NaN sign.
+    fn catanh(self) -> Self;
+    /// `acosh` with glibc domain-error NaN sign.
+    fn cacosh(self) -> Self;
+}
+
+/// glibc domain-error NaN — `-nan` (`0xfff8000000000000`). Rust's
+/// `ln`/`log10`/`acos`/`asin`/`atanh`/`acosh`/`pow` return the positive
+/// quiet NaN `0x7ff8000000000000` for out-of-domain inputs and NaN inputs,
+/// while glibc returns a *negative* quiet NaN — a bit-visible difference
+/// that propagates through formulas (CIECAM02, parametric curves).
+#[inline]
+fn domain_nan() -> f64 {
+    f64::from_bits(0xfff8000000000000)
+}
+
+impl CpowExt for f64 {
+    // `black_box(exp)` keeps the exponent an opaque runtime value: if a
+    // literal `0.5` propagated into `powf`, LLVM would lower `pow(x, 0.5)`
+    // to the exact `sqrt` instruction, which differs by 1 ULP from glibc
+    // `pow(x, 0.5)` on some inputs (bit-exactness). Hiding the constant
+    // forces a real `pow` while staying inlinable (no call overhead on the
+    // hot curve-eval path).
+    #[inline]
+    fn cpow(self, exp: f64) -> f64 {
+        let exp = std::hint::black_box(exp);
+        if exp == 0.0 {
+            1.0
+        } else if self.is_nan() {
+            self
+        } else if exp.is_nan() {
+            exp
+        } else {
+            self.powf(exp)
+        }
+    }
+    #[inline]
+    fn cln(self) -> f64 {
+        if self.is_nan() {
+            self
+        } else if self < 0.0 {
+            domain_nan()
+        } else {
+            self.ln()
+        }
+    }
+    #[inline]
+    fn clog10(self) -> f64 {
+        if self.is_nan() {
+            self
+        } else if self < 0.0 {
+            domain_nan()
+        } else {
+            self.log10()
+        }
+    }
+    #[inline]
+    fn cacos(self) -> f64 {
+        if self.is_nan() {
+            self
+        } else if self < -1.0 || self > 1.0 {
+            domain_nan()
+        } else {
+            self.acos()
+        }
+    }
+    #[inline]
+    fn casin(self) -> f64 {
+        if self.is_nan() {
+            self
+        } else if self < -1.0 || self > 1.0 {
+            domain_nan()
+        } else {
+            self.asin()
+        }
+    }
+    #[inline]
+    fn catanh(self) -> f64 {
+        if self.is_nan() {
+            self
+        } else if self <= -1.0 || self >= 1.0 {
+            domain_nan()
+        } else {
+            self.atanh()
+        }
+    }
+    #[inline]
+    fn cacosh(self) -> f64 {
+        if self.is_nan() {
+            self
+        } else if self < 1.0 {
+            domain_nan()
+        } else {
+            self.acosh()
+        }
+    }
+}

@@ -5,7 +5,7 @@
 
 use crate::fixed::{quick_saturate_word, s15_fixed16_to_double};
 use crate::signatures::colorspace as cs;
-use crate::types::*;
+use crate::types::{*, CpowExt};
 use crate::wtpnt::d50_xyz;
 use std::f64::consts::PI;
 
@@ -42,7 +42,7 @@ fn f(t: f64) -> f64 {
     if t <= LIMIT {
         (841.0 / 108.0) * t + (16.0 / 116.0)
     } else {
-        t.powf(1.0 / 3.0)
+        t.cpow(1.0 / 3.0)
     }
 }
 
@@ -236,7 +236,7 @@ fn sqr(v: f64) -> f64 {
 pub fn lab2lch(lab: &CieLab) -> CieLCh {
     CieLCh {
         L: lab.L,
-        C: (sqr(lab.a) + sqr(lab.b)).powf(0.5),
+        C: (sqr(lab.a) + sqr(lab.b)).cpow(0.5),
         h: atan2deg(lab.b, lab.a),
     }
 }
@@ -317,7 +317,7 @@ pub fn delta_e(lab1: &CieLab, lab2: &CieLab) -> f64 {
     let da = (lab1.a - lab2.a).abs();
     let db = (lab1.b - lab2.b).abs();
 
-    (sqr(dl) + sqr(da) + sqr(db)).powf(0.5)
+    (sqr(dl) + sqr(da) + sqr(db)).cpow(0.5)
 }
 
 /// `cmsCIE94DeltaE`
@@ -331,7 +331,7 @@ pub fn cie94_delta_e(lab1: &CieLab, lab2: &CieLab) -> f64 {
     let de = delta_e(lab1, lab2);
 
     let dhsq = sqr(de) - sqr(dl) - sqr(dc);
-    let dh = if dhsq < 0.0 { 0.0 } else { dhsq.powf(0.5) };
+    let dh = if dhsq < 0.0 { 0.0 } else { dhsq.cpow(0.5) };
 
     let c12 = (lch1.C * lch2.C).sqrt();
 
@@ -349,7 +349,7 @@ fn compute_lbfd(lab: &CieLab) -> f64 {
         100.0 * (lab.L / 903.3)
     };
 
-    54.6 * (std::f64::consts::LOG10_E * (yt + 1.5).ln()) - 9.6
+    54.6 * (std::f64::consts::LOG10_E * (yt + 1.5).cln()) - 9.6
 }
 
 /// `cmsBFDdeltaE` — BFD(1:1) difference
@@ -452,7 +452,7 @@ pub fn cie2000_delta_e(lab1: &CieLab, lab2: &CieLab, kl: f64, kc: f64, kh: f64) 
 
     let g = 0.5
         * (1.0
-            - (((c + c_s) / 2.0).powf(7.0) / (((c + c_s) / 2.0).powf(7.0) + 25.0_f64.powf(7.0)))
+            - (((c + c_s) / 2.0).cpow(7.0) / (((c + c_s) / 2.0).cpow(7.0) + 25.0_f64.cpow(7.0)))
                 .sqrt());
 
     let a_p = (1.0 + g) * a1;
@@ -503,7 +503,7 @@ pub fn cie2000_delta_e(lab1: &CieLab, lab2: &CieLab, kl: f64, kc: f64, kh: f64) 
 
     let delta_ro = 30.0 * (-sqr((meanh_p - 275.0) / 25.0)).exp();
 
-    let rc = 2.0 * (mean_c_p.powf(7.0) / (mean_c_p.powf(7.0) + 25.0_f64.powf(7.0))).sqrt();
+    let rc = 2.0 * (mean_c_p.cpow(7.0) / (mean_c_p.cpow(7.0) + 25.0_f64.cpow(7.0))).sqrt();
 
     let rt = -(2.0 * radians(delta_ro)).sin() * rc;
 

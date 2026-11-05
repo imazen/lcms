@@ -21,6 +21,7 @@ use crate::intrp::{
     LERP_FLAGS_FLOAT, compute_interp_params,
 };
 use crate::types::{ERROR_RANGE, ERROR_UNKNOWN_EXTENSION};
+use crate::types::CpowExt;
 
 /// `MAX_NODES_IN_CURVE`
 pub const MAX_NODES_IN_CURVE: usize = 4097;
@@ -269,7 +270,7 @@ fn sigmoid_base(k: f64, t: f64) -> f64 {
 /// `inverted_sigmoid_base`
 #[inline]
 fn inverted_sigmoid_base(k: f64, t: f64) -> f64 {
-    -((1.0 / (t + 0.5)) - 1.0).ln() / k
+    -((1.0 / (t + 0.5)) - 1.0).cln() / k
 }
 
 /// `sigmoid_factory`
@@ -299,7 +300,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
                     0.0
                 };
             } else {
-                val = r.powf(params[0]);
+                val = r.cpow(params[0]);
             }
         }
         // Type 1 Reversed: X = Y ^1/gamma
@@ -313,7 +314,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
             } else if params[0].abs() < MATRIX_DET_TOLERANCE {
                 val = PLUS_INF as f64;
             } else {
-                val = r.powf(1.0 / params[0]);
+                val = r.cpow(1.0 / params[0]);
             }
         }
         // CIE 122-1966: Y = (aX + b)^Gamma | X >= -b/a, else 0
@@ -324,7 +325,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
                 disc = -params[2] / params[1];
                 if r >= disc {
                     e = params[1] * r + params[2];
-                    val = if e > 0.0 { e.powf(params[0]) } else { 0.0 };
+                    val = if e > 0.0 { e.cpow(params[0]) } else { 0.0 };
                 } else {
                     val = 0.0;
                 }
@@ -338,7 +339,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
                 val = if r < 0.0 {
                     0.0
                 } else {
-                    (r.powf(1.0 / params[0]) - params[2]) / params[1]
+                    (r.cpow(1.0 / params[0]) - params[2]) / params[1]
                 };
                 if val < 0.0 {
                     val = 0.0;
@@ -357,7 +358,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
                 if r >= disc {
                     e = params[1] * r + params[2];
                     val = if e > 0.0 {
-                        e.powf(params[0]) + params[3]
+                        e.cpow(params[0]) + params[3]
                     } else {
                         0.0
                     };
@@ -373,7 +374,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
             } else if r >= params[3] {
                 e = r - params[3];
                 val = if e > 0.0 {
-                    (e.powf(1.0 / params[0]) - params[2]) / params[1]
+                    (e.cpow(1.0 / params[0]) - params[2]) / params[1]
                 } else {
                     0.0
                 };
@@ -385,7 +386,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
         4 => {
             if r >= params[4] {
                 e = params[1] * r + params[2];
-                val = if e > 0.0 { e.powf(params[0]) } else { 0.0 };
+                val = if e > 0.0 { e.cpow(params[0]) } else { 0.0 };
             } else {
                 val = r * params[3];
             }
@@ -393,14 +394,14 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
         // Type 4 reversed
         -4 => {
             e = params[1] * params[4] + params[2];
-            disc = if e < 0.0 { 0.0 } else { e.powf(params[0]) };
+            disc = if e < 0.0 { 0.0 } else { e.cpow(params[0]) };
             if r >= disc {
                 val = if params[0].abs() < MATRIX_DET_TOLERANCE
                     || params[1].abs() < MATRIX_DET_TOLERANCE
                 {
                     0.0
                 } else {
-                    (r.powf(1.0 / params[0]) - params[2]) / params[1]
+                    (r.cpow(1.0 / params[0]) - params[2]) / params[1]
                 };
             } else if params[3].abs() < MATRIX_DET_TOLERANCE {
                 val = 0.0;
@@ -413,7 +414,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
             if r >= params[4] {
                 e = params[1] * r + params[2];
                 val = if e > 0.0 {
-                    e.powf(params[0]) + params[5]
+                    e.cpow(params[0]) + params[5]
                 } else {
                     params[5]
                 };
@@ -433,7 +434,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
                 {
                     val = 0.0;
                 } else {
-                    val = (e.powf(1.0 / params[0]) - params[2]) / params[1];
+                    val = (e.cpow(1.0 / params[0]) - params[2]) / params[1];
                 }
             } else if params[3].abs() < MATRIX_DET_TOLERANCE {
                 val = 0.0;
@@ -450,7 +451,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
             } else if e < 0.0 {
                 val = params[3];
             } else {
-                val = e.powf(params[0]) + params[3];
+                val = e.cpow(params[0]) + params[3];
             }
         }
         // ((Y - c) ^1/Gamma - b) / a
@@ -462,17 +463,17 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
                 val = if e < 0.0 {
                     0.0
                 } else {
-                    (e.powf(1.0 / params[0]) - params[2]) / params[1]
+                    (e.cpow(1.0 / params[0]) - params[2]) / params[1]
                 };
             }
         }
         // Y = a * log10 (b * X^Gamma + c) + d
         7 => {
-            e = params[2] * r.powf(params[0]) + params[3];
+            e = params[2] * r.cpow(params[0]) + params[3];
             val = if e <= 0.0 {
                 params[4]
             } else {
-                params[1] * e.log10() + params[4]
+                params[1] * e.clog10() + params[4]
             };
         }
         // (Y - d) / a = log(b * X ^Gamma + c)
@@ -483,13 +484,13 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
             {
                 val = 0.0;
             } else {
-                val = ((10.0_f64.powf((r - params[4]) / params[1]) - params[3]) / params[2])
-                    .powf(1.0 / params[0]);
+                val = ((10.0_f64.cpow((r - params[4]) / params[1]) - params[3]) / params[2])
+                    .cpow(1.0 / params[0]);
             }
         }
         // Y = a * b^(c*X+d) + e
         8 => {
-            val = params[0] * params[1].powf(params[2] * r + params[3]) + params[4];
+            val = params[0] * params[1].cpow(params[2] * r + params[3]) + params[4];
         }
         // Y = (log((y-e) / a) / log(b) - d ) / c
         -8 => {
@@ -501,7 +502,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
             {
                 val = 0.0;
             } else {
-                val = ((disc / params[0]).ln() / params[1].ln() - params[3]) / params[2];
+                val = ((disc / params[0]).cln() / params[1].cln() - params[3]) / params[2];
             }
         }
         // S-Shaped: (1 - (1-x)^1/g)^1/g
@@ -509,11 +510,11 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
             val = if params[0].abs() < MATRIX_DET_TOLERANCE {
                 0.0
             } else {
-                (1.0 - (1.0 - r).powf(1.0 / params[0])).powf(1.0 / params[0])
+                (1.0 - (1.0 - r).cpow(1.0 / params[0])).cpow(1.0 / params[0])
             };
         }
         -108 => {
-            val = 1.0 - (1.0 - r.powf(params[0])).powf(params[0]);
+            val = 1.0 - (1.0 - r.cpow(params[0])).cpow(params[0]);
         }
         // Sigmoidals
         109 => {
@@ -1117,7 +1118,7 @@ pub fn estimate_gamma(t: &ToneCurve, precision: f64) -> f64 {
 
         // Avoid 7% on lower part to prevent artifacts due to linear ramps
         if y > 0.0 && y < 1.0 && x > 0.07 {
-            let gamma = y.ln() / x.ln();
+            let gamma = y.cln() / x.cln();
             sum += gamma;
             sum2 += gamma * gamma;
             n += 1.0;
