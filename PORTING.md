@@ -316,3 +316,24 @@ REMAINING toward "100% coverage + parity + perf":
 - Named-color transform eval is a stub pending TYPE_NAMED_COLOR_INDEX
 - %g PostScript formatting vs C's %g
 - cmserr/cmsplugin residuals (plugin-register fn table)
+
+## State @ ff3a5dd — 100% coverage + expanding parity
+
+ALL lcms2 .c modules ported. Parity gates green:
+xform (sRGB identity), xform_matrix (intents×4, RGB16/8, BGR8,
+Lab4→sRGB, sRGB→XYZ, Lab2→sRGB), cgats (IT8 parse+data cells),
+gbd (GBD alloc/add/check/compute containment), cam02, pack, +
+~80 unit/parity tests. Full workspace green.
+
+Real bugs caught by gates this session:
+- compute_conversion propagated detect_black_point None; C ignores
+  the return (point stays {0,0,0}) — broke Lab4(abstract)→sRGB
+- cgats: is_separator had \n; in_string didn't consume close quote;
+  get_val double-advanced; check_eoln didn't consume EOLNs;
+  load_from_mem never primed ch; nosheet inverted
+
+REMAINING: cmserr/cmsplugin residuals (plugin-register fn table),
+named-color transform eval stub, %g PostScript formatting,
+perf parity (2.4-3x on dense eval — structural: per-pixel indirect
+calls + bounds checks vs C raw pointers; needs scanline-batch eval
+or unsafe to close), more parity expansion.
