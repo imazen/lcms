@@ -148,3 +148,20 @@ NOOPTIMIZE path works, optimizer selection not wired), cmssamp.c
 cmssamp+precalc stages), cmsxform precalculated/cached variants +
 cmsCreateProofingTransform gamut, cmsalpha.c, cmscgats.c, cmsps2.c,
 cmssm.c GBD API, cmserr/cmsplugin residuals.
+
+## State @ d4773f3 (END-TO-END TRANSFORM PARITY)
+
+WORKING: link_profiles→optimize→pack formatters→eval = byte-identical
+sRGB→sRGB 16-bit vs C. cmsxform engine live. cmsopt complete.
+cmssamp black-point ported (darker-colorant + perceptual-black +
+dest ramp/quadratic). cmsio1 LUT readers, cmscnvrt link machinery.
+
+BUG FIXED (important): Pipeline::cat must clone stage WITHOUT its
+next-tail (dup already did; cat didn't) — nested rest-of-chain under
+every appended stage, the eval-order corruption behind the 0.66× drift.
+
+REMAINING: cmsxform precalculated/cached xform variants + proofing
+transform + cmsChangeBuffersFormat + alarm/gamut; cmscnvrt K-only/
+K-plane intents (need cmsDetectTAC + precalc stages); cmsalpha.c;
+cmscgats.c; cmsps2.c; cmssm.c GBD API; cmserr/cmsplugin residuals;
+then: wider parity (formats x intents x profiles), perf parity.
