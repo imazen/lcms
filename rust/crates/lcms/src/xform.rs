@@ -95,6 +95,49 @@ fn pixel_size(fmt: u32) -> u32 {
     if b == 0 { 8 } else { b }
 }
 
+/// Generic `Precalculated`/`Cached` (!gamut) pixel loop with the eval
+/// monomorphized — each `OptData` arm instantiates this with its eval
+/// inlined, so no per-pixel `opt_data` match or `eval16_fn` indirection.
+#[allow(clippy::too_many_arguments)]
+fn xform16_eval_loop<E: Fn(&[u16], &mut [u16])>(
+    unroll: crate::pack::Unpack16Fn,
+    pack: crate::pack::Pack16Fn,
+    info: &PackInfo,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    cache: bool,
+    cache_in: &mut [u16; MAX_CHANNELS],
+    cache_out: &mut [u16; MAX_CHANNELS],
+    eval: E,
+) {
+    let mut w_in = [0u16; MAX_CHANNELS];
+    let mut w_out = [0u16; MAX_CHANNELS];
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let mut accum = i_off;
+        let mut out_pos = o_off;
+        for _ in 0..ppl {
+            accum += unroll(info, &mut w_in, &input[accum..], stride.bytes_per_plane_in);
+            if cache && w_in[..MAX_CHANNELS] == cache_in[..MAX_CHANNELS] {
+                w_out[..MAX_CHANNELS].copy_from_slice(&cache_out[..MAX_CHANNELS]);
+            } else {
+                eval(&w_in, &mut w_out);
+                if cache {
+                    cache_in[..MAX_CHANNELS].copy_from_slice(&w_in[..MAX_CHANNELS]);
+                    cache_out[..MAX_CHANNELS].copy_from_slice(&w_out[..MAX_CHANNELS]);
+                }
+            }
+            out_pos += pack(info, &w_out, &mut output[out_pos..], stride.bytes_per_plane_out);
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// `IsProperColorSpace` — format's PT_* vs the profile-chain space
 fn is_proper_color_space(check: u32, dw_format: u32) -> bool {
     let space1 = crate::pack::t_colorspace(dw_format) as i32;
@@ -437,6 +480,34 @@ impl Transform {
             Fmt::F16 { unroll, pack } => (unroll, pack),
             _ => return,
         };
+        if !gamut {
+            if let Some(l) = self.lut.as_mut() {
+                if let Some(od) = l.opt_data.as_ref() {
+                    let ci = &mut self.cache_in;
+                    let co = &mut self.cache_out;
+                    match od {
+                        crate::opt::OptData::ClutOnly(c) => {
+                            return xform16_eval_loop(
+                                unroll, pack, &info, input, output, ppl, lines,
+                                stride, cache, ci, co,
+                                |i, o| {
+                                    c.params16.eval16(i, o);
+                                },
+                            )
+                        }
+                        _ => {
+                            return xform16_eval_loop(
+                                unroll, pack, &info, input, output, ppl, lines,
+                                stride, cache, ci, co,
+                                |i, o| {
+                                    crate::opt::eval_opt16(i, o, od);
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
         let mut w_in = [0u16; MAX_CHANNELS];
         let mut w_out = [0u16; MAX_CHANNELS];
         let mut cache_in = self.cache_in;

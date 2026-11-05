@@ -701,3 +701,13 @@ set_interpolation_routine.
 
 REMAINING after that: 5-8ch interps, f32 fused paths, generic
 stride/planar edges.
+
+## PERF — monomorphized xform16 loop landed (dispatch removed)
+
+xform16_eval_loop<E: Fn(&[u16],&mut[u16])> — generic !gamut pixel loop,
+dispatched once on opt_data: ClutOnly → c.params16.eval16 inline; all
+other opt variants → opt::eval_opt16 (match dispatcher added in opt.rs).
+gamut/cached-gamut workers keep the generic loop. Parity green; CMYK16
+~1.6x (unchanged — the tetra16 interp math dominates, not dispatch).
+Remaining 16-bit CLUT gap is inside eval4_inputs/tetra16 itself (16
+dependent node reads + lerp per channel — memory-latency bound like C).

@@ -297,6 +297,30 @@ fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptData) -> bool
     }
     true
 }
+/// `eval_opt16` — dispatch an `OptData` to its concrete eval16
+pub(crate) fn eval_opt16(input: &[u16], output: &mut [u16], d: &OptData) {
+    match d {
+        OptData::Curves16(_) => {
+            fast_eval_curves16(input, output, d);
+        }
+        OptData::MatShaper(_) => {
+            mat_shaper_eval16(input, output, d);
+        }
+        OptData::Prelin16(_) => {
+            prelin_eval16(input, output, d);
+        }
+        OptData::Prelin8(_) => {
+            prelin_eval8(input, output, d);
+        }
+        OptData::ClutOnly(_) => {
+            clut_eval16(input, output, d);
+        }
+        OptData::Identity => {
+            fast_identity16(input, output, d);
+        }
+    }
+}
+
 /// `FastIdentity16` — copy
 fn fast_identity16(input: &[u16], output: &mut [u16], _d: &OptData) -> bool {
     let n = input.len().min(output.len());
