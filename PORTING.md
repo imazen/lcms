@@ -668,3 +668,36 @@ Fix plan (C-faithful, safe):
 tab16 read sites to update: lut.rs:332,395,566,577; opt.rs:726,754,
 805,1044. Est. -1-3ns/px on all CLUT paths. Gates: c_parity_realprofile,
 c_parity_intrp, c_parity_xform + full workspace.
+
+## PERF NEXT — monomorphized xform16 inner loop (kills the ~1.6x dispatch)
+
+CMYK16→sRGB now ~1.5-1.9x. Profile shows the per-pixel dispatch chain:
+unroll fnptr → l.eval16 → eval16_fn indirect → opt_data match →
+params.eval16 → interpolation match → interp fnptr → tetra. ~5 indirect
++ 2-3 matches/px vs C's 1 indirect + params deref.
+
+IMPLEMENT: extract the generic pixel loop (xform.rs ~445-485, the
+for-lines/for-ppl body after the fused paths) into
+`xform16_eval_loop<E: Fn(&[u16],&mut[u16])>(...)` parameterized on a
+monomorphized eval closure. Borrow: can't take &mut self while
+self.lut is borrowed → make it a free fn taking
+(unroll, pack, info, gamut_check: &mut Option<Pipeline>,
+alarm: &[u16;16], lut-independent fields) OR pass lut out separately.
+
+Dispatch once in xform16 on self.lut.opt_data:
+  ClutOnly(c)      → |i,o| c.params16.eval16(i,o)
+  MatShaper(_)     → |i,o| { mat_shaper_eval16(i,o,od); }
+  Curves16(_)      → |i,o| { fast_eval_curves16(i,o,od); }
+  Prelin8/16,Identity similar; None → |i,o| l.eval16(i,o)
+Each arm monomorphizes → eval inlined into the loop (mat/curves/identity
+become one inlined block; clut_eval16 inlines params deref, the interp
+fnptr remains).
+
+FURTHER: Interpolation could store a kernel tag so the monomorphized
+ClutOnly arm calls eval4_inputs/tetrahedral_interp16 DIRECTLY (concrete
+fn → full inline → table/opta loads hoisted, all bounds elided). That
+last step likely reaches ~1.0-1.1x. Est the tag: Kernel16 enum at
+set_interpolation_routine.
+
+REMAINING after that: 5-8ch interps, f32 fused paths, generic
+stride/planar edges.
