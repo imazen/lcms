@@ -87,3 +87,36 @@ packs — separate scope decision), `utils/*` CLIs.
 
 Prefer exhaustive gates where the domain allows it (`half` checks all 65,536
 inputs; `fixed` sweeps full integer ranges).
+
+## State @ 7940ce6 (cmsvirt landed)
+
+DONE (C-file → rust module, all differential-gated):
+cmsmtrx.c→mtrx, cmspcs.c→pcs, cmswtpnt.c→wtpnt, cmshalf.c→half,
+cmsintrp.c→intrp, cmsgamma.c→gamma, cmsmd5.c→md5 (+computeID), cmslut.c→lut,
+cmscam02.c→cam02, cmsnamed.c→named, cmsio0.c→profile (full: header, tag dict,
+links, raw tags, 2-pass save w/ blind-copy, file/mem open+save),
+cmstypes.c→tagtypes (ALL 37 handlers + SupportedTags + MPE + plugin chunks),
+cmsvirt.c→virt (all ctors incl OkLab/NULL/BCHSW), io/plugin primitives→io+context+err.
+
+Gates: 74 tests across 12 files; byte-exact serialization verified on real
+testbed .icc files + virtual profiles.
+
+REMAINING C files (by priority):
+cmscnvrt.c (1247) transform construction — NEXT
+cmsxform.c (1513) transform engine
+cmspack.c (4066) pixel formatters
+cmsopt.c (2006) optimizer
+cmsio1.c (1045) profile-info helpers
+cmssm.c (736) gamut check
+cmsalpha.c (650) alpha xform
+cmssamp.c (602) sampling (partially deferred)
+cmscgats.c (3339) CGATS
+cmsps2.c (1635) PostScript
+cmserr.c/cmsplugin.c (residual pieces)
+cmstypes→decide/LUTtype helpers in cmsio1?
+
+Key lessons (all in git history): jj drops gitlinks (land.sh grafts);
+sincos merge; C wrapping int ops; wchar truncation (no WCHAR_MAX);
+'curf' not 'segf'; Mat3.v row-major; text handlers share cmsMLU*;
+header offsets version@8/magic@36/profileID@84; SaveTags blind-copies
+unmodified tags + relinks + re-decides types; Keep-restore of dir offsets.
