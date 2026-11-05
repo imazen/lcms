@@ -644,3 +644,27 @@ c_parity_intrp gates. Est. CMYK 16-bit ~1.8x → ~1.1-1.3x.
 
 Also open: f32-path fused fast paths (xform_f32 equivalents) if a real
 workload needs them; residual coverage edges per the C-file checklist.
+
+## PERF STATE + NEXT — baked InterpParams for ClutOnly (memmove hotspot)
+
+Host is lilith-wsl (Zen4 7950X, WSL2 — AVX-512 double-pumps; "not
+measured on Zen 5"). perf counters OK (paranoid=-1). archmage latest =
+0.9.31-beta.2; 0.9.31-beta.1 adds `attune`/`attuned!`/`reattune!`
+(next-gen feature-body/dispatch macros — prefer over arcane/rite/incant
+for new SIMD work). coz-rs 0.1.3 on crates.io for causal profiling.
+
+Profile: `__memmove_avx512` ~11.5% — `clut_eval16` (opt.rs:743) rebuilds
+a ~120B InterpParams on the stack EVERY pixel (C bakes Data->Params at
+CLutData creation). `#![forbid(unsafe_code)]` — no raw-ptr params.
+
+Fix plan (C-faithful, safe):
+1. InterpTable += `U16Rc(Rc<[u16]>)`/`F32Rc(Rc<[f32]>)` variants;
+   table_u16/f32 return `&[u16]`/`&[f32]` tied to &self.
+2. CLutData.tab16: Option<Vec<u16>> -> Option<Rc<[u16]>> (Rc::from(Vec)
+   reuses alloc — no copy); same for tab_float.
+3. OptData::ClutOnly gains a baked `InterpParams<'static>` (Rc table ->
+   'static lifetime) built once at opt.rs:1461 construction.
+4. clut_eval16 -> `c.params.eval16(input, output)` — zero rebuild.
+tab16 read sites to update: lut.rs:332,395,566,577; opt.rs:726,754,
+805,1044. Est. -1-3ns/px on all CLUT paths. Gates: c_parity_realprofile,
+c_parity_intrp, c_parity_xform + full workspace.
