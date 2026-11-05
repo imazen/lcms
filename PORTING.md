@@ -39,12 +39,12 @@ Done: types/signatures → fixed-point helpers → `mtrx` → `pcs` → `wtpnt` 
 | 3 | `cmswtpnt.c` | `wtpnt` | done |
 | 4 | `cmshalf.c` | `half` + `half_tables` (generated) | done, exhaustive gate |
 | 5 | `lcms2_internal.h` inlines + `cmsplugin.c` helpers | `fixed`, `context`, `err` | done (minimal Context; slots grow) |
-| 6 | `cmsintrp.c` | `intrp` | interpolation; needed by gamma/lut |
-| 7 | `cmsgamma.c` | `gamma` | tone curves |
-| 8 | `cmslut.c` | `lut` | stage/pipeline machinery + MPE elements |
+| 6 | `cmsintrp.c` | `intrp` | done — all kernels, dims 1–15 |
+| 7 | `cmsgamma.c` | `gamma` | done — parametric/segmented/tabulated + smooth/reverse/join |
+| 8 | `cmslut.c` | `lut` | in progress — stage/pipeline machinery + MPE elements |
 | 9 | `cmsio0.c` | `io` | profile read/write + tag dir + endian IO |
 | 10 | `cmstypes.c` | `tagtypes` | all tag type handlers (~6.3k C lines) |
-| 11 | `cmsmd5.c` | `md5` | profile ID |
+| 11 | `cmsmd5.c` | `md5` | done (computeID waits on cmsio0) |
 | 12 | `cmsnamed.c`, `cmsio1.c` | `named`, `io1` | named colors, profile sequence |
 | 13 | `cmspack.c` | `pack` | pixel formatters (~4k lines) |
 | 14 | `cmsalpha.c` | `alpha` | alpha channel copy |
