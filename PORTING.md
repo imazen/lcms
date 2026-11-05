@@ -215,3 +215,21 @@ transforms + GamutSampler + cmsSliceSpace16; gates FLAGS_GAMUTCHECK in
 xform), cmsDesaturateLab (cmsgmt.c:515), cmscgats.c (3339 lines —
 IT8 file format, biggest remaining module), cmsps2.c (1635 lines —
 PostScript CSA/CRD), then parity expansion + perf.
+
+## State @ 5bbd0d8 (cmsgmt core + gamut-check wired)
+
+cmsDesaturateLab, _cmsCreateGamutCheckPipeline (3-transform proof
+chain -> 3->1 deltaE CLUT), GamutSampler. xform's FLAGS_GAMUTCHECK
+now fully functional — gamut profile + PCS position produce a real
+gamut-check pipeline feeding the Cached/PrecalculatedGamutCheck
+workers.
+
+COMPLETE modules: cmsio0 io1 lut gamma pcs wtpnt intrp md5 cam02
+half named tagtypes virt pack opt xform cnvrt sm(sm/black-point)
+gbd(sm) alpha gmt(desaturate/gamut/tac/Ktone) context err profile io.
+
+REMAINING: cmscgats.c (3339 lines, 39 exports — IT8 file format, the
+biggest unported piece), cmsps2.c (1635 lines, 3 exports — PostScript
+CSA/CRD/ColorResource), cmserr residual plugin-register functions,
+cmsplugin.c, then: parity expansion (formats x intents x profiles,
+LUT-heavy real profiles) + perf parity vs C.
