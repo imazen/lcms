@@ -125,3 +125,54 @@ fn srgb_to_cmyk_prtr() {
     let r = run_rust_out(&path, TYPE_RGB_8, TYPE_CMYK_8, 0);
     assert_eq!(c, r, "sRGB→CMYK prtr mismatch");
 }
+
+fn run_cmm(in_path: &str, out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
+    let mut out = vec![0u8; 85 * 4];
+    unsafe {
+        let p_in = { let cs = std::ffi::CString::new(in_path).unwrap(); c::cmsOpenProfileFromFile(cs.as_ptr(), std::ffi::CString::new("r").unwrap().as_ptr() as *const u8) };
+        let p_out = { let cs = std::ffi::CString::new(out_path).unwrap(); c::cmsOpenProfileFromFile(cs.as_ptr(), std::ffi::CString::new("r").unwrap().as_ptr() as *const u8) };
+        assert!(!p_in.is_null() && !p_out.is_null());
+        let t = c::cmsCreateTransform(p_in, in_fmt, p_out, out_fmt, intent, 0);
+        assert!(!t.is_null(), "C transform failed");
+        let inp = vec![0u8; 85 * 4];
+        c::cmsDoTransform(t, inp.as_ptr() as *const _, out.as_mut_ptr() as *mut _, 85);
+        c::cmsCloseProfile(p_in);
+        c::cmsCloseProfile(p_out);
+    }
+    out
+}
+
+fn run_rustmm(in_path: &str, out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
+    let mut out = vec![0u8; 85 * 4];
+    let p_in = profile::open_profile_from_file(None, in_path, "r").expect("in");
+    let p_out = profile::open_profile_from_file(None, out_path, "r").expect("out");
+    let mut profs = vec![p_in, p_out];
+    let mut bpc = [false, false];
+    let intents = [intent, intent];
+    let adapt = [1.0f64, 1.0];
+    let mut t = xform::create_extended_transform(
+        None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+    ).expect("rust transform");
+    let inp = vec![0u8; 85 * 4];
+    t.do_transform(&inp, &mut out, 85);
+    out
+}
+
+#[test]
+fn cmyk_to_cmyk_konly() {
+    // test1→test2 (both CMYK-prtr) with K-preserving-perceptual intent
+    let a = format!("{TESTBED}/test1.icc");
+    let b = format!("{TESTBED}/test2.icc");
+    let c = run_cmm(&a, &b, TYPE_CMYK_8, TYPE_CMYK_8, 10); // K_ONLY_PERCEPTUAL
+    let r = run_rustmm(&a, &b, TYPE_CMYK_8, TYPE_CMYK_8, 10);
+    assert_eq!(c, r, "CMYK→CMYK K-only mismatch");
+}
+
+#[test]
+fn cmyk_to_cmyk_kplane() {
+    let a = format!("{TESTBED}/test1.icc");
+    let b = format!("{TESTBED}/test2.icc");
+    let c = run_cmm(&a, &b, TYPE_CMYK_8, TYPE_CMYK_8, 13); // K_PLANE_PERCEPTUAL
+    let r = run_rustmm(&a, &b, TYPE_CMYK_8, TYPE_CMYK_8, 13);
+    assert_eq!(c, r, "CMYK→CMYK K-plane mismatch");
+}

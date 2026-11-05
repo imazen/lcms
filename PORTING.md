@@ -422,3 +422,26 @@ Divergence is in the TABLE contents: shaper1 (fixed-14 trc), mat
 NEXT: dump mat[][]+shaper2[0..k] Rust-vs-C on the same linked pipeline
 (add an oracle hook that returns the C MatShaper tables), or eval C's
 MatShaperEval16 directly. Files: rust/crates/lcms/src/opt.rs:400-560.
+
+## K-preserving intents — last functional gap, porting now
+
+black_preserving_k_only_intents / k_plane_intents are stubs
+(signal_error + None). Structure captured from cmscnvrt.c:
+
+K-only: translate_non_icc_intents → trim trailing CMYK devicelinks →
+if !cmyk-in/cmyk-or-output → default_icc_intents → Result=Pipeline(4,4)
+→ cmyk2cmyk = DefaultICCintents(preservationCount) → KTone =
+_cmsBuildKToneCurve(4096) → CLUT=AllocCLut16(grid,4,4) sampled by
+BlackPreservingGrayOnlySampler(cmyk2cmyk, KTone) → append trailing
+devicelinks. KTone curve needs _cmsBuildKToneCurve (per-channel K→K
+through the chain — port in sm.rs or gamma.rs).
+
+K-plane: PreserveKPlaneParams needs hProofOutput (CMYK→Lab on last
+profile), cmyk2Lab (input chain), LabK2cmyk (output profile), hRoundTrip,
+cmsDetectTAC, eval_reverse_float. Much bigger — needs reverse-eval +
+roundtrip transforms.
+
+Helpers needed: _cmsBuildKToneCurve (NEW — builds K→K curve by
+evaluating the chain on pure-K inputs), stage_sample_clut16bit (exists,
+Sampler16 = FnMut(&[u16],&mut[u16])->i32), eval_reverse_float (exists),
+detect_tac (exists in sm.rs).
