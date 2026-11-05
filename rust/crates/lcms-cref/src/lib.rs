@@ -148,6 +148,17 @@ pub struct InterpParams {
     pub interpolation: InterpFunction,
 }
 
+#[repr(C)]
+pub struct CmsTagTypeHandler {
+    pub signature: U32,
+    pub read_ptr: unsafe extern "C" fn(*mut CmsTagTypeHandler, Handle, *mut U32, U32) -> Handle,
+    pub write_ptr: unsafe extern "C" fn(*mut CmsTagTypeHandler, Handle, Handle, U32) -> i32,
+    pub dup_ptr: unsafe extern "C" fn(*mut CmsTagTypeHandler, Handle, U32) -> Handle,
+    pub free_ptr: unsafe extern "C" fn(*mut CmsTagTypeHandler, Handle),
+    pub context_id: Context,
+    pub icc_version: U32,
+}
+
 unsafe extern "C" {
     // ---- cmsmtrx.c ----
     pub fn _cmsVEC3init(r: *mut Vec3, x: F64, y: F64, z: F64);
@@ -317,6 +328,9 @@ unsafe extern "C" {
     pub fn _cmsAdjustEndianess16(w: U16) -> U16;
     pub fn _cmsAdjustEndianess32(v: U32) -> U32;
     pub fn _cmsAdjustEndianess64(result: *mut U64, qword: *const U64);
+
+    // ---- cmstypes.c ----
+    pub fn _cmsGetTagTypeHandler(context_id: Context, sig: U32) -> *mut CmsTagTypeHandler;
 
     // ---- cmsnamed.c ----
     pub fn cmsMLUalloc(context_id: Context, n_items: U32) -> Handle;

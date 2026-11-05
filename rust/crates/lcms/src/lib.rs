@@ -27,5 +27,6 @@ pub mod mtrx;
 pub mod named;
 pub mod pcs;
 pub mod signatures;
+pub mod tagtypes;
 pub mod types;
 pub mod wtpnt;

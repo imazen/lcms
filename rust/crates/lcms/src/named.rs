@@ -30,7 +30,10 @@ pub struct MluEntry {
 }
 
 /// `cmsMLU`
-#[derive(Clone)]
+///
+/// `Default` = zero-entries MLU — the state a NULL `cmsMLU*` produces
+/// through the C write paths (len-0 desc text, count-0 MLU block).
+#[derive(Clone, Default)]
 pub struct Mlu {
     pub allocated_entries: u32,
     pub used_entries: u32,
