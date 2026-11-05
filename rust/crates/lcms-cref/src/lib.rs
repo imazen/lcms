@@ -565,6 +565,13 @@ unsafe extern "C" {
     pub fn cmsCreateTransform(input: *mut c_void, input_format: u32, output: *mut c_void, output_format: u32, intent: u32, flags: u32) -> *mut c_void;
     pub fn cmsDoTransform(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32);
     pub fn cmsDeleteTransform(t: *mut c_void);
+    // --- cgats / IT8 ---
+    pub fn cmsIT8LoadFromMem(ctx: *mut c_void, ptr: *const c_void, len: u32) -> *mut c_void;
+    pub fn cmsIT8SaveToMem(h: *mut c_void, buffer: *mut c_void, buf_len: u32) -> u32;
+    pub fn cmsIT8GetSheetType(h: *mut c_void) -> *const i8;
+    pub fn cmsIT8GetProperty(h: *mut c_void, key: *const i8) -> *const i8;
+    pub fn cmsIT8GetData(h: *mut c_void, patch: *const i8, sample: *const i8) -> *const i8;
+    pub fn cmsIT8Free(h: *mut c_void);
 }
 
 /// cmsGetEncodedCMMversion sanity: returns LCMS_VERSION (2200).

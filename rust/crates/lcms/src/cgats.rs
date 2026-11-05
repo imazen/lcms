@@ -20,6 +20,7 @@ pub enum Symbol {
     Dnum,
     Ident,
     Str,
+    Comment,
     Eoln,
     Eof,
     SynError,
@@ -270,7 +271,7 @@ const PREDEFINED_SAMPLE_IDS: &[&str] = &[
 // --- lexer --------------------------------------------------------------
 
 fn is_separator(c: i32) -> bool {
-    c == b' ' as i32 || c == b'\t' as i32 || c == b'\n' as i32
+    c == b' ' as i32 || c == b'\t' as i32
 }
 fn is_idchar(c: i32) -> bool {
     (0..128).contains(&c)
@@ -965,108 +966,182 @@ impl It8 {
         }
     }
 
-    /// `InStringSymbol` — quoted string → Str
+    /// `InStringSymbol` — quoted string → Str (consumes the close quote)
     fn in_string_symbol(&mut self) {
-        let quote = self.ch;
+        while is_separator(self.ch) {
+            self.next_ch();
+        }
+        if self.ch != b'\'' as i32 && self.ch != b'"' as i32 {
+            self.syn_error("String expected");
+            return;
+        }
+        let sng = self.ch;
+        self.str_.clear();
         self.next_ch();
-        while self.ch != 0 && self.ch != quote {
+        while self.ch != sng {
+            if self.ch == b'\n' as i32 || self.ch == b'\r' as i32 || self.ch == 0 {
+                break;
+            }
             self.str_.push(self.ch as u8 as char);
             self.next_ch();
         }
-        self.next_ch(); // eat closing quote
         self.sy = Symbol::Str;
+        self.next_ch();
     }
 
-    /// `InSymbol` — the lexer loop
+    /// `InSymbol` — the lexer loop (C's `InSymbol`)
     fn in_symbol(&mut self) {
         loop {
             while is_separator(self.ch) {
-                if self.ch == b'\n' as i32 {
-                    self.lineno += 1;
-                }
                 self.next_ch();
             }
-            if self.ch == b'#' as i32 {
-                while self.ch != 0 && self.ch != b'\n' as i32 {
-                    self.next_ch();
-                }
-                if self.ch == b'\n' as i32 {
-                    self.lineno += 1;
-                }
-                continue;
-            }
-            break;
-        }
-        self.str_.clear();
-        self.id.clear();
-        match self.ch {
-            0 => {
-                self.sy = Symbol::Eof;
-            }
-            c if c == b'\r' as i32 => {
-                self.next_ch();
-                self.in_symbol();
-            }
-            c if c == b'\n' as i32 => {
-                self.lineno += 1;
-                self.sy = Symbol::Eoln;
-                self.next_ch();
-            }
-            c if c == b'\'' as i32 || c == b'"' as i32 => {
-                self.in_string_symbol();
-            }
-            c if (c as u8).is_ascii_digit() || c == b'+' as i32 || c == b'-' as i32 => {
-                let mut inum: i64 = 0;
-                let mut sgn = 1i64;
-                if c == b'+' as i32 {
-                    self.next_ch();
-                } else if c == b'-' as i32 {
-                    sgn = -1;
-                    self.next_ch();
-                }
-                while (self.ch as u8).is_ascii_digit() {
-                    inum = inum * 10 + (self.ch - b'0' as i32) as i64;
-                    if inum > 2147483647 {
-                        self.syn_error("Invalid number");
-                        return;
-                    }
-                    self.next_ch();
-                }
-                self.inum = (sgn * inum) as i32;
-                if self.ch == b'.' as i32 || (self.ch as u8 as char).to_ascii_uppercase() == 'E' {
-                    self.sy = Symbol::Dnum;
-                    self.read_real(self.inum);
-                } else {
-                    self.sy = Symbol::Inum;
-                }
-            }
-            c if is_first_idchar(c) => {
+            self.str_.clear();
+            self.id.clear();
+            if is_first_idchar(self.ch) {
                 while is_idchar(self.ch) {
                     self.id.push(self.ch as u8 as char);
                     self.next_ch();
                 }
-                self.sy = if self.is_cube {
+                let key = if self.is_cube {
                     bin_srch_key(&self.id, TABKEYS_CUBE)
                 } else {
                     bin_srch_key(&self.id, TABKEYS_IT8)
                 };
-            }
-            c if c == b'$' as i32 => {
-                while is_idchar(self.ch) || self.ch == b'$' as i32 {
-                    self.id.push(self.ch as u8 as char);
+                self.sy = if key == Symbol::Undefined {
+                    Symbol::Ident
+                } else {
+                    key
+                };
+            } else if (self.ch as u8).is_ascii_digit()
+                || self.ch == b'.' as i32
+                || self.ch == b'-' as i32
+                || self.ch == b'+' as i32
+            {
+                let mut sign = 1i32;
+                if self.ch == b'-' as i32 {
+                    sign = -1;
+                    self.next_ch();
+                } else if self.ch == b'+' as i32 {
                     self.next_ch();
                 }
-                self.sy = bin_srch_key(&self.id, TABKEYS_IT8);
+                self.inum = 0;
+                self.sy = Symbol::Inum;
+                if self.ch == b'0' as i32 {
+                    self.next_ch();
+                    if (self.ch as u8 as char).to_ascii_uppercase() == 'X' {
+                        self.next_ch();
+                        while (self.ch as u8).is_ascii_hexdigit() {
+                            let c = (self.ch as u8 as char).to_ascii_uppercase();
+                            let j = if ('A'..='F').contains(&c) {
+                                c as i32 - 'A' as i32 + 10
+                            } else {
+                                c as i32 - '0' as i32
+                            };
+                            if self.inum as f64 * 16.0 + j as f64 > 2147483647.0 {
+                                self.syn_error("Invalid hexadecimal number");
+                                return;
+                            }
+                            self.inum = self.inum * 16 + j;
+                            self.next_ch();
+                        }
+                        return;
+                    }
+                    if (self.ch as u8 as char).to_ascii_uppercase() == 'B' {
+                        self.next_ch();
+                        while self.ch == b'0' as i32 || self.ch == b'1' as i32 {
+                            let j = self.ch - b'0' as i32;
+                            if self.inum as f64 * 2.0 + j as f64 > 2147483647.0 {
+                                self.syn_error("Invalid binary number");
+                                return;
+                            }
+                            self.inum = self.inum * 2 + j;
+                            self.next_ch();
+                        }
+                        return;
+                    }
+                }
+                while (self.ch as u8).is_ascii_digit() {
+                    let digit = self.ch - b'0' as i32;
+                    if self.inum as f64 * 10.0 + digit as f64 > 2147483647.0 {
+                        self.read_real(self.inum);
+                        self.sy = Symbol::Dnum;
+                        self.dnum *= sign as f64;
+                        return;
+                    }
+                    self.inum = self.inum * 10 + digit;
+                    self.next_ch();
+                }
+                if self.ch == b'.' as i32 {
+                    self.read_real(self.inum);
+                    self.sy = Symbol::Dnum;
+                    self.dnum *= sign as f64;
+                    return;
+                }
+                self.inum *= sign;
+                if is_idchar(self.ch) {
+                    let buffer = if self.sy == Symbol::Inum {
+                        format!("{}", self.inum)
+                    } else {
+                        format!("{}", self.dnum)
+                    };
+                    self.id.clear();
+                    self.id.push_str(&buffer);
+                    while is_idchar(self.ch) {
+                        self.id.push(self.ch as u8 as char);
+                        self.next_ch();
+                    }
+                    self.sy = Symbol::Ident;
+                }
+                return;
+            } else {
+                match self.ch {
+                    0x1a | 0 | -1 => {
+                        self.sy = Symbol::Eof;
+                    }
+                    c if c == b'\n' as i32 => {
+                        self.next_ch();
+                        if self.ch == b'\n' as i32 {
+                            self.next_ch();
+                        }
+                        self.sy = Symbol::Eoln;
+                        self.lineno += 1;
+                    }
+                    c if c == b'\n' as i32 => {
+                        self.next_ch();
+                        self.sy = Symbol::Eoln;
+                        self.lineno += 1;
+                    }
+                    c if c == b'#' as i32 => {
+                        self.next_ch();
+                        while self.ch != 0 && self.ch != b'\n' as i32 && self.ch != b'\n' as i32 {
+                            self.next_ch();
+                        }
+                        self.sy = Symbol::Comment;
+                    }
+                    c if c == b'\'' as i32 || c == b'"' as i32 => {
+                        self.in_string_symbol();
+                    }
+                    _ => {
+                        self.syn_error(&format!("Unrecognized character: 0x{:x}", self.ch));
+                        return;
+                    }
+                }
             }
-            _ => {
-                self.sy = Symbol::SynError;
+            if self.sy != Symbol::Comment {
+                break;
             }
         }
     }
 
-    /// `CheckEOLN`
+    /// `CheckEOLN` — verify sy==Eoln, then consume all EOLNs
     fn check_eoln(&mut self) -> bool {
-        self.sy == Symbol::Eoln || self.sy == Symbol::Eof
+        if !self.check(Symbol::Eoln, "Expected separator") {
+            return false;
+        }
+        while self.sy == Symbol::Eoln {
+            self.in_symbol();
+        }
+        true
     }
 
     /// `Skip`
@@ -1087,27 +1162,23 @@ impl It8 {
         true
     }
 
-    /// `GetVal` — token → string
+    /// `GetVal` — token → string (does NOT advance; callers do)
     fn get_val(&mut self, buffer: &mut String, _max: usize, err_title: &str) -> bool {
         match self.sy {
             Symbol::Inum => {
                 *buffer = format!("{}", self.inum);
-                self.in_symbol();
                 true
             }
             Symbol::Dnum => {
                 *buffer = format!("{}", self.dnum);
-                self.in_symbol();
                 true
             }
             Symbol::Ident => {
                 *buffer = self.id.clone();
-                self.in_symbol();
                 true
             }
             Symbol::Str => {
                 *buffer = self.str_.clone();
-                self.in_symbol();
                 true
             }
             _ => self.syn_error(err_title),
@@ -1140,7 +1211,7 @@ impl It8 {
         let mut i_field = 0usize;
         self.in_symbol();
         if !self.check_eoln() {
-            return self.syn_error("End of line expected");
+            return false;
         }
         while self.sy != Symbol::EndDataFormat
             && self.sy != Symbol::Eoln
@@ -1180,7 +1251,7 @@ impl It8 {
         let mut buffer = String::new();
         self.in_symbol();
         if !self.check_eoln() {
-            return self.syn_error("End of line expected");
+            return false;
         }
         if self.get_table().data.is_empty() && !self.allocate_data_set() {
             return false;
@@ -1473,7 +1544,8 @@ impl It8 {
         }
         let mut it8 = Self::alloc(ctx);
         it8.source = data.to_vec();
-        if !it8.parse_it8(ty == 1) {
+        it8.next_ch(); // C primes it8->ch via NextCh before the first InSymbol
+        if !it8.parse_it8(ty - 1 != 0) {
             return None;
         }
         it8.cook_pointers();
