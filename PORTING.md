@@ -337,3 +337,32 @@ named-color transform eval stub, %g PostScript formatting,
 perf parity (2.4-3x on dense eval — structural: per-pixel indirect
 calls + bounds checks vs C raw pointers; needs scanline-batch eval
 or unsafe to close), more parity expansion.
+
+## State @ ae17878 — 100% coverage + all gates green
+
+Every lcms2 .c module has a bitexact Rust port. Parity gates:
+xform (sRGB identity byte-exact), xform_matrix (6: intents×4,
+RGB8/16, BGR8, Lab4→sRGB, sRGB→XYZ, Lab2→sRGB), cgats (IT8 parse +
+data cells), gbd (GBD alloc/add/check/compute), cam02, pack.
+Full workspace green (~92 tests).
+
+REAL bugs caught by gates:
+- compute_conversion propagated detect_black_point None; C ignores
+  the return (point stays {0,0,0}) — broke Lab4(abstract)→sRGB
+- cgats lexer: is_separator had \n; in_string didn't consume close
+  quote; get_val double-advanced; check_eoln didn't consume EOLNs;
+  load_from_mem never primed ch; nosheet inverted
+- cat() cloned stage tails (duplicate chains)
+- pipeline_stage_match inverted trailing check
+- text_description_write family-accept; placeholder defaults;
+  Mat3 row-major; gray broadcast; T_COLORSPACE mask; FROM_16_TO_8
+  formula; is_ink_space
+
+REMAINING:
+- cmserr/cmsplugin residuals (done: Plugin/PluginType/create/dup_ctx)
+- named-color transform eval stub (TYPE_NAMED_COLOR_INDEX)
+- %g PostScript formatting vs C's %g
+- perf parity (2.4-3x on dense eval — structural: per-pixel indirect
+  calls + bounds checks vs C raw pointers; needs scanline-batch eval
+  or unsafe to close)
+- more parity expansion (CMYK profiles, gamut-check xform, .cube)
