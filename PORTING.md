@@ -401,3 +401,24 @@ difference, not a structural bug (test1.icc CMYK/Lab-prtr is exact).
 
 All prior state committed/pushed; full workspace green except the
 single c_parity_realprofile::monitor_rgb_to_srgb assert.
+
+## ibm-t61 divergence — narrowed to MatShaper eval (root cause TBD)
+
+VERIFIED CORRECT (Rust == C): rTRC eval, colorant matrix, input-LUT
+XYZ at 0 ([0x002b,0x002b,0x0058] matches manual trc×colorant math),
+output-LUT structure. Rust's [2,4,12] is the mathematically CORRECT
+answer (numpy inverse check). C gives [0,0,8].
+
+Optimizer: Rust fires MatShaper for ibm-t61→sRGB (correct — PreOptimize
+collapses curv,mat,mat,mat,curv → curv,mat,curv). mat_shaper_eval16
+structure identical to C (In&0xFF, mat·shaper1, >>14+0x2000, shaper2).
+
+Divergence is in the TABLE contents: shaper1 (fixed-14 trc), mat
+(fixed-14 RGB2XYZ_ibm × inv_sRGB), or shaper2. Either:
+(a) C's double_to_1fixed14 rounds differently,
+(b) the combined `res` matrix product differs (mat_from_stage /
+    mat3_per precision), or
+(c) C picks a different strategy (resampling CLUT) for this pair.
+NEXT: dump mat[][]+shaper2[0..k] Rust-vs-C on the same linked pipeline
+(add an oracle hook that returns the C MatShaper tables), or eval C's
+MatShaperEval16 directly. Files: rust/crates/lcms/src/opt.rs:400-560.
