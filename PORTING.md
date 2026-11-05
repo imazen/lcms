@@ -1100,3 +1100,27 @@ cos/sin/sincos/atan2/tan/asin/acos/atan/hypot/fmod/cbrt/log2/exp2 via
 wrappers live in a dep crate. cos/sin alone insufficient: #[link_name]
 still resolved to compiler_builtins' cos (e10b) — needs versioned
 cos@GLIBC_* or dlsym/dlopen to reach libm.so's cos.
+
+### trig: lcms-sys real-glibc wrappers — FIXED (cos/sin/sincos/atan2/...)
+
+`lab_lch_round`/`delta_e` `a-back`/`DeltaE` 1-ULP diffs traced to
+`llvm.cos`/`llvm.sin`/`llvm.sincos` lowering to compiler_builtins/fdlibm
+in the binary (`cos(h)=e10b`) vs glibc `libm.so` (`e10c`). New `lcms-sys`
+micro-crate: a `cc`-compiled C shim (`shims/libm_shim.c`) whose
+`cos`/`sin`/`sincos`/`atan2`/`tan`/`asin`/`acos`/`atan`/`hypot`/`fmod`/
+`cbrt`/`log2`/`exp2`/`expm1`/`log1p` calls resolve to real glibc PLT.
+`lcms::gmath::GmathExt` adds `.g_cos()`/`.g_sin()`/... f64 methods; all
+trig sites in pcs.rs/gbd.rs/cam02.rs routed through it +
+`lcms_sys::sin_cos` for `lch2lab`. `cos`/`sin` via `sincos` internally
+(sincos isn't in compiler_builtins -> resolves to libm.so). Verified:
+`lcms_sys::sin_cos(h)`=e10c matches C `cmsLCh2Lab` a=f3.
+
+### OPEN: sqrt(a^2+b^2) FMA-contraction divergence (lab_lch/delta_e `C`)
+
+`lch.C=sqrt(Sqr(a)+Sqr(b))` diverges ~1 ULP: input1 oracle=5690(fma),
+input2 oracle=f116(two-op) — SAME code path, inconsistent codegen.
+`mul_add` matches input1 but not input2; plain `sqr`+`sqrt` matches
+neither fully. Likely hypot or a different internal path for some
+inputs, OR oracle cc emits fma inconsistently. Needs systematic
+mul_add matching of the oracle's per-site contraction trees.
+Pre-existing; not from cpow/cln/trig work.

@@ -6,6 +6,7 @@
 //! `cmsCIECAM02Init`/`Done`/`Forward`/`Reverse` → `CieCam02::new`,
 //! `forward`, `reverse` (the object is a `Box`-owned value; "Done" is `Drop`).
 
+use crate::gmath::GmathExt;
 use crate::types::{
     CUTSHEET_SURROUND, CieXyz, CpowExt, D_CALCULATE, DARK_SURROUND, DIM_SURROUND, JCh,
     ViewingConditions,
@@ -119,19 +120,19 @@ fn compute_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     } else if a > 0.0 {
         let temp = b / a;
         if b > 0.0 {
-            clr.h = r2d * temp.atan();
+            clr.h = r2d * temp.g_atan();
         } else if b == 0.0 {
             clr.h = 0.0;
         } else {
-            clr.h = (r2d * temp.atan()) + 360.0;
+            clr.h = (r2d * temp.g_atan()) + 360.0;
         }
     } else {
         let temp = b / a;
-        clr.h = (r2d * temp.atan()) + 180.0;
+        clr.h = (r2d * temp.g_atan()) + 180.0;
     }
 
     let d2r = 3.141592654 / 180.0;
-    let e = ((12500.0 / 13.0) * m.nc * m.ncb) * ((clr.h * d2r + 2.0).cos() + 3.8);
+    let e = ((12500.0 / 13.0) * m.nc * m.ncb) * ((clr.h * d2r + 2.0).g_cos() + 3.8);
 
     let temp;
     if clr.h < 20.14 {
@@ -176,7 +177,7 @@ fn inverse_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     let t = (clr.c_upper
         / ((clr.j_upper / 100.0).cpow(0.5) * (1.64 - 0.29_f64.cpow(m.n)).cpow(0.73)))
     .cpow(1.0 / 0.9);
-    let e = ((12500.0 / 13.0) * m.nc * m.ncb) * ((clr.h * d2r + 2.0).cos() + 3.8);
+    let e = ((12500.0 / 13.0) * m.nc * m.ncb) * ((clr.h * d2r + 2.0).g_cos() + 3.8);
 
     clr.a_upper = m.adopted_white.a_upper * (clr.j_upper / 100.0).cpow(1.0 / (m.c * m.z));
 

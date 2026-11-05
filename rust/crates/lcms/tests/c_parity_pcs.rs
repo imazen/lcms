@@ -365,3 +365,4 @@ unsafe fn cref_icc_color_space(our: i32) -> u32 {
 unsafe fn cref_lcms_color_space(sig: u32) -> i32 {
     unsafe { lcms_cref::_cmsLCMScolorSpace(sig) }
 }
+

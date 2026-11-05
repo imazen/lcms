@@ -11,6 +11,7 @@ repository.workspace = true
 # tests call the C oracle through lcms-cref and need unsafe FFI.
 
 [dependencies]
+lcms-sys = { path = "../lcms-sys" }
 # Fallible zeroed allocation for the big optimizer/CLUT tables — avoids the
 # write-then-memset of `vec![0; n]` and returns Result instead of panicking.
 bytemuck = { version = "1.25.0", default-features = false, features = ["extern_crate_alloc"] }

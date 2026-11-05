@@ -19,6 +19,7 @@ pub mod context;
 pub mod err;
 pub mod fixed;
 pub mod gamma;
+pub(crate) mod gmath;
 pub mod gbd;
 pub mod half;
 pub mod half_tables;

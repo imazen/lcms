@@ -3,6 +3,7 @@
 
 use crate::context::Context;
 use crate::types::Vec3;
+use crate::gmath::GmathExt;
 
 pub const SECTORS: usize = 16;
 
@@ -48,7 +49,7 @@ fn cms_atan2(y: f64, x: f64) -> f64 {
     if x == 0.0 && y == 0.0 {
         return 0.0;
     }
-    let mut a = y.atan2(x) * 180.0 / std::f64::consts::PI;
+    let mut a = y.g_atan2(x) * 180.0 / std::f64::consts::PI;
     while a < 0.0 {
         a += 360.0;
     }
@@ -70,10 +71,10 @@ fn to_spherical(v: &Vec3) -> Spherical {
 
 /// `ToCartesian`
 fn to_cartesian(sp: &Spherical) -> Vec3 {
-    let sin_a = (std::f64::consts::PI * sp.alpha / 180.0).sin();
-    let cos_a = (std::f64::consts::PI * sp.alpha / 180.0).cos();
-    let sin_t = (std::f64::consts::PI * sp.theta / 180.0).sin();
-    let cos_t = (std::f64::consts::PI * sp.theta / 180.0).cos();
+    let sin_a = (std::f64::consts::PI * sp.alpha / 180.0).g_sin();
+    let cos_a = (std::f64::consts::PI * sp.alpha / 180.0).g_cos();
+    let sin_t = (std::f64::consts::PI * sp.theta / 180.0).g_sin();
+    let cos_t = (std::f64::consts::PI * sp.theta / 180.0).g_cos();
     Vec3 {
         n: [sp.r * cos_t, sp.r * sin_t * sin_a, sp.r * sin_t * cos_a],
     }

@@ -324,12 +324,20 @@ version = "0.0.0"
 dependencies = [
  "bytemuck",
  "lcms-cref",
+ "lcms-sys",
  "zenbench",
 ]
 
 [[package]]
 name = "lcms-cref"
 version = "0.0.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "lcms-sys"
+version = "0.1.0"
 dependencies = [
  "cc",
 ]

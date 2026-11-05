@@ -7,6 +7,7 @@ use crate::fixed::{quick_saturate_word, s15_fixed16_to_double};
 use crate::signatures::colorspace as cs;
 use crate::types::{CpowExt, *};
 use crate::wtpnt::d50_xyz;
+use crate::gmath::GmathExt;
 use std::f64::consts::PI;
 
 const MAX_ENCODEABLE_XYZ: f64 = 1.0 + 32767.0 / 32768.0;
@@ -212,7 +213,7 @@ fn atan2deg(a: f64, b: f64) -> f64 {
     let mut h = if a == 0.0 && b == 0.0 {
         0.0
     } else {
-        a.atan2(b)
+        a.g_atan2(b)
     };
 
     h *= 180. / PI;
@@ -248,7 +249,7 @@ pub fn lab2lch(lab: &CieLab) -> CieLCh {
 /// the same `sincos` libcall on glibc, keeping bit parity.
 pub fn lch2lab(lch: &CieLCh) -> CieLab {
     let h = (lch.h * PI) / 180.0;
-    let (sh, ch) = h.sin_cos();
+    let (sh, ch) = lcms_sys::sin_cos(h);
 
     CieLab {
         L: lch.L,
@@ -376,18 +377,18 @@ pub fn bfd_delta_e(lab1: &CieLab, lab2: &CieLab) -> f64 {
     let dc = 0.035 * ave_c / (1.0 + 0.00365 * ave_c) + 0.521;
     let g = (sqr(sqr(ave_c)) / (sqr(sqr(ave_c)) + 14000.0)).sqrt();
     let t = 0.627
-        + (0.055 * ((ave_h - 254.0) / (180.0 / PI)).cos()
-            - 0.040 * ((2.0 * ave_h - 136.0) / (180.0 / PI)).cos()
-            + 0.070 * ((3.0 * ave_h - 31.0) / (180.0 / PI)).cos()
-            + 0.049 * ((4.0 * ave_h + 114.0) / (180.0 / PI)).cos()
-            - 0.015 * ((5.0 * ave_h - 103.0) / (180.0 / PI)).cos());
+        + (0.055 * ((ave_h - 254.0) / (180.0 / PI)).g_cos()
+            - 0.040 * ((2.0 * ave_h - 136.0) / (180.0 / PI)).g_cos()
+            + 0.070 * ((3.0 * ave_h - 31.0) / (180.0 / PI)).g_cos()
+            + 0.049 * ((4.0 * ave_h + 114.0) / (180.0 / PI)).g_cos()
+            - 0.015 * ((5.0 * ave_h - 103.0) / (180.0 / PI)).g_cos());
 
     let dh = dc * (g * t + 1.0 - g);
-    let rh = -0.260 * ((ave_h - 308.0) / (180.0 / PI)).cos()
-        - 0.379 * ((2.0 * ave_h - 160.0) / (180.0 / PI)).cos()
-        - 0.636 * ((3.0 * ave_h + 254.0) / (180.0 / PI)).cos()
-        + 0.226 * ((4.0 * ave_h + 140.0) / (180.0 / PI)).cos()
-        - 0.194 * ((5.0 * ave_h + 280.0) / (180.0 / PI)).cos();
+    let rh = -0.260 * ((ave_h - 308.0) / (180.0 / PI)).g_cos()
+        - 0.379 * ((2.0 * ave_h - 160.0) / (180.0 / PI)).g_cos()
+        - 0.636 * ((3.0 * ave_h + 254.0) / (180.0 / PI)).g_cos()
+        + 0.226 * ((4.0 * ave_h + 140.0) / (180.0 / PI)).g_cos()
+        - 0.194 * ((5.0 * ave_h + 280.0) / (180.0 / PI)).g_cos();
 
     let rc = ((ave_c * ave_c * ave_c * ave_c * ave_c * ave_c)
         / ((ave_c * ave_c * ave_c * ave_c * ave_c * ave_c) + 70000000.0))
@@ -419,9 +420,9 @@ pub fn cmc_delta_e(lab1: &CieLab, lab2: &CieLab, l: f64, c: f64) -> f64 {
     };
 
     let t = if lch1.h > 164.0 && lch1.h < 345.0 {
-        0.56 + (0.2 * ((lch1.h + 168.0) / (180.0 / PI)).cos()).abs()
+        0.56 + (0.2 * ((lch1.h + 168.0) / (180.0 / PI)).g_cos()).abs()
     } else {
-        0.36 + (0.4 * ((lch1.h + 35.0) / (180.0 / PI)).cos()).abs()
+        0.36 + (0.4 * ((lch1.h + 35.0) / (180.0 / PI)).g_cos()).abs()
     };
 
     let sc = 0.0638 * lch1.C / (1.0 + 0.0131 * lch1.C) + 0.638;
@@ -488,12 +489,12 @@ pub fn cie2000_delta_e(lab1: &CieLab, lab2: &CieLab, kl: f64, kc: f64, kh: f64) 
     let delta_l = ls - l1;
     let delta_c = c_ps - c_p;
 
-    let delta_hh = 2.0 * (c_ps * c_p).sqrt() * (radians(delta_h) / 2.0).sin();
+    let delta_hh = 2.0 * (c_ps * c_p).sqrt() * (radians(delta_h) / 2.0).g_sin();
 
-    let t = 1.0 - 0.17 * radians(meanh_p - 30.0).cos()
-        + 0.24 * radians(2.0 * meanh_p).cos()
-        + 0.32 * radians(3.0 * meanh_p + 6.0).cos()
-        - 0.2 * radians(4.0 * meanh_p - 63.0).cos();
+    let t = 1.0 - 0.17 * radians(meanh_p - 30.0).g_cos()
+        + 0.24 * radians(2.0 * meanh_p).g_cos()
+        + 0.32 * radians(3.0 * meanh_p + 6.0).g_cos()
+        - 0.2 * radians(4.0 * meanh_p - 63.0).g_cos();
 
     let sl =
         1.0 + (0.015 * sqr((ls + l1) / 2.0 - 50.0)) / (20.0 + sqr((ls + l1) / 2.0 - 50.0)).sqrt();
@@ -505,7 +506,7 @@ pub fn cie2000_delta_e(lab1: &CieLab, lab2: &CieLab, kl: f64, kc: f64, kh: f64) 
 
     let rc = 2.0 * (mean_c_p.cpow(7.0) / (mean_c_p.cpow(7.0) + 25.0_f64.cpow(7.0))).sqrt();
 
-    let rt = -(2.0 * radians(delta_ro)).sin() * rc;
+    let rt = -(2.0 * radians(delta_ro)).g_sin() * rc;
 
     (sqr(delta_l / (sl * kl))
         + sqr(delta_c / (sc * kc))
