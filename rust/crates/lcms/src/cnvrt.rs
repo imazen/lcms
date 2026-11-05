@@ -497,23 +497,95 @@ fn link_profiles_inner(
     }
 }
 
-// --- Black-preserving intents: need cmssamp (TAC) + xform; ported later ---
+/// `BlackPreservingKOnlyIntents` — CMYK→CMYK preserving pure-K
 fn black_preserving_k_only_intents(
-    _ctx: Option<&Context>,
-    _profiles: &mut [Box<IccProfile>],
-    _intents: &[u32],
-    _bpc: &mut [bool],
-    _adaptation_states: &[f64],
-    _dw_flags: u32,
+    ctx: Option<&Context>,
+    profiles: &mut [Box<IccProfile>],
+    intents: &[u32],
+    bpc: &mut [bool],
+    adaptation_states: &[f64],
+    dw_flags: u32,
 ) -> Option<Pipeline> {
-    // TODO(cmscnvrt): BlackPreservingKOnlyIntents — needs cmsDetectTAC +
-    // precalculated white/black curves over the transform engine
-    crate::err::signal_error(
-        _ctx,
-        crate::types::ERROR_UNKNOWN_EXTENSION,
-        "K-only intent not yet ported",
-    );
-    None
+    use crate::signatures::colorspace as cs;
+    use crate::signatures::profileclass as pc;
+    let n = profiles.len();
+    if n == 0 || n > 255 {
+        return None;
+    }
+    let icc_intents: Vec<u32> = intents.iter().map(|&i| translate_non_icc_intents(i)).collect();
+    // Trim trailing CMYK→CMYK devicelinks
+    let mut last_pos = n - 1;
+    let mut last = last_pos;
+    while is_cmyk_devicelink(&profiles[last]) {
+        if last < 2 {
+            break;
+        }
+        last -= 1;
+    }
+    last_pos = last;
+    let preservation_count = last_pos + 1;
+    // Check for non-CMYK input or non-CMYK/non-output last profile
+    if profiles[0].color_space != cs::SigCmykData
+        || !(profiles[last_pos].color_space == cs::SigCmykData
+            || profiles[last_pos].device_class == pc::SigOutputClass)
+    {
+        return default_icc_intents(
+            ctx,
+            profiles,
+            &icc_intents,
+            bpc,
+            adaptation_states,
+            dw_flags,
+        );
+    }
+    let mut result = crate::lut::pipeline_alloc(ctx, 4, 4)?;
+    // normal ICC transform over the preservation profiles
+    let mut cmyk2cmyk = default_icc_intents(
+        ctx,
+        &mut profiles[..preservation_count],
+        &icc_intents[..preservation_count],
+        &mut bpc[..preservation_count],
+        &adaptation_states[..preservation_count],
+        dw_flags,
+    )?;
+    let k_tone = build_k_tone_curve(
+        ctx,
+        4096,
+        preservation_count,
+        &icc_intents,
+        profiles,
+        bpc,
+        adaptation_states,
+        dw_flags,
+    )?;
+    let n_grid = crate::pcs::reasonable_gridpoints_by_colorspace(cs::SigCmykData, dw_flags);
+    let mut clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, 4, 4, None)?;
+    // GrayOnlySampler: pure-K → KTone eval; else the full cmyk2cmyk transform
+    let mut sampler = move |inp: &[u16], out: &mut [u16]| -> i32 {
+        if inp[0] == 0 && inp[1] == 0 && inp[2] == 0 {
+            out[0] = 0;
+            out[1] = 0;
+            out[2] = 0;
+            out[3] = k_tone.eval16(inp[3]);
+            return 1;
+        }
+        cmyk2cmyk.eval16(inp, out);
+        1
+    };
+    if !crate::lut::stage_sample_clut16bit(&mut clut, &mut sampler, 0) {
+        return None;
+    }
+    if !result.insert_stage(crate::lut::StageLoc::AtBegin, clut) {
+        return None;
+    }
+    // append the trailing devicelinks
+    for i in last_pos + 1..n {
+        let devlink = crate::io1::read_devicelink_lut(&mut profiles[i], icc_intents[i])?;
+        if !result.cat(&devlink) {
+            return None;
+        }
+    }
+    Some(result)
 }
 
 fn black_preserving_k_plane_intents(
@@ -530,4 +602,166 @@ fn black_preserving_k_plane_intents(
         "K-plane intent not yet ported",
     );
     None
+}
+
+// ---------------------------------------------------------------------------
+// `cmsgmt.c`/`cmscnvrt.c` black-preserving intents — CMYK→CMYK K-only.
+// ---------------------------------------------------------------------------
+
+const TYPE_CMYK_FLT: u32 = (1 << 22) | (6 << 16) | (4 << 3) | 4;
+const TYPE_LAB_DBL: u32 = (1 << 22) | (10 << 16) | (3 << 3) | 0;
+
+/// `_cmsChain2Lab` — profiles + a trailing Lab4 profile → transform to Lab.
+fn chain2lab(
+    ctx: Option<&Context>,
+    n_profiles: usize,
+    input_format: u32,
+    output_format: u32,
+    intents: &[u32],
+    profiles: &mut [Box<IccProfile>],
+    bpc: &mut [bool],
+    adaptation_states: &[f64],
+    dw_flags: u32,
+) -> Option<Box<crate::xform::Transform>> {
+    if n_profiles > 254 || n_profiles > profiles.len() {
+        return None;
+    }
+    let lab = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
+    // clone the slice of profiles + append Lab
+    let mut plist: Vec<Box<IccProfile>> = Vec::new();
+    for i in 0..n_profiles {
+        let bytes = crate::profile::save_profile_to_mem(&mut profiles[i])?;
+        plist.push(crate::profile::open_profile_from_mem(None, &bytes)?);
+    }
+    plist.push(Box::new(*lab));
+    let mut bpc_list = vec![false; n_profiles + 1];
+    for i in 0..n_profiles {
+        bpc_list[i] = bpc[i];
+    }
+    let mut intent_list = vec![0u32; n_profiles + 1];
+    for i in 0..n_profiles {
+        intent_list[i] = intents[i];
+    }
+    intent_list[n_profiles] = crate::types::INTENT_RELATIVE_COLORIMETRIC;
+    let mut adapt_list = vec![1.0f64; n_profiles + 1];
+    for i in 0..n_profiles {
+        adapt_list[i] = adaptation_states[i];
+    }
+    crate::xform::create_extended_transform(
+        None,
+        &mut plist,
+        &mut bpc_list,
+        &intent_list,
+        &adapt_list,
+        None,
+        0,
+        input_format,
+        output_format,
+        dw_flags,
+    )
+}
+
+/// `ComputeKToLstar` — K→L* curve via a CMYK→Lab transform on pure-K inputs
+fn compute_k_to_lstar(
+    ctx: Option<&Context>,
+    n_points: usize,
+    n_profiles: usize,
+    intents: &[u32],
+    profiles: &mut [Box<IccProfile>],
+    bpc: &mut [bool],
+    adaptation_states: &[f64],
+    dw_flags: u32,
+) -> Option<crate::gamma::ToneCurve> {
+    let mut xform = chain2lab(
+        ctx,
+        n_profiles,
+        TYPE_CMYK_FLT,
+        TYPE_LAB_DBL,
+        intents,
+        profiles,
+        bpc,
+        adaptation_states,
+        dw_flags,
+    )?;
+    let mut sampled = Vec::with_capacity(n_points);
+    for i in 0..n_points {
+        let cmyk: [f32; 4] = [0.0, 0.0, 0.0, (i as f32 * 100.0) / (n_points - 1) as f32];
+        // feed the f32 cmyk as bytes into do_transform; read f64 Lab out
+        let mut inb = Vec::with_capacity(16);
+        for v in cmyk {
+            inb.extend_from_slice(&v.to_ne_bytes());
+        }
+        let mut outb = vec![0u8; 24];
+        xform.do_transform(&inb, &mut outb, 1);
+        let l = f64::from_ne_bytes(outb[0..8].try_into().unwrap());
+        sampled.push(1.0 - (l / 100.0) as f32); // Negate K for easier operation
+    }
+    crate::gamma::build_tabulated_tone_curve_float(ctx, &sampled)
+}
+
+/// `_cmsBuildKToneCurve` — K→K curve: input K→L* joined to output L*→K
+fn build_k_tone_curve(
+    ctx: Option<&Context>,
+    n_points: usize,
+    n_profiles: usize,
+    intents: &[u32],
+    profiles: &mut [Box<IccProfile>],
+    bpc: &mut [bool],
+    adaptation_states: &[f64],
+    dw_flags: u32,
+) -> Option<crate::gamma::ToneCurve> {
+    use crate::signatures::colorspace as cs;
+    use crate::signatures::profileclass as pc;
+    if profiles[0].color_space != cs::SigCmykData
+        || profiles[n_profiles - 1].color_space != cs::SigCmykData
+    {
+        return None;
+    }
+    if profiles[n_profiles - 1].device_class != pc::SigOutputClass {
+        return None;
+    }
+    let in_ = compute_k_to_lstar(
+        ctx,
+        n_points,
+        n_profiles - 1,
+        intents,
+        &mut profiles[..n_profiles],
+        &mut bpc[..n_profiles],
+        &adaptation_states[..n_profiles],
+        dw_flags,
+    )?;
+    let out = compute_k_to_lstar(
+        ctx,
+        n_points,
+        1,
+        &intents[n_profiles - 1..],
+        &mut profiles[n_profiles - 1..],
+        &mut bpc[n_profiles - 1..],
+        &adaptation_states[n_profiles - 1..],
+        dw_flags,
+    )?;
+    let k_tone = crate::gamma::join_tone_curve(ctx, &in_, &out, n_points as u32)?;
+    if !crate::gamma::is_tone_curve_monotonic(&k_tone) {
+        return None;
+    }
+    Some(k_tone)
+}
+
+/// `is_cmyk_devicelink`
+fn is_cmyk_devicelink(p: &IccProfile) -> bool {
+    use crate::signatures::colorspace as cs;
+    use crate::signatures::profileclass as pc;
+    p.device_class == pc::SigLinkClass && p.color_space == cs::SigCmykData
+}
+
+/// `TranslateNonICCIntents` — map K-preserving intents to their ICC base
+fn translate_non_icc_intents(intent: u32) -> u32 {
+    use crate::types::*;
+    match intent {
+        INTENT_PRESERVE_K_ONLY_PERCEPTUAL | INTENT_PRESERVE_K_PLANE_PERCEPTUAL => INTENT_PERCEPTUAL,
+        INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC
+        | INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC => INTENT_RELATIVE_COLORIMETRIC,
+        INTENT_PRESERVE_K_ONLY_SATURATION | INTENT_PRESERVE_K_PLANE_SATURATION => INTENT_SATURATION,
+        _ => intent,
+    }
 }
