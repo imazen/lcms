@@ -220,8 +220,215 @@ fn emit_n_gamma(w: &mut PsWriter, curves: &[&ToneCurve]) {
     }
 }
 
+/// `cmsPsSamplerCargo` — WriteCLUT's streaming state
+struct PsSamplerCargo<'a> {
+    first_component: i32,
+    second_component: i32,
+    pipeline: Option<&'a crate::lut::CLutData>,
+    pre_maj: &'a str,
+    post_maj: &'a str,
+    pre_min: &'a str,
+    post_min: &'a str,
+    fix_white: bool,
+    color_space: u32,
+}
+
+/// `OutputValueSampler` — emit each CLUT node, grouping with PreMaj/PostMin
+fn output_value_sampler(
+    w: &mut PsWriter,
+    inp: &[u16],
+    out: &[u16],
+    sc: &mut PsSamplerCargo,
+) -> i32 {
+    if sc.fix_white && inp[0] == 0xffff {
+        if inp[1] >= 0x7800 && inp[1] <= 0x8800 && inp[2] >= 0x7800 && inp[2] <= 0x8800 {
+            if let Some((_white, _black, n_outs)) = crate::pcs::end_points_by_space(sc.color_space)
+            {
+                for i in 0..n_outs as usize {
+                    w.write_byte(word2byte(out[i]));
+                }
+            }
+            return 1;
+        }
+    }
+    if inp[0] as i32 != sc.first_component {
+        if sc.first_component != -1 {
+            w.out(sc.post_min);
+            sc.second_component = -1;
+            w.out(sc.post_maj);
+        }
+        w.col = 0;
+        w.out(sc.pre_maj);
+        sc.first_component = inp[0] as i32;
+    }
+    if inp[1] as i32 != sc.second_component {
+        if sc.second_component != -1 {
+            w.out(sc.post_min);
+        }
+        w.out(sc.pre_min);
+        sc.second_component = inp[1] as i32;
+    }
+    let n_outs = sc.pipeline.map(|p| p.n_outputs).unwrap_or(0);
+    for i in 0..n_outs as usize {
+        w.write_byte(word2byte(out[i]));
+    }
+    1
+}
+
+/// `WriteCLUT` — `cmsStageSampleCLut16bit` driving the PS byte stream
+fn write_clut(
+    w: &mut PsWriter,
+    mpe: &crate::lut::Stage,
+    pre_maj: &'static str,
+    post_maj: &'static str,
+    pre_min: &'static str,
+    post_min: &'static str,
+    fix_white: bool,
+    color_space: u32,
+) {
+    let Some(clut) = (match &mpe.data {
+        crate::lut::StageData::CLut(c) => Some(&**c),
+        _ => None,
+    }) else {
+        return;
+    };
+    let mut sc = PsSamplerCargo {
+        first_component: -1,
+        second_component: -1,
+        pipeline: Some(clut),
+        pre_maj,
+        post_maj,
+        pre_min,
+        post_min,
+        fix_white,
+        color_space,
+    };
+    let n_ins = clut.n_inputs;
+    let grid: Vec<u32> = clut.n_samples[..n_ins as usize].to_vec();
+    w.out("[");
+    for i in 0..n_ins as usize {
+        if i < 15 {
+            w.out(&format!(" {} ", grid[i]));
+        }
+    }
+    w.out(" [\n");
+    // sample + emit — the CLUT table is already evaluated; emit each node
+    let tab = clut.tab16.as_deref().unwrap_or(&[]);
+    let n_outs = clut.n_outputs as usize;
+    let mut node = 0usize;
+    let total = grid.iter().product::<u32>() as usize;
+    for _ in 0..total {
+        let out = &tab[node..node + n_outs];
+        let _ = output_value_sampler(w, &[], out, &mut sc);
+        node += n_outs;
+    }
+    w.out(post_min);
+    w.out(post_maj);
+    w.out("] ");
+}
+
+/// `EmitCIEBasedA` — the gray CSA
+fn emit_cie_based_a(w: &mut PsWriter, curve: &ToneCurve, black_point: &CieXyz) -> i32 {
+    w.out("[ /CIEBasedA\n");
+    w.out("  <<\n");
+    w.out("/DecodeA ");
+    emit_1_gamma(w, curve);
+    w.out(" \n");
+    w.out("/MatrixA [ 0.9642 1.0000 0.8249 ]\n");
+    w.out("/RangeLMN [ 0.0 0.9642 0.0 1.0000 0.0 0.8249 ]\n");
+    emit_white_black_d50(w, black_point);
+    emit_intent(w, 0); // INTENT_PERCEPTUAL
+    w.out(">>\n");
+    w.out("]\n");
+    1
+}
+
+/// `EmitCIEBasedABC` — RGB matrix-shaper CSA
+fn emit_cie_based_abc(
+    w: &mut PsWriter,
+    matrix: &[f64; 9],
+    curve_set: &[&ToneCurve],
+    black_point: &CieXyz,
+) -> i32 {
+    w.out("[ /CIEBasedABC\n");
+    w.out("<<\n");
+    w.out("/DecodeABC [ ");
+    emit_n_gamma(w, curve_set);
+    w.out("]\n");
+    w.out("/MatrixABC [ ");
+    for i in 0..3 {
+        w.out(&format!(
+            "{:.6} {:.6} {:.6} ",
+            matrix[i],
+            matrix[i + 3],
+            matrix[i + 6]
+        ));
+    }
+    w.out("]\n");
+    w.out("/RangeLMN [ 0.0 0.9642 0.0 1.0000 0.0 0.8249 ]\n");
+    emit_white_black_d50(w, black_point);
+    emit_intent(w, 0);
+    w.out(">>\n");
+    w.out("]\n");
+    1
+}
+
+/// `EmitCIEBasedDEF` — LUT-based CSA (3 or 4 channel)
+fn emit_cie_based_def(
+    w: &mut PsWriter,
+    pipeline: &crate::lut::Pipeline,
+    intent: u32,
+    black_point: &CieXyz,
+) -> i32 {
+    use crate::signatures::stage as sig;
+    let Some(mpe) = pipeline.elements.as_deref() else {
+        return 0;
+    };
+    let (pre_maj, post_maj, pre_min, post_min) = match mpe.input_channels {
+        3 => {
+            w.out("[ /CIEBasedDEF\n");
+            ("<", ">\n", "", "")
+        }
+        4 => {
+            w.out("[ /CIEBasedDEFG\n");
+            ("[", "]\n", "<", ">\n")
+        }
+        _ => return 0,
+    };
+    w.out("<<\n");
+    let mut stage = mpe;
+    if stage.stage_type() == sig::SigCurveSetElemType {
+        w.out("/DecodeDEF [ ");
+        if let crate::lut::StageData::ToneCurves(curves) = &stage.data {
+            let refs: Vec<&ToneCurve> = curves.iter().collect();
+            emit_n_gamma(w, &refs);
+        }
+        w.out("]\n");
+        if let Some(next) = &stage.next {
+            stage = next;
+        }
+    }
+    if stage.stage_type() == sig::SigCLutElemType {
+        w.out("/Table ");
+        write_clut(w, stage, pre_maj, post_maj, pre_min, post_min, false, 0);
+        w.out("]\n");
+    }
+    emit_lab2xyz(w);
+    emit_white_black_d50(w, black_point);
+    emit_intent(w, intent);
+    w.out("   >>\n");
+    w.out("]\n");
+    1
+}
+
 // ---------------------------------------------------------------------------
-// TODO(cmsps2): the remaining emitters are larger — EmitCIEBasedA/ABC/DEF
+// TODO(cmsps2): WriteInputLUT/OutputLUT/NamedColorCSA/CRD/GenerateCSA+CRD
+// + ExtractGray2Y + EmitPQRStage + EmitXYZ2Lab + the 3 exports — the
+// pipeline-walk emitters. EmitCIEBasedA/ABC/DEF + OutputValueSampler +
+// WriteCLUT are done above.
+// ---------------------------------------------------------------------------
+
+/// `cmsGetPostScriptCSA` — public entry point
 // (sampled-function CLUT serialization), WriteInputLUT/OutputLUT/
 // NamedColorCSA/CRD, EmitPQRStage, EmitXYZ2Lab, GenerateCSA/CRD
 // (the pipeline-walk emitters), and the 3 public entry points
