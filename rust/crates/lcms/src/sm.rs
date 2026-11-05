@@ -15,7 +15,7 @@ pub const PERCEPTUAL_BLACK: CieXyz = CieXyz {
 };
 
 /// `cmsIsMatrixShaper` — TRCs + colorants present for gray/RGB
-fn is_matrix_shaper(icc: &IccProfile) -> bool {
+pub(crate) fn is_matrix_shaper(icc: &IccProfile) -> bool {
     use crate::signatures::colorspace as cs;
     match icc.color_space {
         x if x == cs::SigGrayData => {
@@ -252,10 +252,11 @@ pub fn detect_destination_black_point(
         return Some(PERCEPTUAL_BLACK);
     }
     let space = icc.color_space;
-    let ink = is_ink_colorspace(space);
-    if !ink
-        && space != crate::signatures::colorspace::SigGrayData
-        && space != crate::signatures::colorspace::SigRgbData
+    // C: `!cmsIsCLUT(OUTPUT) || (space != Gray && space != RGB && !isInk)` → input case
+    if !crate::io1::is_clut(icc, intent, crate::io1::LCMS_USED_AS_OUTPUT)
+        || (space != crate::signatures::colorspace::SigGrayData
+            && space != crate::signatures::colorspace::SigRgbData
+            && !is_ink_colorspace(space))
     {
         return detect_black_point(icc, intent, dw_flags);
     }

@@ -856,3 +856,80 @@ moxcms-competitive tetra → C-FFI dropin crate (threading) → pass C test suit
   the FFI boundary (Transform is Send; C callers may share across threads).
 - C test suite (testcms2.c in reference/lcms2/testbed): port or bind the
   oracle test suite against the Rust impl as the broadest parity gate.
+
+## eval_float ~4e-6 divergence — NARROWED (calibrated_nonzero_black, u8)
+
+Pipeline [cvst, matf, matf, cvst], intent0, flags=NOOPTIMIZE. Verified:
+- rTRC/gTRC/bTRC all bit-exact vs cmsEvalToneCurveFloat (0/65536)
+- evaluate_matrix == C EvaluateMatrix (same f64 accumulator)
+- BUT pipeline eval_float: 179193 diffs, worst ~4.3e-6, producing NEGATIVE
+  values (port -4.6e-6 vs C -2.9e-7). "nonzero black" profile — near-zero
+  input -> negative matrix output -> 1-off u16/u8.
+=> curves + matrix eval are exact; the divergence is the matf stage's
+   `double`/`offset` COEFFICIENTS (from the A2B/B2A matrix tag read or the
+   chromatic-adaptation composition) or an extra/missing conversion stage.
+NEXT: dump my matf stage `double`/`offset` vs C's (xform->Lut stage Data
+via cref shim) on calibrated_nonzero_black; compare mat3/adaptation
+composition (compute_conversion off/MAX_ENC_XYZ scaling, mat3_per order).
+Likely a matrix-tag-read rounding (s15Fixed16 -> f64) or a missing
+chromatic-adaptation stage ordering difference.
+
+## st3 matf+offset is the suspect (mAB 'M' element)
+Pipeline [cvst, MAT(no off), MAT(+off -6.3e-4), MAT, cvst]. The offset is
+the profile's mAB 'M' matrix-offset (real ICC element, bpc=false so not
+from compute_conversion). ~4e-6 output divergence = the offset VALUES
+differ from C -> the mAB 'M' offset read/scaling. C's stage is
+_cmsStageMatrixData{Double[9], Offset[3]}; dump C's m+off via a new shim
+and compare to the double/offset in st3.
+
+## eval_float ~4e-6 divergence — ROOT CAUSE localized to mAB 'M' element read
+C st3: MAT 1.0012986815038307 off [-0.0006261039,-0.0006493507,-0.0005356494]
+R st3: MAT 1.001299017045028  off [-0.0006262657,-0.0006495184,-0.0005357878]
+~3e-7 scale + ~2e-7 offset diff. Values are Float32 (not s15Fixed16 — the
+×65536 products aren't integer). Suspect type_mab_read/elem_matrix reads
+the 'M' element's matrix+offset at a slightly different byte position or
+with different Float32->f64 conversion than C's _cmsReadFloat32Number.
+NEXT: compare type_mab_read's element-offset/size handling + the 'M'
+elem matrix/offset read loop vs C's Type_mAB_Read + ReadMatrix.
+
+## eval_float divergence — ROOT: black-point detection values
+compute_black_point_compensation formula == C exactly. st3 (matf+off,
+scale+offset) is the BPC matrix. Offdiag ~3e-7 diff in scale, ~2e-7 in
+offset => detect_black_point/detect_destination_black_point (sm.rs,
+cmsDetectBlackPoint) returns ~3e-7 different CieXyz than C's
+cmsDetectBlackPoint — a grid-search eval divergence (nearest-black LAB
+point). NOTE: st3 exists even though bpc=false in the test -> check WHY
+BPC path ran (is compute_conversion hit with bpc true, or is this the
+'m'/absolute path?). Then diff sm::detect_black_point vs C
+cmsDetectBlackPoint on the profile — the LAB-grid eval is the suspect.
+
+## eval_float divergence — RESOLVED (3 real bugs, all landed)
+
+1. **`optimize_pipeline` gated on `!NOOPTIMIZE`** (xform.rs) — C's
+   `AllocEmptyTransform` calls `_cmsOptimizePipeline` UNCONDITIONALLY;
+   `PreOptimize` strips identity/inverse-pair stages BEFORE the internal
+   NOOPTIMIZE check. The Lab2 abstract profile's devicelink LUT is
+   `[v4v2, identity-clut, v2v4]` — C collapses it to nothing (3-stage link);
+   the port kept it, and `evaluate_clut_float_in16` u16-quantized the Lab
+   output -> ~3e-4 Lab error -> wrong black points -> ~4e-6 BPC matrix error.
+   FIX: call optimize_pipeline unconditionally (it handles NOOPTIMIZE
+   internally, matching C's `_cmsOptimizePipeline`).
+
+2. **`detect_destination_black_point` missing `cmsIsCLUT(OUTPUT)` check**
+   (sm.rs) — C's condition `!cmsIsCLUT(OUTPUT) || (space != Gray/RGB/ink)`
+   falls through to `cmsDetectBlackPoint` for non-CLUT-output profiles;
+   the port only tested colorspace (`!ink && !Gray && !RGB`, wrong grouping
+   and wrong operands) and always took the round-trip ramp for RGB/Gray/ink.
+   FIX: added `io1::is_clut`/`is_intent_supported`/`LCMS_USED_AS_*` and the
+   exact C condition. bp == dbp now (bit-exact, 0.0 diff on all failing
+   profiles).
+
+3. **Intent tag tables index-3 wrong** (io1.rs) — `DEVICE2PCS16[3]=AToB0`,
+   `DEVICE2PCSFLOAT[3]=DToB0`, `PCS2DEVICE16[3]=BToA0`, `PCS2DEVICEFLOAT[3]=BToD0`;
+   C uses `[3]=AToB1/DToB3/BToA1/BToD3` (absolute intent reads). Fixed all four.
+
+VERIFY: detect_black_point + detect_destination_black_point bit-exact vs
+cmsDetectBlackPoint/cmsDetectDestinationBlackPoint on
+calibrated_nonzero_black, ibm-t61, new_c27b55f8 (0.0 diffs).
+Corpus test (`realworld_profile_corpus`, 176 profiles) green — the u8
+divergences are gone.

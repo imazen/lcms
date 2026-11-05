@@ -18,25 +18,25 @@ const DEVICE2PCS16: [u32; 4] = [
     tags::SigAToB0Tag,
     tags::SigAToB1Tag,
     tags::SigAToB2Tag,
-    tags::SigAToB0Tag,
+    tags::SigAToB1Tag,
 ];
 const DEVICE2PCSFLOAT: [u32; 4] = [
     tags::SigDToB0Tag,
     tags::SigDToB1Tag,
     tags::SigDToB2Tag,
-    tags::SigDToB0Tag,
+    tags::SigDToB3Tag,
 ];
 const PCS2DEVICE16: [u32; 4] = [
     tags::SigBToA0Tag,
     tags::SigBToA1Tag,
     tags::SigBToA2Tag,
-    tags::SigBToA0Tag,
+    tags::SigBToA1Tag,
 ];
 const PCS2DEVICEFLOAT: [u32; 4] = [
     tags::SigBToD0Tag,
     tags::SigBToD1Tag,
     tags::SigBToD2Tag,
-    tags::SigBToD0Tag,
+    tags::SigBToD3Tag,
 ];
 
 const MAX_ENC_XYZ: f64 = (2.0 * 65535.0) / 65536.0;
@@ -571,4 +571,46 @@ pub fn read_devicelink_lut(icc: &mut IccProfile, intent: u32) -> Option<Pipeline
         }
     }
     Some(lut)
+}
+
+// `LCMS_USED_AS_INPUT` / `LCMS_USED_AS_OUTPUT` / `LCMS_USED_AS_PROOF` — cmsIsCLUT direction
+pub const LCMS_USED_AS_INPUT: i32 = 0;
+pub const LCMS_USED_AS_OUTPUT: i32 = 1;
+pub const LCMS_USED_AS_PROOF: i32 = 2;
+
+/// `cmsIsCLUT` — is there a LUT-based tag for this intent + direction?
+pub fn is_clut(icc: &IccProfile, intent: u32, used_direction: i32) -> bool {
+    use crate::signatures::profileclass as pc;
+    if icc.device_class == pc::SigLinkClass {
+        return icc.rendering_intent == intent;
+    }
+    let tag_table = match used_direction {
+        LCMS_USED_AS_INPUT => DEVICE2PCS16,
+        LCMS_USED_AS_OUTPUT => PCS2DEVICE16,
+        LCMS_USED_AS_PROOF => {
+            return is_intent_supported(icc, intent, LCMS_USED_AS_INPUT)
+                && is_intent_supported(
+                    icc,
+                    crate::types::INTENT_RELATIVE_COLORIMETRIC,
+                    LCMS_USED_AS_OUTPUT,
+                );
+        }
+        _ => {
+            crate::err::signal_error(
+                icc.ctx.as_ref(),
+                crate::types::ERROR_RANGE,
+                "Unexpected direction",
+            );
+            return false;
+        }
+    };
+    if intent > crate::types::INTENT_ABSOLUTE_COLORIMETRIC {
+        return false;
+    }
+    profile::cms_is_tag(icc, tag_table[intent as usize])
+}
+
+/// `cmsIsIntentSupported` — CLUT or matrix-shaper
+pub fn is_intent_supported(icc: &IccProfile, intent: u32, used_direction: i32) -> bool {
+    is_clut(icc, intent, used_direction) || crate::sm::is_matrix_shaper(icc)
 }

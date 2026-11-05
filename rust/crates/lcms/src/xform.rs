@@ -990,8 +990,9 @@ pub fn create_extended_transform(
         );
         return None;
     }
-    // optimizer
-    if flags & FLAGS_NOOPTIMIZE == 0 {
+    // `_cmsOptimizePipeline` runs unconditionally in C's `AllocEmptyTransform`:
+    // `PreOptimize` strips identity/inverse pairs even under NOOPTIMIZE.
+    {
         let mut infmt = input_format;
         let mut outfmt = output_format;
         crate::opt::optimize_pipeline(
