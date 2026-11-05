@@ -20,6 +20,7 @@ pub mod gamma;
 pub mod half;
 pub mod half_tables;
 pub mod intrp;
+pub mod io;
 pub mod lut;
 pub mod md5;
 pub mod mtrx;

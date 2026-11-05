@@ -17,6 +17,7 @@ pub type Bool = i32; // cmsBool
 pub type U8 = u8; // cmsUInt8Number
 pub type U16 = u16; // cmsUInt16Number
 pub type U32 = u32; // cmsUInt32Number
+pub type U64 = u64; // cmsUInt64Number
 pub type I32 = i32; // cmsInt32Number
 pub type S15Fixed16 = i32; // cmsS15Fixed16Number
 pub type F64 = f64; // cmsFloat64Number
@@ -285,6 +286,37 @@ unsafe extern "C" {
     pub fn cmsCIECAM02Done(model: Handle);
     pub fn cmsCIECAM02Forward(model: Handle, in_: *const CieXyz, out: *mut JCh);
     pub fn cmsCIECAM02Reverse(model: Handle, in_: *const JCh, out: *mut CieXyz);
+
+    // ---- io layer (cmsio0.c + cmsplugin.c primitives) ----
+    pub fn cmsOpenIOhandlerFromNULL(context_id: Context) -> Handle;
+    pub fn cmsOpenIOhandlerFromMem(
+        context_id: Context,
+        buffer: *mut u8,
+        size: U32,
+        access_mode: *const u8,
+    ) -> Handle;
+    pub fn cmsCloseIOhandler(io: Handle) -> i32;
+    pub fn _cmsReadUInt8Number(io: Handle, n: *mut U8) -> i32;
+    pub fn _cmsReadUInt16Number(io: Handle, n: *mut U16) -> i32;
+    pub fn _cmsReadUInt32Number(io: Handle, n: *mut U32) -> i32;
+    pub fn _cmsReadUInt64Number(io: Handle, n: *mut U64) -> i32;
+    pub fn _cmsReadFloat32Number(io: Handle, n: *mut F32) -> i32;
+    pub fn _cmsRead15Fixed16Number(io: Handle, n: *mut F64) -> i32;
+    pub fn _cmsReadXYZNumber(io: Handle, xyz: *mut CieXyz) -> i32;
+    pub fn _cmsWriteUInt8Number(io: Handle, n: U8) -> i32;
+    pub fn _cmsWriteUInt16Number(io: Handle, n: U16) -> i32;
+    pub fn _cmsWriteUInt32Number(io: Handle, n: U32) -> i32;
+    pub fn _cmsWriteUInt64Number(io: Handle, n: *const U64) -> i32;
+    pub fn _cmsWriteFloat32Number(io: Handle, n: F32) -> i32;
+    pub fn _cmsWrite15Fixed16Number(io: Handle, n: F64) -> i32;
+    pub fn _cmsWriteXYZNumber(io: Handle, xyz: *const CieXyz) -> i32;
+    pub fn _cmsReadTypeBase(io: Handle) -> U32;
+    pub fn _cmsWriteTypeBase(io: Handle, sig: U32) -> i32;
+    pub fn _cmsReadAlignment(io: Handle) -> i32;
+    pub fn _cmsWriteAlignment(io: Handle) -> i32;
+    pub fn _cmsAdjustEndianess16(w: U16) -> U16;
+    pub fn _cmsAdjustEndianess32(v: U32) -> U32;
+    pub fn _cmsAdjustEndianess64(result: *mut U64, qword: *const U64);
 
     // ---- cmsnamed.c ----
     pub fn cmsMLUalloc(context_id: Context, n_items: U32) -> Handle;
