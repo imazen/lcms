@@ -88,6 +88,31 @@ pub struct ProfileID {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ToneCurve; // opaque cmsToneCurve
 
+// ---- cmsInterpParams (lcms2_plugin.h) ----
+
+pub type InterpFn16 = unsafe extern "C" fn(*const U16, *mut U16, *const InterpParams);
+pub type InterpFnFloat = unsafe extern "C" fn(*const F32, *mut F32, *const InterpParams);
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union InterpFunction {
+    pub lerp16: Option<InterpFn16>,
+    pub lerp_float: Option<InterpFnFloat>,
+}
+
+#[repr(C)]
+pub struct InterpParams {
+    pub context_id: Context,
+    pub dw_flags: U32,
+    pub n_inputs: U32,
+    pub n_outputs: U32,
+    pub n_samples: [U32; 15],
+    pub domain: [U32; 15],
+    pub opta: [U32; 15],
+    pub table: *const c_void,
+    pub interpolation: InterpFunction,
+}
+
 unsafe extern "C" {
     // ---- cmsmtrx.c ----
     pub fn _cmsVEC3init(r: *mut Vec3, x: F64, y: F64, z: F64);
@@ -176,6 +201,25 @@ unsafe extern "C" {
 
     // ---- cmserr.c / cmsplugin.c misc ----
     pub fn cmsGetHeaderRenderingIntent(h_profile: HProfile) -> U32;
+
+    // ---- cmsintrp.c ----
+    pub fn _cmsComputeInterpParamsEx(
+        context_id: Context,
+        n_samples: *const U32,
+        input_chan: U32,
+        output_chan: U32,
+        table: *const c_void,
+        dw_flags: U32,
+    ) -> *mut InterpParams;
+    pub fn _cmsComputeInterpParams(
+        context_id: Context,
+        n_samples: U32,
+        input_chan: U32,
+        output_chan: U32,
+        table: *const c_void,
+        dw_flags: U32,
+    ) -> *mut InterpParams;
+    pub fn _cmsFreeInterpParams(p: *mut InterpParams);
 
     // ---- shims (wrappers around cmsINLINE / static code) ----
     pub fn cref_quick_floor(val: F64) -> i32;

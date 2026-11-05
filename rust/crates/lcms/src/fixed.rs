@@ -57,20 +57,20 @@ pub fn fixed_rest_to_int(x: i32) -> i32 {
 /// `ROUND_FIXED_TO_INT`
 #[inline]
 pub fn round_fixed_to_int(x: i32) -> i32 {
-    (x + 0x8000) >> 16
+    x.wrapping_add(0x8000) >> 16
 }
 
 /// `_cmsToFixedDomain` — `a + ((a + 0x7fff) / 0xffff)`; C `/` truncates
 /// toward zero, as does Rust's `i32` division.
 #[inline]
 pub fn to_fixed_domain(a: i32) -> i32 {
-    a + ((a + 0x7fff) / 0xffff)
+    a.wrapping_add((a.wrapping_add(0x7fff)) / 0xffff)
 }
 
 /// `_cmsFromFixedDomain` — `a - ((a + 0x7fff) >> 16)`
 #[inline]
 pub fn from_fixed_domain(a: i32) -> i32 {
-    a - ((a + 0x7fff) >> 16)
+    a.wrapping_sub((a.wrapping_add(0x7fff)) >> 16)
 }
 
 /// `_cms15Fixed16toDouble`

@@ -13,6 +13,11 @@ use std::sync::OnceLock;
 /// `cmsLogErrorHandlerFunction` — receives the error code and the formatted text.
 pub type LogErrorHandler = fn(&Context, code: i32, text: &str);
 
+/// `cmsInterpFnFactory` — returns the interpolation for (n_in, n_out, flags),
+/// or `None` where C returns a zeroed `cmsInterpFunction` union.
+pub type InterpFnFactory =
+    fn(n_input: u32, n_output: u32, flags: u32) -> Option<crate::intrp::Interpolation>;
+
 /// Plugin slots owned by a context. Mirrors `_cmsContext_struct`'s
 /// plugin-pointer fields (memory management excluded — the port allocates
 /// with Rust allocators, matching C semantics where the allocator is
@@ -21,6 +26,8 @@ pub type LogErrorHandler = fn(&Context, code: i32, text: &str);
 pub struct Context {
     /// `LogErrorHandler` plugin slot (cmserr.c)
     pub log_error_handler: Option<LogErrorHandler>,
+    /// `_cmsInterpPluginChunkType.Interpolators` (cmsintrp.c)
+    pub interpolators: Option<InterpFnFactory>,
 }
 
 /// The global context, used wherever C passes `NULL`.

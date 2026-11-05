@@ -189,7 +189,6 @@ fn adaptation_matrix_and_illuminant() {
 
         // custom cone matrix path (random invertible cone)
         let mut cone = Mat3::default();
-        let mut ccone = c::Mat3::default();
         // build a simple well-conditioned cone: Bradford-like diagonal + eps
         for i in 0..3 {
             for j in 0..3 {
@@ -197,7 +196,7 @@ fn adaptation_matrix_and_illuminant() {
             }
             cone.v[i].n[i] += 1.0;
         }
-        ccone = cm(&cone);
+        let ccone = cm(&cone);
         let ok = adaptation_matrix(&mut r, Some(&cone), &from, &to);
         let cok =
             unsafe { c::_cmsAdaptationMatrix(&mut cr, &ccone, &cxyz(&from), &cxyz(&to)) } != 0;

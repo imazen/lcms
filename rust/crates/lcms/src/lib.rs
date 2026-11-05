@@ -17,6 +17,7 @@ pub mod err;
 pub mod fixed;
 pub mod half;
 pub mod half_tables;
+pub mod intrp;
 pub mod mtrx;
 pub mod pcs;
 pub mod signatures;
