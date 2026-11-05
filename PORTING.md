@@ -826,3 +826,33 @@ v=1.0) — if my eval_float gives exactly 1.0 (qs16->65535) but C gives
 0.9998 (qs16->65422), the top interval of GetInterval differs -> whole
 edge of the reverse shifts. Check eval1_input/Eval1Input top-of-table
 handling and eval_float at v>=1.0 for the spac pipeline.
+
+## NEXT-PHASE WORK PLAN (user, post-corpus)
+
+Ordered asks: broaden coverage → drill down → perf fix → parallel API →
+moxcms-competitive tetra → C-FFI dropin crate (threading) → pass C test suite.
+
+### Real bugs to fix (correctness, blocking)
+- scRGB-v2 u16 1-ulp: systematic ~1-ulp float diff in `eval_segmented_fn`
+  (52867/65536 eval_float ulp diffs vs cmsPipelineEvalFloat). One boundary
+  crosses qs16 -> 1-off output. Isolate vs C EvalSegmentedFn on the curve params.
+- Slow link (BIGGEST real perf bug): `create_extended_transform` takes
+  1-14s on CLUT profiles (Calibrated_A2B_XYZ_Mismatch 14s, Canon EOS 13s).
+  C takes <100ms. Suspect O(n^2) or per-node heap alloc in
+  `optimize_by_resampling`/`stage_sample_clut16bit`/`reverse_tone_curve_ex`
+  or `OptimizeByComputingLinearization`. Profile a slow link first.
+- Corpus test (`realworld_profile_corpus` in c_parity_virt) is u8-only for
+  speed; u16 links are ~10s on CLUT profiles — needs the link-perf fix.
+
+### Features (moxcms parity)
+- Parallel transform API: Transform is Send — add a row-parallel
+  `do_transform`/`xform` (rayon feature or std::thread row split) that
+  keeps byte-exact output. moxcms is 2-3x faster via better tetra codegen
+  + row parallelism + special-cased matrix paths.
+- Tetra residual ~0.79-0.8x: tetra16 dependent table reads, same as C —
+  the gap is LLVM-vs-GCC codegen, hard to close without unsafe/SIMD.
+- C FFI dropin crate (`lcms2-ffi` or similar): separate crate exposing the
+  cms* C API surface backed by the Rust impl; must check Send/threading of
+  the FFI boundary (Transform is Send; C callers may share across threads).
+- C test suite (testcms2.c in reference/lcms2/testbed): port or bind the
+  oracle test suite against the Rust impl as the broadest parity gate.

@@ -57,8 +57,9 @@ pub struct FileMem {
 
 /// `iohandler->stream` — the stream implementations.
 pub enum IoStream {
-    /// `cmsOpenIOhandlerFromFile`/`FromStream` — wraps std File.
-    File(std::fs::File),
+    /// `cmsOpenIOhandlerFromFile`/`FromStream` — wraps std File; BufReader
+    /// so the per-element u16/u32 tag reads aren't one syscall each.
+    File(std::io::BufReader<std::fs::File>),
     /// `cmsOpenIOhandlerFromMem`.
     Mem(FileMem),
     /// `cmsOpenIOhandlerFromNULL`.
@@ -68,7 +69,9 @@ pub enum IoStream {
 impl Clone for IoStream {
     fn clone(&self) -> Self {
         match self {
-            IoStream::File(f) => IoStream::File(f.try_clone().expect("clone file stream")),
+            IoStream::File(f) => IoStream::File(std::io::BufReader::new(
+                f.get_ref().try_clone().expect("clone file stream"),
+            )),
             IoStream::Mem(m) => IoStream::Mem(m.clone()),
             IoStream::Null { pointer } => IoStream::Null { pointer: *pointer },
         }
@@ -163,7 +166,7 @@ impl IoHandler {
                     return true;
                 }
                 self.used_space = self.used_space.wrapping_add(size);
-                f.write_all(&buf[..size as usize]).is_ok()
+                f.get_mut().write_all(&buf[..size as usize]).is_ok()
             }
             IoStream::Mem(m) => {
                 if size == 0 {
@@ -262,15 +265,15 @@ pub fn io_handler_from_file(_ctx: Option<&Context>, path: &str, access: &str) ->
 
     let (f, reported) = match mode[0] {
         b'r' => {
-            let f = std::fs::File::open(path).ok()?;
-            let len = f.metadata().ok()?.len();
+            let f = std::io::BufReader::new(std::fs::File::open(path).ok()?);
+            let len = f.get_ref().metadata().ok()?.len();
             if len > u32::MAX as u64 {
                 err::signal_error(None, ERROR_FILE, "File is too large");
                 return None;
             }
             (f, len as u32)
         }
-        b'w' => (std::fs::File::create(path).ok()?, 0),
+        b'w' => (std::io::BufReader::new(std::fs::File::create(path).ok()?), 0),
         _ => return None,
     };
 
