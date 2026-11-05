@@ -11,7 +11,7 @@
 use crate::context::Context;
 use crate::err;
 use crate::fixed::{double_to_s15_fixed16, double_to_u8_fixed8, u8_fixed8_to_double};
-use crate::gamma::{ToneCurve, build_parametric_tone_curve, build_tabulated_tone_curve16};
+use crate::gamma::{CurveSegment, ToneCurve, build_parametric_tone_curve, build_segmented_tone_curve, build_tabulated_tone_curve16};
 use crate::io::{self, IoHandler};
 use crate::named::{Mlu, Wchar, mlu_get_ascii, mlu_get_wide, mlu_set_ascii, mlu_set_wide};
 use crate::signatures::tagtype as tsig;
@@ -90,12 +90,14 @@ pub struct VideoSignal {
 /// `cmsMHC2Type`
 #[derive(Clone)]
 pub struct Mhc2 {
-    pub curve_offset: u32,
-    pub curve_size: u32,
+    pub curve_entries: u32,
+    pub red_curve: Vec<f64>,
+    pub green_curve: Vec<f64>,
+    pub blue_curve: Vec<f64>,
     pub min_luminance: f64,
     pub peak_luminance: f64,
-    pub matrix: [f64; 12],
-    pub curve: Vec<ToneCurve>,
+    /// `XYZ2XYZmatrix[3][4]`
+    pub xyz2xyz_matrix: [[f64; 4]; 3],
 }
 
 /// `cmsSigCrdInfoType` payload is a `cmsMLU*`
@@ -129,6 +131,8 @@ pub enum TagObject {
     LutA2B(crate::lut::Pipeline),
     LutB2A(crate::lut::Pipeline),
     Mpe(crate::lut::Pipeline),
+    /// single `cmsStage*` — payload for MPE element handlers
+    MpeElem(crate::lut::Stage),
     ColorantTable(crate::named::NamedColorList),
     NamedColor(crate::named::NamedColorList),
     ProfileSeqDesc(crate::named::ProfileSeqDesc),
@@ -1165,7 +1169,7 @@ pub static SUPPORTED_TAG_TYPES: &[TagTypeHandler] = &[
         type_crd_info_read,
         type_crd_info_write
     ),
-    // MPE/screening/vcgt land in slice C
+    handler!(tsig::SigMultiProcessElementType, type_mpe_read, type_mpe_write),
     handler!(
         tsig::SigScreeningType,
         type_screening_read,
@@ -1185,14 +1189,24 @@ pub static SUPPORTED_TAG_TYPES: &[TagTypeHandler] = &[
         type_profile_seq_id_write
     ),
     handler!(tsig::SigUcrBgType, type_ucr_bg_read, type_ucr_bg_write),
-    // dictionary/cicp/vcgt/MHC2 land in slice D
+    handler!(tsig::SigVcgtType, type_vcgt_read, type_vcgt_write),
+    handler!(tsig::SigcicpType, type_video_signal_read, type_video_signal_write),
+    handler!(tsig::SigMHC2Type, type_mhc2_read, type_mhc2_write),
+    handler!(tsig::SigDictType, type_dictionary_read, type_dictionary_write),
     handler!(tsig::SigUInt8ArrayType, type_u8_read, type_u8_write),
     handler!(tsig::SigUInt32ArrayType, type_u32_read, type_u32_write),
     handler!(tsig::SigUInt64ArrayType, type_u64_read, type_u64_write),
 ];
 
-/// `_cmsGetTagTypeHandler` — plugin list first (not yet ported), then defaults.
-pub fn get_tag_type_handler(_ctx: Option<&Context>, sig: u32) -> Option<TagTypeHandler> {
+/// `_cmsGetTagTypeHandler` — `GetHandler`: plugin list first, then defaults.
+/// Owned copy (handler is `Copy`; equivalent to C's returned pointer for
+/// read/write dispatch).
+pub fn get_tag_type_handler(ctx: Option<&Context>, sig: u32) -> Option<TagTypeHandler> {
+    if let Some(c) = ctx {
+        if let Some(h) = c.tag_type_handlers.iter().find(|h| h.signature == sig) {
+            return Some(*h);
+        }
+    }
     SUPPORTED_TAG_TYPES
         .iter()
         .find(|h| h.signature == sig)
@@ -1924,7 +1938,8 @@ fn type_viewing_conditions_write(
 
 use crate::lut::{
     Pipeline, Stage, StageData, StageLoc, pipeline_alloc, stage_alloc_clut16bit,
-    stage_alloc_clut16bit_granular, stage_alloc_matrix, stage_alloc_tone_curves,
+    stage_alloc_clut16bit_granular, stage_alloc_clut_float_granular,
+    stage_alloc_matrix, stage_alloc_tone_curves,
 };
 
 /// `FROM_8_TO_16`
@@ -3027,4 +3042,1145 @@ fn type_lut_a2b_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n:
 }
 fn type_lut_b2a_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
     type_lut_v4_write(s, io, p, true)
+}
+
+// ---------------------------------------------------------------------------
+// MPE (multiProcessElementsType) — 'mpet' + element handlers
+// ---------------------------------------------------------------------------
+
+const SEGMENTED_CURVE_SIG: u32 = 0x73656766; // 'segf'
+const FORMULA_CURVE_SEG: u32 = 0x70617266; // 'parf'
+const SAMPLED_CURVE_SEG: u32 = 0x73616d66; // 'samf'
+const MINUS_INF: f32 = f32::NEG_INFINITY;
+const PLUS_INF: f32 = f32::INFINITY;
+const MAX_INPUT_DIMENSIONS: usize = 15;
+
+/// `ReadSegmentedCurve`
+fn read_segmented_curve(_s: &TagTypeHandler, io: &mut IoHandler) -> Option<ToneCurve> {
+    let mut elem_sig = 0u32;
+    if !io::read_u32(io, &mut elem_sig) {
+        return None;
+    }
+    if elem_sig != SEGMENTED_CURVE_SIG {
+        return None;
+    }
+    let mut res = 0u32;
+    let mut n_segments = 0u16;
+    let mut res16 = 0u16;
+    if !io::read_u32(io, &mut res) || !io::read_u16(io, &mut n_segments) || !io::read_u16(io, &mut res16) {
+        return None;
+    }
+    if n_segments < 1 {
+        return None;
+    }
+    let n = n_segments as usize;
+    let mut segments = vec![CurveSegment::default(); n];
+    let mut prev_break = MINUS_INF;
+    for i in 0..n - 1 {
+        segments[i].x0 = prev_break;
+        if !io::read_float32(io, &mut segments[i].x1) {
+            return None;
+        }
+        prev_break = segments[i].x1;
+    }
+    segments[n - 1].x0 = prev_break;
+    segments[n - 1].x1 = PLUS_INF;
+
+    for i in 0..n {
+        let mut sig = 0u32;
+        if !io::read_u32(io, &mut sig) || !io::read_u32(io, &mut res) {
+            return None;
+        }
+        match sig {
+            FORMULA_CURVE_SEG => {
+                let mut ty = 0u16;
+                if !io::read_u16(io, &mut ty) || !io::read_u16(io, &mut res16) {
+                    return None;
+                }
+                segments[i].r#type = ty as i32 + 6;
+                if ty > 2 {
+                    return None;
+                }
+                const PARAMS_BY_TYPE: [usize; 3] = [4, 5, 5];
+                for j in 0..PARAMS_BY_TYPE[ty as usize] {
+                    let mut f = 0.0f32;
+                    if !io::read_float32(io, &mut f) {
+                        return None;
+                    }
+                    segments[i].params[j] = f as f64;
+                }
+            }
+            SAMPLED_CURVE_SEG => {
+                let mut count = 0u32;
+                if !io::read_u32(io, &mut count) {
+                    return None;
+                }
+                // First point is implicit in the last stage — extra slot
+                count += 1;
+                segments[i].n_grid_points = count;
+                let mut pts = vec![0.0f32; count as usize];
+                pts[0] = 0.0;
+                for j in 1..count as usize {
+                    if !io::read_float32(io, &mut pts[j]) {
+                        return None;
+                    }
+                }
+                segments[i].sampled_points = Some(pts);
+            }
+            _ => {
+                err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown curve element type");
+                return None;
+            }
+        }
+    }
+
+    let curve = build_segmented_tone_curve(None, &segments)?;
+
+    // Explore for missing implicit points
+    let mut curve = curve;
+    for i in 0..n {
+        if curve.segments[i].r#type == 0 {
+            {
+                let v = curve.eval_float(curve.segments[i].x0);
+                if let Some(sp) = &mut curve.segments[i].sampled_points { sp[0] = v; }
+            }
+        }
+    }
+    Some(curve)
+}
+
+/// `Type_MPEcurve_Read` — position table of segmented curves
+fn type_mpe_curve_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+    *n_items = 0;
+    let base_offset = io.tell().wrapping_sub(8);
+    let (mut in_ch, mut out_ch) = (0u16, 0u16);
+    if !io::read_u16(io, &mut in_ch) || !io::read_u16(io, &mut out_ch) {
+        return None;
+    }
+    if in_ch != out_ch {
+        return None;
+    }
+    let n = in_ch as usize;
+    let mut tables: Vec<Option<ToneCurve>> = vec![None; n];
+    let ok = read_position_table(io, in_ch as u32, base_offset, |io, i, _| {
+        let c = read_segmented_curve(s, io);
+        tables[i] = c;
+        tables[i].is_some()
+    });
+    if !ok {
+        return None;
+    }
+    let owned: Vec<ToneCurve> = tables.into_iter().flatten().collect();
+    let refs: Vec<&ToneCurve> = owned.iter().collect();
+    let stage = stage_alloc_tone_curves(None, in_ch as u32, Some(&refs))?;
+    *n_items = 1;
+    Some(TagObject::MpeElem(stage))
+}
+
+/// `WriteSegmentedCurve` — no validity checks (C semantics)
+fn write_segmented_curve(io: &mut IoHandler, g: &ToneCurve) -> bool {
+    let n = g.segments.len();
+    if !io::write_u32(io, SEGMENTED_CURVE_SIG)
+        || !io::write_u32(io, 0)
+        || !io::write_u16(io, n as u16)
+        || !io::write_u16(io, 0)
+    {
+        return false;
+    }
+    for i in 0..n - 1 {
+        if !io::write_float32(io, g.segments[i].x1) {
+            return false;
+        }
+    }
+    for i in 0..n {
+        let seg = &g.segments[i];
+        if seg.r#type == 0 {
+            if !io::write_u32(io, SAMPLED_CURVE_SEG)
+                || !io::write_u32(io, 0)
+                || !io::write_u32(io, seg.n_grid_points - 1)
+            {
+                return false;
+            }
+            for j in 1..seg.n_grid_points as usize {
+                if !io::write_float32(io, seg.sampled_points.as_deref().unwrap_or(&[])[j]) {
+                    return false;
+                }
+            }
+        } else {
+            let ty = seg.r#type - 6;
+            if !(0..=2).contains(&ty) {
+                return false;
+            }
+            if !io::write_u32(io, FORMULA_CURVE_SEG)
+                || !io::write_u32(io, 0)
+                || !io::write_u16(io, ty as u16)
+                || !io::write_u16(io, 0)
+            {
+                return false;
+            }
+            const PARAMS_BY_TYPE: [usize; 3] = [4, 5, 5];
+            for j in 0..PARAMS_BY_TYPE[ty as usize] {
+                if !io::write_float32(io, seg.params[j] as f32) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// `Type_MPEcurve_Write`
+fn type_mpe_curve_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let TagObject::MpeElem(mpe) = p else { return false };
+    let StageData::ToneCurves(curves) = &mpe.data else { return false };
+    let base_offset = io.tell().wrapping_sub(8);
+    if !io::write_u16(io, mpe.input_channels as u16) || !io::write_u16(io, mpe.input_channels as u16) {
+        return false;
+    }
+    write_position_table(io, 0, mpe.input_channels, base_offset, |io, i, _| {
+        write_segmented_curve(io, &curves[i])
+    })
+}
+
+/// `Type_MPEmatrix_Read` — f32 matrix + offsets → f64 stage
+fn type_mpe_matrix_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+    *n_items = 0;
+    let (mut in_ch, mut out_ch) = (0u16, 0u16);
+    if !io::read_u16(io, &mut in_ch) || !io::read_u16(io, &mut out_ch) {
+        return None;
+    }
+    if in_ch >= CMS_MAX_CHANNELS as u16 || out_ch >= CMS_MAX_CHANNELS as u16 {
+        return None;
+    }
+    let n_elems = in_ch as usize * out_ch as usize;
+    let mut matrix = vec![0.0f64; n_elems];
+    let mut offsets = vec![0.0f64; out_ch as usize];
+    for v in &mut matrix {
+        let mut f = 0.0f32;
+        if !io::read_float32(io, &mut f) {
+            return None;
+        }
+        *v = f as f64;
+    }
+    for v in &mut offsets {
+        let mut f = 0.0f32;
+        if !io::read_float32(io, &mut f) {
+            return None;
+        }
+        *v = f as f64;
+    }
+    let mpe = stage_alloc_matrix(None, out_ch as u32, in_ch as u32, &matrix, Some(&offsets))?;
+    *n_items = 1;
+    Some(TagObject::MpeElem(mpe))
+}
+
+/// `Type_MPEmatrix_Write`
+fn type_mpe_matrix_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let TagObject::MpeElem(mpe) = p else { return false };
+    let StageData::Matrix { double, offset } = &mpe.data else { return false };
+    if !io::write_u16(io, mpe.input_channels as u16) || !io::write_u16(io, mpe.output_channels as u16) {
+        return false;
+    }
+    for &v in double.iter().take((mpe.input_channels * mpe.output_channels) as usize) {
+        if !io::write_float32(io, v as f32) {
+            return false;
+        }
+    }
+    for i in 0..mpe.output_channels as usize {
+        let v = offset.as_ref().map(|o| o[i]).unwrap_or(0.0);
+        if !io::write_float32(io, v as f32) {
+            return false;
+        }
+    }
+    true
+}
+
+/// `Type_MPEclut_Read` — float32 CLUT, 16-byte dims
+fn type_mpe_clut_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+    *n_items = 0;
+    let (mut in_ch, mut out_ch) = (0u16, 0u16);
+    if !io::read_u16(io, &mut in_ch) || !io::read_u16(io, &mut out_ch) {
+        return None;
+    }
+    if in_ch == 0 || in_ch >= CMS_MAX_CHANNELS as u16 || out_ch == 0 || out_ch >= CMS_MAX_CHANNELS as u16 {
+        return None;
+    }
+    let mut dims8 = [0u8; 16];
+    if io.read(&mut dims8, 1, 16) != 16 {
+        return None;
+    }
+    let n_max = (in_ch as usize).min(MAX_INPUT_DIMENSIONS);
+    let mut grid = [0u32; MAX_INPUT_DIMENSIONS];
+    for i in 0..n_max {
+        if dims8[i] == 1 {
+            return None;
+        }
+        grid[i] = dims8[i] as u32;
+    }
+    let mut mpe = stage_alloc_clut_float_granular(None, &grid, in_ch as u32, out_ch as u32, None)?;
+    if let StageData::CLut(clut) = &mut mpe.data {
+        if let Some(t) = &mut clut.tab_float {
+            for v in t.iter_mut() {
+                if !io::read_float32(io, v) {
+                    return None;
+                }
+            }
+        }
+    }
+    *n_items = 1;
+    Some(TagObject::MpeElem(mpe))
+}
+
+/// `Type_MPEclut_Write`
+fn type_mpe_clut_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let TagObject::MpeElem(mpe) = p else { return false };
+    let StageData::CLut(clut) = &mpe.data else { return false };
+    if mpe.input_channels > MAX_INPUT_DIMENSIONS as u32 || !clut.has_float_values {
+        return false;
+    }
+    if !io::write_u16(io, mpe.input_channels as u16) || !io::write_u16(io, mpe.output_channels as u16) {
+        return false;
+    }
+    let mut dims = [0u8; 16];
+    for i in 0..mpe.input_channels as usize {
+        dims[i] = clut.n_samples[i] as u8;
+    }
+    if !io.write(16, &dims) {
+        return false;
+    }
+    for &v in clut.tab_float.as_deref().unwrap_or(&[]) {
+        if !io::write_float32(io, v) {
+            return false;
+        }
+    }
+    true
+}
+
+/// `_cmsMPEtypehandler_struct` — element handlers can be NULL (ignored elems)
+#[derive(Clone, Copy)]
+pub struct MpeElemHandler {
+    pub signature: u32,
+    pub read: Option<fn(&TagTypeHandler, &mut IoHandler, &mut u32, u32) -> Option<TagObject>>,
+    pub write: Option<fn(&TagTypeHandler, &mut IoHandler, &TagObject, u32) -> bool>,
+}
+
+/// `SupportedMPEtypes` — MPE element handler table (bACS/eACS = NULL, ignored)
+pub static SUPPORTED_MPE_TYPES: &[MpeElemHandler] = &[
+    MpeElemHandler { signature: 0x62414373, read: None, write: None }, // 'bACS'
+    MpeElemHandler { signature: 0x65414373, read: None, write: None }, // 'eACS'
+    MpeElemHandler { signature: crate::signatures::stage::SigCurveSetElemType, read: Some(type_mpe_curve_read), write: Some(type_mpe_curve_write) },
+    MpeElemHandler { signature: crate::signatures::stage::SigMatrixElemType, read: Some(type_mpe_matrix_read), write: Some(type_mpe_matrix_write) },
+    MpeElemHandler { signature: crate::signatures::stage::SigCLutElemType, read: Some(type_mpe_clut_read), write: Some(type_mpe_clut_write) },
+];
+
+fn mpe_handler(sig: u32, ctx: Option<&Context>) -> Option<MpeElemHandler> {
+    // plugin handlers precede built-ins
+    if let Some(c) = ctx {
+        if let Some(h) = c.mpe_handlers.iter().find(|h| h.signature == sig) {
+            return Some(*h);
+        }
+    }
+    SUPPORTED_MPE_TYPES.iter().find(|h| h.signature == sig).copied()
+}
+
+/// `ReadMPEElem` — element sig + reserved, dispatch
+fn read_mpe_elem(s: &TagTypeHandler, io: &mut IoHandler, lut: &mut Pipeline, size_of_tag: u32) -> bool {
+    let mut elem_sig = 0u32;
+    let mut res = 0u32;
+    if !io::read_u32(io, &mut elem_sig) || !io::read_u32(io, &mut res) {
+        return false;
+    }
+    let Some(h) = mpe_handler(elem_sig, None) else {
+        err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown MPE type found");
+        return false;
+    };
+    // NULL read → ignored element (bACS/eACS)
+    if let Some(read) = h.read {
+        let mut n = 0u32;
+        match read(s, io, &mut n, size_of_tag) {
+            Some(TagObject::MpeElem(stage)) => return lut.insert_stage(StageLoc::AtEnd, stage),
+            _ => return false,
+        }
+    }
+    true
+}
+
+/// `Type_MPE_Read` — 'mpet' container
+fn type_mpe_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+    *n_items = 0;
+    let base_offset = io.tell().wrapping_sub(8);
+    let (mut in_ch, mut out_ch) = (0u16, 0u16);
+    if !io::read_u16(io, &mut in_ch) || !io::read_u16(io, &mut out_ch) {
+        return None;
+    }
+    if in_ch == 0 || in_ch >= CMS_MAX_CHANNELS as u16 || out_ch == 0 || out_ch >= CMS_MAX_CHANNELS as u16 {
+        return None;
+    }
+    let mut lut = pipeline_alloc(None, in_ch as u32, out_ch as u32)?;
+    let mut elem_count = 0u32;
+    if !io::read_u32(io, &mut elem_count) {
+        return None;
+    }
+    if elem_count > 50 {
+        return None;
+    }
+    let lut_ref = &mut lut;
+    let ok = read_position_table(io, elem_count, base_offset, |io, _, size_of_tag| {
+        read_mpe_elem(s, io, lut_ref, size_of_tag)
+    });
+    if !ok {
+        return None;
+    }
+    if in_ch as u32 != lut.input_channels || out_ch as u32 != lut.output_channels {
+        return None;
+    }
+    *n_items = 1;
+    Some(TagObject::Mpe(lut))
+}
+
+/// `Type_MPE_Write` — hand-rolled directory back-patch (no position table)
+fn type_mpe_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let (TagObject::Mpe(lut) | TagObject::LutA2B(lut) | TagObject::LutB2A(lut) | TagObject::Lut8(lut) | TagObject::Lut16(lut)) = p else {
+        return false;
+    };
+    let base_offset = io.tell().wrapping_sub(8);
+    let (in_ch, out_ch) = (lut.input_channels, lut.output_channels);
+
+    // Collect stages
+    let mut elems: Vec<&Stage> = Vec::new();
+    let mut e = lut.elements.as_deref();
+    while let Some(st) = e {
+        elems.push(st);
+        e = st.next.as_deref();
+    }
+    let elem_count = elems.len() as u32;
+    if !io::write_u16(io, in_ch as u16) || !io::write_u16(io, out_ch as u16) || !io::write_u32(io, elem_count) {
+        return false;
+    }
+    let dir_pos = io.tell();
+    for _ in 0..elem_count {
+        if !io::write_u32(io, 0) || !io::write_u32(io, 0) {
+            return false;
+        }
+    }
+    let mut offsets = vec![0u32; elems.len()];
+    let mut sizes = vec![0u32; elems.len()];
+    for (i, st) in elems.iter().enumerate() {
+        offsets[i] = io.tell().wrapping_sub(base_offset);
+        let elem_sig = st.stage_type();
+        let Some(h) = mpe_handler(elem_sig, None) else {
+            err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Found unknown MPE type");
+            return false;
+        };
+        let before = io.tell();
+        if !io::write_u32(io, elem_sig) || !io::write_u32(io, 0) {
+            return false;
+        }
+        let Some(write) = h.write else {
+            return false;
+        };
+        if !write(s, io, &TagObject::MpeElem((*st).clone()), 1) || !io::write_alignment(io) {
+            return false;
+        }
+        sizes[i] = io.tell().wrapping_sub(before);
+    }
+    let cur_pos = io.tell();
+    if !io.seek(dir_pos) {
+        return false;
+    }
+    for i in 0..elems.len() {
+        if !io::write_u32(io, offsets[i]) || !io::write_u32(io, sizes[i]) {
+            return false;
+        }
+    }
+    io.seek(cur_pos)
+}
+
+// ---------------------------------------------------------------------------
+// vcgt / VideoSignal (cicp) / MHC2 / Dictionary
+// ---------------------------------------------------------------------------
+
+const VIDEO_CARD_GAMMA_TABLE_TYPE: u32 = 0;
+const VIDEO_CARD_GAMMA_FORMULA_TYPE: u32 = 1;
+
+/// `Type_vcgt_Read` — returns a triple of tone curves
+fn type_vcgt_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, size_of_tag: u32) -> Option<TagObject> {
+    *n_items = 0;
+    let mut tag_type = 0u32;
+    if !io::read_u32(io, &mut tag_type) {
+        return None;
+    }
+    let mut curves: [Option<ToneCurve>; 3] = [None, None, None];
+
+    match tag_type {
+        VIDEO_CARD_GAMMA_TABLE_TYPE => {
+            let (mut nch, mut nelems, mut nbytes) = (0u16, 0u16, 0u16);
+            if !io::read_u16(io, &mut nch) {
+                return None;
+            }
+            if nch != 3 {
+                err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported number of channels for VCGT");
+                return None;
+            }
+            if !io::read_u16(io, &mut nelems) || !io::read_u16(io, &mut nbytes) {
+                return None;
+            }
+            // Adobe's quirk fixup — broken profiles
+            if nelems == 256 && nbytes == 1 && size_of_tag == 1576 {
+                nbytes = 2;
+            }
+            for c in curves.iter_mut() {
+                let mut tc = build_tabulated_tone_curve16(None, nelems as u32, None)?;
+                match nbytes {
+                    1 => {
+                        for i in 0..nelems as usize {
+                            let mut v = 0u8;
+                            if !io::read_u8(io, &mut v) {
+                                return None;
+                            }
+                            tc.table16[i] = from_8_to_16(v);
+                        }
+                    }
+                    2 => {
+                        if !io::read_u16_array(io, nelems as u32, Some(&mut tc.table16)) {
+                            return None;
+                        }
+                    }
+                    _ => {
+                        err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported bit depth for VCGT");
+                        return None;
+                    }
+                }
+                *c = Some(tc);
+            }
+        }
+        VIDEO_CARD_GAMMA_FORMULA_TYPE => {
+            for c in curves.iter_mut() {
+                let (mut gamma, mut min, mut max) = (0.0f64, 0.0f64, 0.0f64);
+                if !io::read_15_fixed16(io, &mut gamma)
+                    || !io::read_15_fixed16(io, &mut min)
+                    || !io::read_15_fixed16(io, &mut max)
+                {
+                    return None;
+                }
+                // Parametric type 5: a = (Max-Min)^(1/Gamma), e = Min
+                let mut params = [0.0f64; 10];
+                params[0] = gamma;
+                params[1] = (max - min).powf(1.0 / gamma);
+                params[5] = min;
+                *c = Some(build_parametric_tone_curve(None, 5, &params)?);
+            }
+        }
+        _ => {
+            err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported tag type for VCGT");
+            return None;
+        }
+    }
+    *n_items = 1;
+    let c = curves.map(|c| c.unwrap());
+    let _ = s;
+    Some(TagObject::Vcgt(VcgtData::Curves(c)))
+}
+
+/// `Type_vcgt_Write` — formula iff all 3 are parametric-5, else 256×u16 table
+fn type_vcgt_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let TagObject::Vcgt(VcgtData::Curves(curves)) = p else { return false };
+    if curves.iter().all(|c| c.parametric_type() == 5) {
+        if !io::write_u32(io, VIDEO_CARD_GAMMA_FORMULA_TYPE) {
+            return false;
+        }
+        for c in curves.iter() {
+            let gamma = c.segments[0].params[0];
+            let min = c.segments[0].params[5];
+            let max = c.segments[0].params[1].powf(gamma) + min;
+            if !io::write_15_fixed16(io, gamma)
+                || !io::write_15_fixed16(io, min)
+                || !io::write_15_fixed16(io, max)
+            {
+                return false;
+            }
+        }
+    } else {
+        if !io::write_u32(io, VIDEO_CARD_GAMMA_TABLE_TYPE)
+            || !io::write_u16(io, 3)
+            || !io::write_u16(io, 256)
+            || !io::write_u16(io, 2)
+        {
+            return false;
+        }
+        for c in curves.iter() {
+            for j in 0..256u32 {
+                let v = c.eval_float(j as f32 / 255.0);
+                let n = crate::fixed::quick_saturate_word(v as f64 * 65535.0);
+                if !io::write_u16(io, n) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// `Type_VideoSignal_Read` — 'cicp', exactly 4 bytes
+fn type_video_signal_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, size_of_tag: u32) -> Option<TagObject> {
+    *n_items = 0;
+    if size_of_tag != 4 {
+        return None;
+    }
+    let (mut cp, mut tc, mut mc, mut fr) = (0u8, 0u8, 0u8, 0u8);
+    if !io::read_u8(io, &mut cp) || !io::read_u8(io, &mut tc) || !io::read_u8(io, &mut mc) || !io::read_u8(io, &mut fr) {
+        return None;
+    }
+    *n_items = 1;
+    Some(TagObject::VideoSignal(VideoSignal {
+        colour_primaries: cp,
+        transfer_characteristics: tc,
+        matrix_coefficients: mc,
+        video_full_range_flag: fr,
+    }))
+}
+
+fn type_video_signal_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let TagObject::VideoSignal(v) = p else { return false };
+    io::write_u8(io, v.colour_primaries)
+        && io::write_u8(io, v.transfer_characteristics)
+        && io::write_u8(io, v.matrix_coefficients)
+        && io::write_u8(io, v.video_full_range_flag)
+}
+
+
+const MHC2_IDENTITY: [[f64; 4]; 3] = [
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0],
+];
+
+fn mhc2_is_identity(m: &[[f64; 4]; 3]) -> bool {
+    (0..3).all(|i| (0..4).all(|j| (m[i][j] - MHC2_IDENTITY[i][j]).abs() < 1.0 / 65535.0))
+}
+
+/// `Type_MHC2_Read` — Microsoft MHC2
+fn type_mhc2_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+    *n_items = 0;
+    let base_offset = io.tell().wrapping_sub(8);
+    let mut mhc2 = Mhc2 {
+        curve_entries: 0,
+        red_curve: Vec::new(),
+        green_curve: Vec::new(),
+        blue_curve: Vec::new(),
+        min_luminance: 0.0,
+        peak_luminance: 0.0,
+        xyz2xyz_matrix: MHC2_IDENTITY,
+    };
+    if !io::read_u32(io, &mut mhc2.curve_entries) {
+        return None;
+    }
+    if mhc2.curve_entries > 4096 {
+        return None;
+    }
+    mhc2.red_curve = vec![0.0; mhc2.curve_entries as usize];
+    mhc2.green_curve = vec![0.0; mhc2.curve_entries as usize];
+    mhc2.blue_curve = vec![0.0; mhc2.curve_entries as usize];
+    if !io::read_15_fixed16(io, &mut mhc2.min_luminance) || !io::read_15_fixed16(io, &mut mhc2.peak_luminance) {
+        return None;
+    }
+    let (mut moff, mut roff, mut goff, mut boff) = (0u32, 0u32, 0u32, 0u32);
+    if !io::read_u32(io, &mut moff)
+        || !io::read_u32(io, &mut roff)
+        || !io::read_u32(io, &mut goff)
+        || !io::read_u32(io, &mut boff)
+    {
+        return None;
+    }
+    if moff != 0 {
+        let at = base_offset.wrapping_add(moff);
+        let cur = io.tell();
+        if !io.seek(at) {
+            return None;
+        }
+        for row in &mut mhc2.xyz2xyz_matrix {
+            for v in row {
+                if !io::read_15_fixed16(io, v) {
+                    return None;
+                }
+            }
+        }
+        if !io.seek(cur) {
+            return None;
+        }
+    }
+    // Each table = sf32 sig + filler (8B) + doubles
+    for (off, tab) in [(roff, &mut mhc2.red_curve), (goff, &mut mhc2.green_curve), (boff, &mut mhc2.blue_curve)] {
+        let at = base_offset.wrapping_add(off).wrapping_add(8);
+        let cur = io.tell();
+        if !io.seek(at) {
+            return None;
+        }
+        for v in tab.iter_mut() {
+            if !io::read_15_fixed16(io, v) {
+                return None;
+            }
+        }
+        if !io.seek(cur) {
+            return None;
+        }
+    }
+    *n_items = 1;
+    Some(TagObject::Mhc2(mhc2))
+}
+
+fn write_15_fixed16_list(io: &mut IoHandler, v: &[f64]) -> bool {
+    v.iter().all(|&x| io::write_15_fixed16(io, x))
+}
+
+/// `Type_MHC2_Write`
+fn type_mhc2_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let TagObject::Mhc2(m) = p else { return false };
+    let base_offset = io.tell().wrapping_sub(8);
+    if !io::write_u32(io, m.curve_entries)
+        || !io::write_15_fixed16(io, m.min_luminance)
+        || !io::write_15_fixed16(io, m.peak_luminance)
+    {
+        return false;
+    }
+    let tables_pos = io.tell();
+    for _ in 0..4 {
+        if !io::write_u32(io, 0) {
+            return false;
+        }
+    }
+    let moff = if mhc2_is_identity(&m.xyz2xyz_matrix) {
+        0
+    } else {
+        let off = io.tell().wrapping_sub(base_offset);
+        for v in m.xyz2xyz_matrix.iter().flatten() {
+            if !io::write_15_fixed16(io, *v) {
+                return false;
+            }
+        }
+        off
+    };
+    let mut curve_offsets = [0u32; 3];
+    for (i, tab) in [&m.red_curve, &m.green_curve, &m.blue_curve].iter().enumerate() {
+        curve_offsets[i] = io.tell().wrapping_sub(base_offset);
+        if !io::write_u32(io, tsig::SigS15Fixed16ArrayType)
+            || !io::write_u32(io, 0)
+            || !write_15_fixed16_list(io, tab)
+        {
+            return false;
+        }
+    }
+    if !io.seek(tables_pos) {
+        return false;
+    }
+    if !io::write_u32(io, moff)
+        || !io::write_u32(io, curve_offsets[0])
+        || !io::write_u32(io, curve_offsets[1])
+        || !io::write_u32(io, curve_offsets[2])
+    {
+        return false;
+    }
+    true
+}
+
+// --- Dictionary ('dict') ---------------------------------------------------
+
+/// `_cmsDICelem` — parallel offset/size column
+#[derive(Default, Clone)]
+struct DicElem {
+    offsets: Vec<u32>,
+    sizes: Vec<u32>,
+}
+
+fn read_one_elem(io: &mut IoHandler, e: &mut DicElem, i: usize, base_offset: u32) -> bool {
+    if !io::read_u32(io, &mut e.offsets[i]) || !io::read_u32(io, &mut e.sizes[i]) {
+        return false;
+    }
+    if e.offsets[i] > 0 {
+        e.offsets[i] = e.offsets[i].wrapping_add(base_offset);
+    }
+    true
+}
+
+fn write_one_elem(io: &mut IoHandler, e: &DicElem, i: usize) -> bool {
+    io::write_u32(io, e.offsets[i]) && io::write_u32(io, e.sizes[i])
+}
+
+/// `Type_Dictionary_Read`
+fn type_dictionary_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, size_of_tag: u32) -> Option<TagObject> {
+    *n_items = 0;
+    let base_offset = io.tell().wrapping_sub(8);
+    let mut signed_size = size_of_tag as i32;
+
+    signed_size -= 4;
+    if signed_size < 0 {
+        return None;
+    }
+    let mut count = 0u32;
+    if !io::read_u32(io, &mut count) {
+        return None;
+    }
+    signed_size -= 4;
+    if signed_size < 0 {
+        return None;
+    }
+    let mut length = 0u32;
+    if !io::read_u32(io, &mut length) {
+        return None;
+    }
+    if length != 16 && length != 24 && length != 32 {
+        err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown record length in dictionary");
+        return None;
+    }
+
+    let mut dict = crate::named::dict_alloc(None);
+    // column arrays
+    let mut name = DicElem { offsets: vec![0; count as usize], sizes: vec![0; count as usize] };
+    let mut value = name.clone();
+    let mut display_name = name.clone();
+    let mut display_value = name.clone();
+    let _ = (&mut display_name, &mut display_value); // length-gated below
+
+    for i in 0..count as usize {
+        if signed_size < 16 {
+            return None;
+        }
+        signed_size -= 16;
+        if !read_one_elem(io, &mut name, i, base_offset) || !read_one_elem(io, &mut value, i, base_offset) {
+            return None;
+        }
+        if length > 16 {
+            if signed_size < 8 {
+                return None;
+            }
+            signed_size -= 8;
+            if !read_one_elem(io, &mut display_name, i, base_offset) {
+                return None;
+            }
+        }
+        if length > 24 {
+            if signed_size < 8 {
+                return None;
+            }
+            signed_size -= 8;
+            if !read_one_elem(io, &mut display_value, i, base_offset) {
+                return None;
+            }
+        }
+    }
+
+    for i in 0..count as usize {
+        // ReadOneWChar
+        let name_w = read_dic_wchar(io, &name, i)?;
+        let value_w = read_dic_wchar(io, &value, i)?;
+        let dn = if length > 16 { read_dic_mlu(s, io, &display_name, i)? } else { None };
+        let dv = if length > 24 { read_dic_mlu(s, io, &display_value, i)? } else { None };
+        let rc = match (&name_w, &value_w) {
+            (Some(n), Some(v)) => crate::named::dict_add_entry(
+                &mut dict,
+                n,
+                v,
+                dn.as_ref(),
+                dv.as_ref(),
+            ),
+            _ => {
+                err::signal_error(None, ERROR_CORRUPTION_DETECTED, "Bad dictionary Name/Value");
+                false
+            }
+        };
+        if !rc {
+            return None;
+        }
+    }
+    *n_items = 1;
+    Some(TagObject::Dictionary(dict))
+}
+
+fn read_dic_wchar(io: &mut IoHandler, e: &DicElem, i: usize) -> Option<Option<Vec<Wchar>>> {
+    if e.offsets[i] == 0 {
+        return Some(None); // undefined string
+    }
+    if !io.seek(e.offsets[i]) {
+        return None;
+    }
+    let n_chars = e.sizes[i] / 2;
+    if n_chars > 0x7ffff {
+        return None;
+    }
+    let mut wchars = Vec::new();
+    if !read_wchar_array(io, n_chars, &mut wchars) {
+        return None;
+    }
+    Some(Some(wchars))
+}
+
+fn read_dic_mlu(s: &TagTypeHandler, io: &mut IoHandler, e: &DicElem, i: usize) -> Option<Option<Mlu>> {
+    if e.offsets[i] == 0 || e.sizes[i] == 0 {
+        return Some(None);
+    }
+    if !io.seek(e.offsets[i]) {
+        return None;
+    }
+    let mut n = 0u32;
+    match type_mlu_read(s, io, &mut n, e.sizes[i]) {
+        Some(TagObject::Mlu(m)) => Some(Some(m)),
+        _ => None,
+    }
+}
+
+/// `Type_Dictionary_Write`
+fn type_dictionary_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
+    let TagObject::Dictionary(dict) = p else { return false };
+    let base_offset = io.tell().wrapping_sub(8);
+
+    let count = dict.entries.len() as u32;
+    let any_name = dict.entries.iter().any(|e| e.display_name.is_some());
+    let any_value = dict.entries.iter().any(|e| e.display_value.is_some());
+    let length = 16 + 8 * any_name as u32 + 8 * any_value as u32;
+
+    if !io::write_u32(io, count) || !io::write_u32(io, length) {
+        return false;
+    }
+    let dir_pos = io.tell();
+
+    let mk = || DicElem { offsets: vec![0; count as usize], sizes: vec![0; count as usize] };
+    let (mut name, mut value, mut dn, mut dv) = (mk(), mk(), mk(), mk());
+
+    // fake directory
+    for i in 0..count as usize {
+        if !write_one_elem(io, &name, i) || !write_one_elem(io, &value, i) {
+            return false;
+        }
+        if length > 16 && !write_one_elem(io, &dn, i) {
+            return false;
+        }
+        if length > 24 && !write_one_elem(io, &dv, i) {
+            return false;
+        }
+    }
+
+    // Write each element
+    for (i, entry) in dict.entries.iter().enumerate() {
+        // WriteOneWChar — name
+        let before = io.tell();
+        name.offsets[i] = before.wrapping_sub(base_offset);
+        let nw = entry.name.len() as u32;
+        if !write_wchar_array(io, &entry.name) {
+            return false;
+        }
+        name.sizes[i] = io.tell().wrapping_sub(before);
+        let _ = nw;
+
+        let before = io.tell();
+        value.offsets[i] = before.wrapping_sub(base_offset);
+        if !write_wchar_array(io, &entry.value) {
+            return false;
+        }
+        value.sizes[i] = io.tell().wrapping_sub(before);
+
+        if let Some(m) = &entry.display_name {
+            let before = io.tell();
+            dn.offsets[i] = before.wrapping_sub(base_offset);
+            if !type_mlu_write(s, io, &TagObject::Mlu(m.clone()), 1) {
+                return false;
+            }
+            dn.sizes[i] = io.tell().wrapping_sub(before);
+        }
+        if let Some(m) = &entry.display_value {
+            let before = io.tell();
+            dv.offsets[i] = before.wrapping_sub(base_offset);
+            if !type_mlu_write(s, io, &TagObject::Mlu(m.clone()), 1) {
+                return false;
+            }
+            dv.sizes[i] = io.tell().wrapping_sub(before);
+        }
+    }
+
+    let cur = io.tell();
+    if !io.seek(dir_pos) {
+        return false;
+    }
+    for i in 0..count as usize {
+        if !write_one_elem(io, &name, i) || !write_one_elem(io, &value, i) {
+            return false;
+        }
+        if length > 16 && !write_one_elem(io, &dn, i) {
+            return false;
+        }
+        if length > 24 && !write_one_elem(io, &dv, i) {
+            return false;
+        }
+    }
+    io.seek(cur)
+}
+
+// ---------------------------------------------------------------------------
+// Tag registry — `SupportedTags` + `_cmsGetTagDescriptor` + `GetHandler`
+// ---------------------------------------------------------------------------
+
+use crate::signatures::tag as tagsig;
+
+/// `DecideLUTtypeA2B`
+fn decide_lut_a2b(v: f64, d: &TagObject) -> u32 {
+    let (TagObject::LutA2B(lut) | TagObject::Lut8(lut) | TagObject::Lut16(lut) | TagObject::LutB2A(lut) | TagObject::Mpe(lut)) = d else {
+        return tsig::SigLut16Type;
+    };
+    if v < 4.0 {
+        if lut.save_as_8bits { tsig::SigLut8Type } else { tsig::SigLut16Type }
+    } else {
+        tsig::SigLutAtoBType
+    }
+}
+
+/// `DecideLUTtypeB2A`
+fn decide_lut_b2a(v: f64, d: &TagObject) -> u32 {
+    let (TagObject::LutA2B(lut) | TagObject::Lut8(lut) | TagObject::Lut16(lut) | TagObject::LutB2A(lut) | TagObject::Mpe(lut)) = d else {
+        return tsig::SigLut16Type;
+    };
+    if v < 4.0 {
+        if lut.save_as_8bits { tsig::SigLut8Type } else { tsig::SigLut16Type }
+    } else {
+        tsig::SigLutBtoAType
+    }
+}
+
+
+
+/// `cmsTagDescriptor` — supported types for a tag + type selection
+#[derive(Clone, Copy)]
+pub struct TagDescriptor {
+    /// `ElemCount` — how many items the tag expects (read check)
+    pub elem_count: u32,
+    /// `SupportedTypes` — allowed type signatures (order preserved)
+    pub supported_types: &'static [u32],
+    /// `DecideType` — pick the write type for an ICC version + object
+    pub decide_type: Option<fn(f64, &TagObject) -> u32>,
+}
+
+const LUT_AB: &[u32] = &[tsig::SigLut16Type, tsig::SigLutAtoBType, tsig::SigLut8Type];
+const LUT_BA: &[u32] = &[tsig::SigLut16Type, tsig::SigLutBtoAType, tsig::SigLut8Type];
+const XYZ_BROKEN: &[u32] = &[tsig::SigXYZType, 0x17A505B8];
+const TRC3: &[u32] = &[tsig::SigCurveType, tsig::SigParametricCurveType, 0x9478ee00];
+const TRC2: &[u32] = &[tsig::SigCurveType, tsig::SigParametricCurveType];
+const ONE_DATETIME: &[u32] = &[tsig::SigDateTimeType];
+const ONE_TEXT: &[u32] = &[tsig::SigTextType];
+const ONE_S15: &[u32] = &[tsig::SigS15Fixed16ArrayType];
+const ONE_CHRM: &[u32] = &[tsig::SigChromaticityType];
+const ONE_CLRT: &[u32] = &[tsig::SigColorantOrderType];
+const ONE_CLRTAB: &[u32] = &[tsig::SigColorantTableType];
+const TEXT3: &[u32] = &[tsig::SigTextType, tsig::SigMultiLocalizedUnicodeType, tsig::SigTextDescriptionType];
+const DESC3: &[u32] = &[tsig::SigTextDescriptionType, tsig::SigMultiLocalizedUnicodeType, tsig::SigTextType];
+const ONE_NCLR: &[u32] = &[tsig::SigNamedColor2Type];
+const ONE_PSEQ: &[u32] = &[tsig::SigProfileSequenceDescType];
+const ONE_SIG: &[u32] = &[tsig::SigSignatureType];
+const ONE_MEAS: &[u32] = &[tsig::SigMeasurementType];
+const ONE_DATA: &[u32] = &[tsig::SigDataType];
+const ONE_UCRBG: &[u32] = &[tsig::SigUcrBgType];
+const ONE_CRD: &[u32] = &[tsig::SigCrdInfoType];
+const ONE_MPE: &[u32] = &[tsig::SigMultiProcessElementType];
+const ONE_DESC: &[u32] = &[tsig::SigTextDescriptionType];
+const ONE_VIEW: &[u32] = &[tsig::SigViewingConditionsType];
+const ONE_SCRN: &[u32] = &[tsig::SigScreeningType];
+const ONE_VCGT: &[u32] = &[tsig::SigVcgtType];
+const ONE_DICT: &[u32] = &[tsig::SigDictType];
+const ONE_PSID: &[u32] = &[tsig::SigProfileSequenceIdType];
+const ONE_MLU: &[u32] = &[tsig::SigMultiLocalizedUnicodeType];
+const ONE_CICP: &[u32] = &[tsig::SigcicpType];
+const ONE_MHC2: &[u32] = &[tsig::SigMHC2Type];
+const ONE_XYZ: &[u32] = &[tsig::SigXYZType];
+
+/// `SupportedTags` — same order as C
+pub static SUPPORTED_TAGS: &[(u32, TagDescriptor)] = &[
+    (tagsig::SigAToB0Tag, TagDescriptor { elem_count: 1, supported_types: LUT_AB, decide_type: Some(decide_lut_a2b) }),
+    (tagsig::SigAToB1Tag, TagDescriptor { elem_count: 1, supported_types: LUT_AB, decide_type: Some(decide_lut_a2b) }),
+    (tagsig::SigAToB2Tag, TagDescriptor { elem_count: 1, supported_types: LUT_AB, decide_type: Some(decide_lut_a2b) }),
+    (tagsig::SigBToA0Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
+    (tagsig::SigBToA1Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
+    (tagsig::SigBToA2Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
+    (tagsig::SigRedColorantTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: Some(decide_xyz_type) }),
+    (tagsig::SigGreenColorantTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: Some(decide_xyz_type) }),
+    (tagsig::SigBlueColorantTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: Some(decide_xyz_type) }),
+    (tagsig::SigRedTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC3, decide_type: Some(decide_curve_type) }),
+    (tagsig::SigGreenTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC3, decide_type: Some(decide_curve_type) }),
+    (tagsig::SigBlueTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC3, decide_type: Some(decide_curve_type) }),
+    (tagsig::SigCalibrationDateTimeTag, TagDescriptor { elem_count: 1, supported_types: ONE_DATETIME, decide_type: None }),
+    (tagsig::SigCharTargetTag, TagDescriptor { elem_count: 1, supported_types: ONE_TEXT, decide_type: None }),
+    (tagsig::SigChromaticAdaptationTag, TagDescriptor { elem_count: 9, supported_types: ONE_S15, decide_type: None }),
+    (tagsig::SigChromaticityTag, TagDescriptor { elem_count: 1, supported_types: ONE_CHRM, decide_type: None }),
+    (tagsig::SigColorantOrderTag, TagDescriptor { elem_count: 1, supported_types: ONE_CLRT, decide_type: None }),
+    (tagsig::SigColorantTableTag, TagDescriptor { elem_count: 1, supported_types: ONE_CLRTAB, decide_type: None }),
+    (tagsig::SigColorantTableOutTag, TagDescriptor { elem_count: 1, supported_types: ONE_CLRTAB, decide_type: None }),
+    (tagsig::SigCopyrightTag, TagDescriptor { elem_count: 1, supported_types: TEXT3, decide_type: Some(decide_text_type) }),
+    (tagsig::SigDateTimeTag, TagDescriptor { elem_count: 1, supported_types: ONE_DATETIME, decide_type: None }),
+    (tagsig::SigDeviceMfgDescTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
+    (tagsig::SigDeviceModelDescTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
+    (tagsig::SigGamutTag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
+    (tagsig::SigGrayTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC2, decide_type: Some(decide_curve_type) }),
+    (tagsig::SigLuminanceTag, TagDescriptor { elem_count: 1, supported_types: ONE_XYZ, decide_type: None }),
+    (tagsig::SigMediaBlackPointTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: None }),
+    (tagsig::SigMediaWhitePointTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: None }),
+    (tagsig::SigNamedColor2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_NCLR, decide_type: None }),
+    (tagsig::SigPreview0Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
+    (tagsig::SigPreview1Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
+    (tagsig::SigPreview2Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
+    (tagsig::SigProfileDescriptionTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
+    (tagsig::SigProfileSequenceDescTag, TagDescriptor { elem_count: 1, supported_types: ONE_PSEQ, decide_type: None }),
+    (tagsig::SigTechnologyTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
+    (tagsig::SigColorimetricIntentImageStateTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
+    (tagsig::SigPerceptualRenderingIntentGamutTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
+    (tagsig::SigSaturationRenderingIntentGamutTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
+    (tagsig::SigMeasurementTag, TagDescriptor { elem_count: 1, supported_types: ONE_MEAS, decide_type: None }),
+    (tagsig::SigPs2CRD0Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
+    (tagsig::SigPs2CRD1Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
+    (tagsig::SigPs2CRD2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
+    (tagsig::SigPs2CRD3Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
+    (tagsig::SigPs2CSATag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
+    (tagsig::SigPs2RenderingIntentTag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
+    (tagsig::SigViewingCondDescTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
+    (tagsig::SigUcrBgTag, TagDescriptor { elem_count: 1, supported_types: ONE_UCRBG, decide_type: None }),
+    (tagsig::SigCrdInfoTag, TagDescriptor { elem_count: 1, supported_types: ONE_CRD, decide_type: None }),
+    (tagsig::SigDToB0Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigDToB1Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigDToB2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigDToB3Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigBToD0Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigBToD1Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigBToD2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigBToD3Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
+    (tagsig::SigScreeningDescTag, TagDescriptor { elem_count: 1, supported_types: ONE_DESC, decide_type: None }),
+    (tagsig::SigViewingConditionsTag, TagDescriptor { elem_count: 1, supported_types: ONE_VIEW, decide_type: None }),
+    (tagsig::SigScreeningTag, TagDescriptor { elem_count: 1, supported_types: ONE_SCRN, decide_type: None }),
+    (tagsig::SigVcgtTag, TagDescriptor { elem_count: 1, supported_types: ONE_VCGT, decide_type: None }),
+    (tagsig::SigMetaTag, TagDescriptor { elem_count: 1, supported_types: ONE_DICT, decide_type: None }),
+    (tagsig::SigProfileSequenceIdTag, TagDescriptor { elem_count: 1, supported_types: ONE_PSID, decide_type: None }),
+    (tagsig::SigProfileDescriptionMLTag, TagDescriptor { elem_count: 1, supported_types: ONE_MLU, decide_type: None }),
+    (tagsig::SigcicpTag, TagDescriptor { elem_count: 1, supported_types: ONE_CICP, decide_type: None }),
+    (tagsig::SigArgyllArtsTag, TagDescriptor { elem_count: 9, supported_types: ONE_S15, decide_type: None }),
+    (tagsig::SigMHC2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MHC2, decide_type: None }),
+];
+
+/// `GetHandler` — plugin list first, then built-ins
+pub fn get_handler<'a>(sig: u32, plugins: &'a [TagTypeHandler], defaults: &'a [TagTypeHandler]) -> Option<&'a TagTypeHandler> {
+    plugins
+        .iter()
+        .find(|h| h.signature == sig)
+        .or_else(|| defaults.iter().find(|h| h.signature == sig))
+}
+
+/// `_cmsGetTagDescriptor` — plugin tags first, then SupportedTags.
+/// Returns an owned copy (`TagDescriptor` is `Copy`; C returns a pointer
+/// into the plugin list or the static table — equivalent for dispatch).
+pub fn get_tag_descriptor(ctx: Option<&Context>, sig: u32) -> Option<TagDescriptor> {
+    if let Some(c) = ctx {
+        if let Some((_, d)) = c.tag_descriptors.iter().find(|(s, _)| *s == sig) {
+            return Some(*d);
+        }
+    }
+    SUPPORTED_TAGS.iter().find(|(s, _)| *s == sig).map(|(_, d)| *d)
+}
+
+/// `_cmsAvoidTypeCheckOnTags` — plugin registered signature-0 → skip checks
+pub fn avoid_type_check_on_tags(ctx: Option<&Context>) -> bool {
+    ctx.map(|c| c.tag_descriptors.iter().any(|(s, _)| *s == 0))
+        .unwrap_or(false)
 }

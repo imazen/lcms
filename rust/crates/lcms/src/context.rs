@@ -33,6 +33,15 @@ pub struct Context {
     pub interpolators: Option<InterpFnFactory>,
     /// `_cmsCurvesPluginChunkType.ParametricCurves` (cmsgamma.c) — head first.
     pub parametric_curves: Vec<crate::gamma::ParametricCurves>,
+    /// `_cmsMPETypePluginChunk` (cmstypes.c) — MPE element handlers, checked
+    /// before the built-in `SupportedMPEtypes` table
+    pub mpe_handlers: Vec<crate::tagtypes::MpeElemHandler>,
+    /// `_cmsTagTypePluginChunkType.TagTypes` — tag type handlers added by
+    /// plugins, checked before `SupportedTagTypes`
+    pub tag_type_handlers: Vec<crate::tagtypes::TagTypeHandler>,
+    /// `_cmsTagPluginChunkType.Tag` — plugin-registered tag descriptors
+    /// (signature, descriptor), checked before `SupportedTags`
+    pub tag_descriptors: Vec<(u32, crate::tagtypes::TagDescriptor)>,
 }
 
 /// The global context, used wherever C passes `NULL`.
