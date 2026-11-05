@@ -614,3 +614,15 @@ PRIVATE LEDGER: ~/work/zen/lcms-C-BUGS.md (untracked).
   — further fused paths or batching are future work.
 
 REMAINING: generic-path perf (~2x), residual coverage edges.
+
+## State — CMYK/CLUT generic-path perf + perf_xform CMYK bench
+
+- perf_xform now benches test1.icc CMYK→sRGB (CLUT-heavy generic
+  path, Prelin/CLUT eval + 4ch unroll/pack). Measured: 8-bit ~1.3x,
+  16-bit ~1.8x of C (after formatter bounds-check removal). The fixed
+  [u16;MAX_CHANNELS] w-param change paid off on the dense paths too.
+- sRGB→sRGB identity is now 0.10x/0.17x of C via the fused line-copy.
+- Real-profile gate still byte-exact incl. monitor_rgb_to_srgb
+  (MatShaper fused path) and both K-intents.
+REMAINING: 16-bit CLUT eval ~1.8x (interp16 fixed-point loops —
+  candidate for per-node fused kernels), generic-path edge cases.
