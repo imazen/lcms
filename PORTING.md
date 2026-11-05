@@ -279,3 +279,23 @@ machinery). cmserr/cmsplugin residuals remain small.
 After cmscgats: 100% lcms2 C coverage. Then: parity expansion
 (LUT profiles, all intents, all pixel formats, edge values),
 perf parity vs C oracle.
+
+## cmscgats.c resume note (the last module — 3339 lines, 39 exports)
+
+Structure: chunk allocator (AllocChunk/AllocBigBlock/AllocString),
+string type (StringAlloc/Clear/Append/Cat/Ptr), lexer (NextCh/
+InSymbol/InStringSymbol/BinSrchKey/ReadReal/ParseFloatNumber),
+property lists (IsAvailableOnList/AddToList/AddAvailableProperty/
+AddAvailableSampleID/KEYVALUE), TABLE array (AllocTable/
+cmsIT8SetTable/GetTable), the file parser (ParseIT8Header/
+ParseDataFormat/ParseData/ParseFile → ReadReal/ReadChar/ReadField),
+the writer (WriteHeader/WriteDataFormat/WriteData/SaveFile), and
+the 39 exports: IT8Alloc/Free/SetTable/GetSheetType/SetSheetType/
+SetComment/SetPropertyStr/Dbl/Hex/Uncooked/SetPropertyMulti/
+GetPropertyStr/Dbl/Multi/GetPatchID/GetPatchName/FindDataFormat/
+SetDataFormat/GetDataDbl/SetDataDbl/GetDataDblIndex/SetDataDblIndex/
+GetDataSetID/SetDataSetID/GetDataFormat/GetDataFormatStr/
+GetDataSetStr/Dbl/SetDataSetStr/Dbl/GetDataSetID/SetDataSetID/
+GetDataSetId/SetDataSetId/GetDataSetID/SetDataSetID/LCL2PCS/
+PCS2LCL/SetTableIndex/GetTableIndex/GetTableData/SaveToFile/
+SaveToMem/SetSheetType/SetComment.
