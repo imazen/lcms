@@ -8,6 +8,13 @@
 use crate::context::Context;
 use crate::lut::Pipeline;
 
+/// Optimization payload — C's `Eval16Fn` data union, closed-world enum
+#[derive(Clone)]
+pub enum OptData {
+    Curves16(Curves16Data),
+    Identity,
+}
+
 /// `_cmsOptimizationCollection` — one strategy callback
 type OptimizeFn = fn(
     &mut Pipeline,
@@ -200,18 +207,154 @@ fn pre_optimize(lut: &mut Pipeline) -> bool {
     any_opt
 }
 
-/// `OptimizeByJoiningCurves` — merge adjacent CurveSet stages
+// ---------------------------------------------------------------------------
+// `OptimizeByJoiningCurves` — curves-only pipeline → 4096-pt sampled curves
+// ---------------------------------------------------------------------------
+
+const PRELINEARIZATION_POINTS: u32 = 4096;
+
+/// `Curves16Data` — baked per-channel lookup tables
+#[derive(Clone)]
+pub struct Curves16Data {
+    pub curves: Vec<Vec<u16>>,
+}
+
+/// `FastEvaluateCurves8` — 8-bit quantized index
+fn fast_eval_curves8(input: &[u16], output: &mut [u16], data: &OptData) -> bool {
+    let OptData::Curves16(c) = data else {
+        return false;
+    };
+    for i in 0..c.curves.len() {
+        output[i] = c.curves[i][(input[i] >> 8) as usize];
+    }
+    true
+}
+/// `FastEvaluateCurves16` — direct index
+fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptData) -> bool {
+    let OptData::Curves16(c) = data else {
+        return false;
+    };
+    for i in 0..c.curves.len() {
+        output[i] = c.curves[i][input[i] as usize];
+    }
+    true
+}
+/// `FastIdentity16` — copy
+fn fast_identity16(input: &[u16], output: &mut [u16], _d: &OptData) -> bool {
+    let n = input.len().min(output.len());
+    output[..n].copy_from_slice(&input[..n]);
+    true
+}
+
+/// `AllCurvesAreLinear` — every curve maps x→x exactly
+fn all_curves_are_linear(stage: &Stage) -> bool {
+    let StageData::ToneCurves(curves) = &stage.data else {
+        return false;
+    };
+    curves.iter().all(|c| {
+        let n = c.table16.len();
+        (0..n).all(|i| {
+            let expected = (i as f64 * 65535.0 / (n - 1).max(1) as f64).round() as i64;
+            (c.table16[i] as i64 - expected).abs() <= 0
+        })
+    })
+}
+
 fn optimize_by_joining_curves(
     lut: &mut Pipeline,
     _intent: u32,
-    _if: &mut u32,
+    input_format: &mut u32,
     _of: &mut u32,
-    _fl: &mut u32,
+    dw_flags: &mut u32,
 ) -> bool {
-    let _ = lut;
-    // TODO(cmsopt): CollectCurves → join into one curve set when the
-    // whole pipeline is curves-only
-    false
+    use crate::lut::{StageData, StageLoc};
+    // C: float formats aren't 16-bit optimizable
+    if crate::pack::t_float(*input_format) != 0 {
+        return false;
+    }
+    // every stage must be a CurveSet
+    let mut st = lut.elements.as_deref();
+    while let Some(s) = st {
+        if s.stage_type() != ssig::SigCurveSetElemType {
+            return false;
+        }
+        st = s.next.as_deref();
+    }
+    let n_in = lut.input_channels;
+    let mut gamma_tables: Vec<crate::gamma::ToneCurve> = Vec::new();
+    for _ in 0..n_in {
+        let Some(g) =
+            crate::gamma::build_tabulated_tone_curve16(None, PRELINEARIZATION_POINTS, None)
+        else {
+            return false;
+        };
+        gamma_tables.push(g);
+    }
+    // sample the source pipeline across the input ramp
+    let mut in_float = [0f32; 16];
+    let mut out_float = [0f32; 16];
+    for i in 0..PRELINEARIZATION_POINTS as usize {
+        for j in 0..n_in as usize {
+            in_float[j] = i as f32 / (PRELINEARIZATION_POINTS - 1) as f32;
+        }
+        lut.eval_float(&in_float[..n_in as usize], &mut out_float);
+        for j in 0..n_in as usize {
+            gamma_tables[j].table16[i] =
+                crate::fixed::quick_saturate_word(out_float[j] as f64 * 65535.0);
+        }
+    }
+    let refs: Vec<&crate::gamma::ToneCurve> = gamma_tables.iter().collect();
+    let Some(obtained) = crate::lut::stage_alloc_tone_curves(None, n_in, Some(&refs)) else {
+        return false;
+    };
+    let linear = all_curves_are_linear(&obtained);
+    let mut dest = crate::lut::pipeline_alloc(None, lut.input_channels, lut.output_channels);
+    let Some(mut dest) = dest else { return false };
+    if !linear {
+        if !dest.insert_stage(StageLoc::AtBegin, obtained) {
+            return false;
+        }
+        let is_8bit = crate::pack::t_bytes(*input_format) == 1;
+        let table: Vec<Vec<u16>> = gamma_tables.iter().map(|g| g.table16.clone()).collect();
+        *dw_flags |= crate::xform::FLAGS_NOCACHE;
+        if is_8bit {
+            let curves: Vec<Vec<u16>> = table
+                .iter()
+                .map(|t| {
+                    let mut v = vec![0u16; 256];
+                    for i in 0..256 {
+                        v[i] = t[i * (PRELINEARIZATION_POINTS as usize - 1) / 255];
+                    }
+                    v
+                })
+                .collect();
+            dest.opt_data = Some(OptData::Curves16(Curves16Data { curves }));
+            dest.eval16_fn = |i, o, l| {
+                if let Some(d) = &l.opt_data {
+                    fast_eval_curves8(i, o, d);
+                }
+            };
+        } else {
+            dest.opt_data = Some(OptData::Curves16(Curves16Data { curves: table }));
+            dest.eval16_fn = |i, o, l| {
+                if let Some(d) = &l.opt_data {
+                    fast_eval_curves16(i, o, d);
+                }
+            };
+        }
+    } else {
+        let st = crate::lut::stage_alloc_identity(None, n_in);
+        if !dest.insert_stage(StageLoc::AtBegin, st) {
+            return false;
+        }
+        *dw_flags |= crate::xform::FLAGS_NOCACHE;
+        dest.opt_data = Some(OptData::Identity);
+        dest.eval16_fn = |i, o, _l| {
+            fast_identity16(i, o, &OptData::Identity);
+        };
+    }
+    *lut = dest;
+    true
 }
 
 /// `OptimizeMatrixShaper` — curves+matrix+curves → precomputed shaper

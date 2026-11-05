@@ -898,6 +898,8 @@ pub struct Pipeline {
     pub eval16_fn: PipelineEval16Fn,
     pub eval_float_fn: PipelineEvalFloatFn,
     pub save_as_8bits: bool,
+    /// `_cmsPipelineSetOptimizationParameters` — optional baked fast-eval data
+    pub opt_data: Option<crate::opt::OptData>,
 }
 
 /// `BlessLUT` — set channel counts from first/last stage, check chain.
@@ -987,6 +989,7 @@ pub fn pipeline_alloc(
         eval16_fn: lut_eval16,
         eval_float_fn: lut_eval_float,
         save_as_8bits: false,
+        opt_data: None,
     };
     if !bless_lut(&mut lut) {
         return None;
