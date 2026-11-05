@@ -22,6 +22,7 @@ use crate::types::{
 };
 
 /// `_cmsICCPROFILE` — the open-profile state object.
+#[derive(Clone)]
 pub struct IccProfile {
     /// `IOhandler` — the backing stream (None = built-in/virtual profile)
     pub io: Option<IoHandler>,

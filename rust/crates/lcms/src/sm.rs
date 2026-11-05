@@ -490,8 +490,7 @@ fn gamut_sampler(inp: &[u16], out: &mut [u16], chain: &mut GamutChain) -> i32 {
 
 /// serialize+reopen a profile (for `create_extended_transform`'s owned vec)
 fn dup_profile(icc: &mut IccProfile) -> Option<IccProfile> {
-    let bytes = crate::profile::save_profile_to_mem(icc)?;
-    crate::profile::open_profile_from_mem(None, &bytes).map(|p| *p)
+    Some(icc.clone())
 }
 
 /// `_cmsCreateGamutCheckPipeline` — the proof chain → a 3→1 CLUT

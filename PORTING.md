@@ -539,9 +539,13 @@ Real bugs fixed this session:
 - emit_range_check text was wrong ({dup 0 lt...} bind vs C's
   'dup 0.0 lt { pop 0.0 } if dup 1.0 gt { pop 1.0 } if ').
 
-OPEN: srgb_crd (Lab→sRGB devicelink FORCE_CLUT resample) has ~167
-±1-LSB CLUT-word divergences — bisect pending. Test ignored meanwhile.
-REMAINING: perf parity (~2.4-3x structural), that CLUT bisect.
+CLOSED: srgb_crd ±1-LSB — root cause was ps2::dup_profile serializing
++reopening the profile (float tags quantized to s15Fixed16). C borrows
+the original handle. Fix: IccProfile/IoHandler/IoStream/FileMem now
+Clone; ps2::dup_profile and sm::dup_profile do a field-exact clone.
+srgb_crd byte-exact; ignore removed. Ledger quirk recorded in
+rust/docs/C-BUGS.md.
+REMAINING: perf parity (~2.4-3x structural).
 
 ## srgb_crd ±1-LSB bisect — root cause FOUND: dup_profile precision loss
 

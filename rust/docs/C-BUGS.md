@@ -15,3 +15,14 @@ A C bug is still the oracle — the port reproduces it byte-for-byte.
   channels from one input byte; a *documented* quirk (gray→PCS uses XYZ).
 - `_cmsReasonableGridpointsByColorspace` FORCE_CLUT/CurvePts clamping has
   off-by-one rounding on LOWRESPRECALC — port mirrors the same integer math.
+- `cmsGetPostScriptCRD` on a non-Lab named-color profile always fails:
+  `WriteNamedColorCRD` builds a 1-profile transform; `_cmsLinkProfiles`
+  for n=1 named sets `ColorSpaceOut = PCS` (Lab=3ch) but the devicelink
+  LUT outputs the device colorants (CMYK=4ch); the final check
+  `cmsChannelsOfColorSpace(ColorSpaceOut) != PipelineOutputChannels`
+  fails -> "Couldn't link the profiles". Reproduced on oracle with a
+  CMYK named profile; port keeps the same check (cmscnvrt.c ~:651 /
+  cnvrt.rs link tail). Only Lab-channel named profiles could pass.
+- `_cmsIOPrintf` globally rewrites ','->'.' in emitted PS text
+  (cmsplugin.c locale guard) — affects every numeric + string emit;
+  port mirrors it in ps2::PsWriter::out.

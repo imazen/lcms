@@ -80,7 +80,6 @@ fn srgb_csa() {
 }
 
 #[test]
-#[ignore = "open: ±1-LSB CLUT word divergence in resampled Lab→sRGB devicelink — bisect pending"]
 fn srgb_crd() {
     unsafe {
         let prof = c::cmsCreate_sRGBProfile();

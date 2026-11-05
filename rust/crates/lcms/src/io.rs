@@ -47,6 +47,7 @@ pub fn align_long(x: u32) -> u32 {
 }
 
 /// `FILEMEM` — memory stream state.
+#[derive(Clone)]
 pub struct FileMem {
     pub block: Vec<u8>,
     pub size: u32,
@@ -64,7 +65,18 @@ pub enum IoStream {
     Null { pointer: u32 },
 }
 
+impl Clone for IoStream {
+    fn clone(&self) -> Self {
+        match self {
+            IoStream::File(f) => IoStream::File(f.try_clone().expect("clone file stream")),
+            IoStream::Mem(m) => IoStream::Mem(m.clone()),
+            IoStream::Null { pointer } => IoStream::Null { pointer: *pointer },
+        }
+    }
+}
+
 /// `struct _cms_io_handler`
+#[derive(Clone)]
 pub struct IoHandler {
     pub stream: IoStream,
     pub used_space: u32,

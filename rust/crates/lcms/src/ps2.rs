@@ -491,8 +491,7 @@ fn ctime_now() -> String {
 
 /// Serialize + reopen — the transform API needs owned profile boxes.
 fn dup_profile(icc: &mut IccProfile) -> Option<Box<IccProfile>> {
-    let bytes = crate::profile::save_profile_to_mem(icc)?;
-    crate::profile::open_profile_from_mem(None, &bytes)
+    Some(Box::new(icc.clone()))
 }
 
 const TYPE_GRAY_8: u32 = crate::types::PT_GRAY << 16 | 1 << 3 | 1;
