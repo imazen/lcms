@@ -33,6 +33,7 @@ pub mod wtpnt;
 
 pub mod cnvrt;
 pub mod io1;
+pub mod opt;
 pub mod pack;
 pub mod profile;
 pub mod sm;

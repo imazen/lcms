@@ -135,3 +135,16 @@ cmsCreateExtendedTransform → cnvrt link + pack formatters + opt),
 then cmsopt.c (2k), cmssamp.c (black point/TAC via transforms),
 finish cnvrt K-intents. cmsio1/cnvrt are IN and compile.
 cmssamp/cmsps2/cmscgats/cmsalpha remain.
+
+## State @ f26b62a (cmsxform skeleton landed)
+
+DONE: +cmspack.c→pack (all ~120 formatters), cmsio1.c→io1 (LUT readers),
+cmscnvrt.c→cnvrt (link machinery, K-intents stubbed), cmsxform.c→xform
+(Transform struct + eval loops + create_extended_transform).
+
+REMAINING: cmsopt.c (optimizer hooks into create_extended_transform —
+NOOPTIMIZE path works, optimizer selection not wired), cmssamp.c
+(black-point/TAC — needs working transforms), cnvrt K-intents (needs
+cmssamp+precalc stages), cmsxform precalculated/cached variants +
+cmsCreateProofingTransform gamut, cmsalpha.c, cmscgats.c, cmsps2.c,
+cmssm.c GBD API, cmserr/cmsplugin residuals.
