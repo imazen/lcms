@@ -630,7 +630,8 @@ fn type_text_read(
 }
 
 fn type_text_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::Text(mlu) = p else {
+    // C: every text-family handler takes the same cmsMLU*
+    let (TagObject::Text(mlu) | TagObject::TextDescription(mlu) | TagObject::Mlu(mlu)) = p else {
         return false;
     };
     let (size, _) = mlu_get_ascii(mlu, NO_LANG, NO_LANG, None);
@@ -1330,12 +1331,13 @@ fn type_mlu_read(
 
 /// `Type_MLU_Write`
 fn type_mlu_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::Mlu(mlu) = p else {
+    let mlu = match p {
+        TagObject::Mlu(m) | TagObject::Text(m) | TagObject::TextDescription(m) => m,
         // C's NULL → write empty placeholder
-        if p.is_none_marker() {
+        _ if p.is_none_marker() => {
             return io::write_u32(io, 0) && io::write_u32(io, 12);
         }
-        return false;
+        _ => return false,
     };
 
     if !io::write_u32(io, mlu.used_entries) || !io::write_u32(io, 12) {
