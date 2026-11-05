@@ -34,6 +34,7 @@ pub struct Stride {
 }
 
 /// Per-pixel input/output formatters for a live transform.
+#[derive(Clone, Copy)]
 enum Fmt {
     F16 {
         unroll: crate::pack::Unpack16Fn,
@@ -283,6 +284,81 @@ impl Transform {
             bytes_per_plane_out: bpp_out,
         };
         self.xform(input, output, ppl, lines, &stride);
+    }
+
+    /// Clone the eval state for a parallel worker — everything the eval
+    /// loop reads (`lut`/`opt_data`/`fmt`/`worker`/colorants) minus the
+    /// non-Cloneable `user_data` and a fresh per-thread pixel cache.
+    fn clone_for_parallel(&self) -> Transform {
+        Transform {
+            input_format: self.input_format,
+            output_format: self.output_format,
+            lut: self.lut.clone(),
+            gamut_check: self.gamut_check.clone(),
+            alarm_codes: self.alarm_codes,
+            ctx: self.ctx.clone(),
+            stride: self.stride,
+            fmt: self.fmt,
+            worker: self.worker,
+            cache_in: [0u16; MAX_CHANNELS],
+            cache_out: [0u16; MAX_CHANNELS],
+            entry_color_space: self.entry_color_space,
+            exit_color_space: self.exit_color_space,
+            rendering_intent: self.rendering_intent,
+            dw_flags: self.dw_flags,
+            entry_white_point: self.entry_white_point,
+            exit_white_point: self.exit_white_point,
+            user_data: None,
+            input_colorants: self.input_colorants.clone(),
+            output_colorants: self.output_colorants.clone(),
+            _pad: (),
+        }
+    }
+
+    /// Multithreaded `cmsDoTransform` — splits the contiguous pixel range
+    /// into `threads` chunks, each processed on its own thread with a fresh
+    /// pixel cache. The eval state is `Sync` (read-only `lut`/`opt_data`/
+    /// `fmt`/`worker`), so this is safe and byte-exact vs `do_transform`.
+    /// `threads <= 1` or `n < threads` falls back to the serial path.
+    pub fn do_transform_par(
+        &mut self,
+        input: &[u8],
+        output: &mut [u8],
+        n: u32,
+        threads: usize,
+    ) {
+        let px_in = (crate::pack::t_channels(self.input_format)
+            + crate::pack::t_extra(self.input_format)) as usize
+            * pixel_size(self.input_format) as usize;
+        let px_out = (crate::pack::t_channels(self.output_format)
+            + crate::pack::t_extra(self.output_format)) as usize
+            * pixel_size(self.output_format) as usize;
+        if px_in == 0 || px_out == 0 {
+            return;
+        }
+        let total = n as usize;
+        let threads = threads.clamp(1, total.max(1));
+        if threads <= 1 || total < 2 {
+            self.do_transform(input, output, n);
+            return;
+        }
+        let chunk = total.div_ceil(threads);
+        let mut rest_in = input;
+        let mut rest_out = output;
+        std::thread::scope(|s| {
+            let mut off = 0usize;
+            while off < total {
+                let take = chunk.min(total - off);
+                let (ic, ri) = rest_in.split_at((take * px_in).min(rest_in.len()));
+                let (oc, ro) = rest_out.split_at_mut((take * px_out).min(rest_out.len()));
+                rest_in = ri;
+                rest_out = ro;
+                let npix = (ic.len() / px_in).min(oc.len() / px_out) as u32;
+                let mut t = self.clone_for_parallel();
+                s.spawn(move || t.do_transform(ic, oc, npix));
+                off += take;
+            }
+        });
     }
 
     /// `xform` dispatch — worker chosen at create time

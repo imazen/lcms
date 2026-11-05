@@ -933,3 +933,24 @@ cmsDetectBlackPoint/cmsDetectDestinationBlackPoint on
 calibrated_nonzero_black, ibm-t61, new_c27b55f8 (0.0 diffs).
 Corpus test (`realworld_profile_corpus`, 176 profiles) green — the u8
 divergences are gone.
+
+## cam02 forward_all_surrounds — NaN-sign edge (pre-existing, bisected)
+
+`c_parity_cam02::forward_all_surrounds` fails at `surround=1 (AVG),
+D=-1 (D_CALCULATE)`, extreme XYZ e.g. (8.79, 0.35, 143.21):
+J = -NaN (matches C), h matches, but C channel = +NaN (port) vs -NaN (C).
+
+Analysis: `c_upper = t.powf(0.9) * (j_upper/100).powf(0.5) * (1.64-0.29^n).powf(0.73)`.
+`j_upper` = -NaN both -> `powf(0.5)` = -NaN both. The divergence is `t`:
+`t = e*sqrt(a^2+b^2) / (rgbpa[0]+rgbpa[1]+1.05*rgbpa[2])`. Port's denom<0
+(t negative -> powf->-NaN -> product +NaN); C's denom>0 (t positive -> real
+-> product -NaN). So `rgbpa` (hence `rgbp`) differs in sign upstream, while
+a/b (h) coincidentally match.
+VERIFIED-EXACT: nonlinear_compression, compute_correlates formulas,
+cat02_to_hpe matrix, xyz_to_cat02, chromatic_adaptation, computeD,
+surround constants, powf/pow NaN-sign (identical on glibc).
+UNRESOLVED: which of xyz_to_cat02/chromatic_adaptation/model-state
+(adopted_white.rgb, m.n/nbb/fl) produces the sign-flipping rgbp. Needs a
+C-side shim dumping cmscam02's CAM02COLOR.RGBp/RGBpa intermediates at the
+failing input to bisect the exact stage. Narrow edge — only fires on
+out-of-range XYZ producing negative rgbp.

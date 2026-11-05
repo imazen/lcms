@@ -207,3 +207,55 @@ fn realworld_profile_corpus() {
     assert!(tested > 0, "no profiles tested");
     assert!(failures.is_empty(), "corpus divergences:\n{}", failures.join("\n"));
 }
+
+
+/// `do_transform_par` must be byte-exact vs serial `do_transform` — the
+/// pixel-split clones eval state but shares the same `lut`/`opt_data`.
+#[test]
+fn parallel_transform_matches_serial() {
+    use lcms::types::{CiexyY, CiexyYTriple};
+    const D65: CiexyY = CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 };
+    const P3: CiexyYTriple = CiexyYTriple {
+        Red: CiexyY { x: 0.680, y: 0.320, Y: 1.0 },
+        Green: CiexyY { x: 0.265, y: 0.690, Y: 1.0 },
+        Blue: CiexyY { x: 0.150, y: 0.060, Y: 1.0 },
+    };
+    let srgb_p = [2.4f64, 1.0 / 1.055, 0.055 / 1.055, 1.0 / 12.92, 0.04045];
+    let n = 100_000u32;
+    for fmt in [1u32, 2] {
+        let f = 4 << 16 | 3 << 3 | fmt;
+        let sz = n as usize * 3 * fmt as usize;
+        let mut input = vec![0u8; sz];
+        let mut s = 7u64;
+        for b in input.iter_mut() {
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            *b = (s >> 33) as u8;
+        }
+        for &intent in &[0u32, 1] {
+            let g = lcms::gamma::build_parametric_tone_curve(None, 4, &srgb_p).unwrap();
+            let p1 = virt::create_rgb_profile(None, Some(&D65), Some(&P3), Some([&g, &g, &g])).unwrap();
+            let p2 = virt::create_srgb_profile(None).unwrap();
+            let mut profs = vec![p1, p2];
+            let mut bpc = [false; 2];
+            let intents = [intent, intent];
+            let adapt = [1.0f64; 2];
+            let mut t1 = lcms::xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, f, f, 0,
+            )
+            .expect("t1");
+            let mut t2 = lcms::xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, f, f, 0,
+            )
+            .expect("t2");
+            let mut o1 = vec![0u8; sz];
+            let mut o2 = vec![0u8; sz];
+            t1.do_transform(&input, &mut o1, n);
+            for th in [2usize, 4, 8] {
+                t2.do_transform_par(&input, &mut o2, n, th);
+                assert_eq!(o1, o2, "fmt={fmt} intent={intent} threads={th}");
+            }
+        }
+    }
+}
