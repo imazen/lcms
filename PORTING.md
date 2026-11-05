@@ -723,3 +723,26 @@ tetra math itself (16 dependent node reads + lerp per channel — same
 latency-bound work as C, ~1.3-1.6x residual is codegen arithmetic not
 dispatch). Options not pursued: inline(always), archmage attune batch
 SIMD (interp is gather-bound, poor fit), Kernel16 tag.
+
+## DIVERGENCE BISECT — float paths clip negatives (zenpixels handoff)
+
+From ~/tmp/handoff/lcms-parity-20261105/brief.md — real parity divergences
+on the FLOAT paths (C does not clip, port clips to 0.0):
+- test1.icc CMYK_FLT->RGB_FLT intent0: 1024 diffs worst 208.95/255.
+  Repro: input [85.88,0,14.5,29] -> port [0,.543,.647] C [-.819,.543,.647].
+- test3.icc RGB spac->sRGB F32: 352 diffs worst 15.75; C R=-5.40 port 0.0.
+- test1.icc U8 identical; test3.icc U8 differs 4960/12288 (eval-path bug
+  too, not just float clip).
+
+Clip hunt (in progress): unroll_fd_to_float divides ink by 100 correctly;
+pack_fd_from_float esz=4/8 writes raw floats (no clamp); interp float
+fclamps INPUT coords only (C same); ToneCurve::eval_float quick_saturates
+negatives -> Table[0] — but C's cmsEvalToneCurveFloat clamps identically.
+NEXT: dump the linked pipeline stage types for CMYK_FLT->RGB_FLT vs C's
+cmsPipeline — the -0.819 must come from a non-clamping final stage
+(CLUT direct output?) — if my port adds/evals a TRC stage that C doesn't
+route through, or eval_clut_float clamps, that's the bug. Also U8 path
+differs on test3.icc -> same stage-eval divergence, not just float clip.
+
+Also pending from brief: Transform: Send (Rc->Arc, Box<dyn Any+Send+Sync>,
+check perf), README status table (transforms ported).
