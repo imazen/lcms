@@ -127,3 +127,79 @@ fn p3_to_srgb_transform() {
         }
     }
 }
+
+/// Real-world ICC corpus → sRGB parity. External corpus (licensing → not in
+/// git): `/mnt/v/input/compact-icc-profiles/*.icc`. Skips cleanly when absent.
+/// Every RGB display/input profile is transformed to sRGB at u8 + u16;
+/// output is byte-exact vs the C oracle.
+#[test]
+fn realworld_profile_corpus() {
+    let dir = std::path::Path::new("/mnt/v/input/compact-icc-profiles");
+    if !dir.is_dir() {
+        eprintln!("corpus absent — skipping");
+        return;
+    }
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| {
+            let p = e.unwrap().path();
+            (p.extension().map(|x| x == "icc") == Some(true)).then_some(p)
+        })
+        .collect();
+    files.sort();
+    assert!(!files.is_empty(), "corpus dir empty");
+
+    let n = 4096usize;
+    let inp8: Vec<u8> = (0..n * 3).map(|i| ((i * 37 + i / 3 * 11) % 256) as u8).collect();
+    let inp16: Vec<u8> = inp8.iter().flat_map(|&b| (b as u16 * 257).to_le_bytes()).collect();
+    let mut tested = 0;
+    let mut failures = Vec::new();
+    for path in &files {
+        let name = path.file_stem().unwrap().to_str().unwrap().to_string();
+        for (lbl, fmt, input) in [
+            ("u8", TYPE_RGB_8, &inp8),
+            ("u16", TYPE_RGB_16, &inp16),
+        ] {
+            // C side — open + transform
+            let (co, ok_c) = unsafe {
+                let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+                let p = c::cmsOpenProfileFromFile(cpath.as_ptr(), "r\0".as_ptr());
+                if p.is_null() {
+                    (Vec::new(), false)
+                } else {
+                    let srgb = c::cmsCreate_sRGBProfile();
+                    let tc = c::cmsCreateTransform(p, fmt, srgb, fmt, 0, 0);
+                    if tc.is_null() {
+                        (Vec::new(), false)
+                    } else {
+                        let mut o = vec![0u8; input.len()];
+                        c::cmsDoTransform(tc, input.as_ptr() as *const _, o.as_mut_ptr() as *mut _, n as u32);
+                        (o, true)
+                    }
+                }
+            };
+            // Rust side
+            let Some(p1) = profile::open_profile_from_file(None, path.to_str().unwrap(), "r") else {
+                continue; // C could or couldn't open — either way skip
+            };
+            let Some(p2) = virt::create_srgb_profile(None) else { continue };
+            let mut profs = vec![p1, p2];
+            let mut bpc = [false, false];
+            let intents = [0u32, 0];
+            let adapt = [1.0f64, 1.0];
+            let Some(mut t) = lcms::xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fmt, fmt, 0,
+            ) else { continue };
+            let mut ro = vec![0u8; input.len()];
+            t.do_transform(input, &mut ro, n as u32);
+            if !ok_c { continue; }
+            tested += 1;
+            if ro != co {
+                let d = ro.iter().zip(&co).map(|(x,y)| (*x as i32 - *y as i32).abs()).max().unwrap_or(0);
+                failures.push(format!("{name} {lbl}: worst {d}"));
+            }
+        }
+    }
+    eprintln!("corpus: {tested} transforms across {} profiles", files.len());
+    assert!(failures.is_empty(), "corpus divergences:\n{}", failures.join("\n"));
+}

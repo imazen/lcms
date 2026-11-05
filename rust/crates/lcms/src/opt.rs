@@ -449,9 +449,9 @@ pub struct MatShaper8Data {
     pub shaper1: [[i32; 256]; 3],
     pub mat: [[i32; 3]; 3],
     pub off: [i32; 3],
-    /// `[[u16; 16385]; 3]` boxed to keep the struct small — built via
-    /// `vec![x; 3].into_boxed_slice()` so it never materializes on the stack
-    pub shaper2: Box<[[u16; 16385]; 3]>,
+    /// `[[u16; 16385]; 3]` flattened to a `Box<[u16]>` (index `c*16385+i`) —
+    /// fallible `try_zeroed_vec` keeps the 98KB table out of a memset
+    pub shaper2: Box<[u16]>,
 }
 
 /// `MatShaperEval16`
@@ -486,9 +486,9 @@ pub(crate) fn mat_shaper_eval16(input: &[u16], output: &mut [u16], d: &OptData) 
     let ri = l1.clamp(0, 16384) as usize;
     let gi = l2.clamp(0, 16384) as usize;
     let bi = l3.clamp(0, 16384) as usize;
-    output[0] = p.shaper2[0][ri];
-    output[1] = p.shaper2[1][gi];
-    output[2] = p.shaper2[2][bi];
+    output[0] = p.shaper2[ri];
+    output[1] = p.shaper2[16385 + gi];
+    output[2] = p.shaper2[2 * 16385 + bi];
     true
 }
 
@@ -542,14 +542,17 @@ fn set_mat_shaper(
         shaper1: [[0; 256]; 3],
         mat: [[0; 3]; 3],
         off: [0; 3],
-        shaper2: vec![[0u16; 16385]; 3]
-            .into_boxed_slice()
-            .try_into()
-            .expect("3-element"),
+        shaper2: match bytemuck::try_zeroed_vec::<u16>(3 * 16385) {
+            Ok(v) => v.into_boxed_slice(),
+            Err(()) => return false,
+        },
     };
     for c in 0..3 {
         fill_first_shaper(&mut p.shaper1[c], &curve1[c]);
-        fill_second_shaper(&mut p.shaper2[c], &curve2[c], is8);
+        let (pre, rest) = p.shaper2.split_at_mut(c * 16385);
+        let _ = pre;
+        let win: &mut [u16; 16385] = (&mut rest[..16385]).try_into().unwrap();
+        fill_second_shaper(win, &curve2[c], is8);
         for j in 0..3 {
             p.mat[c][j] = double_to_1fixed14(mat.v[c].n[j]);
         }

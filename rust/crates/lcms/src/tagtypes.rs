@@ -2327,7 +2327,7 @@ fn type_lut16_read(
         return None;
     }
     if n_tab > 0 {
-        let mut t = vec![0u16; n_tab as usize];
+        let mut t = bytemuck::try_zeroed_vec::<u16>(n_tab as usize).ok()?;
         if !io::read_u16_array(io, n_tab, Some(&mut t)) {
             return None;
         }

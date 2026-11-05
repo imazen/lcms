@@ -457,11 +457,11 @@ impl Transform {
                                 + p.off[2]
                                 + 0x2000)
                                 >> 14;
-                            oline[px] = crate::pack::f16to8(p.shaper2[0][l1.clamp(0, 16384) as usize]);
+                            oline[px] = crate::pack::f16to8(p.shaper2[l1.clamp(0, 16384) as usize]);
                             oline[px + 1] =
-                                crate::pack::f16to8(p.shaper2[1][l2.clamp(0, 16384) as usize]);
+                                crate::pack::f16to8(p.shaper2[16385 + l2.clamp(0, 16384) as usize]);
                             oline[px + 2] =
-                                crate::pack::f16to8(p.shaper2[2][l3.clamp(0, 16384) as usize]);
+                                crate::pack::f16to8(p.shaper2[2 * 16385 + l3.clamp(0, 16384) as usize]);
                         }
                         i_off += stride.bytes_per_line_in as usize;
                         o_off += stride.bytes_per_line_out as usize;

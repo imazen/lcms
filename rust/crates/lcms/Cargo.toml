@@ -10,6 +10,11 @@ repository.workspace = true
 # unsafe_code is forbidden in the library itself via #![forbid] in lib.rs;
 # tests call the C oracle through lcms-cref and need unsafe FFI.
 
+[dependencies]
+# Fallible zeroed allocation for the big optimizer/CLUT tables — avoids the
+# write-then-memset of `vec![0; n]` and returns Result instead of panicking.
+bytemuck = { version = "1.25.0", default-features = false, features = ["extern_crate_alloc"] }
+
 [dev-dependencies]
 lcms-cref = { path = "../lcms-cref" }
 zenbench = "0.1.10"

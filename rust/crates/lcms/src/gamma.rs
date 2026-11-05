@@ -557,7 +557,7 @@ fn allocate_tone_curve_struct(
         return None;
     }
 
-    let mut table16 = vec![0u16; n_entries as usize];
+    let mut table16 = bytemuck::try_zeroed_vec::<u16>(n_entries as usize).ok()?;
     if let Some(v) = values {
         if n_entries > 0 {
             table16.copy_from_slice(v);

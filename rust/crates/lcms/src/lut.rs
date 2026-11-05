@@ -374,7 +374,7 @@ pub fn stage_alloc_clut16bit_granular(
         return None;
     }
 
-    let mut tab = vec![0u16; n_entries as usize];
+    let mut tab = bytemuck::try_zeroed_vec::<u16>(n_entries as usize).ok()?;
     if let Some(t) = table {
         tab.copy_from_slice(t);
     }
@@ -446,7 +446,7 @@ pub fn stage_alloc_clut_float_granular(
         return None;
     }
 
-    let mut tab = vec![0.0f32; n_entries as usize];
+    let mut tab = bytemuck::try_zeroed_vec::<f32>(n_entries as usize).ok()?;
     if let Some(t) = table {
         tab.copy_from_slice(t);
     }
