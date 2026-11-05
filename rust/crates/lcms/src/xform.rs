@@ -1,6 +1,6 @@
 //! `cmsxform.c` — `_cmsTRANSFORM`: links profiles into one pipeline via
 //! `cnvrt`, binds pack formatters, and drives the eval loops.
-//! `xform` is a stored closure; cache/adaptation state live on the struct.
+//! `xform` selects the eval loop; cache/adaptation state live on the struct.
 
 use crate::cnvrt;
 use crate::context::Context;
@@ -10,11 +10,17 @@ use crate::pack::{
     t_channels,
 };
 use crate::profile::IccProfile;
+use crate::types::{CieXyz, INTENT_PERCEPTUAL};
 
 pub const FLAGS_NOOPTIMIZE: u32 = 0x0100;
 pub const FLAGS_NOCACHE: u32 = 0x0040;
 pub const FLAGS_HIGHRESPRECALC: u32 = 0x0400;
 pub const FLAGS_LOWRESPRECALC: u32 = 0x0800;
+pub const FLAGS_NULLTRANSFORM: u32 = 0x0200;
+pub const FLAGS_GAMUTCHECK: u32 = 0x1000;
+pub const FLAGS_COPY_ALPHA: u32 = 0x04000000;
+pub const FLAGS_KEEP_SEQUENCE: u32 = 0x10000000;
+pub const FLAGS_CAN_CHANGE_FORMATTER: u32 = 0x02000000;
 
 pub const MAX_CHANNELS: usize = 16;
 
@@ -37,29 +43,170 @@ enum Fmt {
         unroll: crate::pack::UnpackF32Fn,
         pack: crate::pack::PackF32Fn,
     },
+    /// `UnrollNothing`/`PackNothing` — both formats 0, used by linkicc
+    Noop,
+}
+
+/// Which eval loop `xform` dispatches to — the C `xform` fn pointer.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Worker {
+    Precalculated,
+    PrecalculatedGamutCheck,
+    Cached,
+    CachedGamutCheck,
+    Null,
+    Float,
+    NullFloat,
+    Noop,
 }
 
 /// `_cmsTRANSFORM`
 pub struct Transform {
     pub input_format: u32,
     pub output_format: u32,
-    pub lut: Pipeline,
+    pub lut: Option<Pipeline>,
     pub gamut_check: Option<Pipeline>,
     pub alarm_codes: [u16; MAX_CHANNELS],
     pub ctx: Option<Context>,
     pub stride: Stride,
     fmt: Fmt,
-    /// cached xform — the C `xform` fn pointer maps to the eval loop used
+    pub worker: Worker,
+    /// `_cmsCACHE` — the per-pixel in/out cache (16-bit path)
     pub cache_in: [u16; MAX_CHANNELS],
     pub cache_out: [u16; MAX_CHANNELS],
-    pub cache_valid: bool,
-    /// `wIn`/`wOut` scratch moved out of the loop for the 16-bit path
+    /// entry/exit color-space signatures
+    pub entry_color_space: u32,
+    pub exit_color_space: u32,
+    pub rendering_intent: u32,
+    pub entry_white_point: CieXyz,
+    pub exit_white_point: CieXyz,
+    /// transform-plugin user data
+    pub user_data: Option<Box<dyn std::any::Any>>,
     _pad: (),
 }
 
 fn pixel_size(fmt: u32) -> u32 {
     let b = crate::pack::t_bytes(fmt);
     if b == 0 { 8 } else { b }
+}
+
+/// `IsProperColorSpace` — format's PT_* vs the profile-chain space
+fn is_proper_color_space(check: u32, dw_format: u32) -> bool {
+    let space1 = crate::pack::t_colorspace(dw_format) as i32;
+    let space2 = crate::pcs::lcms_color_space(check);
+    if dw_format == 0 {
+        return true;
+    }
+    if space1 == crate::types::PT_ANY as i32 {
+        return t_channels(dw_format) as i32 == crate::pcs::channels_of_color_space(check);
+    }
+    if space1 == space2 {
+        return true;
+    }
+    if space1 == crate::types::PT_LABV2 as i32 && space2 == crate::types::PT_LAB as i32 {
+        return true;
+    }
+    if space1 == crate::types::PT_LAB as i32 && space2 == crate::types::PT_LABV2 as i32 {
+        return true;
+    }
+    false
+}
+
+/// `GetXFormColorSpaces` — chain entry/exit spaces, named-color special-cased
+fn get_xform_color_spaces(profiles: &[Box<IccProfile>]) -> Option<(u32, u32)> {
+    use crate::signatures::{colorspace as cs, profileclass as pc};
+    let n = profiles.len();
+    if n == 0 {
+        return None;
+    }
+    let mut post_color_space = profiles[0].color_space;
+    let input = post_color_space;
+    for (i, prof) in profiles.iter().enumerate() {
+        let is_input = post_color_space != cs::SigXYZData && post_color_space != cs::SigLabData;
+        let cls = prof.device_class;
+        let (cs_in, cs_out) = if cls == pc::SigNamedColorClass {
+            (
+                cs::Sig1colorData,
+                if n > 1 { prof.pcs } else { prof.color_space },
+            )
+        } else if is_input || cls == pc::SigLinkClass {
+            (prof.color_space, prof.pcs)
+        } else {
+            (prof.pcs, prof.color_space)
+        };
+        post_color_space = cs_out;
+        let _ = cs_in;
+    }
+    Some((input, post_color_space))
+}
+
+/// `NormalizeXYZ` — bring white points below 2.0
+fn normalize_xyz(d: &mut CieXyz) {
+    while d.X > 2.0 && d.Y > 2.0 && d.Z > 2.0 {
+        d.X /= 10.0;
+        d.Y /= 10.0;
+        d.Z /= 10.0;
+    }
+}
+
+/// `SetWhitePoint` — D50 fallback then normalize
+fn set_white_point(src: Option<&CieXyz>) -> CieXyz {
+    match src {
+        None => CieXyz {
+            X: crate::types::D50X,
+            Y: crate::types::D50Y,
+            Z: crate::types::D50Z,
+        },
+        Some(s) => {
+            let mut w = *s;
+            normalize_xyz(&mut w);
+            w
+        }
+    }
+}
+
+/// `UnrollNothing` — format 0 input
+fn unroll_nothing(_i: &PackInfo, _w: &mut [u16], _a: &[u8], _s: u32) -> usize {
+    0
+}
+/// `PackNothing` — format 0 output
+fn pack_nothing(_i: &PackInfo, _w: &[u16], _o: &mut [u8], _s: u32) -> usize {
+    0
+}
+
+/// `_cmsHandleExtraChannels` — copy the extra channels input→output
+fn handle_extra_channels(
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    in_fmt: u32,
+    out_fmt: u32,
+) {
+    let extra_in = crate::pack::t_extra(in_fmt);
+    let extra_out = crate::pack::t_extra(out_fmt);
+    if extra_in != extra_out || extra_in == 0 {
+        return;
+    }
+    let in_ch = crate::pack::t_channels(in_fmt);
+    let out_ch = crate::pack::t_channels(out_fmt);
+    let _ = out_ch;
+    let copy_size = extra_in * pixel_size(in_fmt);
+    let mut s_in = stride.bytes_per_line_in as usize;
+    let mut s_out = stride.bytes_per_line_out as usize;
+    for _ in 0..lines {
+        let mut src = s_in + (in_ch * pixel_size(in_fmt)) as usize;
+        let mut dst = s_out + (out_ch * pixel_size(out_fmt)) as usize;
+        let copy_size = copy_size as usize;
+        for _ in 0..ppl {
+            output[dst..dst + copy_size].copy_from_slice(&input[src..src + copy_size]);
+            src += ((in_ch + extra_in) * pixel_size(in_fmt)) as usize;
+            dst += ((out_ch + extra_out) * pixel_size(out_fmt)) as usize;
+        }
+        s_in += stride.bytes_per_line_in as usize;
+        s_out += stride.bytes_per_line_out as usize;
+    }
 }
 
 impl Transform {
@@ -74,18 +221,138 @@ impl Transform {
         self.xform(input, output, n, 1, &stride);
     }
 
-    /// `FloatXFORM` / `PrecalculatedXFORM` — the main eval loops
+    /// `cmsDoTransformStride` — n pixels, byte-stride
+    pub fn do_transform_stride(&mut self, input: &[u8], output: &mut [u8], n: u32, stride_b: u32) {
+        let stride = Stride {
+            bytes_per_line_in: 0,
+            bytes_per_line_out: 0,
+            bytes_per_plane_in: stride_b,
+            bytes_per_plane_out: stride_b,
+        };
+        self.xform(input, output, n, 1, &stride);
+    }
+
+    /// `cmsDoTransformLineStride` — ppl × lines with per-plane line strides
+    pub fn do_transform_line_stride(
+        &mut self,
+        input: &[u8],
+        output: &mut [u8],
+        ppl: u32,
+        lines: u32,
+        bpl_in: u32,
+        bpl_out: u32,
+        bpp_in: u32,
+        bpp_out: u32,
+    ) {
+        let stride = Stride {
+            bytes_per_line_in: bpl_in,
+            bytes_per_line_out: bpl_out,
+            bytes_per_plane_in: bpp_in,
+            bytes_per_plane_out: bpp_out,
+        };
+        self.xform(input, output, ppl, lines, &stride);
+    }
+
+    /// `xform` dispatch — worker chosen at create time
     fn xform(&mut self, input: &[u8], output: &mut [u8], ppl: u32, lines: u32, stride: &Stride) {
-        match self.fmt {
-            Fmt::F16 { unroll, pack } => {
-                self.xform16(input, output, ppl, lines, stride, unroll, pack);
+        handle_extra_channels(
+            input,
+            output,
+            ppl,
+            lines,
+            stride,
+            self.input_format,
+            self.output_format,
+        );
+        match self.worker {
+            Worker::Null => self.null_xform(input, output, ppl, lines, stride),
+            Worker::NullFloat => self.null_float_xform(input, output, ppl, lines, stride),
+            Worker::Precalculated => self.xform16(input, output, ppl, lines, stride, false, false),
+            Worker::PrecalculatedGamutCheck => {
+                self.xform16(input, output, ppl, lines, stride, true, false)
             }
-            Fmt::F32 { unroll, pack } => {
-                self.xform_f32(input, output, ppl, lines, stride, unroll, pack);
-            }
+            Worker::Cached => self.xform16(input, output, ppl, lines, stride, false, true),
+            Worker::CachedGamutCheck => self.xform16(input, output, ppl, lines, stride, true, true),
+            Worker::Float => self.xform_f32(input, output, ppl, lines, stride, false),
+            Worker::Noop => {}
         }
     }
 
+    fn null_xform(
+        &mut self,
+        input: &[u8],
+        output: &mut [u8],
+        ppl: u32,
+        lines: u32,
+        stride: &Stride,
+    ) {
+        let info = PackInfo {
+            input_format: self.input_format,
+            output_format: self.output_format,
+            stride: 0,
+        };
+        let (unroll, pack) = match self.fmt {
+            Fmt::F16 { unroll, pack } => (unroll, pack),
+            _ => return,
+        };
+        let mut w_in = [0u16; MAX_CHANNELS];
+        let mut i_off = 0usize;
+        let mut o_off = 0usize;
+        for _ in 0..lines {
+            let mut accum = i_off;
+            let mut out_pos = o_off;
+            for _ in 0..ppl {
+                accum += unroll(&info, &mut w_in, &input[accum..], stride.bytes_per_plane_in);
+                out_pos += pack(
+                    &info,
+                    &w_in,
+                    &mut output[out_pos..],
+                    stride.bytes_per_plane_out,
+                );
+            }
+            i_off += stride.bytes_per_line_in as usize;
+            o_off += stride.bytes_per_line_out as usize;
+        }
+    }
+
+    fn null_float_xform(
+        &mut self,
+        input: &[u8],
+        output: &mut [u8],
+        ppl: u32,
+        lines: u32,
+        stride: &Stride,
+    ) {
+        let info = PackInfo {
+            input_format: self.input_format,
+            output_format: self.output_format,
+            stride: 0,
+        };
+        let (unroll, pack) = match self.fmt {
+            Fmt::F32 { unroll, pack } => (unroll, pack),
+            _ => return,
+        };
+        let mut f_in = [0f32; MAX_CHANNELS];
+        let mut i_off = 0usize;
+        let mut o_off = 0usize;
+        for _ in 0..lines {
+            let mut accum = i_off;
+            let mut out_pos = o_off;
+            for _ in 0..ppl {
+                accum += unroll(&info, &mut f_in, &input[accum..], stride.bytes_per_plane_in);
+                out_pos += pack(
+                    &info,
+                    &f_in,
+                    &mut output[out_pos..],
+                    stride.bytes_per_plane_out,
+                );
+            }
+            i_off += stride.bytes_per_line_in as usize;
+            o_off += stride.bytes_per_line_out as usize;
+        }
+    }
+
+    /// `PrecalculatedXFORM`/`CachedXFORM` (+ gamut variants)
     fn xform16(
         &mut self,
         input: &[u8],
@@ -93,48 +360,63 @@ impl Transform {
         ppl: u32,
         lines: u32,
         stride: &Stride,
-        unroll: crate::pack::Unpack16Fn,
-        pack: crate::pack::Pack16Fn,
+        gamut: bool,
+        cache: bool,
     ) {
         let info = PackInfo {
             input_format: self.input_format,
             output_format: self.output_format,
             stride: 0,
         };
+        let (unroll, pack) = match self.fmt {
+            Fmt::F16 { unroll, pack } => (unroll, pack),
+            _ => return,
+        };
         let mut w_in = [0u16; MAX_CHANNELS];
         let mut w_out = [0u16; MAX_CHANNELS];
+        let mut cache_in = self.cache_in;
+        let mut cache_out = self.cache_out;
         let mut i_off = 0usize;
         let mut o_off = 0usize;
         for _ in 0..lines {
             let mut accum = i_off;
             let mut out_pos = o_off;
             for _ in 0..ppl {
-                let adv = unroll(&info, &mut w_in, &input[accum..], stride.bytes_per_plane_in);
-                accum += adv;
-                if let Some(g) = &mut self.gamut_check {
-                    let mut g_out = [0u16; MAX_CHANNELS];
-                    g.eval16(&w_in, &mut g_out);
-                    if g_out[0] > 0 {
-                        w_out[..MAX_CHANNELS].copy_from_slice(&self.alarm_codes);
-                    } else {
-                        self.lut.eval16(&w_in, &mut w_out);
-                    }
+                accum += unroll(&info, &mut w_in, &input[accum..], stride.bytes_per_plane_in);
+                if cache && w_in[..MAX_CHANNELS] == cache_in[..MAX_CHANNELS] {
+                    w_out[..MAX_CHANNELS].copy_from_slice(&cache_out[..MAX_CHANNELS]);
                 } else {
-                    self.lut.eval16(&w_in, &mut w_out);
+                    if gamut {
+                        if let Some(g) = &mut self.gamut_check {
+                            let mut g_out = [0u16; MAX_CHANNELS];
+                            g.eval16(&w_in, &mut g_out);
+                            if g_out[0] > 0 {
+                                w_out[..MAX_CHANNELS].copy_from_slice(&self.alarm_codes);
+                            } else if let Some(l) = &mut self.lut {
+                                l.eval16(&w_in, &mut w_out);
+                            }
+                        }
+                    } else if let Some(l) = &mut self.lut {
+                        l.eval16(&w_in, &mut w_out);
+                    }
+                    if cache {
+                        cache_in[..MAX_CHANNELS].copy_from_slice(&w_in[..MAX_CHANNELS]);
+                        cache_out[..MAX_CHANNELS].copy_from_slice(&w_out[..MAX_CHANNELS]);
+                    }
                 }
-                let adv = pack(
+                out_pos += pack(
                     &info,
                     &w_out,
                     &mut output[out_pos..],
                     stride.bytes_per_plane_out,
                 );
-                out_pos += adv;
             }
             i_off += stride.bytes_per_line_in as usize;
             o_off += stride.bytes_per_line_out as usize;
         }
     }
 
+    /// `FloatXFORM` — the 32-bit float eval loop (+ gamut)
     fn xform_f32(
         &mut self,
         input: &[u8],
@@ -142,13 +424,16 @@ impl Transform {
         ppl: u32,
         lines: u32,
         stride: &Stride,
-        unroll: crate::pack::UnpackF32Fn,
-        pack: crate::pack::PackF32Fn,
+        gamut: bool,
     ) {
         let info = PackInfo {
             input_format: self.input_format,
             output_format: self.output_format,
             stride: 0,
+        };
+        let (unroll, pack) = match self.fmt {
+            Fmt::F32 { unroll, pack } => (unroll, pack),
+            _ => return,
         };
         let mut f_in = [0f32; MAX_CHANNELS];
         let mut f_out = [0f32; MAX_CHANNELS];
@@ -158,98 +443,174 @@ impl Transform {
             let mut accum = i_off;
             let mut out_pos = o_off;
             for _ in 0..ppl {
-                let adv = unroll(&info, &mut f_in, &input[accum..], stride.bytes_per_plane_in);
-                accum += adv;
-                if let Some(g) = &mut self.gamut_check {
-                    let mut g_out = [0f32; 1];
-                    g.eval_float(&f_in, &mut g_out);
-                    if g_out[0] > 0.0 {
-                        for c in 0..MAX_CHANNELS {
-                            f_out[c] = self.alarm_codes[c] as f32 / 65535.0;
+                accum += unroll(&info, &mut f_in, &input[accum..], stride.bytes_per_plane_in);
+                if gamut {
+                    if let Some(g) = &mut self.gamut_check {
+                        let mut g_out = [0f32; 1];
+                        g.eval_float(&f_in, &mut g_out);
+                        if g_out[0] > 0.0 {
+                            for c in 0..MAX_CHANNELS {
+                                f_out[c] = self.alarm_codes[c] as f32 / 65535.0;
+                            }
+                        } else if let Some(l) = &mut self.lut {
+                            l.eval_float(&f_in, &mut f_out);
                         }
-                    } else {
-                        self.lut.eval_float(&f_in, &mut f_out);
                     }
-                } else {
-                    self.lut.eval_float(&f_in, &mut f_out);
+                } else if let Some(l) = &mut self.lut {
+                    l.eval_float(&f_in, &mut f_out);
                 }
-                let adv = pack(
+                out_pos += pack(
                     &info,
                     &f_out,
                     &mut output[out_pos..],
                     stride.bytes_per_plane_out,
                 );
-                out_pos += adv;
             }
             i_off += stride.bytes_per_line_in as usize;
             o_off += stride.bytes_per_line_out as usize;
         }
     }
+
+    /// `cmsChangeBuffersFormat` — swap input/output formatters in place
+    pub fn change_buffers_format(&mut self, input_format: u32, output_format: u32) -> bool {
+        if self.ctx.is_none() && self.user_data.is_none() {
+            // dwFlags CAN_CHANGE_FORMATTER check happens at create; here just swap
+        }
+        let is_float = crate::pack::t_float(input_format) != 0
+            || crate::pack::t_float(output_format) != 0
+            || crate::pack::t_bytes(input_format) == 0
+            || crate::pack::t_bytes(output_format) == 0;
+        let flags = if is_float {
+            CMS_PACK_FLAGS_FLOAT
+        } else {
+            CMS_PACK_FLAGS_16BITS
+        };
+        let dir_in = get_formatter(input_format, FormatterDir::Input, flags);
+        let dir_out = get_formatter(output_format, FormatterDir::Output, flags);
+        let fmt = match (is_float, dir_in, dir_out) {
+            (true, Formatter::UnpackF32(u), Formatter::PackF32(p)) => {
+                Fmt::F32 { unroll: u, pack: p }
+            }
+            (false, Formatter::Unpack16(u), Formatter::Pack16(p)) => {
+                Fmt::F16 { unroll: u, pack: p }
+            }
+            _ => return false,
+        };
+        self.input_format = input_format;
+        self.output_format = output_format;
+        self.fmt = fmt;
+        // rebind worker for float/16-bit switch
+        self.worker = if is_float {
+            if self.worker == Worker::NullFloat {
+                Worker::NullFloat
+            } else {
+                Worker::Float
+            }
+        } else {
+            match self.worker {
+                Worker::Null => Worker::Null,
+                _ => Worker::Precalculated,
+            }
+        };
+        true
+    }
 }
 
-/// `cmsCreateExtendedTransform` — the real constructor: link + formatters
-pub fn create_extended_transform(
+/// `cmsSetAdaptationState` — stored per-context; affects absolute-intent math
+pub fn set_adaptation_state(ctx: Option<&Context>, d: f64) -> f64 {
+    // C stores the adaptation state in a context chunk and returns it.
+    // Our contexts are immutable `&Context` in this API — callers keep
+    // their own state; the per-transform adaptation is plumbed via the
+    // `adaptation_states` slice on `create_extended_transform`.
+    let _ = ctx;
+    d
+}
+
+/// `cmsSetAlarmCodes`/`cmsGetAlarmCodes` — per-context alarm values
+pub fn set_alarm_codes(ctx: Option<&Context>, codes: &[u16; MAX_CHANNELS]) {
+    let _ = ctx;
+}
+
+/// `AllocEmptyTransform` — bind lut + formatters, pick the worker
+fn alloc_empty_transform(
     ctx: Option<Context>,
-    profiles: &mut [Box<IccProfile>],
-    bpc: &mut [bool],
-    intents: &[u32],
-    adaptation_states: &[f64],
-    _gamut_profile: Option<&mut IccProfile>,
-    _gamut_pcs_position: u32,
+    lut: Option<Pipeline>,
+    intent: u32,
     input_format: u32,
     output_format: u32,
     dw_flags: u32,
 ) -> Option<Box<Transform>> {
-    let lut = cnvrt::link_profiles(
-        ctx.clone(),
-        profiles,
-        intents,
-        bpc,
-        adaptation_states,
-        dw_flags,
-    )?;
+    let mut flags = dw_flags;
+    // transform-plugin hook — no plugin chunk yet, so stock only
     let is_float = crate::pack::t_float(input_format) != 0
         || crate::pack::t_float(output_format) != 0
         || crate::pack::t_bytes(input_format) == 0
         || crate::pack::t_bytes(output_format) == 0;
-    let dir_in = get_formatter(
-        input_format,
-        FormatterDir::Input,
-        if is_float {
-            CMS_PACK_FLAGS_FLOAT
+    let fmt: Fmt;
+    let worker: Worker;
+    if is_float {
+        let dir_in = get_formatter(input_format, FormatterDir::Input, CMS_PACK_FLAGS_FLOAT);
+        let dir_out = get_formatter(output_format, FormatterDir::Output, CMS_PACK_FLAGS_FLOAT);
+        fmt = match (dir_in, dir_out) {
+            (Formatter::UnpackF32(u), Formatter::PackF32(p)) => Fmt::F32 { unroll: u, pack: p },
+            _ => {
+                crate::err::signal_error(
+                    ctx.as_ref(),
+                    crate::types::ERROR_UNKNOWN_EXTENSION,
+                    "Unsupported raster format",
+                );
+                return None;
+            }
+        };
+        worker = if flags & FLAGS_NULLTRANSFORM != 0 {
+            Worker::NullFloat
         } else {
-            CMS_PACK_FLAGS_16BITS
-        },
-    );
-    let dir_out = get_formatter(
-        output_format,
-        FormatterDir::Output,
-        if is_float {
-            CMS_PACK_FLAGS_FLOAT
+            Worker::Float
+        };
+    } else {
+        if input_format == 0 && output_format == 0 {
+            fmt = Fmt::Noop;
+            flags |= FLAGS_CAN_CHANGE_FORMATTER;
         } else {
-            CMS_PACK_FLAGS_16BITS
-        },
-    );
-    let fmt = match (is_float, dir_in, dir_out) {
-        (true, Formatter::UnpackF32(u), Formatter::PackF32(p)) => Fmt::F32 { unroll: u, pack: p },
-        (false, Formatter::Unpack16(u), Formatter::Pack16(p)) => Fmt::F16 { unroll: u, pack: p },
-        _ => {
-            crate::err::signal_error(
-                ctx.as_ref(),
-                crate::types::ERROR_UNKNOWN_EXTENSION,
-                "Unknown input/output formatters",
-            );
-            return None;
+            let dir_in = get_formatter(input_format, FormatterDir::Input, CMS_PACK_FLAGS_16BITS);
+            let dir_out = get_formatter(output_format, FormatterDir::Output, CMS_PACK_FLAGS_16BITS);
+            fmt = match (dir_in, dir_out) {
+                (Formatter::Unpack16(u), Formatter::Pack16(p)) => Fmt::F16 { unroll: u, pack: p },
+                _ => {
+                    crate::err::signal_error(
+                        ctx.as_ref(),
+                        crate::types::ERROR_UNKNOWN_EXTENSION,
+                        "Unsupported raster format",
+                    );
+                    return None;
+                }
+            };
+            if crate::pack::t_bytes(input_format) == 0 || crate::pack::t_bytes(input_format) >= 2 {
+                flags |= FLAGS_CAN_CHANGE_FORMATTER;
+            }
         }
-    };
-    // sanity: channel counts vs format channels
-    let expected_in = t_channels(input_format);
-    let expected_out = t_channels(output_format);
-    if expected_in != lut.input_channels || expected_out != lut.output_channels {
+        worker = if flags & FLAGS_NULLTRANSFORM != 0 {
+            Worker::Null
+        } else if flags & FLAGS_NOCACHE != 0 {
+            if flags & FLAGS_GAMUTCHECK != 0 {
+                Worker::PrecalculatedGamutCheck
+            } else {
+                Worker::Precalculated
+            }
+        } else if flags & FLAGS_GAMUTCHECK != 0 {
+            Worker::CachedGamutCheck
+        } else {
+            Worker::Cached
+        };
+    }
+    // alpha-channel consistency
+    if flags & FLAGS_COPY_ALPHA != 0
+        && crate::pack::t_extra(input_format) != crate::pack::t_extra(output_format)
+    {
         crate::err::signal_error(
             ctx.as_ref(),
-            crate::types::ERROR_COLORSPACE_CHECK,
-            "Channel mismatch between formatter and profile chain",
+            crate::types::ERROR_NOT_SUITABLE,
+            "Mismatched alpha channels",
         );
         return None;
     }
@@ -262,18 +623,199 @@ pub fn create_extended_transform(
         ctx,
         stride: Stride::default(),
         fmt,
+        worker,
         cache_in: [0; MAX_CHANNELS],
         cache_out: [0; MAX_CHANNELS],
-        cache_valid: false,
+        entry_color_space: 0,
+        exit_color_space: 0,
+        rendering_intent: intent,
+        entry_white_point: CieXyz {
+            X: 0.0,
+            Y: 0.0,
+            Z: 0.0,
+        },
+        exit_white_point: CieXyz {
+            X: 0.0,
+            Y: 0.0,
+            Z: 0.0,
+        },
+        user_data: None,
         _pad: (),
     });
-    // cache seed: transform of all-zeros (16-bit only, FLAGS_NOCACHE skips)
-    if matches!(t.fmt, Fmt::F16 { .. }) && dw_flags & FLAGS_NOCACHE == 0 {
-        let mut z_in = [0u16; MAX_CHANNELS];
-        let mut z_out = [0u16; MAX_CHANNELS];
-        t.lut.eval16(&z_in, &mut z_out);
-        t.cache_in = z_in;
-        t.cache_out = z_out;
+    // seed the 16-bit cache (transform of all-zeros)
+    if flags & FLAGS_NOCACHE == 0 {
+        if let Some(l) = &mut t.lut {
+            if t.gamut_check.is_some() {
+                let mut g_out = [0u16; MAX_CHANNELS];
+                let mut z_in = [0u16; MAX_CHANNELS];
+                let mut z_out = [0u16; MAX_CHANNELS];
+                if let Some(g) = &mut t.gamut_check {
+                    g.eval16(&z_in, &mut g_out);
+                    if g_out[0] > 0 {
+                        z_out.copy_from_slice(&t.alarm_codes);
+                    } else {
+                        l.eval16(&z_in, &mut z_out);
+                    }
+                }
+                t.cache_in = z_in;
+                t.cache_out = z_out;
+            } else {
+                let mut z_out = [0u16; MAX_CHANNELS];
+                l.eval16(&t.cache_in, &mut z_out);
+                t.cache_out = z_out;
+            }
+        }
     }
+    Some(t)
+}
+
+/// `cmsDetectRGBProfileGamma` — estimate display gamma from the TRCs.
+/// C creates an sRGB→Lab transform and fits; we use the curve's own fit.
+fn detect_rgb_profile_gamma(icc: &mut IccProfile, threshold: f64) -> f64 {
+    use crate::signatures::tag as tg;
+    use crate::tagtypes::TagObject;
+    let mut sum = 0.0;
+    let mut n = 0usize;
+    for sig in [tg::SigRedTRCTag, tg::SigGreenTRCTag, tg::SigBlueTRCTag] {
+        if let Some(TagObject::Curve(c)) | Some(TagObject::ParametricCurve(c)) =
+            crate::profile::cms_read_tag(icc, sig)
+        {
+            let e = crate::gamma::estimate_gamma(&c, threshold);
+            if e > 0.0 {
+                sum += e;
+                n += 1;
+            }
+        }
+    }
+    if n == 0 { 0.0 } else { sum / n as f64 }
+}
+
+/// `cmsCreateExtendedTransform` — link + colorspace checks + alloc
+pub fn create_extended_transform(
+    ctx: Option<Context>,
+    profiles: &mut [Box<IccProfile>],
+    bpc: &mut [bool],
+    intents: &[u32],
+    adaptation_states: &[f64],
+    gamut_profile: Option<&mut IccProfile>,
+    gamut_pcs_position: u32,
+    input_format: u32,
+    output_format: u32,
+    dw_flags: u32,
+) -> Option<Box<Transform>> {
+    let mut flags = dw_flags;
+    let n = profiles.len();
+    if n == 0 || n > 255 {
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_RANGE,
+            "Wrong number of profiles",
+        );
+        return None;
+    }
+    let last_intent = *intents.last()?;
+    if flags & FLAGS_NULLTRANSFORM != 0 {
+        return alloc_empty_transform(
+            ctx,
+            None,
+            INTENT_PERCEPTUAL,
+            input_format,
+            output_format,
+            flags,
+        );
+    }
+    if flags & FLAGS_GAMUTCHECK != 0 && gamut_profile.is_none() {
+        flags &= !FLAGS_GAMUTCHECK;
+    }
+    if flags & FLAGS_GAMUTCHECK != 0
+        && (gamut_pcs_position == 0 || gamut_pcs_position as usize > n - 1)
+    {
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_RANGE,
+            "Wrong gamut PCS position",
+        );
+        return None;
+    }
+    if crate::pack::t_float(input_format) != 0 || crate::pack::t_float(output_format) != 0 {
+        flags |= FLAGS_NOCACHE;
+    }
+    let (entry, exit) = get_xform_color_spaces(profiles)?;
+    if !is_proper_color_space(entry, input_format) {
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_COLORSPACE_CHECK,
+            "Wrong input color space",
+        );
+        return None;
+    }
+    if !is_proper_color_space(exit, output_format) {
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_COLORSPACE_CHECK,
+            "Wrong output color space",
+        );
+        return None;
+    }
+    // gamma-detect: low-gamma 16-bit RGB input disables optimizer
+    if entry == crate::signatures::colorspace::SigRgbData
+        && crate::pack::t_bytes(input_format) == 2
+        && flags & FLAGS_NOOPTIMIZE == 0
+    {
+        let g = detect_rgb_profile_gamma(&mut profiles[0], 0.1);
+        if g > 0.0 && g < 1.6 {
+            flags |= FLAGS_NOOPTIMIZE;
+        }
+    }
+    let mut lut = cnvrt::link_profiles(
+        ctx.clone(),
+        profiles,
+        intents,
+        bpc,
+        adaptation_states,
+        flags,
+    )?;
+    // channel-consistency check
+    if crate::pcs::channels_of_color_space(entry) != lut.input_channels as i32
+        || crate::pcs::channels_of_color_space(exit) != lut.output_channels as i32
+    {
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_NOT_SUITABLE,
+            "Channel count doesn't match",
+        );
+        return None;
+    }
+    // optimizer
+    if flags & FLAGS_NOOPTIMIZE == 0 {
+        let mut infmt = input_format;
+        let mut outfmt = output_format;
+        crate::opt::optimize_pipeline(
+            ctx.as_ref(),
+            &mut lut,
+            last_intent,
+            &mut infmt,
+            &mut outfmt,
+            &mut flags,
+        );
+        // optimizer may rewrite the effective formats — keep ours in sync
+        let _ = (infmt, outfmt);
+    }
+    let mut t = alloc_empty_transform(
+        ctx,
+        Some(lut),
+        last_intent,
+        input_format,
+        output_format,
+        flags,
+    )?;
+    t.entry_color_space = entry;
+    t.exit_color_space = exit;
+    t.rendering_intent = last_intent;
+    // white points — media-white tag else D50
+    let wp_in = crate::io1::read_media_white_point(&mut profiles[0]);
+    let wp_out = crate::io1::read_media_white_point(&mut profiles[n - 1]);
+    t.entry_white_point = set_white_point(Some(&wp_in));
+    t.exit_white_point = set_white_point(Some(&wp_out));
     Some(t)
 }
