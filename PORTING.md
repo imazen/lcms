@@ -247,3 +247,18 @@ REMAINING MODULES:
 - cmserr/cmsplugin residuals (plugin-register fn table)
 - Parity: expand xform gate beyond sRGB->sRGB (LUT profiles, all
   intents, all formats), perf parity vs C oracle
+
+## State @ 85b83a2 (ps2 emitters — in progress)
+
+ps2.rs done so far: PsWriter, Word2Byte/WriteByte/RemoveCR/
+EmitPSEscaped/EmitHeader/EmitWhiteBlackD50/EmitRangeCheck/EmitIntent/
+EmitLab2XYZ + real Emit1Gamma/EmitNGamma (parametric shortcut +
+tabulated-table fn; TODO C's %g vs Rust {}).
+
+cmsps2.c emitters remaining (line refs): OutputValueSampler:589,
+WriteCLUT:668, EmitCIEBasedA:714, EmitCIEBasedABC:742,
+EmitCIEBasedDEF:780, ExtractGray2Y:841, WriteInputLUT:871,
+GetPtrToMatrix:953, WriteInputMatrixShaper:963,
+WriteNamedColorCSA:1010, GenerateCSA:1063, EmitPQRStage:1193,
+EmitXYZ2Lab:1266, WriteOutputLUT:1295, BuildColorantList:1418,
+WriteNamedColorCRD:1443, GenerateCRD:1510, 3 exports:1557-1635.
