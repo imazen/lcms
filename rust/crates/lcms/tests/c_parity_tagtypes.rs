@@ -69,7 +69,9 @@ fn r_read_write(sig: u32, bytes: &[u8]) -> (Vec<u8>, u32) {
     let mut io = lcms::io::io_handler_from_mem(None, bytes.to_vec(), "r").unwrap();
     let h = r_handler(sig);
     let mut n_items = 0u32;
-    let obj = (h.read)(&h, &mut io, &mut n_items, bytes.len() as u32).expect("rust read failed");
+    let Some(obj) = (h.read)(&h, &mut io, &mut n_items, bytes.len() as u32) else {
+        return (Vec::new(), 0);
+    };
     let mut out = vec![0u8; 65536];
     let mut wio = lcms::io::io_handler_from_mem(None, std::mem::take(&mut out), "w").unwrap();
     assert!(
@@ -581,4 +583,140 @@ fn ucrbg_crdinfo_screening_viewing() {
     }
     body.extend_from_slice(&be32(1)); // illuminant type
     cross_roundtrip(lcms::signatures::tagtype::SigViewingConditionsType, &body);
+}
+
+fn s15(v: f64) -> u32 {
+    // encode s15Fixed16 as C does: round(v * 65536)
+    ((v * 65536.0).round() as i32 as u32)
+}
+
+#[test]
+fn lut8_lut16_roundtrip() {
+    // LUT8 (mft1): 3ch in/out, clutpts=2, identity matrix, identity tables
+    let mut body = Vec::new();
+    body.push(3);
+    body.push(3);
+    body.push(2);
+    body.push(0);
+    // identity matrix 9×s15f16
+    for v in [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] {
+        body.extend_from_slice(&s15(v).to_be_bytes());
+    }
+    // input tables: 3× 256 u8 (identity ramp)
+    for _ in 0..3 {
+        body.extend(0u8..=255);
+    }
+    // clut: 2^3 × 3 u8
+    body.extend_from_slice(&[0x55u8; 24]);
+    // output tables: 3× 256 u8
+    for _ in 0..3 {
+        body.extend(0u8..=255);
+    }
+    cross_roundtrip(lcms::signatures::tagtype::SigLut8Type, &body);
+
+    // LUT16 (mft2): 2ch in, 3ch out, clutpts=2, 4-entry in tables, 2-entry out
+    let mut body = Vec::new();
+    body.push(2);
+    body.push(3);
+    body.push(2);
+    body.push(0);
+    for v in [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] {
+        body.extend_from_slice(&s15(v).to_be_bytes());
+    }
+    body.extend_from_slice(&be16(4)); // input entries
+    body.extend_from_slice(&be16(2)); // output entries
+    // input tables: 2 × 4 u16
+    for c in 0..2u16 {
+        for j in 0..4u16 {
+            body.extend_from_slice(&be16(j * 0x4000 + c * 0x100));
+        }
+    }
+    // clut: 2^2 × 3 u16
+    for _ in 0..12u16 {
+        body.extend_from_slice(&be16(0x1234));
+    }
+    // output tables: 3 × 2 u16 identity
+    for _ in 0..3 {
+        body.extend_from_slice(&be16(0));
+        body.extend_from_slice(&be16(0xffff));
+    }
+    cross_roundtrip(lcms::signatures::tagtype::SigLut16Type, &body);
+}
+
+#[test]
+fn mpe_container_roundtrip() {
+    // mpet: 1ch in/out, 1 element = curveset of 1 segmented curve
+    // element: 'cvst' sig + reserved + u16 in + u16 out + pos table + curve
+    let mut elem = Vec::new();
+    elem.extend_from_slice(&be16(1)); // in chans
+    elem.extend_from_slice(&be16(1)); // out chans
+    // position table for 1 curve: offset+size (abs offsets from elem start)
+    let curve_body: &[u8] = &{
+        let mut c = Vec::new();
+        c.extend_from_slice(&be32(0x63757266)); // .curf.
+        c.extend_from_slice(&be32(0));
+        c.extend_from_slice(&be16(1)); // nSegments
+        c.extend_from_slice(&be16(0));
+        // 0 breakpoints (1 seg), then segment: formula type 0 (identity-ish)
+        c.extend_from_slice(&be32(0x70617266)); // 'parf'
+        c.extend_from_slice(&be32(0));
+        c.extend_from_slice(&be16(0)); // type 0 → seg type 6
+        c.extend_from_slice(&be16(0));
+        // 4 f32 params
+        for v in [1.0f32, 0.0, 0.0, 0.0] {
+            c.extend_from_slice(&v.to_be_bytes());
+        }
+        c
+    };
+    // inner offset = distance from element sig start: sig(8) + chans(4) + dir(8) = 20
+    let curve_off = 20u32;
+    elem.extend_from_slice(&be32(curve_off));
+    elem.extend_from_slice(&be32(curve_body.len() as u32));
+    elem.extend_from_slice(curve_body);
+
+    let mut body = Vec::new();
+    body.extend_from_slice(&be16(1)); // in chans
+    body.extend_from_slice(&be16(1)); // out chans
+    body.extend_from_slice(&be32(1)); // elem count
+    // position table: elem offset = 2+2+4 + 8 = 16 abs? offsets are from TAG start (base_offset = tell - 8)
+    // offsets are absolute including the 8-byte type base → body pos + 8
+    let elem_start = 2 + 2 + 4 + 8; // header + dir entry
+    body.extend_from_slice(&be32((elem_start + 8) as u32));
+    body.extend_from_slice(&be32(elem.len() as u32 + 8)); // + sig+reserved
+    body.extend_from_slice(&be32(0x63767374)); // 'cvst' curveset elem sig
+    body.extend_from_slice(&be32(0));
+    body.extend_from_slice(&elem);
+    cross_roundtrip(lcms::signatures::tagtype::SigMultiProcessElementType, &body);
+}
+
+#[test]
+fn vcgt_and_cicp() {
+    // vcgt table type: tagType=0, 3ch, 4 elems, 2 bytes
+    let mut body = Vec::new();
+    body.extend_from_slice(&be32(0));
+    body.extend_from_slice(&be16(3));
+    body.extend_from_slice(&be16(4));
+    body.extend_from_slice(&be16(2));
+    for _c in 0..3 {
+        for j in 0..4u16 {
+            body.extend_from_slice(&be16(j * 0x5555));
+        }
+    }
+    cross_roundtrip(lcms::signatures::tagtype::SigVcgtType, &body);
+
+    // vcgt formula type: 3×(gamma,min,max) s15f16
+    let mut body = Vec::new();
+    body.extend_from_slice(&be32(1));
+    for (g, mn, mx) in [(2.2f64, 0.0, 1.0), (2.4, 0.1, 0.9), (1.8, 0.0, 1.0)] {
+        for v in [g, mn, mx] {
+            body.extend_from_slice(&s15(v).to_be_bytes());
+        }
+    }
+    cross_roundtrip(lcms::signatures::tagtype::SigVcgtType, &body);
+
+    // cicp: exactly 4 bytes
+    cross_roundtrip(lcms::signatures::tagtype::SigcicpType, &[1, 13, 0, 1]);
+    cross_roundtrip(lcms::signatures::tagtype::SigcicpType, &[9, 16, 0, 0]);
+    // wrong size must fail on both sides
+    cross_roundtrip(lcms::signatures::tagtype::SigcicpType, &[1, 13, 0]);
 }

@@ -11,7 +11,10 @@
 use crate::context::Context;
 use crate::err;
 use crate::fixed::{double_to_s15_fixed16, double_to_u8_fixed8, u8_fixed8_to_double};
-use crate::gamma::{CurveSegment, ToneCurve, build_parametric_tone_curve, build_segmented_tone_curve, build_tabulated_tone_curve16};
+use crate::gamma::{
+    CurveSegment, ToneCurve, build_parametric_tone_curve, build_segmented_tone_curve,
+    build_tabulated_tone_curve16,
+};
 use crate::io::{self, IoHandler};
 use crate::named::{Mlu, Wchar, mlu_get_ascii, mlu_get_wide, mlu_set_ascii, mlu_set_wide};
 use crate::signatures::tagtype as tsig;
@@ -1169,7 +1172,11 @@ pub static SUPPORTED_TAG_TYPES: &[TagTypeHandler] = &[
         type_crd_info_read,
         type_crd_info_write
     ),
-    handler!(tsig::SigMultiProcessElementType, type_mpe_read, type_mpe_write),
+    handler!(
+        tsig::SigMultiProcessElementType,
+        type_mpe_read,
+        type_mpe_write
+    ),
     handler!(
         tsig::SigScreeningType,
         type_screening_read,
@@ -1190,9 +1197,17 @@ pub static SUPPORTED_TAG_TYPES: &[TagTypeHandler] = &[
     ),
     handler!(tsig::SigUcrBgType, type_ucr_bg_read, type_ucr_bg_write),
     handler!(tsig::SigVcgtType, type_vcgt_read, type_vcgt_write),
-    handler!(tsig::SigcicpType, type_video_signal_read, type_video_signal_write),
+    handler!(
+        tsig::SigcicpType,
+        type_video_signal_read,
+        type_video_signal_write
+    ),
     handler!(tsig::SigMHC2Type, type_mhc2_read, type_mhc2_write),
-    handler!(tsig::SigDictType, type_dictionary_read, type_dictionary_write),
+    handler!(
+        tsig::SigDictType,
+        type_dictionary_read,
+        type_dictionary_write
+    ),
     handler!(tsig::SigUInt8ArrayType, type_u8_read, type_u8_write),
     handler!(tsig::SigUInt32ArrayType, type_u32_read, type_u32_write),
     handler!(tsig::SigUInt64ArrayType, type_u64_read, type_u64_write),
@@ -1937,9 +1952,9 @@ fn type_viewing_conditions_write(
 // ---------------------------------------------------------------------------
 
 use crate::lut::{
-    Pipeline, Stage, StageData, StageLoc, pipeline_alloc, stage_alloc_clut16bit,
-    stage_alloc_clut16bit_granular, stage_alloc_clut_float_granular,
-    stage_alloc_matrix, stage_alloc_tone_curves,
+    Pipeline, Stage, StageData, StageLoc, pipeline_alloc, stage_alloc_clut_float_granular,
+    stage_alloc_clut16bit, stage_alloc_clut16bit_granular, stage_alloc_matrix,
+    stage_alloc_tone_curves,
 };
 
 /// `FROM_8_TO_16`
@@ -1988,6 +2003,7 @@ fn read_8bit_tables(io: &mut IoHandler, lut: &mut Pipeline, n_channels: u32) -> 
     }
     for t in &mut tables {
         if io.read(&mut temp, 256, 1) != 1 {
+            eprintln!("r8t: read failed pos {}", io.tell());
             return false;
         }
         for j in 0..256 {
@@ -1998,7 +2014,11 @@ fn read_8bit_tables(io: &mut IoHandler, lut: &mut Pipeline, n_channels: u32) -> 
     let Some(stage) = stage_alloc_tone_curves(None, n_channels, Some(&refs)) else {
         return false;
     };
-    lut.insert_stage(StageLoc::AtEnd, stage)
+    let ok = lut.insert_stage(StageLoc::AtEnd, stage);
+    if !ok {
+        eprintln!("r8t: insert failed");
+    }
+    ok
 }
 
 /// `Write8bitTables` — C quirk: NULL Tables writes NOTHING (loop no-ops)
@@ -3048,7 +3068,7 @@ fn type_lut_b2a_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n:
 // MPE (multiProcessElementsType) — 'mpet' + element handlers
 // ---------------------------------------------------------------------------
 
-const SEGMENTED_CURVE_SIG: u32 = 0x73656766; // 'segf'
+const SEGMENTED_CURVE_SIG: u32 = 0x63757266; // 'segf'
 const FORMULA_CURVE_SEG: u32 = 0x70617266; // 'parf'
 const SAMPLED_CURVE_SEG: u32 = 0x73616d66; // 'samf'
 const MINUS_INF: f32 = f32::NEG_INFINITY;
@@ -3067,7 +3087,10 @@ fn read_segmented_curve(_s: &TagTypeHandler, io: &mut IoHandler) -> Option<ToneC
     let mut res = 0u32;
     let mut n_segments = 0u16;
     let mut res16 = 0u16;
-    if !io::read_u32(io, &mut res) || !io::read_u16(io, &mut n_segments) || !io::read_u16(io, &mut res16) {
+    if !io::read_u32(io, &mut res)
+        || !io::read_u16(io, &mut n_segments)
+        || !io::read_u16(io, &mut res16)
+    {
         return None;
     }
     if n_segments < 1 {
@@ -3142,7 +3165,9 @@ fn read_segmented_curve(_s: &TagTypeHandler, io: &mut IoHandler) -> Option<ToneC
         if curve.segments[i].r#type == 0 {
             {
                 let v = curve.eval_float(curve.segments[i].x0);
-                if let Some(sp) = &mut curve.segments[i].sampled_points { sp[0] = v; }
+                if let Some(sp) = &mut curve.segments[i].sampled_points {
+                    sp[0] = v;
+                }
             }
         }
     }
@@ -3150,7 +3175,12 @@ fn read_segmented_curve(_s: &TagTypeHandler, io: &mut IoHandler) -> Option<ToneC
 }
 
 /// `Type_MPEcurve_Read` — position table of segmented curves
-fn type_mpe_curve_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+fn type_mpe_curve_read(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     let base_offset = io.tell().wrapping_sub(8);
     let (mut in_ch, mut out_ch) = (0u16, 0u16);
@@ -3231,10 +3261,16 @@ fn write_segmented_curve(io: &mut IoHandler, g: &ToneCurve) -> bool {
 
 /// `Type_MPEcurve_Write`
 fn type_mpe_curve_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::MpeElem(mpe) = p else { return false };
-    let StageData::ToneCurves(curves) = &mpe.data else { return false };
+    let TagObject::MpeElem(mpe) = p else {
+        return false;
+    };
+    let StageData::ToneCurves(curves) = &mpe.data else {
+        return false;
+    };
     let base_offset = io.tell().wrapping_sub(8);
-    if !io::write_u16(io, mpe.input_channels as u16) || !io::write_u16(io, mpe.input_channels as u16) {
+    if !io::write_u16(io, mpe.input_channels as u16)
+        || !io::write_u16(io, mpe.input_channels as u16)
+    {
         return false;
     }
     write_position_table(io, 0, mpe.input_channels, base_offset, |io, i, _| {
@@ -3243,7 +3279,12 @@ fn type_mpe_curve_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, 
 }
 
 /// `Type_MPEmatrix_Read` — f32 matrix + offsets → f64 stage
-fn type_mpe_matrix_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+fn type_mpe_matrix_read(
+    _s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     let (mut in_ch, mut out_ch) = (0u16, 0u16);
     if !io::read_u16(io, &mut in_ch) || !io::read_u16(io, &mut out_ch) {
@@ -3276,12 +3317,21 @@ fn type_mpe_matrix_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u
 
 /// `Type_MPEmatrix_Write`
 fn type_mpe_matrix_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::MpeElem(mpe) = p else { return false };
-    let StageData::Matrix { double, offset } = &mpe.data else { return false };
-    if !io::write_u16(io, mpe.input_channels as u16) || !io::write_u16(io, mpe.output_channels as u16) {
+    let TagObject::MpeElem(mpe) = p else {
+        return false;
+    };
+    let StageData::Matrix { double, offset } = &mpe.data else {
+        return false;
+    };
+    if !io::write_u16(io, mpe.input_channels as u16)
+        || !io::write_u16(io, mpe.output_channels as u16)
+    {
         return false;
     }
-    for &v in double.iter().take((mpe.input_channels * mpe.output_channels) as usize) {
+    for &v in double
+        .iter()
+        .take((mpe.input_channels * mpe.output_channels) as usize)
+    {
         if !io::write_float32(io, v as f32) {
             return false;
         }
@@ -3296,13 +3346,22 @@ fn type_mpe_matrix_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject,
 }
 
 /// `Type_MPEclut_Read` — float32 CLUT, 16-byte dims
-fn type_mpe_clut_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+fn type_mpe_clut_read(
+    _s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     let (mut in_ch, mut out_ch) = (0u16, 0u16);
     if !io::read_u16(io, &mut in_ch) || !io::read_u16(io, &mut out_ch) {
         return None;
     }
-    if in_ch == 0 || in_ch >= CMS_MAX_CHANNELS as u16 || out_ch == 0 || out_ch >= CMS_MAX_CHANNELS as u16 {
+    if in_ch == 0
+        || in_ch >= CMS_MAX_CHANNELS as u16
+        || out_ch == 0
+        || out_ch >= CMS_MAX_CHANNELS as u16
+    {
         return None;
     }
     let mut dims8 = [0u8; 16];
@@ -3333,12 +3392,18 @@ fn type_mpe_clut_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32
 
 /// `Type_MPEclut_Write`
 fn type_mpe_clut_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::MpeElem(mpe) = p else { return false };
-    let StageData::CLut(clut) = &mpe.data else { return false };
+    let TagObject::MpeElem(mpe) = p else {
+        return false;
+    };
+    let StageData::CLut(clut) = &mpe.data else {
+        return false;
+    };
     if mpe.input_channels > MAX_INPUT_DIMENSIONS as u32 || !clut.has_float_values {
         return false;
     }
-    if !io::write_u16(io, mpe.input_channels as u16) || !io::write_u16(io, mpe.output_channels as u16) {
+    if !io::write_u16(io, mpe.input_channels as u16)
+        || !io::write_u16(io, mpe.output_channels as u16)
+    {
         return false;
     }
     let mut dims = [0u8; 16];
@@ -3366,11 +3431,31 @@ pub struct MpeElemHandler {
 
 /// `SupportedMPEtypes` — MPE element handler table (bACS/eACS = NULL, ignored)
 pub static SUPPORTED_MPE_TYPES: &[MpeElemHandler] = &[
-    MpeElemHandler { signature: 0x62414373, read: None, write: None }, // 'bACS'
-    MpeElemHandler { signature: 0x65414373, read: None, write: None }, // 'eACS'
-    MpeElemHandler { signature: crate::signatures::stage::SigCurveSetElemType, read: Some(type_mpe_curve_read), write: Some(type_mpe_curve_write) },
-    MpeElemHandler { signature: crate::signatures::stage::SigMatrixElemType, read: Some(type_mpe_matrix_read), write: Some(type_mpe_matrix_write) },
-    MpeElemHandler { signature: crate::signatures::stage::SigCLutElemType, read: Some(type_mpe_clut_read), write: Some(type_mpe_clut_write) },
+    MpeElemHandler {
+        signature: 0x62414373,
+        read: None,
+        write: None,
+    }, // 'bACS'
+    MpeElemHandler {
+        signature: 0x65414373,
+        read: None,
+        write: None,
+    }, // 'eACS'
+    MpeElemHandler {
+        signature: crate::signatures::stage::SigCurveSetElemType,
+        read: Some(type_mpe_curve_read),
+        write: Some(type_mpe_curve_write),
+    },
+    MpeElemHandler {
+        signature: crate::signatures::stage::SigMatrixElemType,
+        read: Some(type_mpe_matrix_read),
+        write: Some(type_mpe_matrix_write),
+    },
+    MpeElemHandler {
+        signature: crate::signatures::stage::SigCLutElemType,
+        read: Some(type_mpe_clut_read),
+        write: Some(type_mpe_clut_write),
+    },
 ];
 
 fn mpe_handler(sig: u32, ctx: Option<&Context>) -> Option<MpeElemHandler> {
@@ -3380,11 +3465,19 @@ fn mpe_handler(sig: u32, ctx: Option<&Context>) -> Option<MpeElemHandler> {
             return Some(*h);
         }
     }
-    SUPPORTED_MPE_TYPES.iter().find(|h| h.signature == sig).copied()
+    SUPPORTED_MPE_TYPES
+        .iter()
+        .find(|h| h.signature == sig)
+        .copied()
 }
 
 /// `ReadMPEElem` — element sig + reserved, dispatch
-fn read_mpe_elem(s: &TagTypeHandler, io: &mut IoHandler, lut: &mut Pipeline, size_of_tag: u32) -> bool {
+fn read_mpe_elem(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    lut: &mut Pipeline,
+    size_of_tag: u32,
+) -> bool {
     let mut elem_sig = 0u32;
     let mut res = 0u32;
     if !io::read_u32(io, &mut elem_sig) || !io::read_u32(io, &mut res) {
@@ -3406,14 +3499,23 @@ fn read_mpe_elem(s: &TagTypeHandler, io: &mut IoHandler, lut: &mut Pipeline, siz
 }
 
 /// `Type_MPE_Read` — 'mpet' container
-fn type_mpe_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+fn type_mpe_read(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     let base_offset = io.tell().wrapping_sub(8);
     let (mut in_ch, mut out_ch) = (0u16, 0u16);
     if !io::read_u16(io, &mut in_ch) || !io::read_u16(io, &mut out_ch) {
         return None;
     }
-    if in_ch == 0 || in_ch >= CMS_MAX_CHANNELS as u16 || out_ch == 0 || out_ch >= CMS_MAX_CHANNELS as u16 {
+    if in_ch == 0
+        || in_ch >= CMS_MAX_CHANNELS as u16
+        || out_ch == 0
+        || out_ch >= CMS_MAX_CHANNELS as u16
+    {
         return None;
     }
     let mut lut = pipeline_alloc(None, in_ch as u32, out_ch as u32)?;
@@ -3440,7 +3542,12 @@ fn type_mpe_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz:
 
 /// `Type_MPE_Write` — hand-rolled directory back-patch (no position table)
 fn type_mpe_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let (TagObject::Mpe(lut) | TagObject::LutA2B(lut) | TagObject::LutB2A(lut) | TagObject::Lut8(lut) | TagObject::Lut16(lut)) = p else {
+    let (TagObject::Mpe(lut)
+    | TagObject::LutA2B(lut)
+    | TagObject::LutB2A(lut)
+    | TagObject::Lut8(lut)
+    | TagObject::Lut16(lut)) = p
+    else {
         return false;
     };
     let base_offset = io.tell().wrapping_sub(8);
@@ -3454,7 +3561,10 @@ fn type_mpe_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32
         e = st.next.as_deref();
     }
     let elem_count = elems.len() as u32;
-    if !io::write_u16(io, in_ch as u16) || !io::write_u16(io, out_ch as u16) || !io::write_u32(io, elem_count) {
+    if !io::write_u16(io, in_ch as u16)
+        || !io::write_u16(io, out_ch as u16)
+        || !io::write_u32(io, elem_count)
+    {
         return false;
     }
     let dir_pos = io.tell();
@@ -3504,7 +3614,12 @@ const VIDEO_CARD_GAMMA_TABLE_TYPE: u32 = 0;
 const VIDEO_CARD_GAMMA_FORMULA_TYPE: u32 = 1;
 
 /// `Type_vcgt_Read` — returns a triple of tone curves
-fn type_vcgt_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, size_of_tag: u32) -> Option<TagObject> {
+fn type_vcgt_read(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    size_of_tag: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     let mut tag_type = 0u32;
     if !io::read_u32(io, &mut tag_type) {
@@ -3519,7 +3634,11 @@ fn type_vcgt_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, siz
                 return None;
             }
             if nch != 3 {
-                err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported number of channels for VCGT");
+                err::signal_error(
+                    None,
+                    ERROR_UNKNOWN_EXTENSION,
+                    "Unsupported number of channels for VCGT",
+                );
                 return None;
             }
             if !io::read_u16(io, &mut nelems) || !io::read_u16(io, &mut nbytes) {
@@ -3530,7 +3649,10 @@ fn type_vcgt_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, siz
                 nbytes = 2;
             }
             for c in curves.iter_mut() {
-                let mut tc = build_tabulated_tone_curve16(None, nelems as u32, None)?;
+                let Some(tc) = build_tabulated_tone_curve16(None, nelems as u32, None) else {
+                    return None;
+                };
+                let mut tc = tc;
                 match nbytes {
                     1 => {
                         for i in 0..nelems as usize {
@@ -3547,7 +3669,11 @@ fn type_vcgt_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, siz
                         }
                     }
                     _ => {
-                        err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported bit depth for VCGT");
+                        err::signal_error(
+                            None,
+                            ERROR_UNKNOWN_EXTENSION,
+                            "Unsupported bit depth for VCGT",
+                        );
                         return None;
                     }
                 }
@@ -3568,11 +3694,18 @@ fn type_vcgt_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, siz
                 params[0] = gamma;
                 params[1] = (max - min).powf(1.0 / gamma);
                 params[5] = min;
-                *c = Some(build_parametric_tone_curve(None, 5, &params)?);
+                let Some(tc) = build_parametric_tone_curve(None, 5, &params) else {
+                    return None;
+                };
+                *c = Some(tc);
             }
         }
         _ => {
-            err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported tag type for VCGT");
+            err::signal_error(
+                None,
+                ERROR_UNKNOWN_EXTENSION,
+                "Unsupported tag type for VCGT",
+            );
             return None;
         }
     }
@@ -3584,7 +3717,9 @@ fn type_vcgt_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, siz
 
 /// `Type_vcgt_Write` — formula iff all 3 are parametric-5, else 256×u16 table
 fn type_vcgt_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::Vcgt(VcgtData::Curves(curves)) = p else { return false };
+    let TagObject::Vcgt(VcgtData::Curves(curves)) = p else {
+        return false;
+    };
     if curves.iter().all(|c| c.parametric_type() == 5) {
         if !io::write_u32(io, VIDEO_CARD_GAMMA_FORMULA_TYPE) {
             return false;
@@ -3622,13 +3757,22 @@ fn type_vcgt_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u
 }
 
 /// `Type_VideoSignal_Read` — 'cicp', exactly 4 bytes
-fn type_video_signal_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, size_of_tag: u32) -> Option<TagObject> {
+fn type_video_signal_read(
+    _s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    size_of_tag: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     if size_of_tag != 4 {
         return None;
     }
     let (mut cp, mut tc, mut mc, mut fr) = (0u8, 0u8, 0u8, 0u8);
-    if !io::read_u8(io, &mut cp) || !io::read_u8(io, &mut tc) || !io::read_u8(io, &mut mc) || !io::read_u8(io, &mut fr) {
+    if !io::read_u8(io, &mut cp)
+        || !io::read_u8(io, &mut tc)
+        || !io::read_u8(io, &mut mc)
+        || !io::read_u8(io, &mut fr)
+    {
         return None;
     }
     *n_items = 1;
@@ -3640,14 +3784,20 @@ fn type_video_signal_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut
     }))
 }
 
-fn type_video_signal_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::VideoSignal(v) = p else { return false };
+fn type_video_signal_write(
+    _s: &TagTypeHandler,
+    io: &mut IoHandler,
+    p: &TagObject,
+    _n: u32,
+) -> bool {
+    let TagObject::VideoSignal(v) = p else {
+        return false;
+    };
     io::write_u8(io, v.colour_primaries)
         && io::write_u8(io, v.transfer_characteristics)
         && io::write_u8(io, v.matrix_coefficients)
         && io::write_u8(io, v.video_full_range_flag)
 }
-
 
 const MHC2_IDENTITY: [[f64; 4]; 3] = [
     [1.0, 0.0, 0.0, 0.0],
@@ -3660,7 +3810,12 @@ fn mhc2_is_identity(m: &[[f64; 4]; 3]) -> bool {
 }
 
 /// `Type_MHC2_Read` — Microsoft MHC2
-fn type_mhc2_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _sz: u32) -> Option<TagObject> {
+fn type_mhc2_read(
+    _s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    _sz: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     let base_offset = io.tell().wrapping_sub(8);
     let mut mhc2 = Mhc2 {
@@ -3681,7 +3836,9 @@ fn type_mhc2_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _s
     mhc2.red_curve = vec![0.0; mhc2.curve_entries as usize];
     mhc2.green_curve = vec![0.0; mhc2.curve_entries as usize];
     mhc2.blue_curve = vec![0.0; mhc2.curve_entries as usize];
-    if !io::read_15_fixed16(io, &mut mhc2.min_luminance) || !io::read_15_fixed16(io, &mut mhc2.peak_luminance) {
+    if !io::read_15_fixed16(io, &mut mhc2.min_luminance)
+        || !io::read_15_fixed16(io, &mut mhc2.peak_luminance)
+    {
         return None;
     }
     let (mut moff, mut roff, mut goff, mut boff) = (0u32, 0u32, 0u32, 0u32);
@@ -3710,7 +3867,11 @@ fn type_mhc2_read(_s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, _s
         }
     }
     // Each table = sf32 sig + filler (8B) + doubles
-    for (off, tab) in [(roff, &mut mhc2.red_curve), (goff, &mut mhc2.green_curve), (boff, &mut mhc2.blue_curve)] {
+    for (off, tab) in [
+        (roff, &mut mhc2.red_curve),
+        (goff, &mut mhc2.green_curve),
+        (boff, &mut mhc2.blue_curve),
+    ] {
         let at = base_offset.wrapping_add(off).wrapping_add(8);
         let cur = io.tell();
         if !io.seek(at) {
@@ -3761,7 +3922,10 @@ fn type_mhc2_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u
         off
     };
     let mut curve_offsets = [0u32; 3];
-    for (i, tab) in [&m.red_curve, &m.green_curve, &m.blue_curve].iter().enumerate() {
+    for (i, tab) in [&m.red_curve, &m.green_curve, &m.blue_curve]
+        .iter()
+        .enumerate()
+    {
         curve_offsets[i] = io.tell().wrapping_sub(base_offset);
         if !io::write_u32(io, tsig::SigS15Fixed16ArrayType)
             || !io::write_u32(io, 0)
@@ -3807,7 +3971,12 @@ fn write_one_elem(io: &mut IoHandler, e: &DicElem, i: usize) -> bool {
 }
 
 /// `Type_Dictionary_Read`
-fn type_dictionary_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u32, size_of_tag: u32) -> Option<TagObject> {
+fn type_dictionary_read(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    size_of_tag: u32,
+) -> Option<TagObject> {
     *n_items = 0;
     let base_offset = io.tell().wrapping_sub(8);
     let mut signed_size = size_of_tag as i32;
@@ -3829,13 +3998,20 @@ fn type_dictionary_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u3
         return None;
     }
     if length != 16 && length != 24 && length != 32 {
-        err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown record length in dictionary");
+        err::signal_error(
+            None,
+            ERROR_UNKNOWN_EXTENSION,
+            "Unknown record length in dictionary",
+        );
         return None;
     }
 
     let mut dict = crate::named::dict_alloc(None);
     // column arrays
-    let mut name = DicElem { offsets: vec![0; count as usize], sizes: vec![0; count as usize] };
+    let mut name = DicElem {
+        offsets: vec![0; count as usize],
+        sizes: vec![0; count as usize],
+    };
     let mut value = name.clone();
     let mut display_name = name.clone();
     let mut display_value = name.clone();
@@ -3846,7 +4022,9 @@ fn type_dictionary_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u3
             return None;
         }
         signed_size -= 16;
-        if !read_one_elem(io, &mut name, i, base_offset) || !read_one_elem(io, &mut value, i, base_offset) {
+        if !read_one_elem(io, &mut name, i, base_offset)
+            || !read_one_elem(io, &mut value, i, base_offset)
+        {
             return None;
         }
         if length > 16 {
@@ -3873,16 +4051,20 @@ fn type_dictionary_read(s: &TagTypeHandler, io: &mut IoHandler, n_items: &mut u3
         // ReadOneWChar
         let name_w = read_dic_wchar(io, &name, i)?;
         let value_w = read_dic_wchar(io, &value, i)?;
-        let dn = if length > 16 { read_dic_mlu(s, io, &display_name, i)? } else { None };
-        let dv = if length > 24 { read_dic_mlu(s, io, &display_value, i)? } else { None };
+        let dn = if length > 16 {
+            read_dic_mlu(s, io, &display_name, i)?
+        } else {
+            None
+        };
+        let dv = if length > 24 {
+            read_dic_mlu(s, io, &display_value, i)?
+        } else {
+            None
+        };
         let rc = match (&name_w, &value_w) {
-            (Some(n), Some(v)) => crate::named::dict_add_entry(
-                &mut dict,
-                n,
-                v,
-                dn.as_ref(),
-                dv.as_ref(),
-            ),
+            (Some(n), Some(v)) => {
+                crate::named::dict_add_entry(&mut dict, n, v, dn.as_ref(), dv.as_ref())
+            }
             _ => {
                 err::signal_error(None, ERROR_CORRUPTION_DETECTED, "Bad dictionary Name/Value");
                 false
@@ -3914,7 +4096,12 @@ fn read_dic_wchar(io: &mut IoHandler, e: &DicElem, i: usize) -> Option<Option<Ve
     Some(Some(wchars))
 }
 
-fn read_dic_mlu(s: &TagTypeHandler, io: &mut IoHandler, e: &DicElem, i: usize) -> Option<Option<Mlu>> {
+fn read_dic_mlu(
+    s: &TagTypeHandler,
+    io: &mut IoHandler,
+    e: &DicElem,
+    i: usize,
+) -> Option<Option<Mlu>> {
     if e.offsets[i] == 0 || e.sizes[i] == 0 {
         return Some(None);
     }
@@ -3930,7 +4117,9 @@ fn read_dic_mlu(s: &TagTypeHandler, io: &mut IoHandler, e: &DicElem, i: usize) -
 
 /// `Type_Dictionary_Write`
 fn type_dictionary_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
-    let TagObject::Dictionary(dict) = p else { return false };
+    let TagObject::Dictionary(dict) = p else {
+        return false;
+    };
     let base_offset = io.tell().wrapping_sub(8);
 
     let count = dict.entries.len() as u32;
@@ -3943,7 +4132,10 @@ fn type_dictionary_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, 
     }
     let dir_pos = io.tell();
 
-    let mk = || DicElem { offsets: vec![0; count as usize], sizes: vec![0; count as usize] };
+    let mk = || DicElem {
+        offsets: vec![0; count as usize],
+        sizes: vec![0; count as usize],
+    };
     let (mut name, mut value, mut dn, mut dv) = (mk(), mk(), mk(), mk());
 
     // fake directory
@@ -4022,11 +4214,20 @@ use crate::signatures::tag as tagsig;
 
 /// `DecideLUTtypeA2B`
 fn decide_lut_a2b(v: f64, d: &TagObject) -> u32 {
-    let (TagObject::LutA2B(lut) | TagObject::Lut8(lut) | TagObject::Lut16(lut) | TagObject::LutB2A(lut) | TagObject::Mpe(lut)) = d else {
+    let (TagObject::LutA2B(lut)
+    | TagObject::Lut8(lut)
+    | TagObject::Lut16(lut)
+    | TagObject::LutB2A(lut)
+    | TagObject::Mpe(lut)) = d
+    else {
         return tsig::SigLut16Type;
     };
     if v < 4.0 {
-        if lut.save_as_8bits { tsig::SigLut8Type } else { tsig::SigLut16Type }
+        if lut.save_as_8bits {
+            tsig::SigLut8Type
+        } else {
+            tsig::SigLut16Type
+        }
     } else {
         tsig::SigLutAtoBType
     }
@@ -4034,17 +4235,24 @@ fn decide_lut_a2b(v: f64, d: &TagObject) -> u32 {
 
 /// `DecideLUTtypeB2A`
 fn decide_lut_b2a(v: f64, d: &TagObject) -> u32 {
-    let (TagObject::LutA2B(lut) | TagObject::Lut8(lut) | TagObject::Lut16(lut) | TagObject::LutB2A(lut) | TagObject::Mpe(lut)) = d else {
+    let (TagObject::LutA2B(lut)
+    | TagObject::Lut8(lut)
+    | TagObject::Lut16(lut)
+    | TagObject::LutB2A(lut)
+    | TagObject::Mpe(lut)) = d
+    else {
         return tsig::SigLut16Type;
     };
     if v < 4.0 {
-        if lut.save_as_8bits { tsig::SigLut8Type } else { tsig::SigLut16Type }
+        if lut.save_as_8bits {
+            tsig::SigLut8Type
+        } else {
+            tsig::SigLut16Type
+        }
     } else {
         tsig::SigLutBtoAType
     }
 }
-
-
 
 /// `cmsTagDescriptor` — supported types for a tag + type selection
 #[derive(Clone, Copy)]
@@ -4068,8 +4276,16 @@ const ONE_S15: &[u32] = &[tsig::SigS15Fixed16ArrayType];
 const ONE_CHRM: &[u32] = &[tsig::SigChromaticityType];
 const ONE_CLRT: &[u32] = &[tsig::SigColorantOrderType];
 const ONE_CLRTAB: &[u32] = &[tsig::SigColorantTableType];
-const TEXT3: &[u32] = &[tsig::SigTextType, tsig::SigMultiLocalizedUnicodeType, tsig::SigTextDescriptionType];
-const DESC3: &[u32] = &[tsig::SigTextDescriptionType, tsig::SigMultiLocalizedUnicodeType, tsig::SigTextType];
+const TEXT3: &[u32] = &[
+    tsig::SigTextType,
+    tsig::SigMultiLocalizedUnicodeType,
+    tsig::SigTextDescriptionType,
+];
+const DESC3: &[u32] = &[
+    tsig::SigTextDescriptionType,
+    tsig::SigMultiLocalizedUnicodeType,
+    tsig::SigTextType,
+];
 const ONE_NCLR: &[u32] = &[tsig::SigNamedColor2Type];
 const ONE_PSEQ: &[u32] = &[tsig::SigProfileSequenceDescType];
 const ONE_SIG: &[u32] = &[tsig::SigSignatureType];
@@ -4091,76 +4307,542 @@ const ONE_XYZ: &[u32] = &[tsig::SigXYZType];
 
 /// `SupportedTags` — same order as C
 pub static SUPPORTED_TAGS: &[(u32, TagDescriptor)] = &[
-    (tagsig::SigAToB0Tag, TagDescriptor { elem_count: 1, supported_types: LUT_AB, decide_type: Some(decide_lut_a2b) }),
-    (tagsig::SigAToB1Tag, TagDescriptor { elem_count: 1, supported_types: LUT_AB, decide_type: Some(decide_lut_a2b) }),
-    (tagsig::SigAToB2Tag, TagDescriptor { elem_count: 1, supported_types: LUT_AB, decide_type: Some(decide_lut_a2b) }),
-    (tagsig::SigBToA0Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
-    (tagsig::SigBToA1Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
-    (tagsig::SigBToA2Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
-    (tagsig::SigRedColorantTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: Some(decide_xyz_type) }),
-    (tagsig::SigGreenColorantTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: Some(decide_xyz_type) }),
-    (tagsig::SigBlueColorantTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: Some(decide_xyz_type) }),
-    (tagsig::SigRedTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC3, decide_type: Some(decide_curve_type) }),
-    (tagsig::SigGreenTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC3, decide_type: Some(decide_curve_type) }),
-    (tagsig::SigBlueTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC3, decide_type: Some(decide_curve_type) }),
-    (tagsig::SigCalibrationDateTimeTag, TagDescriptor { elem_count: 1, supported_types: ONE_DATETIME, decide_type: None }),
-    (tagsig::SigCharTargetTag, TagDescriptor { elem_count: 1, supported_types: ONE_TEXT, decide_type: None }),
-    (tagsig::SigChromaticAdaptationTag, TagDescriptor { elem_count: 9, supported_types: ONE_S15, decide_type: None }),
-    (tagsig::SigChromaticityTag, TagDescriptor { elem_count: 1, supported_types: ONE_CHRM, decide_type: None }),
-    (tagsig::SigColorantOrderTag, TagDescriptor { elem_count: 1, supported_types: ONE_CLRT, decide_type: None }),
-    (tagsig::SigColorantTableTag, TagDescriptor { elem_count: 1, supported_types: ONE_CLRTAB, decide_type: None }),
-    (tagsig::SigColorantTableOutTag, TagDescriptor { elem_count: 1, supported_types: ONE_CLRTAB, decide_type: None }),
-    (tagsig::SigCopyrightTag, TagDescriptor { elem_count: 1, supported_types: TEXT3, decide_type: Some(decide_text_type) }),
-    (tagsig::SigDateTimeTag, TagDescriptor { elem_count: 1, supported_types: ONE_DATETIME, decide_type: None }),
-    (tagsig::SigDeviceMfgDescTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
-    (tagsig::SigDeviceModelDescTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
-    (tagsig::SigGamutTag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
-    (tagsig::SigGrayTRCTag, TagDescriptor { elem_count: 1, supported_types: TRC2, decide_type: Some(decide_curve_type) }),
-    (tagsig::SigLuminanceTag, TagDescriptor { elem_count: 1, supported_types: ONE_XYZ, decide_type: None }),
-    (tagsig::SigMediaBlackPointTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: None }),
-    (tagsig::SigMediaWhitePointTag, TagDescriptor { elem_count: 1, supported_types: XYZ_BROKEN, decide_type: None }),
-    (tagsig::SigNamedColor2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_NCLR, decide_type: None }),
-    (tagsig::SigPreview0Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
-    (tagsig::SigPreview1Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
-    (tagsig::SigPreview2Tag, TagDescriptor { elem_count: 1, supported_types: LUT_BA, decide_type: Some(decide_lut_b2a) }),
-    (tagsig::SigProfileDescriptionTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
-    (tagsig::SigProfileSequenceDescTag, TagDescriptor { elem_count: 1, supported_types: ONE_PSEQ, decide_type: None }),
-    (tagsig::SigTechnologyTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
-    (tagsig::SigColorimetricIntentImageStateTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
-    (tagsig::SigPerceptualRenderingIntentGamutTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
-    (tagsig::SigSaturationRenderingIntentGamutTag, TagDescriptor { elem_count: 1, supported_types: ONE_SIG, decide_type: None }),
-    (tagsig::SigMeasurementTag, TagDescriptor { elem_count: 1, supported_types: ONE_MEAS, decide_type: None }),
-    (tagsig::SigPs2CRD0Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
-    (tagsig::SigPs2CRD1Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
-    (tagsig::SigPs2CRD2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
-    (tagsig::SigPs2CRD3Tag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
-    (tagsig::SigPs2CSATag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
-    (tagsig::SigPs2RenderingIntentTag, TagDescriptor { elem_count: 1, supported_types: ONE_DATA, decide_type: None }),
-    (tagsig::SigViewingCondDescTag, TagDescriptor { elem_count: 1, supported_types: DESC3, decide_type: Some(decide_text_desc_type) }),
-    (tagsig::SigUcrBgTag, TagDescriptor { elem_count: 1, supported_types: ONE_UCRBG, decide_type: None }),
-    (tagsig::SigCrdInfoTag, TagDescriptor { elem_count: 1, supported_types: ONE_CRD, decide_type: None }),
-    (tagsig::SigDToB0Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigDToB1Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigDToB2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigDToB3Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigBToD0Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigBToD1Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigBToD2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigBToD3Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MPE, decide_type: None }),
-    (tagsig::SigScreeningDescTag, TagDescriptor { elem_count: 1, supported_types: ONE_DESC, decide_type: None }),
-    (tagsig::SigViewingConditionsTag, TagDescriptor { elem_count: 1, supported_types: ONE_VIEW, decide_type: None }),
-    (tagsig::SigScreeningTag, TagDescriptor { elem_count: 1, supported_types: ONE_SCRN, decide_type: None }),
-    (tagsig::SigVcgtTag, TagDescriptor { elem_count: 1, supported_types: ONE_VCGT, decide_type: None }),
-    (tagsig::SigMetaTag, TagDescriptor { elem_count: 1, supported_types: ONE_DICT, decide_type: None }),
-    (tagsig::SigProfileSequenceIdTag, TagDescriptor { elem_count: 1, supported_types: ONE_PSID, decide_type: None }),
-    (tagsig::SigProfileDescriptionMLTag, TagDescriptor { elem_count: 1, supported_types: ONE_MLU, decide_type: None }),
-    (tagsig::SigcicpTag, TagDescriptor { elem_count: 1, supported_types: ONE_CICP, decide_type: None }),
-    (tagsig::SigArgyllArtsTag, TagDescriptor { elem_count: 9, supported_types: ONE_S15, decide_type: None }),
-    (tagsig::SigMHC2Tag, TagDescriptor { elem_count: 1, supported_types: ONE_MHC2, decide_type: None }),
+    (
+        tagsig::SigAToB0Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_AB,
+            decide_type: Some(decide_lut_a2b),
+        },
+    ),
+    (
+        tagsig::SigAToB1Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_AB,
+            decide_type: Some(decide_lut_a2b),
+        },
+    ),
+    (
+        tagsig::SigAToB2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_AB,
+            decide_type: Some(decide_lut_a2b),
+        },
+    ),
+    (
+        tagsig::SigBToA0Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_BA,
+            decide_type: Some(decide_lut_b2a),
+        },
+    ),
+    (
+        tagsig::SigBToA1Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_BA,
+            decide_type: Some(decide_lut_b2a),
+        },
+    ),
+    (
+        tagsig::SigBToA2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_BA,
+            decide_type: Some(decide_lut_b2a),
+        },
+    ),
+    (
+        tagsig::SigRedColorantTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: XYZ_BROKEN,
+            decide_type: Some(decide_xyz_type),
+        },
+    ),
+    (
+        tagsig::SigGreenColorantTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: XYZ_BROKEN,
+            decide_type: Some(decide_xyz_type),
+        },
+    ),
+    (
+        tagsig::SigBlueColorantTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: XYZ_BROKEN,
+            decide_type: Some(decide_xyz_type),
+        },
+    ),
+    (
+        tagsig::SigRedTRCTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: TRC3,
+            decide_type: Some(decide_curve_type),
+        },
+    ),
+    (
+        tagsig::SigGreenTRCTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: TRC3,
+            decide_type: Some(decide_curve_type),
+        },
+    ),
+    (
+        tagsig::SigBlueTRCTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: TRC3,
+            decide_type: Some(decide_curve_type),
+        },
+    ),
+    (
+        tagsig::SigCalibrationDateTimeTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATETIME,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigCharTargetTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_TEXT,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigChromaticAdaptationTag,
+        TagDescriptor {
+            elem_count: 9,
+            supported_types: ONE_S15,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigChromaticityTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_CHRM,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigColorantOrderTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_CLRT,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigColorantTableTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_CLRTAB,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigColorantTableOutTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_CLRTAB,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigCopyrightTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: TEXT3,
+            decide_type: Some(decide_text_type),
+        },
+    ),
+    (
+        tagsig::SigDateTimeTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATETIME,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigDeviceMfgDescTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: DESC3,
+            decide_type: Some(decide_text_desc_type),
+        },
+    ),
+    (
+        tagsig::SigDeviceModelDescTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: DESC3,
+            decide_type: Some(decide_text_desc_type),
+        },
+    ),
+    (
+        tagsig::SigGamutTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_BA,
+            decide_type: Some(decide_lut_b2a),
+        },
+    ),
+    (
+        tagsig::SigGrayTRCTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: TRC2,
+            decide_type: Some(decide_curve_type),
+        },
+    ),
+    (
+        tagsig::SigLuminanceTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_XYZ,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigMediaBlackPointTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: XYZ_BROKEN,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigMediaWhitePointTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: XYZ_BROKEN,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigNamedColor2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_NCLR,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPreview0Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_BA,
+            decide_type: Some(decide_lut_b2a),
+        },
+    ),
+    (
+        tagsig::SigPreview1Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_BA,
+            decide_type: Some(decide_lut_b2a),
+        },
+    ),
+    (
+        tagsig::SigPreview2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: LUT_BA,
+            decide_type: Some(decide_lut_b2a),
+        },
+    ),
+    (
+        tagsig::SigProfileDescriptionTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: DESC3,
+            decide_type: Some(decide_text_desc_type),
+        },
+    ),
+    (
+        tagsig::SigProfileSequenceDescTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_PSEQ,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigTechnologyTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_SIG,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigColorimetricIntentImageStateTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_SIG,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPerceptualRenderingIntentGamutTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_SIG,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigSaturationRenderingIntentGamutTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_SIG,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigMeasurementTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MEAS,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPs2CRD0Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATA,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPs2CRD1Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATA,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPs2CRD2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATA,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPs2CRD3Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATA,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPs2CSATag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATA,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigPs2RenderingIntentTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DATA,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigViewingCondDescTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: DESC3,
+            decide_type: Some(decide_text_desc_type),
+        },
+    ),
+    (
+        tagsig::SigUcrBgTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_UCRBG,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigCrdInfoTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_CRD,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigDToB0Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigDToB1Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigDToB2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigDToB3Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigBToD0Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigBToD1Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigBToD2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigBToD3Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MPE,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigScreeningDescTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DESC,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigViewingConditionsTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_VIEW,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigScreeningTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_SCRN,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigVcgtTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_VCGT,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigMetaTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_DICT,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigProfileSequenceIdTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_PSID,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigProfileDescriptionMLTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MLU,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigcicpTag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_CICP,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigArgyllArtsTag,
+        TagDescriptor {
+            elem_count: 9,
+            supported_types: ONE_S15,
+            decide_type: None,
+        },
+    ),
+    (
+        tagsig::SigMHC2Tag,
+        TagDescriptor {
+            elem_count: 1,
+            supported_types: ONE_MHC2,
+            decide_type: None,
+        },
+    ),
 ];
 
 /// `GetHandler` — plugin list first, then built-ins
-pub fn get_handler<'a>(sig: u32, plugins: &'a [TagTypeHandler], defaults: &'a [TagTypeHandler]) -> Option<&'a TagTypeHandler> {
+pub fn get_handler<'a>(
+    sig: u32,
+    plugins: &'a [TagTypeHandler],
+    defaults: &'a [TagTypeHandler],
+) -> Option<&'a TagTypeHandler> {
     plugins
         .iter()
         .find(|h| h.signature == sig)
@@ -4176,7 +4858,10 @@ pub fn get_tag_descriptor(ctx: Option<&Context>, sig: u32) -> Option<TagDescript
             return Some(*d);
         }
     }
-    SUPPORTED_TAGS.iter().find(|(s, _)| *s == sig).map(|(_, d)| *d)
+    SUPPORTED_TAGS
+        .iter()
+        .find(|(s, _)| *s == sig)
+        .map(|(_, d)| *d)
 }
 
 /// `_cmsAvoidTypeCheckOnTags` — plugin registered signature-0 → skip checks
