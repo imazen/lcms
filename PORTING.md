@@ -456,3 +456,36 @@ output into outb. Likely the input format (type_lab_16, u16) unroll or
 the f32 output pack path produces zeros — check do_transform's Fmt
 dispatch for mixed u16-in/f32-out (Fmt::F16 vs Fmt::Flt mismatch).
 Files: cnvrt.rs detect_tac (~line 782), make_last_proof, run_lab_transform*.
+
+## State @ 0e04819 — 100% coverage, ALL intents + real profiles green
+
+Every lcms2 .c module ported. ALL parity gates green:
+- xform: sRGB identity, intents×4, RGB8/16, BGR8, Lab4→sRGB,
+  sRGB→XYZ, Lab2→sRGB, FLAGS_FORCE_CLUT
+- real-profile (6 gates): test1/2 CMYK-prtr↔sRGB, ibm-t61 v3.4 mntr,
+  test3/4/5/crayons RGB profiles → sRGB, sRGB→test1 CMYK output,
+  test1→test2 K-only + K-plane (both black-preserving intents)
+- cgats IT8, GBD, cam02, pack, cube devicelink
+~97 tests green.
+
+REAL bugs caught by oracle gates:
+- compute_conversion propagated detect_black_point None; C ignores
+  the return (point stays {0,0,0}) — broke Lab4(abstract)→sRGB
+- cgats lexer: is_separator had \n; in_string didn't consume close
+  quote; get_val double-advanced; check_eoln didn't consume EOLNs;
+  load_from_mem never primed ch; nosheet inverted
+- cat() cloned stage tails (duplicate chains)
+- pipeline_stage_match inverted trailing check
+- _MultiplyMatrix fused offset-carrying matrices (ibm-t61 BPC drop)
+- detect_tac: 'move' on Copy captured copies of accumulators → 0
+- placeholder defaults, Mat3 row-major, gray broadcast, T_COLORSPACE
+  mask, FROM_16_TO_8, is_ink_space
+
+REMAINING:
+- named-color transform eval stub (TYPE_NAMED_COLOR_INDEX)
+- %g PostScript formatting vs C's %g (textual parity)
+- perf parity: 2.4-3x on dense eval — structural (per-pixel indirect
+  calls + bounds checks vs C raw pointers); needs scanline-batch or
+  unsafe to close
+- cmserr/cmsplugin residuals (Plugin/PluginType/create/dup_ctx done)
+- more parity expansion (gamut-check xform, named-color, ps2 text)
