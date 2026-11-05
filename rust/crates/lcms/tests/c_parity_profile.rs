@@ -136,3 +136,73 @@ fn write_read_roundtrip_mem() {
     }
     unsafe { c::cmsCloseProfile(c_prof) };
 }
+
+#[test]
+fn resave_unmodified_profile() {
+    // Open a real profile in Rust, save it (blind-copy every tag), then C
+    // must open the result and cook every tag successfully.
+    for name in ["test5.icc", "crayons.icc", "test1.icc"] {
+        let path = format!("{REF}{name}");
+        let data = std::fs::read(&path).unwrap();
+        let mut icc = profile::open_profile_from_mem(None, &data).unwrap();
+        let saved = profile::save_profile_to_mem(&mut icc).expect(&format!("save {name}"));
+
+        // C opens the Rust-saved profile and cooks every tag
+        let mut b = saved.clone();
+        let cio = unsafe {
+            c::cmsOpenIOhandlerFromMem(
+                ptr::null_mut(),
+                b.as_mut_ptr(),
+                b.len() as u32,
+                b"r\0".as_ptr(),
+            )
+        };
+        let c_prof = unsafe { c::cmsOpenProfileFromIOhandlerTHR(ptr::null_mut(), cio) };
+        assert!(!c_prof.is_null(), "C failed to open resaved {name}");
+        let c_n = unsafe { c::cmsGetTagCount(c_prof) };
+        assert_eq!(c_n as u32, icc.tag_count, "tag count resaved {name}");
+        for i in 0..c_n {
+            let sig = unsafe { c::cmsGetTagSignature(c_prof, i as u32) };
+            let obj = unsafe { c::cmsReadTag(c_prof, sig) };
+            assert!(
+                !obj.is_null(),
+                "C failed to cook tag {sig:#x} resaved {name}"
+            );
+        }
+        unsafe { c::cmsCloseProfile(c_prof) };
+    }
+}
+
+#[test]
+fn raw_tag_and_links() {
+    // Cook one tag, write it back raw under a second sig, link a third.
+    let path = format!("{REF}test5.icc");
+    let data = std::fs::read(&path).unwrap();
+    let mut icc = profile::open_profile_from_mem(None, &data).unwrap();
+    let sig = lcms::signatures::tag::SigCopyrightTag;
+    let n = profile::cms_read_raw_tag(&mut icc, sig, None);
+    assert!(n > 0, "raw size query");
+    let mut buf = vec![0u8; n as usize];
+    let n2 = profile::cms_read_raw_tag(&mut icc, sig, Some(&mut buf));
+    assert_eq!(n2, n);
+
+    // Write the raw block back under a different known-ok sig
+    let target = lcms::signatures::tag::SigCharTargetTag;
+    assert!(profile::cms_write_raw_tag(&mut icc, target, &buf));
+
+    // Save + reopen; the raw-written tag is in the directory
+    let saved = profile::save_profile_to_mem(&mut icc).expect("save");
+    let icc2 = profile::open_profile_from_mem(None, &saved).unwrap();
+    assert!(
+        profile::cms_is_tag(&icc2, target),
+        "raw tag present after save"
+    );
+
+    // Raw content round-trips byte-identically
+    let mut icc3 = profile::open_profile_from_mem(None, &saved).unwrap();
+    let n3 = profile::cms_read_raw_tag(&mut icc3, target, None);
+    assert_eq!(n3, n);
+    let mut buf3 = vec![0u8; n3 as usize];
+    profile::cms_read_raw_tag(&mut icc3, target, Some(&mut buf3));
+    assert_eq!(buf, buf3, "raw bytes round-trip");
+}

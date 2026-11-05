@@ -16,11 +16,10 @@ pub const MAX_TABLE_TAG: usize = 100;
 pub const MAX_TYPES_IN_LCMS_PLUGIN: usize = 20;
 const CMS_MAGIC: u32 = 0x61637370; // 'acsp'
 const DEFAULT_MAX_VERSION: u32 = 0x04400000;
-const ERROR_BAD_SIGNATURE: i32 = 5;
-const ERROR_RANGE: i32 = 12;
-const ERROR_UNKNOWN_EXTENSION: i32 = 4;
-const ERROR_CORRUPTION_DETECTED: i32 = 13;
-const ERROR_ALREADY_DEFINED: i32 = 15;
+use crate::types::{
+    ERROR_ALREADY_DEFINED, ERROR_BAD_SIGNATURE, ERROR_CORRUPTION_DETECTED, ERROR_INTERNAL,
+    ERROR_RANGE, ERROR_UNKNOWN_EXTENSION, ERROR_WRITE,
+};
 
 /// `_cmsICCPROFILE` — the open-profile state object.
 pub struct IccProfile {
@@ -342,6 +341,25 @@ pub fn write_header(icc: &IccProfile, used_space: u32, io_out: &mut IoHandler) -
     if !io_out.write(128, &h) {
         return false;
     }
+
+    // Tag directory — count of non-placeholder entries, then sig/off/size
+    let count = (0..icc.tag_count as usize)
+        .filter(|&i| icc.tag_names[i] != 0)
+        .count() as u32;
+    if !io::write_u32(io_out, count) {
+        return false;
+    }
+    for i in 0..icc.tag_count as usize {
+        if icc.tag_names[i] == 0 {
+            continue;
+        }
+        if !io::write_u32(io_out, icc.tag_names[i])
+            || !io::write_u32(io_out, icc.tag_offsets[i])
+            || !io::write_u32(io_out, icc.tag_sizes[i])
+        {
+            return false;
+        }
+    }
     true
 }
 
@@ -451,45 +469,20 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
 
 /// `cmsWriteTag` — cooked write (stores the object, serializes on save)
 pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) -> bool {
-    let ctx = icc.ctx.as_ref();
-    // Delete path
+    // Delete path — C marks the slot (TagNames[i]=0), it does NOT compact
     let Some(obj) = data else {
         let i = search_tag(icc, sig, false);
         if i < 0 {
             return false;
         }
         let i = i as usize;
-        // delete the tag: shift all entries down
-        for k in i..icc.tag_count as usize - 1 {
-            icc.tag_names[k] = icc.tag_names[k + 1];
-            icc.tag_linked[k] = icc.tag_linked[k + 1];
-            icc.tag_sizes[k] = icc.tag_sizes[k + 1];
-            icc.tag_offsets[k] = icc.tag_offsets[k + 1];
-            icc.tag_save_as_raw[k] = icc.tag_save_as_raw[k + 1];
-            icc.tag_ptrs[k] = icc.tag_ptrs[k + 1].take();
-            icc.tag_type_sigs[k] = icc.tag_type_sigs[k + 1];
-            icc.tag_raw[k] = icc.tag_raw[k + 1].take();
-        }
-        icc.tag_count -= 1;
-        let last = icc.tag_count as usize;
-        icc.tag_names[last] = 0;
-        icc.tag_ptrs[last] = None;
-        icc.tag_raw[last] = None;
+        delete_tag_by_pos(icc, i);
+        icc.tag_names[i] = 0;
         return true;
     };
 
-    // New tag slot
-    let i = match search_tag(icc, sig, false) {
-        -1 => {
-            if icc.tag_count as usize >= MAX_TABLE_TAG {
-                err::signal_error(None, ERROR_RANGE, "Too many tags");
-                return false;
-            }
-            let t = icc.tag_count as usize;
-            icc.tag_count += 1;
-            t
-        }
-        i => i as usize,
+    let Some(i) = new_tag(icc, sig) else {
+        return false;
     };
 
     if icc.tag_save_as_raw[i] {
@@ -498,6 +491,7 @@ pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) ->
     }
     icc.tag_linked[i] = 0;
 
+    let ctx = icc.ctx.as_ref();
     let Some(desc) = get_tag_descriptor(ctx, sig) else {
         err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported tag");
         return false;
@@ -571,100 +565,383 @@ pub fn cms_is_tag_pub(icc: &IccProfile, sig: u32) -> bool {
     search_tag(icc, sig, false) >= 0
 }
 
-/// Serialize ONE tag's cooked data (type base + body)
-fn serialize_tag(ctx: Option<&Context>, icc: &IccProfile, n: usize) -> Option<Vec<u8>> {
-    if let Some(raw) = &icc.tag_raw[n] {
-        return Some(raw.clone());
-    }
-    let Some(obj) = icc.tag_ptrs[n].as_ref() else {
-        eprintln!("st: no obj");
-        return None;
-    };
-    let sig = icc.tag_type_sigs[n];
-    let Some(handler) = get_tag_type_handler(ctx, sig) else {
-        eprintln!("st: no handler {sig:#x}");
-        return None;
-    };
-    let mut local = handler;
-    local.icc_version = icc.version;
+/// `_cmsDeleteTagByPos` — free slot contents (no array compaction)
+fn delete_tag_by_pos(icc: &mut IccProfile, i: usize) {
+    icc.tag_ptrs[i] = None;
+    icc.tag_raw[i] = None;
+    icc.tag_save_as_raw[i] = false;
+    icc.tag_type_sigs[i] = 0;
+}
 
-    // Pass 1: NULL handler for the byte count
-    let mut null_io = io::io_handler_from_null(ctx);
-    if !io::write_type_base(&mut null_io, sig) || !(local.write)(&local, &mut null_io, obj, 1) {
+/// `_cmsNewTag` — reuse an existing slot (cleared) or append
+fn new_tag(icc: &mut IccProfile, sig: u32) -> Option<usize> {
+    let i = search_tag(icc, sig, false);
+    if i >= 0 {
+        let i = i as usize;
+        delete_tag_by_pos(icc, i);
+        return Some(i);
+    }
+    if icc.tag_count as usize >= MAX_TABLE_TAG {
+        err::signal_error(None, ERROR_RANGE, "Too many tags");
         return None;
     }
-    let size = null_io.tell() as usize;
+    let t = icc.tag_count as usize;
+    icc.tag_count += 1;
+    Some(t)
+}
 
-    // Pass 2: real buffer
-    let mut mem = io::io_handler_from_mem(None, vec![0u8; size], "w")?;
-    if !io::write_type_base(&mut mem, sig) || !(local.write)(&local, &mut mem, obj, 1) {
+/// `cmsReadRawTag` — bytes read/needed (0 = error). `data=None` → sizing.
+pub fn cms_read_raw_tag(icc: &mut IccProfile, sig: u32, data: Option<&mut [u8]>) -> u32 {
+    let buf_size = data.as_ref().map(|b| b.len() as u32).unwrap_or(0);
+    if data.is_some() && buf_size == 0 {
+        return 0;
+    }
+    let i = search_tag(icc, sig, true);
+    if i < 0 {
+        return 0;
+    }
+    let i = i as usize;
+
+    // Never cooked — straight copy from disk
+    if icc.tag_ptrs[i].is_none() && icc.tag_raw[i].is_none() {
+        let offset = icc.tag_offsets[i];
+        let mut tag_size = icc.tag_sizes[i];
+        match data {
+            Some(buf) => {
+                if buf_size < tag_size {
+                    tag_size = buf_size;
+                }
+                let Some(io) = icc.io.as_mut() else {
+                    return 0;
+                };
+                if !io.seek(offset)
+                    || io.read(&mut buf[..tag_size as usize], 1, tag_size) != tag_size
+                {
+                    return 0;
+                }
+                tag_size
+            }
+            None => icc.tag_sizes[i],
+        }
+    } else if icc.tag_save_as_raw[i] {
+        // Written raw — hand back the stored block
+        match data {
+            Some(buf) => {
+                let mut tag_size = icc.tag_sizes[i];
+                if buf_size < tag_size {
+                    tag_size = buf_size;
+                }
+                buf[..tag_size as usize]
+                    .copy_from_slice(&icc.tag_raw[i].as_ref().unwrap()[..tag_size as usize]);
+                tag_size
+            }
+            None => icc.tag_sizes[i],
+        }
+    } else {
+        // Cooked — serialize to raw
+        if cms_read_tag(icc, sig).is_none() {
+            return 0;
+        }
+        let ctx = icc.ctx.as_ref();
+        let Some(desc) = get_tag_descriptor(ctx, sig) else {
+            return 0;
+        };
+        let type_sig = icc.tag_type_sigs[i];
+        if type_sig == 0 {
+            return 0;
+        }
+        let Some(handler) = get_tag_type_handler(ctx, type_sig) else {
+            return 0;
+        };
+        let mut local = handler;
+        local.icc_version = icc.version;
+        let obj = icc.tag_ptrs[i].clone().unwrap();
+
+        match data {
+            None => {
+                let mut mem = io::io_handler_from_null(ctx);
+                if !io::write_type_base(&mut mem, type_sig)
+                    || !(local.write)(&local, &mut mem, &obj, desc.elem_count)
+                {
+                    return 0;
+                }
+                mem.tell()
+            }
+            Some(buf) => {
+                // Sized to the caller's buffer — models C's MemoryWrite truncation
+                let mut mem = io::io_handler_from_mem(None, vec![0u8; buf_size as usize], "w")
+                    .unwrap_or_else(|| io::io_handler_from_null(ctx));
+                if !io::write_type_base(&mut mem, type_sig)
+                    || !(local.write)(&local, &mut mem, &obj, desc.elem_count)
+                {
+                    return 0;
+                }
+                let written = (mem.tell() as usize).min(buf_size as usize);
+                if let io::IoStream::Mem(m) = &mem.stream {
+                    buf[..written].copy_from_slice(&m.block[..written]);
+                }
+                mem.tell()
+            }
+        }
+    }
+}
+
+/// `cmsWriteRawTag` — store a raw block verbatim
+pub fn cms_write_raw_tag(icc: &mut IccProfile, sig: u32, data: &[u8]) -> bool {
+    let Some(i) = new_tag(icc, sig) else {
+        return false;
+    };
+    icc.tag_save_as_raw[i] = true;
+    icc.tag_names[i] = sig;
+    icc.tag_linked[i] = 0;
+    icc.tag_type_sigs[i] = 0;
+    icc.tag_ptrs[i] = None;
+    icc.tag_raw[i] = Some(data.to_vec());
+    icc.tag_sizes[i] = data.len() as u32;
+    true
+}
+
+/// `cmsLinkTag` — point `sig` at `dest`'s block
+pub fn cms_link_tag(icc: &mut IccProfile, sig: u32, dest: u32) -> bool {
+    let Some(i) = new_tag(icc, sig) else {
+        return false;
+    };
+    icc.tag_save_as_raw[i] = false;
+    icc.tag_names[i] = sig;
+    icc.tag_linked[i] = dest;
+    icc.tag_ptrs[i] = None;
+    icc.tag_raw[i] = None;
+    icc.tag_sizes[i] = 0;
+    icc.tag_offsets[i] = 0;
+    true
+}
+
+/// `cmsTagLinkedTo`
+pub fn cms_tag_linked_to(icc: &IccProfile, sig: u32) -> u32 {
+    let i = search_tag(icc, sig, false);
+    if i < 0 {
+        return 0;
+    }
+    icc.tag_linked[i as usize]
+}
+
+/// `save_tags` — serialize all tag bodies into `io` (two phases share this).
+/// `file_orig` = the profile's original read io for blind-copying
+/// unmodified on-disk tags byte-for-byte (C's `FileOrig->IOhandler`).
+fn save_tags(
+    icc: &mut IccProfile,
+    io: &mut IoHandler,
+    file_orig: Option<&mut IoHandler>,
+    orig_offsets: &[u32],
+    orig_sizes: &[u32],
+) -> bool {
+    let ctx = icc.ctx.as_ref();
+    let ver = {
+        let n = icc.version >> 16;
+        format!("{n:x}").parse::<f64>().unwrap_or(0.0) / 100.0
+    };
+    let mut file_orig = file_orig;
+    let n_tags = icc.tag_count as usize;
+    for i in 0..n_tags {
+        if icc.tag_names[i] == 0 || icc.tag_linked[i] != 0 {
+            continue;
+        }
+        let begin = io.used_space;
+        icc.tag_offsets[i] = begin;
+
+        if icc.tag_ptrs[i].is_none() && icc.tag_raw[i].is_none() {
+            // Blind copy of an unmodified on-disk tag. C checks
+            // `FileOrig != NULL && Icc->TagOffsets[i] != 0` where TagOffsets[i]
+            // was just assigned Begin — the check reduces to FileOrig!=NULL.
+            if let Some(src) = file_orig.as_deref_mut() {
+                if orig_offsets[i] != 0 {
+                    let mut mem = vec![0u8; orig_sizes[i] as usize];
+                    if !src.seek(orig_offsets[i])
+                        || src.read(&mut mem, orig_sizes[i], 1) != 1
+                        || !io.write(orig_sizes[i], &mem)
+                    {
+                        return false;
+                    }
+                    icc.tag_sizes[i] = io.used_space.wrapping_sub(begin);
+                    if !io::write_alignment(io) {
+                        return false;
+                    }
+                }
+            }
+            continue;
+        }
+
+        if icc.tag_save_as_raw[i] {
+            let raw = icc.tag_raw[i].as_ref().unwrap().clone();
+            if !io.write(icc.tag_sizes[i], &raw) {
+                return false;
+            }
+        } else {
+            let Some(desc) = get_tag_descriptor(ctx, icc.tag_names[i]) else {
+                continue;
+            };
+            let Some(obj) = icc.tag_ptrs[i].clone() else {
+                continue;
+            };
+            let typ = match desc.decide_type {
+                Some(d) => d(ver, &obj),
+                None => desc.supported_types[0],
+            };
+            let Some(handler) = get_tag_type_handler(ctx, typ) else {
+                err::signal_error(None, ERROR_INTERNAL, "(Internal) no handler for tag");
+                continue;
+            };
+            if !io::write_type_base(io, handler.signature) {
+                return false;
+            }
+            let mut local = handler;
+            local.icc_version = icc.version;
+            if !(local.write)(&local, io, &obj, desc.elem_count) {
+                err::signal_error(None, ERROR_WRITE, "Couldn't write type");
+                return false;
+            }
+        }
+        icc.tag_sizes[i] = io.used_space.wrapping_sub(begin);
+        if !io::write_alignment(io) {
+            return false;
+        }
+    }
+    true
+}
+
+/// `SetLinks` — propagate offsets/sizes to linked tags
+fn set_links(icc: &mut IccProfile) -> bool {
+    for i in 0..icc.tag_count as usize {
+        let lnk = icc.tag_linked[i];
+        if lnk != 0 {
+            let j = search_tag(icc, lnk, false);
+            if j >= 0 {
+                let j = j as usize;
+                icc.tag_offsets[i] = icc.tag_offsets[j];
+                icc.tag_sizes[i] = icc.tag_sizes[j];
+            }
+        }
+    }
+    true
+}
+
+/// `cmsSaveProfileToIOhandler` — two-pass save; `out = None` computes sizes
+/// only (C passes NULL). Returns bytes used, 0 on error.
+pub fn save_profile_to_iohandler(icc: &mut IccProfile, out: Option<&mut IoHandler>) -> u32 {
+    // Keep = pre-swap profile; its io is the blind-copy source
+    let mut orig_io = icc.io.take();
+
+    // Keep's directory = disk offsets/sizes for the blind copy (C memmove)
+    let orig_offsets: Vec<u32> = icc.tag_offsets[..icc.tag_count as usize].to_vec();
+    let orig_sizes: Vec<u32> = icc.tag_sizes[..icc.tag_count as usize].to_vec();
+
+    // Pass 1: NULL io computes offsets + sizes
+    let mut null_io = io::io_handler_from_null(icc.ctx.as_ref());
+    if !write_header(icc, 0, &mut null_io)
+        || !save_tags(
+            icc,
+            &mut null_io,
+            orig_io.as_mut(),
+            &orig_offsets,
+            &orig_sizes,
+        )
+    {
+        restore_dir(icc, &orig_offsets, &orig_sizes);
+        icc.io = orig_io;
+        return 0;
+    }
+    let used_space = null_io.used_space;
+
+    // Pass 2: real write into the target handler
+    if let Some(out_io) = out {
+        if !set_links(icc)
+            || !write_header(icc, used_space, out_io)
+            || !save_tags(icc, out_io, orig_io.as_mut(), &orig_offsets, &orig_sizes)
+        {
+            restore_dir(icc, &orig_offsets, &orig_sizes);
+            icc.io = orig_io;
+            return 0;
+        }
+    }
+    // C restores the entire Keep copy — offsets/sizes must return to
+    // their pre-call values for subsequent save calls.
+    restore_dir(icc, &orig_offsets, &orig_sizes);
+    icc.io = orig_io;
+    used_space
+}
+
+fn restore_dir(icc: &mut IccProfile, offsets: &[u32], sizes: &[u32]) {
+    icc.tag_offsets[..offsets.len()].copy_from_slice(offsets);
+    icc.tag_sizes[..sizes.len()].copy_from_slice(sizes);
+}
+
+/// `cmsSaveProfileToMem` — sizing pass, then a sized buffer write
+pub fn save_profile_to_mem(icc: &mut IccProfile) -> Option<Vec<u8>> {
+    let needed = save_profile_to_iohandler(icc, None);
+    if needed == 0 {
+        return None;
+    }
+    let mut mem = io::io_handler_from_mem(None, vec![0u8; needed as usize], "w")?;
+    if save_profile_to_iohandler(icc, Some(&mut mem)) == 0 {
         return None;
     }
     match mem.stream {
-        io::IoStream::Mem(m) => Some(m.block[..size].to_vec()),
+        io::IoStream::Mem(m) => Some(m.block[..needed as usize].to_vec()),
         _ => None,
     }
 }
 
-/// `cmsSaveProfileToMem` — write the whole profile to memory
-pub fn save_profile_to_mem(icc: &mut IccProfile) -> Option<Vec<u8>> {
-    let ctx = icc.ctx.as_ref().map(|c| {
-        // SAFETY-FREE: ctx lives inside icc — copy via clone for the handler call
-        c
+/// `cmsSaveProfileToFile`
+pub fn save_profile_to_file(icc: &mut IccProfile, path: &str) -> bool {
+    let Some(mut io) = io::io_handler_from_file(None, path, "w") else {
+        return false;
+    };
+    let rc = save_profile_to_iohandler(icc, Some(&mut io)) != 0;
+    if !rc {
+        let _ = std::fs::remove_file(path);
+    }
+    rc
+}
+
+/// `cmsOpenProfileFromFile` — `access` like "r"/"w"
+pub fn open_profile_from_file(
+    ctx: Option<Context>,
+    path: &str,
+    access: &str,
+) -> Option<Box<IccProfile>> {
+    let io = io::io_handler_from_file(None, path, access)?;
+    let mut icc = Box::new(IccProfile {
+        io: Some(io),
+        ctx,
+        ..Default::default()
     });
-    // Serialize each cooked tag
-    let mut bodies: Vec<Vec<u8>> = Vec::with_capacity(icc.tag_count as usize);
-    for n in 0..icc.tag_count as usize {
-        if icc.tag_names[n] == 0 {
-            bodies.push(Vec::new());
-            continue;
-        }
-        let body = if icc.tag_linked[n] != 0 {
-            let j = search_tag(icc, icc.tag_linked[n], false);
-            if j < 0 {
-                return None;
-            }
-            serialize_tag(ctx, icc, j as usize)?
-        } else {
-            serialize_tag(ctx, icc, n)?
-        };
-        bodies.push(body);
-    }
-
-    // Layout: header(128) + count(4) + dir(12*n) + bodies (4-aligned)
-    let n_tags = icc.tag_count as usize;
-    let mut offsets = vec![0u32; n_tags];
-    let mut pos = 128 + 4 + 12 * n_tags;
-    for (i, body) in bodies.iter().enumerate() {
-        offsets[i] = pos as u32;
-        icc.tag_offsets[i] = pos as u32;
-        icc.tag_sizes[i] = body.len() as u32;
-        pos += (body.len() + 3) & !3;
-    }
-
-    // Write everything through one mem handler (exercises the real IO path)
-    let mut out_io = io::io_handler_from_mem(None, vec![0u8; pos], "w")?;
-    if !write_header(icc, pos as u32, &mut out_io) {
+    if access.starts_with('r') && !read_header(&mut icc) {
         return None;
     }
-    if !io::write_u32(&mut out_io, icc.tag_count) {
-        return None;
-    }
-    for i in 0..n_tags {
-        if !io::write_u32(&mut out_io, icc.tag_names[i])
-            || !io::write_u32(&mut out_io, offsets[i])
-            || !io::write_u32(&mut out_io, icc.tag_sizes[i])
-        {
-            return None;
-        }
-    }
-    for (i, body) in bodies.iter().enumerate() {
-        if !out_io.seek(offsets[i]) || !out_io.write(body.len() as u32, body) {
-            return None;
-        }
-    }
-    match out_io.stream {
-        io::IoStream::Mem(m) => Some(m.block[..pos].to_vec()),
-        _ => None,
-    }
+    Some(icc)
+}
+
+// ---------------------------------------------------------------------------
+// Header getters/setters (cmsio0.c 1141-1330)
+// ---------------------------------------------------------------------------
+
+/// `cmsGetProfileVersion` — float version (BCD-decoded)
+pub fn get_profile_version(icc: &IccProfile) -> f64 {
+    let n = icc.version >> 16;
+    format!("{n:x}").parse::<f64>().unwrap_or(0.0) / 100.0
+}
+
+/// `cmsSetProfileVersion` — write a float version back as encoded u32
+pub fn set_profile_version(icc: &mut IccProfile, ver: f64) {
+    let major = ver as u32;
+    let minor = ((ver - major as f64) * 100.0).round() as u32;
+    icc.version = (u32::from_str_radix(&format!("{major}{minor:02}"), 16).unwrap_or(0)) << 16;
+}
+
+/// `cmsGetEncodedICCversion` / `cmsSetEncodedICCversion`
+pub fn get_encoded_icc_version(icc: &IccProfile) -> u32 {
+    icc.version
+}
+pub fn set_encoded_icc_version(icc: &mut IccProfile, v: u32) {
+    icc.version = v;
 }

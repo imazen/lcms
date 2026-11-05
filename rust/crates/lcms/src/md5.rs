@@ -232,3 +232,31 @@ impl Default for Md5 {
         Self::new()
     }
 }
+
+/// `cmsMD5computeID` — zero flags/intent/id, serialize, MD5 the bytes,
+/// store the digest in ProfileID, restore the header.
+pub fn compute_id(icc: &mut crate::profile::IccProfile) -> bool {
+    let keep_flags = icc.flags;
+    let keep_intent = icc.rendering_intent;
+    let keep_id = icc.profile_id;
+
+    icc.flags = 0;
+    icc.rendering_intent = 0;
+    icc.profile_id = crate::types::ProfileId::default();
+
+    let Some(bytes) = crate::profile::save_profile_to_mem(icc) else {
+        icc.flags = keep_flags;
+        icc.rendering_intent = keep_intent;
+        icc.profile_id = keep_id;
+        return false;
+    };
+
+    let mut md5 = Md5::new();
+    md5.add(&bytes);
+    let digest = md5.finish();
+
+    icc.flags = keep_flags;
+    icc.rendering_intent = keep_intent;
+    icc.profile_id = crate::types::ProfileId { id8: digest };
+    true
+}
