@@ -23,6 +23,7 @@ pub mod intrp;
 pub mod lut;
 pub mod md5;
 pub mod mtrx;
+pub mod named;
 pub mod pcs;
 pub mod signatures;
 pub mod types;

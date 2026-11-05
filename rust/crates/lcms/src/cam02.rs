@@ -7,8 +7,7 @@
 //! `forward`, `reverse` (the object is a `Box`-owned value; "Done" is `Drop`).
 
 use crate::types::{
-    AVG_SURROUND, CUTSHEET_SURROUND, CieXyz, D_CALCULATE, DARK_SURROUND, DIM_SURROUND, JCh,
-    ViewingConditions,
+    CUTSHEET_SURROUND, CieXyz, D_CALCULATE, DARK_SURROUND, DIM_SURROUND, JCh, ViewingConditions,
 };
 
 /// `CAM02COLOR` — the working color record.
@@ -31,6 +30,7 @@ struct Cam02Color {
     #[allow(non_snake_case)]
     q_upper: f64, // Q
     s: f64,
+    #[allow(dead_code)]
     t: f64,
     #[allow(non_snake_case)]
     c_upper: f64, // C
@@ -132,7 +132,7 @@ fn compute_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     let d2r = 3.141592654 / 180.0;
     let e = ((12500.0 / 13.0) * m.nc * m.ncb) * ((clr.h * d2r + 2.0).cos() + 3.8);
 
-    let mut temp;
+    let temp;
     if clr.h < 20.14 {
         temp = ((clr.h + 122.47) / 1.2) + ((20.14 - clr.h) / 0.8);
         clr.h_upper = 300.0 + (100.0 * ((clr.h + 122.47) / 1.2)) / temp;

@@ -76,6 +76,7 @@ pub enum StageData {
         offset: Option<Vec<f64>>,
     },
     CLut(Box<CLutData>),
+    NamedColor(crate::named::NamedColorList),
 }
 
 /// `cmsStage`

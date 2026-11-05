@@ -286,6 +286,85 @@ unsafe extern "C" {
     pub fn cmsCIECAM02Forward(model: Handle, in_: *const CieXyz, out: *mut JCh);
     pub fn cmsCIECAM02Reverse(model: Handle, in_: *const JCh, out: *mut CieXyz);
 
+    // ---- cmsnamed.c ----
+    pub fn cmsMLUalloc(context_id: Context, n_items: U32) -> Handle;
+    pub fn cmsMLUfree(mlu: Handle);
+    pub fn cmsMLUdup(mlu: Handle) -> Handle;
+    pub fn cmsMLUsetASCII(mlu: Handle, lang: *const u8, cntry: *const u8, ascii: *const u8) -> i32;
+    pub fn cmsMLUsetUTF8(mlu: Handle, lang: *const u8, cntry: *const u8, utf8: *const u8) -> i32;
+    pub fn cmsMLUsetWide(mlu: Handle, lang: *const u8, cntry: *const u8, wide: *const i32) -> i32;
+    pub fn cmsMLUgetASCII(
+        mlu: Handle,
+        lang: *const u8,
+        cntry: *const u8,
+        buffer: *mut u8,
+        buffer_size: U32,
+    ) -> U32;
+    pub fn cmsMLUgetUTF8(
+        mlu: Handle,
+        lang: *const u8,
+        cntry: *const u8,
+        buffer: *mut u8,
+        buffer_size: U32,
+    ) -> U32;
+    pub fn cmsMLUgetWide(
+        mlu: Handle,
+        lang: *const u8,
+        cntry: *const u8,
+        buffer: *mut i32,
+        buffer_size: U32,
+    ) -> U32;
+    pub fn cmsMLUgetTranslation(
+        mlu: Handle,
+        lang: *const u8,
+        cntry: *const u8,
+        obt_lang: *mut u8,
+        obt_cntry: *mut u8,
+    ) -> i32;
+    pub fn cmsMLUtranslationsCount(mlu: Handle) -> U32;
+    pub fn cmsMLUtranslationsCodes(mlu: Handle, idx: U32, lang: *mut u8, cntry: *mut u8) -> i32;
+    pub fn cmsAllocNamedColorList(
+        context_id: Context,
+        n: U32,
+        colorant_count: U32,
+        prefix: *const u8,
+        suffix: *const u8,
+    ) -> Handle;
+    pub fn cmsFreeNamedColorList(list: Handle);
+    pub fn cmsDupNamedColorList(list: Handle) -> Handle;
+    pub fn cmsAppendNamedColor(
+        list: Handle,
+        name: *const u8,
+        pcs: *const U16,
+        colorant: *const U16,
+    ) -> i32;
+    pub fn cmsNamedColorCount(list: Handle) -> U32;
+    pub fn cmsNamedColorInfo(
+        list: Handle,
+        n_color: U32,
+        name: *mut u8,
+        prefix: *mut u8,
+        suffix: *mut u8,
+        pcs: *mut U16,
+        colorant: *mut U16,
+    ) -> i32;
+    pub fn cmsNamedColorIndex(list: Handle, name: *const u8) -> i32;
+    pub fn cmsstrcasecmp(s1: *const u8, s2: *const u8) -> i32;
+    pub fn _cmsStageAllocNamedColor(list: Handle, use_pcs: i32) -> Handle;
+    pub fn cmsAllocProfileSequenceDescription(context_id: Context, n: U32) -> Handle;
+    pub fn cmsFreeProfileSequenceDescription(pseq: Handle);
+    pub fn cmsDupProfileSequenceDescription(pseq: Handle) -> Handle;
+    pub fn cmsDictAlloc(context_id: Context) -> Handle;
+    pub fn cmsDictFree(dict: Handle);
+    pub fn cmsDictDup(dict: Handle) -> Handle;
+    pub fn cmsDictAddEntry(
+        dict: Handle,
+        name: *const i32,
+        value: *const i32,
+        display_name: Handle,
+        display_value: Handle,
+    ) -> i32;
+
     // ---- cmslut.c ----
     pub fn cmsStageAllocIdentity(context_id: Context, n_channels: U32) -> Handle;
     pub fn cmsStageAllocToneCurves(
