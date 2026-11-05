@@ -487,13 +487,41 @@ impl Transform {
                     let co = &mut self.cache_out;
                     match od {
                         crate::opt::OptData::ClutOnly(c) => {
-                            return xform16_eval_loop(
-                                unroll, pack, &info, input, output, ppl, lines,
-                                stride, cache, ci, co,
-                                |i, o| {
-                                    c.params16.eval16(i, o);
-                                },
-                            )
+                            use crate::intrp::{self as ip, InterpFn16};
+                            let f = match c.params16.interpolation {
+                                ip::Interpolation::Lerp16(f) => f,
+                                _ => unreachable!("clut16 on float params"),
+                            };
+                            macro_rules! run {
+                                ($k:expr) => {
+                                    return xform16_eval_loop(
+                                        unroll, pack, &info, input, output, ppl,
+                                        lines, stride, cache, ci, co,
+                                        |i, o| $k(i, o, &c.params16),
+                                    )
+                                };
+                            }
+                            // Concrete-kernel dispatch — the fn ptr resolves
+                            // once so the per-pixel call inlines fully.
+                            if f == ip::eval4_inputs as InterpFn16 {
+                                run!(ip::eval4_inputs)
+                            } else if f == ip::tetrahedral_interp16 as InterpFn16 {
+                                run!(ip::tetrahedral_interp16)
+                            } else if f == ip::trilinear_interp16 as InterpFn16 {
+                                run!(ip::trilinear_interp16)
+                            } else if f == ip::bilinear_interp16 as InterpFn16 {
+                                run!(ip::bilinear_interp16)
+                            } else if f == ip::lin_lerp_1d as InterpFn16 {
+                                run!(ip::lin_lerp_1d)
+                            } else if f == ip::eval1_input as InterpFn16 {
+                                run!(ip::eval1_input)
+                            } else {
+                                return xform16_eval_loop(
+                                    unroll, pack, &info, input, output, ppl,
+                                    lines, stride, cache, ci, co,
+                                    |i, o| f(i, o, &c.params16),
+                                )
+                            }
                         }
                         _ => {
                             return xform16_eval_loop(
