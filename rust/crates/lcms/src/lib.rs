@@ -13,8 +13,8 @@
 #![forbid(unsafe_code)]
 
 pub mod alpha;
-pub mod cgats;
 pub mod cam02;
+pub mod cgats;
 pub mod context;
 pub mod err;
 pub mod fixed;

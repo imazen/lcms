@@ -120,27 +120,78 @@ pub struct It8 {
 
 /// `TabKeysIT8`
 const TABKEYS_IT8: &[Keyword] = &[
-    Keyword { id: "$INCLUDE", sy: Symbol::Include },
-    Keyword { id: ".INCLUDE", sy: Symbol::Include },
-    Keyword { id: "BEGIN_DATA", sy: Symbol::BeginData },
-    Keyword { id: "BEGIN_DATA_FORMAT", sy: Symbol::BeginDataFormat },
-    Keyword { id: "DATA_FORMAT_IDENTIFIER", sy: Symbol::DataFormatId },
-    Keyword { id: "END_DATA", sy: Symbol::EndData },
-    Keyword { id: "END_DATA_FORMAT", sy: Symbol::EndDataFormat },
-    Keyword { id: "KEYWORD", sy: Symbol::Keyword },
+    Keyword {
+        id: "$INCLUDE",
+        sy: Symbol::Include,
+    },
+    Keyword {
+        id: ".INCLUDE",
+        sy: Symbol::Include,
+    },
+    Keyword {
+        id: "BEGIN_DATA",
+        sy: Symbol::BeginData,
+    },
+    Keyword {
+        id: "BEGIN_DATA_FORMAT",
+        sy: Symbol::BeginDataFormat,
+    },
+    Keyword {
+        id: "DATA_FORMAT_IDENTIFIER",
+        sy: Symbol::DataFormatId,
+    },
+    Keyword {
+        id: "END_DATA",
+        sy: Symbol::EndData,
+    },
+    Keyword {
+        id: "END_DATA_FORMAT",
+        sy: Symbol::EndDataFormat,
+    },
+    Keyword {
+        id: "KEYWORD",
+        sy: Symbol::Keyword,
+    },
 ];
 
 /// `TabKeysCUBE`
 const TABKEYS_CUBE: &[Keyword] = &[
-    Keyword { id: "DOMAIN_MAX", sy: Symbol::DomainMax },
-    Keyword { id: "DOMAIN_MIN", sy: Symbol::DomainMin },
-    Keyword { id: "LUT_1D_SIZE", sy: Symbol::Lut1dSize },
-    Keyword { id: "LUT_1D_INPUT_RANGE", sy: Symbol::Lut1dInputRange },
-    Keyword { id: "LUT_3D_SIZE", sy: Symbol::Lut3dSize },
-    Keyword { id: "LUT_3D_INPUT_RANGE", sy: Symbol::Lut3dInputRange },
-    Keyword { id: "LUT_IN_VIDEO_RANGE", sy: Symbol::LutInVideoRange },
-    Keyword { id: "LUT_OUT_VIDEO_RANGE", sy: Symbol::LutOutVideoRange },
-    Keyword { id: "TITLE", sy: Symbol::Title },
+    Keyword {
+        id: "DOMAIN_MAX",
+        sy: Symbol::DomainMax,
+    },
+    Keyword {
+        id: "DOMAIN_MIN",
+        sy: Symbol::DomainMin,
+    },
+    Keyword {
+        id: "LUT_1D_SIZE",
+        sy: Symbol::Lut1dSize,
+    },
+    Keyword {
+        id: "LUT_1D_INPUT_RANGE",
+        sy: Symbol::Lut1dInputRange,
+    },
+    Keyword {
+        id: "LUT_3D_SIZE",
+        sy: Symbol::Lut3dSize,
+    },
+    Keyword {
+        id: "LUT_3D_INPUT_RANGE",
+        sy: Symbol::Lut3dInputRange,
+    },
+    Keyword {
+        id: "LUT_IN_VIDEO_RANGE",
+        sy: Symbol::LutInVideoRange,
+    },
+    Keyword {
+        id: "LUT_OUT_VIDEO_RANGE",
+        sy: Symbol::LutOutVideoRange,
+    },
+    Keyword {
+        id: "TITLE",
+        sy: Symbol::Title,
+    },
 ];
 
 /// `PredefinedProperties` — (name, write mode)
@@ -175,18 +226,46 @@ const PREDEFINED_PROPERTIES: &[(&str, WriteMode)] = &[
 
 /// `PredefinedSampleID` — the valid sample-column names
 const PREDEFINED_SAMPLE_IDS: &[&str] = &[
-    "SAMPLE_ID", "STRING",
-    "CMYK_C", "CMYK_M", "CMYK_Y", "CMYK_K",
-    "D_RED", "D_GREEN", "D_BLUE", "D_VIS", "D_MAJOR_FILTER",
-    "RGB_R", "RGB_G", "RGB_B",
-    "SPECTRAL_NM", "SPECTRAL_PCT", "SPECTRAL_DEC",
-    "XYZ_X", "XYZ_Y", "XYZ_Z",
-    "XYY_X", "XYY_Y", "XYY_CAPY",
-    "LAB_L", "LAB_A", "LAB_B", "LAB_C", "LAB_H",
-    "LAB_DE", "LAB_DE_94", "LAB_DE_CMC", "LAB_DE_2000",
+    "SAMPLE_ID",
+    "STRING",
+    "CMYK_C",
+    "CMYK_M",
+    "CMYK_Y",
+    "CMYK_K",
+    "D_RED",
+    "D_GREEN",
+    "D_BLUE",
+    "D_VIS",
+    "D_MAJOR_FILTER",
+    "RGB_R",
+    "RGB_G",
+    "RGB_B",
+    "SPECTRAL_NM",
+    "SPECTRAL_PCT",
+    "SPECTRAL_DEC",
+    "XYZ_X",
+    "XYZ_Y",
+    "XYZ_Z",
+    "XYY_X",
+    "XYY_Y",
+    "XYY_CAPY",
+    "LAB_L",
+    "LAB_A",
+    "LAB_B",
+    "LAB_C",
+    "LAB_H",
+    "LAB_DE",
+    "LAB_DE_94",
+    "LAB_DE_CMC",
+    "LAB_DE_2000",
     "MEAN_DE",
-    "STDEV_X", "STDEV_Y", "STDEV_Z",
-    "STDEV_L", "STDEV_A", "STDEV_B", "STDEV_DE",
+    "STDEV_X",
+    "STDEV_Y",
+    "STDEV_Z",
+    "STDEV_L",
+    "STDEV_A",
+    "STDEV_B",
+    "STDEV_DE",
     "CHI_SQD_PAR",
 ];
 
@@ -198,13 +277,22 @@ fn is_separator(c: i32) -> bool {
 }
 /// `ismiddle`
 fn is_middle(c: i32) -> bool {
-    !is_separator(c) && c != 0 && c != b'\"' as i32 && c != b'\'' as i32
-        && c != b'(' as i32 && c != b')' as i32 && c != b'[' as i32 && c != b']' as i32
+    !is_separator(c)
+        && c != 0
+        && c != b'\"' as i32
+        && c != b'\'' as i32
+        && c != b'(' as i32
+        && c != b')' as i32
+        && c != b'[' as i32
+        && c != b']' as i32
 }
 /// `isidchar`
 fn is_idchar(c: i32) -> bool {
-    (c as u8 as char).is_ascii_alphanumeric() || c == b'_' as i32 || c == b'-' as i32
-        || c == b'(' as i32 || c == b')' as i32
+    (c as u8 as char).is_ascii_alphanumeric()
+        || c == b'_' as i32
+        || c == b'-' as i32
+        || c == b'(' as i32
+        || c == b')' as i32
 }
 /// `isfirstidchar`
 fn is_first_idchar(c: i32) -> bool {
@@ -363,15 +451,234 @@ impl It8 {
         n_table as i32
     }
 
-    // --- TODO(cmscgats): the lexer (NextCh/InSymbol/InStringSymbol/
-    // ReadReal/ParseFloatNumber), the parser (ParseIT8Header/
-    // ParseDataFormat/ParseData/ParseFile/ReadReal/ReadChar/ReadField),
-    // the writer (WriteHeader/WriteDataFormat/WriteData/SaveFile/
-    // SaveToMem), and the remaining 35 exports (SetPropertyStr/Dbl/
-    // Hex/Uncooked/Multi, GetPropertyStr/Dbl/Multi, GetPatchID/Name,
-    // FindDataFormat/SetDataFormat, GetDataDbl/SetDataDbl/GetDataDblIndex/
-    // SetDataDblIndex, GetDataSetID/SetDataSetID, GetDataFormat/
-    // GetDataFormatStr/GetDataSetStr/SetDataSetStr/GetDataSetId/
-    // SetDataSetId/LCL2PCS/PCS2LCL/SetTableIndex/GetTableIndex/
-    // GetTableData/SaveToFile/SaveToMem) — the bulk of the file.
+    /// `NextCh` — advance the input one byte (memory-stream only)
+    fn next_ch(&mut self) {
+        self.ch = if self.source_pos < self.source.len() {
+            let c = self.source[self.source_pos] as i32;
+            self.source_pos += 1;
+            c
+        } else {
+            0
+        };
+    }
+
+    /// `ReadReal` — scan a float after the leading integer part
+    fn read_real(&mut self, inum: i32) {
+        self.dnum = inum as f64;
+        while (self.ch as u8).is_ascii_digit() {
+            self.dnum = self.dnum * 10.0 + (self.ch - b'0' as i32) as f64;
+            self.next_ch();
+        }
+        if self.ch == b'.' as i32 {
+            let mut frac = 0.0f64;
+            let mut prec = 0;
+            self.next_ch();
+            while (self.ch as u8).is_ascii_digit() {
+                frac = frac * 10.0 + (self.ch - b'0' as i32) as f64;
+                prec += 1;
+                self.next_ch();
+            }
+            self.dnum += frac / xpow10(prec);
+        }
+        if (self.ch as u8 as char).to_ascii_uppercase() == 'E' {
+            self.next_ch();
+            let mut sgn = 1i32;
+            if self.ch == b'-' as i32 {
+                sgn = -1;
+                self.next_ch();
+            } else if self.ch == b'+' as i32 {
+                self.next_ch();
+            }
+            let mut e = 0i32;
+            while (self.ch as u8).is_ascii_digit() {
+                let digit = self.ch - b'0' as i32;
+                if (e as f64 * 10.0 + digit as f64) < 2147483647.0 {
+                    e = e * 10 + digit;
+                }
+                self.next_ch();
+            }
+            self.dnum *= xpow10(sgn * e);
+        }
+    }
+
+    /// `SynError` — report a parse error (with line number)
+    fn syn_error(&mut self, txt: &str) -> bool {
+        let mut b = String::new();
+        b.push_str(txt);
+        if self.lineno > 1 {
+            b.push_str(&format!(" (line {})", self.lineno));
+        }
+        crate::err::signal_error(self.ctx.as_ref(), crate::types::ERROR_READ, &b);
+        self.sy = Symbol::SynError;
+        false
+    }
+
+    /// `Check` — current symbol must match, else error
+    fn check(&mut self, sy: Symbol, err: &str) -> bool {
+        if self.sy == sy {
+            true
+        } else {
+            self.syn_error(err)
+        }
+    }
+
+    /// `InStringSymbol` — quoted string → String
+    fn in_string_symbol(&mut self) {
+        self.next_ch(); // eat the quote
+        while self.ch != 0 && self.ch != b'\'' as i32 && self.ch != b'"' as i32 {
+            self.str_.push(self.ch as u8 as char);
+            self.next_ch();
+        }
+        self.sy = Symbol::String;
+    }
+
+    /// `InSymbol` — the main lexer loop → next token
+    fn in_symbol(&mut self) {
+        // whitespace + comments
+        loop {
+            while is_separator(self.ch) {
+                if self.ch == b'\n' as i32 {
+                    self.lineno += 1;
+                }
+                self.next_ch();
+            }
+            if self.ch == b'#' as i32 {
+                // comment — skip to EOL
+                while self.ch != 0 && self.ch != b'\n' as i32 {
+                    self.next_ch();
+                }
+                self.lineno += 1;
+                self.next_ch();
+                continue;
+            }
+            break;
+        }
+        self.str_.clear();
+        self.id.clear();
+        match self.ch {
+            0 => {
+                self.sy = Symbol::Eof;
+            }
+            c if c == b'\n' as i32 => {
+                self.lineno += 1;
+                self.sy = Symbol::Eoln;
+                self.next_ch();
+            }
+            c if c == b'\'' as i32 || c == b'"' as i32 => {
+                self.in_string_symbol();
+            }
+            c if (c as u8).is_ascii_digit() || c == b'+' as i32 || c == b'-' as i32 => {
+                let mut inum: i64 = 0;
+                let mut sgn = 1i64;
+                if c == b'+' as i32 {
+                    self.next_ch();
+                } else if c == b'-' as i32 {
+                    sgn = -1;
+                    self.next_ch();
+                }
+                while (self.ch as u8).is_ascii_digit() {
+                    inum = inum * 10 + (self.ch - b'0' as i32) as i64;
+                    if inum > 2147483647 {
+                        self.syn_error("Invalid number");
+                        return;
+                    }
+                    self.next_ch();
+                }
+                self.inum = (sgn * inum) as i32;
+                if self.ch == b'.' as i32 || (self.ch as u8 as char).to_ascii_uppercase() == 'E' {
+                    self.sy = Symbol::Dnum;
+                    self.read_real(self.inum);
+                } else {
+                    self.sy = Symbol::Inum;
+                }
+            }
+            c if is_first_idchar(c) => {
+                while is_idchar(self.ch) {
+                    self.id.push(self.ch as u8 as char);
+                    self.next_ch();
+                }
+                self.sy = if self.is_cube {
+                    bin_srch_key(&self.id, TABKEYS_CUBE)
+                } else {
+                    bin_srch_key(&self.id, TABKEYS_IT8)
+                };
+                if self.sy == Symbol::Undefined {
+                    self.sy = Symbol::Ident;
+                }
+            }
+            c if c == b'$' as i32 => {
+                while is_idchar(self.ch) || self.ch == b'$' as i32 {
+                    self.id.push(self.ch as u8 as char);
+                    self.next_ch();
+                }
+                self.sy = bin_srch_key(&self.id, TABKEYS_IT8);
+                if self.sy == Symbol::Undefined {
+                    self.sy = Symbol::Ident;
+                }
+            }
+            c if c == b'(' as i32 || c == b')' as i32 || c == b'[' as i32 || c == b']' as i32 => {
+                self.sy = Symbol::SynError;
+            }
+            _ => {
+                self.sy = Symbol::SynError;
+            }
+        }
+    }
+
+    /// `CheckEOLN` — must be EOLN or EOF
+    fn check_eoln(&mut self) -> bool {
+        self.check(Symbol::Eoln, "End of line expected") || self.sy == Symbol::Eof
+    }
+
+    /// `Skip` — consume the expected symbol
+    fn skip(&mut self, sy: Symbol) -> bool {
+        if self.sy == sy {
+            self.in_symbol();
+            true
+        } else {
+            self.syn_error("Unexpected symbol")
+        }
+    }
+
+    /// `SkipEOLN`
+    fn skip_eoln(&mut self) -> bool {
+        if self.check_eoln() {
+            self.in_symbol();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// `GetVal` — read a token into the buffer
+    fn get_val(&mut self, buffer: &mut String, max: usize, err_title: &str) -> bool {
+        match self.sy {
+            Symbol::Inum => {
+                *buffer = format!("{}", self.inum);
+                self.in_symbol();
+                true
+            }
+            Symbol::Dnum => {
+                *buffer = format!("{}", self.dnum);
+                self.in_symbol();
+                true
+            }
+            Symbol::Ident => {
+                *buffer = self.id.clone();
+                self.in_symbol();
+                true
+            }
+            Symbol::String => {
+                *buffer = self.str_.clone();
+                self.in_symbol();
+                true
+            }
+            _ => self.syn_error(err_title),
+        }
+    }
+
+    // --- TODO(cmscgats): the parser (ParseIT8Header/ParseDataFormat/
+    // ParseData/ParseFile/ReadReal/ReadChar/ReadField), the writer
+    // (WriteHeader/WriteDataFormat/WriteData/SaveFile/SaveToMem), and
+    // the remaining 35 exports — the bulk of the file.
 }
