@@ -288,7 +288,7 @@ fn fast_eval_curves8(input: &[u16], output: &mut [u16], data: &OptData) -> bool 
     true
 }
 /// `FastEvaluateCurves16` — direct index
-fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptData) -> bool {
+pub(crate) fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptData) -> bool {
     let OptData::Curves16(c) = data else {
         return false;
     };
@@ -322,7 +322,7 @@ pub(crate) fn eval_opt16(input: &[u16], output: &mut [u16], d: &OptData) {
 }
 
 /// `FastIdentity16` — copy
-fn fast_identity16(input: &[u16], output: &mut [u16], _d: &OptData) -> bool {
+pub(crate) fn fast_identity16(input: &[u16], output: &mut [u16], _d: &OptData) -> bool {
     let n = input.len().min(output.len());
     output[..n].copy_from_slice(&input[..n]);
     true
@@ -455,7 +455,7 @@ pub struct MatShaper8Data {
 }
 
 /// `MatShaperEval16`
-fn mat_shaper_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> bool {
+pub(crate) fn mat_shaper_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> bool {
     let OptData::MatShaper(p) = d else {
         return false;
     };
@@ -732,7 +732,7 @@ fn eval16_nop1d(input: u16) -> u16 {
 }
 
 /// `PrelinEval16` — in curves → CLUT → out curves
-fn prelin_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> bool {
+pub(crate) fn prelin_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> bool {
     let OptData::Prelin16(p16) = d else {
         return false;
     };
@@ -1048,7 +1048,7 @@ fn prelin_opt8alloc(
 }
 
 /// `PrelinEval8` — the trilinear-optimized 8-bit CLUT eval
-fn prelin_eval8(input: &[u16], output: &mut [u16], d: &OptData) -> bool {
+pub(crate) fn prelin_eval8(input: &[u16], output: &mut [u16], d: &OptData) -> bool {
     let OptData::Prelin8(p8) = d else {
         return false;
     };

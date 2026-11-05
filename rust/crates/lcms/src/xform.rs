@@ -523,12 +523,48 @@ impl Transform {
                                 )
                             }
                         }
-                        _ => {
+                        crate::opt::OptData::MatShaper(_) => {
                             return xform16_eval_loop(
                                 unroll, pack, &info, input, output, ppl, lines,
                                 stride, cache, ci, co,
                                 |i, o| {
-                                    crate::opt::eval_opt16(i, o, od);
+                                    crate::opt::mat_shaper_eval16(i, o, od);
+                                },
+                            )
+                        }
+                        crate::opt::OptData::Curves16(_) => {
+                            return xform16_eval_loop(
+                                unroll, pack, &info, input, output, ppl, lines,
+                                stride, cache, ci, co,
+                                |i, o| {
+                                    crate::opt::fast_eval_curves16(i, o, od);
+                                },
+                            )
+                        }
+                        crate::opt::OptData::Prelin16(_) => {
+                            return xform16_eval_loop(
+                                unroll, pack, &info, input, output, ppl, lines,
+                                stride, cache, ci, co,
+                                |i, o| {
+                                    crate::opt::prelin_eval16(i, o, od);
+                                },
+                            )
+                        }
+                        crate::opt::OptData::Prelin8(_) => {
+                            return xform16_eval_loop(
+                                unroll, pack, &info, input, output, ppl, lines,
+                                stride, cache, ci, co,
+                                |i, o| {
+                                    crate::opt::prelin_eval8(i, o, od);
+                                },
+                            )
+                        }
+                        crate::opt::OptData::Identity => {
+                            return xform16_eval_loop(
+                                unroll, pack, &info, input, output, ppl, lines,
+                                stride, cache, ci, co,
+                                |i, o| {
+                                    crate::opt::fast_identity16(i, o, od);
                                 },
                             )
                         }
