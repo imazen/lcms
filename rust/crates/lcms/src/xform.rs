@@ -1182,6 +1182,21 @@ pub fn create_extended_transform(
     t.entry_color_space = entry;
     t.exit_color_space = exit;
     t.rendering_intent = last_intent;
+    // `_cmsCreateGamutCheckPipeline` — the proof chain → a 3→1 CLUT, built from
+    // the profile array + the gamut (proofing) profile (cmsxform.c:1227).
+    if flags & FLAGS_GAMUTCHECK != 0 {
+        if let Some(gp) = gamut_profile {
+            t.gamut_check = crate::sm::create_gamut_check_pipeline(
+                t.ctx.as_ref(),
+                profiles,
+                bpc,
+                intents,
+                adaptation_states,
+                gamut_pcs_position,
+                gp,
+            );
+        }
+    }
     // white points — media-white tag else D50
     let wp_in = crate::io1::read_media_white_point(&mut profiles[0]);
     let wp_out = crate::io1::read_media_white_point(&mut profiles[n - 1]);
