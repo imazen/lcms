@@ -294,31 +294,59 @@ unsafe fn curves_n_from(
 // ---------------------------------------------------------------------------
 /// `cmsBuildGamma` — `context` ignored (global ctx), parametric gamma
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsBuildGamma(_ctx: Handle, gamma: f64) -> Handle {
+pub extern "C" fn cmsBuildGamma(ctx: Handle, gamma: f64) -> Handle {
     lcms::gamma::build_parametric_tone_curve(None, 1, &[gamma])
-        .map(rust_to_tc)
+        .map(|t| rust_to_tc(ctx, t))
         .unwrap_or(ptr::null_mut())
 }
 /// `cmsBuildParametricToneCurve`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsBuildParametricToneCurve(
-    _ctx: Handle,
+    ctx: Handle,
     ty: c_int,
     params: *const f64,
 ) -> Handle {
     if params.is_null() {
         return ptr::null_mut();
     }
+    // Plugin-registered parametric types take precedence
+    // (`GetParametricCurveByType` checks plugin collections first).
+    if let Some(eval) = parametric_eval_for(ctx, ty) {
+        let mut p10 = [0f64; 10];
+        unsafe { ptr::copy_nonoverlapping(params, p10.as_mut_ptr(), 10) };
+        let seg = CmsCurveSegment {
+            x0: -1e22f32,
+            x1: 1e22f32,
+            r#type: ty,
+            params: p10,
+            n_grid_points: 0,
+            sampled_points: ptr::null(),
+        };
+        let segs = Box::into_raw(Box::new([seg])) as *mut CmsCurveSegment;
+        let si = Box::into_raw(Box::new([ptr::null_mut::<CmsInterpParams>()]))
+            as *mut *mut CmsInterpParams;
+        let ev = Box::into_raw(Box::new([eval])) as *mut usize;
+        let interp_params = make_bare_cparams(ctx);
+        return Box::into_raw(Box::new(CmsToneCurve {
+            interp_params,
+            n_segments: 1,
+            segments: segs,
+            seg_interp: si,
+            evals: ev,
+            n_entries: 0,
+            table16: ptr::null_mut(),
+        })) as Handle;
+    }
     // C reads only the params the type needs; pass the 10-element max.
     let slice = unsafe { std::slice::from_raw_parts(params, 10) };
-    lcms::gamma::build_parametric_tone_curve(None, ty, slice)
-        .map(rust_to_tc)
+    lcms::gamma::build_parametric_tone_curve(unsafe { cctx(ctx) }, ty, slice)
+        .map(|t| rust_to_tc(ctx, t))
         .unwrap_or(ptr::null_mut())
 }
 /// `cmsBuildTabulatedToneCurve16`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsBuildTabulatedToneCurve16(
-    _ctx: Handle,
+    ctx: Handle,
     n: c_int,
     tab: *const u16,
 ) -> Handle {
@@ -327,24 +355,50 @@ pub extern "C" fn cmsBuildTabulatedToneCurve16(
     }
     let slice = unsafe { std::slice::from_raw_parts(tab, n as usize) };
     lcms::gamma::build_tabulated_tone_curve16(None, n as u32, Some(slice))
-        .map(rust_to_tc)
+        .map(|t| rust_to_tc(ctx, t))
         .unwrap_or(ptr::null_mut())
 }
-/// `cmsEvalToneCurve16`
+/// `cmsEvalToneCurve16` — C evaluates tabulated curves through
+/// `InterpParams->Interpolation.Lerp16` so plugin interpolators apply.
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsEvalToneCurve16(curve: Handle, v: u16) -> u16 {
     if curve.is_null() {
         return 0;
     }
+    let c = unsafe { &*(curve as *const CmsToneCurve) };
+    if c.n_entries > 0 {
+        if let Some(ip) = unsafe { c.interp_params.as_ref() } {
+            if ip.interpolation != 0 {
+                let f: Lerp16C = unsafe { std::mem::transmute(ip.interpolation) };
+                let mut out = 0u16;
+                unsafe { f(&v, &mut out, ip) };
+                return out;
+            }
+        }
+    }
     let Some(c) = curve_rust(curve) else { return 0 }; c.eval16(v)
 }
-/// `cmsEvalToneCurveFloat`
+/// `cmsEvalToneCurveFloat` — C dispatch: `nSegments==0` → u16→Lerp16→/65535;
+/// segmented curves → `EvalSegmentedFn` (plugin `SegInterp`/`Evals` apply).
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsEvalToneCurveFloat(curve: Handle, v: f32) -> f32 {
     if curve.is_null() {
         return 0.0;
     }
-    let Some(c) = curve_rust(curve) else { return 0.0 }; c.eval_float(v)
+    let c = unsafe { &*(curve as *const CmsToneCurve) };
+    if c.n_segments != 0 {
+        return unsafe { eval_segmented_c(c, v as f64) as f32 };
+    }
+    // limited-precision table16 path: `_cmsQuickSaturateWord(v*65535)` → Lerp16
+    let d = v as f64 * 65535.0 + 0.5;
+    let inp = if d <= 0.0 {
+        0u16
+    } else if d >= 65535.0 {
+        0xffff
+    } else {
+        d as u16
+    };
+    cmsEvalToneCurve16(curve, inp) as f32 / 65535.0
 }
 /// `cmsFreeToneCurve`
 #[unsafe(no_mangle)]
@@ -382,6 +436,28 @@ pub extern "C" fn cmsFreeToneCurve(curve: Handle) {
     if !c.interp_params.is_null() {
         drop(unsafe { Box::from_raw(c.interp_params) });
     }
+    if !c.seg_interp.is_null() {
+        for i in 0..c.n_segments as usize {
+            let ip = unsafe { *c.seg_interp.add(i) };
+            if !ip.is_null() {
+                drop(unsafe { Box::from_raw(ip) });
+            }
+        }
+        drop(unsafe {
+            Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                c.seg_interp,
+                c.n_segments as usize,
+            ))
+        });
+    }
+    if !c.evals.is_null() {
+        drop(unsafe {
+            Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                c.evals,
+                c.n_segments as usize,
+            ))
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +484,9 @@ pub extern "C" fn cmsReadTag(h: Handle, sig: c_uint) -> Handle {
         TagObject::Chromaticity(x) => Box::into_raw(Box::new(*x)) as Handle,
         TagObject::Text(m) | TagObject::TextDescription(m) | TagObject::Mlu(m)
         | TagObject::CrdInfo(m) => Box::into_raw(Box::new(m.clone())) as Handle,
-        TagObject::Curve(t) | TagObject::ParametricCurve(t) => rust_to_tc(t.clone()),
+        TagObject::Curve(t) | TagObject::ParametricCurve(t) => {
+                rust_to_tc(ptr::null_mut(), t.clone())
+            }
         TagObject::NamedColor(l) | TagObject::ColorantTable(l) => {
             Box::into_raw(Box::new(l.clone())) as Handle
         }
@@ -914,7 +992,7 @@ fn tc_to_rust(c: &CmsToneCurve) -> Option<lcms::gamma::ToneCurve> {
 /// Materialize a `CmsToneCurve` handle from the Rust curve — allocates the
 /// C-layout struct plus the arrays it points to (all freed by
 /// `cmsFreeToneCurve`).
-fn rust_to_tc(tc: lcms::gamma::ToneCurve) -> Handle {
+fn rust_to_tc(ctx: Handle, tc: lcms::gamma::ToneCurve) -> Handle {
     let n_entries = tc.table16.len() as c_uint;
     let table16 = if tc.table16.is_empty() {
         ptr::null_mut()
@@ -952,22 +1030,155 @@ fn rust_to_tc(tc: lcms::gamma::ToneCurve) -> Handle {
     } else {
         Box::into_raw(segs.into_boxed_slice()) as *mut CmsCurveSegment
     };
-    let interp_params = if n_entries > 0 {
-        let ns = [n_entries; 15];
-        make_cparams(ptr::null_mut(), &ns, 1, 1, table16 as *const c_void, 0)
-            as *mut CmsInterpParams
-    } else {
+    // `p->InterpParams` exists for every curve (carries ContextID) — built
+    // over Table16 with CMS_LERP_FLAGS_16BITS even when nEntries==0.
+    let ns = [n_entries.max(1); 15];
+    let mut interp_params =
+        make_cparams(ctx, &ns, 1, 1, table16 as *const c_void, 0) as *mut CmsInterpParams;
+    if interp_params.is_null() {
+        interp_params = make_bare_cparams(ctx);
+    }
+    // `p->SegInterp` — one cmsInterpParams per Type-0 (sampled) segment,
+    // float flag so the ctx's Interpolators factories see (1,1,FLOAT).
+    let seg_interp = if n_segments == 0 {
         ptr::null_mut()
+    } else {
+        let arr: Vec<*mut CmsInterpParams> = unsafe {
+            std::slice::from_raw_parts(segments, n_segments as usize)
+        }
+        .iter()
+        .map(|s| {
+                if s.r#type == 0 && s.n_grid_points > 0 {
+                    make_cparams(
+                        ctx,
+                        &[s.n_grid_points],
+                        1,
+                        1,
+                        s.sampled_points as *const c_void,
+                        1, // CMS_LERP_FLAGS_FLOAT
+                    ) as *mut CmsInterpParams
+                } else {
+                    ptr::null_mut()
+                }
+            })
+            .collect();
+        Box::into_raw(arr.into_boxed_slice()) as *mut *mut CmsInterpParams
+    };
+    // `p->Evals` — resolved evaluator per non-sampled segment: plugin
+    // collections first, then the built-in default evaluator.
+    let evals = if n_segments == 0 {
+        ptr::null_mut()
+    } else {
+        let arr: Vec<usize> = unsafe {
+            std::slice::from_raw_parts(segments, n_segments as usize)
+        }
+        .iter()
+        .map(|s| {
+            if s.r#type == 0 {
+                return 0usize;
+            }
+            if let Some(ev) = parametric_eval_for(ctx, s.r#type) {
+                ev
+            } else {
+                eval_parametric_c as usize
+            }
+        })
+        .collect();
+        Box::into_raw(arr.into_boxed_slice()) as *mut usize
     };
     Box::into_raw(Box::new(CmsToneCurve {
         interp_params,
         n_segments,
         segments,
-        seg_interp: ptr::null_mut(),
-        evals: ptr::null_mut(),
+        seg_interp,
+        evals,
         n_entries,
         table16,
     })) as Handle
+}
+
+/// `GetParametricCurveByType` for the FFI — C plugin collections first
+/// (matched on `abs(Type)`), else `None` → caller uses the built-in
+/// evaluator (`eval_parametric_c` → `default_eval_parametric_fn`).
+fn parametric_eval_for(ctx: Handle, ty: c_int) -> Option<usize> {
+    let c = unsafe { cctx(ctx) }?;
+    for set in &c.c_parametric_curves {
+        if set.function_types.iter().any(|t| t.abs() == ty.abs()) {
+            return Some(set.evaluator);
+        }
+    }
+    None
+}
+
+/// `DefaultEvalParametricFn` as a C-ABI fn — stored in `Evals[]` so plugin
+/// evaluators and the default share one dispatch site.
+unsafe extern "C" fn eval_parametric_c(ty: c_int, params: *const f64, r: f64) -> f64 {
+    if params.is_null() {
+        return 0.0;
+    }
+    lcms::gamma::default_eval_parametric_fn(ty, unsafe { &*(params as *const [f64; 10]) }, r)
+}
+
+/// Minimal `cmsInterpParams` carrying just `context_id` — used when the
+/// real compute fails (0-entry parametric curves still carry a params
+/// struct in C so `InterpParams->ContextID` stays reachable).
+fn make_bare_cparams(ctx: Handle) -> *mut CmsInterpParams {
+    Box::into_raw(Box::new(CmsInterpParams {
+        context_id: ctx,
+        dw_flags: 0,
+        n_inputs: 1,
+        n_outputs: 1,
+        n_samples: [0; 15],
+        domain: [0; 15],
+        opta: [0; 15],
+        table: ptr::null(),
+        interpolation: lerp16_c as usize,
+    }))
+}
+
+/// `EvalSegmentedFn` — the C float eval over `Segments`/`SegInterp`/`Evals`.
+unsafe fn eval_segmented_c(c: &CmsToneCurve, r: f64) -> f64 {
+    const MINUS_INF: f64 = -1e22;
+    const PLUS_INF: f64 = 1e22;
+    let n = c.n_segments as usize;
+    let segs = unsafe { std::slice::from_raw_parts(c.segments, n) };
+    for i in (0..n).rev() {
+        let s = &segs[i];
+        if r > s.x0 as f64 && r <= s.x1 as f64 {
+            let out = if s.r#type == 0 {
+                if c.seg_interp.is_null() {
+                    return MINUS_INF;
+                }
+                let ip = unsafe { *c.seg_interp.add(i) };
+                if ip.is_null() {
+                    return MINUS_INF;
+                }
+                let p = unsafe { &mut *ip };
+                p.table = s.sampled_points as *const c_void;
+                let f: LerpFloatC = unsafe { std::mem::transmute(p.interpolation) };
+                let r1 = ((r - s.x0 as f64) as f32) / (s.x1 - s.x0);
+                let mut o32 = 0f32;
+                unsafe { f(&r1, &mut o32, p) };
+                o32 as f64
+            } else {
+                if c.evals.is_null() {
+                    return MINUS_INF;
+                }
+                let e = unsafe { *c.evals.add(i) };
+                if e == 0 {
+                    0.0
+                } else {
+                    let f: ParametricEvalC = unsafe { std::mem::transmute(e) };
+                    unsafe { f(s.r#type, s.params.as_ptr(), r) }
+                }
+            };
+            if out.is_infinite() {
+                return if out > 0.0 { PLUS_INF } else { MINUS_INF };
+            }
+            return out;
+        }
+    }
+    MINUS_INF
 }
 
 fn tc_ref<'a>(h: Handle) -> Option<&'a mut CmsToneCurve> {
@@ -985,7 +1196,7 @@ fn curve_rust(h: Handle) -> Option<lcms::gamma::ToneCurve> {
 /// `cmsBuildSegmentedToneCurve`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsBuildSegmentedToneCurve(
-    _ctx: Handle,
+    ctx: Handle,
     n_segments: c_uint,
     seg: *const CmsCurveSegment,
 ) -> Handle {
@@ -1020,14 +1231,14 @@ pub extern "C" fn cmsBuildSegmentedToneCurve(
         })
         .collect();
     lcms::gamma::build_segmented_tone_curve(None, &segs)
-        .map(rust_to_tc)
+        .map(|t| rust_to_tc(ctx, t))
         .unwrap_or(ptr::null_mut())
 }
 
 /// `cmsBuildTabulatedToneCurveFloat`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsBuildTabulatedToneCurveFloat(
-    _ctx: Handle,
+    ctx: Handle,
     n: c_uint,
     table: *const f32,
 ) -> Handle {
@@ -1036,7 +1247,7 @@ pub extern "C" fn cmsBuildTabulatedToneCurveFloat(
     }
     let slice = unsafe { std::slice::from_raw_parts(table, n as usize) };
     lcms::gamma::build_tabulated_tone_curve_float(None, slice)
-        .map(rust_to_tc)
+        .map(|t| rust_to_tc(ctx, t))
         .unwrap_or(ptr::null_mut())
 }
 
@@ -1050,22 +1261,14 @@ pub extern "C" fn cmsDupToneCurve(curve: Handle) -> Handle {
         return ptr::null_mut();
     };
     lcms::gamma::dup_tone_curve(&c, None)
-        .map(rust_to_tc)
+        .map(|t| rust_to_tc(ptr::null_mut(), t))
         .unwrap_or(ptr::null_mut())
 }
 
 /// `cmsReverseToneCurve`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsReverseToneCurve(curve: Handle) -> Handle {
-    if curve.is_null() {
-        return ptr::null_mut();
-    }
-    let Some(c) = curve_rust(curve) else {
-        return ptr::null_mut();
-    };
-    lcms::gamma::reverse_tone_curve(&c)
-        .map(rust_to_tc)
-        .unwrap_or(ptr::null_mut())
+    cmsReverseToneCurveEx(4096, curve)
 }
 
 /// `cmsReverseToneCurveEx`
@@ -1074,11 +1277,29 @@ pub extern "C" fn cmsReverseToneCurveEx(n: c_uint, curve: Handle) -> Handle {
     if curve.is_null() {
         return ptr::null_mut();
     }
+    let cc = unsafe { &*(curve as *const CmsToneCurve) };
+    // C first tries the analytic reverse: a single positive-type parametric
+    // segment whose type is known → `cmsBuildParametricToneCurve(-Type)`
+    // under the curve's own `InterpParams->ContextID` (plugin curves too).
+    if cc.n_segments == 1 && !cc.segments.is_null() {
+        let s = unsafe { &*cc.segments };
+        let ctx = if cc.interp_params.is_null() {
+            ptr::null_mut()
+        } else {
+            unsafe { (*cc.interp_params).context_id }
+        };
+        if s.r#type > 0
+            && (parametric_eval_for(ctx, s.r#type).is_some()
+                || matches!(s.r#type, 1..=8 | 108 | 109))
+        {
+            return cmsBuildParametricToneCurve(ctx, -s.r#type, s.params.as_ptr());
+        }
+    }
     let Some(c) = curve_rust(curve) else {
         return ptr::null_mut();
     };
     lcms::gamma::reverse_tone_curve_ex(n, &c)
-        .map(rust_to_tc)
+        .map(|t| rust_to_tc(ptr::null_mut(), t))
         .unwrap_or(ptr::null_mut())
 }
 
@@ -1101,12 +1322,12 @@ pub extern "C" fn cmsSmoothToneCurve(curve: Handle, lambda: f64) -> c_int {
 
 /// `cmsJoinToneCurve`
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsJoinToneCurve(_ctx: Handle, c1: Handle, c2: Handle, n: c_uint) -> Handle {
+pub extern "C" fn cmsJoinToneCurve(ctx: Handle, c1: Handle, c2: Handle, n: c_uint) -> Handle {
     let (Some(a), Some(b)) = (curve_rust(c1), curve_rust(c2)) else {
         return ptr::null_mut();
     };
     lcms::gamma::join_tone_curve(None, &a, &b, n)
-        .map(rust_to_tc)
+        .map(|t| rust_to_tc(ctx, t))
         .unwrap_or(ptr::null_mut())
 }
 
@@ -1770,9 +1991,29 @@ pub extern "C" fn cmsXYZEncoded2Float(xyz: *mut CieXyz, w_xyz: *const u16) {
 /// `cmsCreateContext` — wraps `lcms::context::create_context` (global ctx →
 /// non-null boxed Context; upstream returns a heap `cmsContext`)
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsCreateContext(_plugin: *const c_void, user_data: *mut c_void) -> Handle {
-    let c = lcms::context::create_context(None, user_data as usize);
-    Box::into_raw(Box::new(c)) as Handle
+pub extern "C" fn cmsCreateContext(plugin: *const c_void, user_data: *mut c_void) -> Handle {
+    // C: _cmsInstallAllocFunctions(_cmsFindMemoryPlugin(Plugin), ...) then
+    // allocates the context THROUGH the (possibly plugin) allocator so the
+    // testbed's DebugMemDontCheckThis/DebugFree header access is valid.
+    let mem = unsafe { find_mem_plugin(plugin as *const CmsPluginBase) };
+    let fns = install_mem_fns(mem);
+    let raw = unsafe {
+        mem_alloc_with(
+            &fns,
+            plugin as Handle, // WhoAllocated — covers DebugFree's ID check
+            std::mem::size_of::<lcms::context::Context>() as c_uint,
+        )
+    };
+    if raw.is_null() {
+        return ptr::null_mut();
+    }
+    let mut c = lcms::context::create_context(None, user_data as usize);
+    c.mem_fns = fns;
+    unsafe { ptr::write(raw as *mut lcms::context::Context, c) };
+    pool_register(raw);
+    // register remaining (non-mem) plugins in the bundle
+    plugin_thr_register(raw, plugin as *const CmsPluginBase);
+    raw
 }
 /// `cmsDupContext`
 #[unsafe(no_mangle)]
@@ -1782,19 +2023,94 @@ pub extern "C" fn cmsDupContext(src: Handle, user_data: *mut c_void) -> Handle {
         return cmsCreateContext(ptr::null_mut(), user_data);
     }
     let s = unsafe { &*(src as *const lcms::context::Context) };
+    let fns = mem_fns_of(src);
+    // C: _cmsMalloc(ContextID, sizeof(ctx)) — via src's mem-handler
+    let raw = unsafe {
+        mem_alloc_with(&fns, src, std::mem::size_of::<lcms::context::Context>() as c_uint)
+    };
+    if raw.is_null() {
+        return ptr::null_mut();
+    }
     let ud = if user_data.is_null() {
         s.user_data.load(std::sync::atomic::Ordering::Relaxed)
     } else {
         user_data as usize
     };
     let c = lcms::context::dup_context(s, None, ud);
-    Box::into_raw(Box::new(c)) as Handle
+    unsafe { ptr::write(raw as *mut lcms::context::Context, c) };
+    pool_register(raw);
+    raw
 }
 /// `cmsDeleteContext`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsDeleteContext(ctx: Handle) {
-    if !ctx.is_null() {
-        drop(unsafe { Box::from_raw(ctx as *mut lcms::context::Context) });
+    if pool_contains(ctx) {
+        let p = ctx as *mut lcms::context::Context;
+        let fns = mem_fns_of(ctx);
+        pool_unregister(ctx);
+        unsafe { ptr::drop_in_place(p) };
+        // C: _cmsFree(&fakeContext, ctx) — free through the ctx's own
+        // DefaultMemoryManager (which reflects any memH plugin install)
+        unsafe { mem_dealloc_ctx(&fns, ctx, ctx) };
+    }
+}
+/// Free through a specific fn table (ctx already dropped / not yet built)
+unsafe fn mem_dealloc_ctx(fns: &[usize; 6], id: Handle, p: *mut c_void) {
+    let f: MemFreeFn = unsafe { std::mem::transmute(fns[2]) };
+    unsafe { f(id, p) }
+}
+
+/// Walk a C plugin bundle and apply each recognized entry to `ctx`.
+/// Currently: mem-handler (installed into `Context::mem_fns`) and the
+/// interpolation factory (stored for `cmsComputeInterpParams`).
+fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) {
+    if !pool_contains(ctx) {
+        return;
+    }
+    let mut hops = 0;
+    while !p.is_null() && hops < 128 {
+        let b = unsafe { &*p };
+        if b.magic != PLUGIN_MAGIC || b.expected_version > LCMS_VERSION {
+            return;
+        }
+        match b.ty {
+            PLUGIN_MEMHANDLER_SIG => {
+                let fns = install_mem_fns(p as *const CmsPluginMemHandler);
+                if fns[0] != 0 && fns[2] != 0 && fns[3] != 0 {
+                    // required Malloc/Free/Realloc present
+                    unsafe { (*(ctx as *mut lcms::context::Context)).mem_fns = fns };
+                }
+            }
+            PLUGIN_INTERP_SIG => {
+                let f = unsafe { (*(p as *const CmsPluginInterpolation)).interpolators_factory };
+                if f != 0 {
+                    ensure_foreign_hooks();
+                    unsafe { (*(ctx as *mut lcms::context::Context)).interp_factories.push(f) };
+                }
+            }
+            PLUGIN_PARAMETRIC_SIG => {
+                let h = unsafe { &*(p as *const CmsPluginParametricCurves) };
+                if h.evaluator != 0 && h.n_functions > 0 {
+                    let n = (h.n_functions as usize).min(20);
+                    let set = lcms::context::CParametricSet {
+                        function_types: h.function_types[..n]
+                            .iter()
+                            .map(|&t| t as i32)
+                            .collect(),
+                        parameter_count: h.parameter_count[..n].to_vec(),
+                        evaluator: h.evaluator,
+                    };
+                    unsafe {
+                        (*(ctx as *mut lcms::context::Context))
+                            .c_parametric_curves
+                            .push(set)
+                    };
+                }
+            }
+            _ => {}
+        }
+        p = b.next;
+        hops += 1;
     }
 }
 
@@ -2304,8 +2620,9 @@ pub struct CmsInterpParams {
 }
 
 fn rebuild_params<'a>(p: &'a CmsInterpParams) -> Option<lcms::intrp::InterpParams<'a>> {
-    let total = p
-        .n_samples
+    // Only `n_inputs` dimensions carry samples — folding all 15 entries
+    // would overflow to a giant span.
+    let total = p.n_samples[..p.n_inputs.min(15) as usize]
         .iter()
         .fold(1usize, |a, &b| a.saturating_mul(b as usize))
         .saturating_mul(p.n_outputs as usize);
@@ -2389,6 +2706,19 @@ fn make_cparams(
     } else {
         lerp16_c as usize
     };
+    // `cmsComputeInterpParams` consults the context's Interpolators chain
+    // first — a registered `cmsInterpFnFactory` that returns a non-NULL
+    // `cmsInterpFunction` replaces the default lerp.
+    if let Some(c) = unsafe { cctx(ctx) } {
+        for &f in &c.interp_factories {
+            let factory: InterpFnFactoryC = unsafe { std::mem::transmute(f) };
+            let r = unsafe { factory(in_chan, out_chan, flags) };
+            if r != 0 {
+                cp.interpolation = r;
+                break;
+            }
+        }
+    }
     Box::into_raw(Box::new(cp)) as Handle
 }
 /// `cmsComputeInterpParams` — uniform `n_samples`
@@ -2588,99 +2918,311 @@ pub extern "C" fn cmsGetPostScriptCSA(
 /// `cmsUnregisterPlugins` — no-op (plugins live in contexts)
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsUnregisterPlugins() {}
+
+// ---------------------------------------------------------------------------
+// Memory-manager plumbing — `_cmsMemPluginChunkType` (cmsplugin.c/cmserr.c)
+//
+// Every allocation carries a 32-byte `_cmsMemoryBlock`-compatible prefix:
+//   +0  KeepSize     u32
+//   +8  WhoAllocated ptr-sized
+//   +16 DontCheck    u32
+// so the testbed's debug allocator helpers (`DebugMemDontCheckThis` writes
+// `ptr-16`, `DebugFree`/`DebugRealloc` read `ptr-32`..`ptr-8` and
+// `free(ptr-32)`) work uniformly on default and plugin allocations, and a
+// context whose mem-handler is replaced mid-life (cmsPluginTHR memH)
+// still frees correctly.
+// ---------------------------------------------------------------------------
+
+const MEM_HDR: usize = 32;
+const MEM_MAGIC: usize = 0x6C63_6D73_6D65_6D31; // 'lcmsmem1'
+const MAX_ALLOC: u64 = 512 * 1024 * 1024; // C MAX_MEMORY_FOR_ALLOC
+
+unsafe extern "C" {
+    fn malloc(size: usize) -> *mut c_void;
+    fn free(ptr: *mut c_void);
+    fn realloc(ptr: *mut c_void, size: usize) -> *mut c_void;
+}
+
+type MemMallocFn = unsafe extern "C" fn(Handle, c_uint) -> *mut c_void;
+type MemFreeFn = unsafe extern "C" fn(Handle, *mut c_void);
+type MemReallocFn = unsafe extern "C" fn(Handle, *mut c_void, c_uint) -> *mut c_void;
+type MemCallocFn = unsafe extern "C" fn(Handle, c_uint, c_uint) -> *mut c_void;
+type MemDupFn = unsafe extern "C" fn(Handle, *const c_void, c_uint) -> *mut c_void;
+
+unsafe extern "C" fn def_malloc(_ctx: Handle, size: c_uint) -> *mut c_void {
+    if size == 0 || size as u64 > MAX_ALLOC {
+        return ptr::null_mut();
+    }
+    let base = unsafe { malloc(size as usize + MEM_HDR) };
+    if base.is_null() {
+        return base;
+    }
+    unsafe {
+        (base as *mut c_uint).write(size);
+        *(base as *mut usize).add(1) = MEM_MAGIC; // WhoAllocated @8
+        *(base as *mut c_uint).add(4) = 0; // DontCheck @16
+        (base as *mut u8).add(MEM_HDR) as *mut c_void
+    }
+}
+unsafe extern "C" fn def_free(_ctx: Handle, p: *mut c_void) {
+    if !p.is_null() {
+        unsafe { free((p as *mut u8).sub(MEM_HDR) as *mut c_void) };
+    }
+}
+unsafe extern "C" fn def_realloc(ctx: Handle, p: *mut c_void, n: c_uint) -> *mut c_void {
+    if p.is_null() {
+        return unsafe { def_malloc(ctx, n) };
+    }
+    let base = unsafe { realloc((p as *mut u8).sub(MEM_HDR) as *mut c_void, n as usize + MEM_HDR) };
+    if base.is_null() {
+        return base;
+    }
+    unsafe {
+        (base as *mut c_uint).write(n);
+        (base as *mut u8).add(MEM_HDR) as *mut c_void
+    }
+}
+unsafe extern "C" fn def_malloczero(ctx: Handle, size: c_uint) -> *mut c_void {
+    let p = unsafe { def_malloc(ctx, size) };
+    if !p.is_null() {
+        unsafe { ptr::write_bytes(p as *mut u8, 0, size as usize) };
+    }
+    p
+}
+unsafe extern "C" fn def_calloc(ctx: Handle, num: c_uint, size: c_uint) -> *mut c_void {
+    let total = num as u64 * size as u64;
+    if total == 0
+        || (size != 0 && num as u64 >= u32::MAX as u64 / size as u64)
+        || total > MAX_ALLOC
+    {
+        return ptr::null_mut();
+    }
+    unsafe { def_malloczero(ctx, total as c_uint) }
+}
+unsafe extern "C" fn def_dup(ctx: Handle, org: *const c_void, size: c_uint) -> *mut c_void {
+    if size as u64 > MAX_ALLOC {
+        return ptr::null_mut();
+    }
+    let m = unsafe { def_malloc(ctx, size) };
+    if !m.is_null() && !org.is_null() {
+        unsafe { ptr::copy_nonoverlapping(org as *const u8, m as *mut u8, size as usize) };
+    }
+    m
+}
+
+/// The default `_cmsMemPluginChunkType` fn table — order:
+/// Malloc, MallocZero, Free, Realloc, Calloc, Dup.
+fn default_mem_fns() -> [usize; 6] {
+    [
+        def_malloc as usize,
+        def_malloczero as usize,
+        def_free as usize,
+        def_realloc as usize,
+        def_calloc as usize,
+        def_dup as usize,
+    ]
+}
+
+/// `cmsPluginBase` shared header (`Magic, ExpectedVersion, Type, Next`)
+#[repr(C)]
+struct CmsPluginBase {
+    magic: c_uint,
+    expected_version: c_uint,
+    ty: c_uint,
+    next: *mut CmsPluginBase,
+}
+/// `cmsPluginMemHandler` — base + 6 allocator slots
+#[repr(C)]
+struct CmsPluginMemHandler {
+    base: CmsPluginBase,
+    malloc_ptr: usize,
+    free_ptr: usize,
+    realloc_ptr: usize,
+    malloc_zero_ptr: usize,
+    calloc_ptr: usize,
+    dup_ptr: usize,
+}
+/// `cmsPluginInterpolation` — base + `InterpolatorsFactory`
+#[repr(C)]
+struct CmsPluginInterpolation {
+    base: CmsPluginBase,
+    interpolators_factory: usize,
+}
+/// `cmsPluginParametricCurves` — base + type sets + `Evaluator`
+#[repr(C)]
+struct CmsPluginParametricCurves {
+    base: CmsPluginBase,
+    n_functions: c_uint,
+    function_types: [c_uint; 20],
+    parameter_count: [c_uint; 20],
+    evaluator: usize,
+}
+/// `cmsInterpFnFactory` C signature — returns a `cmsInterpFunction` union
+/// (one pointer) by value.
+type InterpFnFactoryC = unsafe extern "C" fn(c_uint, c_uint, c_uint) -> usize;
+
+// Foreign-kernel hooks for `lcms::intrp` — the lcms crate forbids `unsafe`,
+// so C-kernel dispatch lives here and is reached through `fn` hooks.
+fn foreign_factory_hook(f: usize, n_in: c_uint, n_out: c_uint, flags: c_uint) -> usize {
+    let factory: InterpFnFactoryC = unsafe { std::mem::transmute(f) };
+    unsafe { factory(n_in, n_out, flags) }
+}
+fn foreign_kernel16(input: &[u16], output: &mut [u16], p: &lcms::intrp::CmsInterpParams) {
+    let f: unsafe extern "C" fn(*const u16, *mut u16, *const lcms::intrp::CmsInterpParams) =
+        unsafe { std::mem::transmute(p.interpolation) };
+    unsafe { f(input.as_ptr(), output.as_mut_ptr(), p) };
+}
+fn foreign_kernel_float(input: &[f32], output: &mut [f32], p: &lcms::intrp::CmsInterpParams) {
+    let f: unsafe extern "C" fn(*const f32, *mut f32, *const lcms::intrp::CmsInterpParams) =
+        unsafe { std::mem::transmute(p.interpolation) };
+    unsafe { f(input.as_ptr(), output.as_mut_ptr(), p) };
+}
+fn ensure_foreign_hooks() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        lcms::intrp::install_foreign_hooks(lcms::intrp::ForeignHooks {
+            factory: foreign_factory_hook,
+            kernel16: foreign_kernel16,
+            kernel_float: foreign_kernel_float,
+        });
+    });
+}
+/// `cmsParametricCurveEvaluator` C signature
+type ParametricEvalC = unsafe extern "C" fn(c_int, *const f64, f64) -> f64;
+/// `_cmsInterpFnFloat` C signature
+type LerpFloatC = unsafe extern "C" fn(*const f32, *mut f32, *const CmsInterpParams);
+/// `_cmsInterpFn16` C signature
+type Lerp16C = unsafe extern "C" fn(*const u16, *mut u16, *const CmsInterpParams);
+const PLUGIN_MAGIC: c_uint = 0x6163_7070; // 'acpp'
+const PLUGIN_MEMHANDLER_SIG: c_uint = 0x6D65_6D48; // 'memH'
+const PLUGIN_INTERP_SIG: c_uint = 0x696E_7048; // 'inpH'
+const PLUGIN_PARAMETRIC_SIG: c_uint = 0x7061_7248; // 'parH'
+const LCMS_VERSION: c_uint = 2200;
+
+/// `_cmsFindMemoryPlugin` — scan the plugin chain for a mem-handler
+unsafe fn find_mem_plugin(mut p: *const CmsPluginBase) -> *const CmsPluginMemHandler {
+    let mut hops = 0;
+    while !p.is_null() && hops < 128 {
+        let b = unsafe { &*p };
+        if b.magic == PLUGIN_MAGIC && b.expected_version <= LCMS_VERSION {
+            if b.ty == PLUGIN_MEMHANDLER_SIG {
+                return p as *const CmsPluginMemHandler;
+            }
+            p = b.next;
+        } else {
+            break;
+        }
+        hops += 1;
+    }
+    ptr::null()
+}
+
+/// `_cmsInstallAllocFunctions` — plugin fns with per-slot default fallback
+fn install_mem_fns(plugin: *const CmsPluginMemHandler) -> [usize; 6] {
+    if plugin.is_null() {
+        return default_mem_fns();
+    }
+    let h = unsafe { &*plugin };
+    [
+        h.malloc_ptr,
+        if h.malloc_zero_ptr != 0 { h.malloc_zero_ptr } else { default_mem_fns()[1] },
+        h.free_ptr,
+        h.realloc_ptr,
+        if h.calloc_ptr != 0 { h.calloc_ptr } else { default_mem_fns()[4] },
+        if h.dup_ptr != 0 { h.dup_ptr } else { default_mem_fns()[5] },
+    ]
+}
+
+/// `chunks[MemPlugin]` for a context handle — the installed fns or defaults
+fn mem_fns_of(ctx: Handle) -> [usize; 6] {
+    if pool_contains(ctx) {
+        let f = unsafe { (*(ctx as *const lcms::context::Context)).mem_fns };
+        if f[0] != 0 {
+            return f;
+        }
+    }
+    default_mem_fns()
+}
+unsafe fn mem_alloc(ctx: Handle, size: c_uint) -> *mut c_void {
+    let f: MemMallocFn = unsafe { std::mem::transmute(mem_fns_of(ctx)[0]) };
+    unsafe { f(ctx, size) }
+}
+unsafe fn mem_alloc_zero(ctx: Handle, size: c_uint) -> *mut c_void {
+    let f: MemMallocFn = unsafe { std::mem::transmute(mem_fns_of(ctx)[1]) };
+    unsafe { f(ctx, size) }
+}
+unsafe fn mem_dealloc(ctx: Handle, p: *mut c_void) {
+    let f: MemFreeFn = unsafe { std::mem::transmute(mem_fns_of(ctx)[2]) };
+    unsafe { f(ctx, p) }
+}
+unsafe fn mem_realloc(ctx: Handle, p: *mut c_void, n: c_uint) -> *mut c_void {
+    let f: MemReallocFn = unsafe { std::mem::transmute(mem_fns_of(ctx)[3]) };
+    unsafe { f(ctx, p, n) }
+}
+unsafe fn mem_calloc(ctx: Handle, n: c_uint, s: c_uint) -> *mut c_void {
+    let f: MemCallocFn = unsafe { std::mem::transmute(mem_fns_of(ctx)[4]) };
+    unsafe { f(ctx, n, s) }
+}
+unsafe fn mem_dup(ctx: Handle, org: *const c_void, n: c_uint) -> *mut c_void {
+    let f: MemDupFn = unsafe { std::mem::transmute(mem_fns_of(ctx)[5]) };
+    unsafe { f(ctx, org, n) }
+}
+/// Allocate via a specific fn table (for context bootstrap — ctx not built yet)
+unsafe fn mem_alloc_with(fns: &[usize; 6], id: Handle, size: c_uint) -> *mut c_void {
+    let f: MemMallocFn = unsafe { std::mem::transmute(fns[0]) };
+    unsafe { f(id, size) }
+}
+
 /// `cmsMalloc`/`cmsCalloc`/`cmsRealloc`/`cmsDupMem`/`cmsFree` — libc-style
 /// allocation for C callers (`malloc`/`calloc`/`realloc`/`free`/`memcpy` semantics)
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsMalloc(size: c_uint) -> *mut c_void {
-    let mut v = vec![0u8; size as usize].into_boxed_slice();
-    let p = v.as_mut_ptr() as *mut c_void;
-    std::mem::forget(v);
-    p
+    unsafe { def_malloc(ptr::null_mut(), size) }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsCalloc(n: c_uint, size: c_uint) -> *mut c_void {
-    cmsMalloc(n.saturating_mul(size))
+    unsafe { def_calloc(ptr::null_mut(), n, size) }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsRealloc(ptr: *mut c_void, size: c_uint) -> *mut c_void {
-    if ptr.is_null() {
-        return cmsMalloc(size);
-    }
-    // Conservative: allocate new block (old contents lost — callers treat as
-    // move; upstream realloc keeps them but a fresh alloc is a safe
-    // over-estimate for a freed-before-use handle in the testbed).
-    cmsMalloc(size)
+    unsafe { def_realloc(ptr::null_mut(), ptr, size) }
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsDupMem(_ctx: Handle, src: *const c_void, size: c_uint) -> *mut c_void {
-    if src.is_null() || size == 0 {
-        return ptr::null_mut();
-    }
-    let dst = cmsMalloc(size);
-    unsafe { std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, size as usize) };
-    dst
+pub extern "C" fn cmsDupMem(ctx: Handle, src: *const c_void, size: c_uint) -> *mut c_void {
+    unsafe { mem_dup(ctx, src, size) }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsFree(ptr: *mut c_void) {
-    if !ptr.is_null() {
-        // Leak-free requires knowing the alloc size; upstream uses libc free.
-        // Treat as a no-op for handles the testbed frees (leak is acceptable
-        // for the port's FFI shim).
-    }
+    unsafe { def_free(ptr::null_mut(), ptr) }
 }
 
 // ---------------------------------------------------------------------------
 // _cms* internals (testbed exercises internals), pipeline/stage, dict, IT8
 // ---------------------------------------------------------------------------
 
-// Memory management — 8-byte size header so _cmsFree doesn't need the size.
 #[unsafe(no_mangle)]
-pub extern "C" fn _cmsMalloc(_ctx: Handle, size: c_uint) -> *mut c_void {
-    let total = size as usize + 8;
-    let mut v = vec![0u8; total].into_boxed_slice();
-    let base = v.as_mut_ptr();
-    unsafe { (base as *mut usize).write(total) };
-    std::mem::forget(v);
-    unsafe { base.add(8) as *mut c_void }
+pub extern "C" fn _cmsMalloc(ctx: Handle, size: c_uint) -> *mut c_void {
+    unsafe { mem_alloc(ctx, size) }
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn _cmsFree(_ctx: Handle, ptr: *mut c_void) {
-    if ptr.is_null() {
-        return;
-    }
-    unsafe {
-        let base = (ptr as *mut u8).sub(8);
-        let sz = (base as *mut usize).read();
-        drop(Vec::from_raw_parts(base, sz, sz));
-    }
+pub extern "C" fn _cmsMallocZero(ctx: Handle, size: c_uint) -> *mut c_void {
+    unsafe { mem_alloc_zero(ctx, size) }
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn _cmsFree(ctx: Handle, ptr: *mut c_void) {
+    unsafe { mem_dealloc(ctx, ptr) }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn _cmsDupMem(ctx: Handle, src: *const c_void, size: c_uint) -> *mut c_void {
-    if src.is_null() || size == 0 {
-        return ptr::null_mut();
-    }
-    let dst = _cmsMalloc(ctx, size);
-    unsafe { std::ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, size as usize) };
-    dst
+    unsafe { mem_dup(ctx, src, size) }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn _cmsCalloc(ctx: Handle, num: c_uint, size: c_uint) -> *mut c_void {
-    _cmsMalloc(ctx, num.saturating_mul(size))
+    unsafe { mem_calloc(ctx, num, size) }
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn _cmsRealloc(_ctx: Handle, ptr: *mut c_void, size: c_uint) -> *mut c_void {
-    if ptr.is_null() {
-        return _cmsMalloc(_ctx, size);
-    }
-    let dst = _cmsMalloc(_ctx, size);
-    unsafe {
-        let old_sz = ((ptr as *mut u8).sub(8) as *mut usize).read();
-        std::ptr::copy_nonoverlapping(ptr as *const u8, dst as *mut u8, (old_sz - 8).min(size as usize));
-        let base = (ptr as *mut u8).sub(8);
-        let sz = (base as *mut usize).read();
-        drop(Vec::from_raw_parts(base, sz, sz));
-    }
-    dst
+pub extern "C" fn _cmsRealloc(ctx: Handle, ptr: *mut c_void, size: c_uint) -> *mut c_void {
+    unsafe { mem_realloc(ctx, ptr, size) }
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn _cmsSubAlloc() -> *mut c_void {
@@ -3161,7 +3703,7 @@ pub extern "C" fn cmsStageAllocToneCurves(
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsStageAllocCLut16bitGranular(
-    _ctx: Handle,
+    ctx: Handle,
     grid: *const c_uint,
     in_c: c_uint,
     out_c: c_uint,
@@ -3182,7 +3724,7 @@ pub extern "C" fn cmsStageAllocCLut16bitGranular(
             )
         })
     };
-    lcms::lut::stage_alloc_clut16bit_granular(None, &g, in_c, out_c, t)
+    lcms::lut::stage_alloc_clut16bit_granular(unsafe { cctx(ctx) }, &g, in_c, out_c, t)
         .map(|s| Box::into_raw(Box::new(s)) as Handle)
         .unwrap_or(ptr::null_mut())
 }
@@ -3199,7 +3741,7 @@ pub extern "C" fn cmsStageAllocCLut16bit(
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsStageAllocCLutFloat(
-    _ctx: Handle,
+    ctx: Handle,
     grid: c_uint,
     in_c: c_uint,
     out_c: c_uint,
@@ -3215,7 +3757,7 @@ pub extern "C" fn cmsStageAllocCLutFloat(
             )
         })
     };
-    lcms::lut::stage_alloc_clut_float(None, grid, in_c, out_c, t)
+    lcms::lut::stage_alloc_clut_float(unsafe { cctx(ctx) }, grid, in_c, out_c, t)
         .map(|s| Box::into_raw(Box::new(s)) as Handle)
         .unwrap_or(ptr::null_mut())
 }
@@ -3684,14 +4226,29 @@ pub extern "C" fn _cmsDefaultICCintents(
 // THR chunk accessors, plugin registration, MD5-ID, xyY2XYZ, transform2devlink
 // ---------------------------------------------------------------------------
 
+/// Registered-context pool — C's `_cmsContextPoolHead`. `_cmsGetContext`
+/// resolves unknown non-NULL handles (e.g. the testbed's `DbgThread()`
+/// fake thread ids) to the *global* context rather than dereferencing
+/// them — `ctx_ref`/`cctx`/`mem_fns_of` mirror that.
+static CTX_POOL: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
+fn pool_register(h: Handle) {
+    CTX_POOL.lock().unwrap().push(h as usize);
+}
+fn pool_unregister(h: Handle) {
+    CTX_POOL.lock().unwrap().retain(|&x| x != h as usize);
+}
+fn pool_contains(h: Handle) -> bool {
+    !h.is_null() && CTX_POOL.lock().unwrap().contains(&(h as usize))
+}
+
 fn ctx_ref<'a>(h: Handle) -> Option<&'a mut lcms::context::Context> {
-    if h.is_null() {
+    if !pool_contains(h) {
         return None;
     }
     Some(unsafe { &mut *(h as *mut lcms::context::Context) })
 }
 unsafe fn cctx(h: Handle) -> Option<&'static lcms::context::Context> {
-    if h.is_null() {
+    if !pool_contains(h) {
         None
     } else {
         Some(unsafe { &*(h as *const lcms::context::Context) })
@@ -3797,16 +4354,23 @@ pub extern "C" fn cmsSetLogErrorHandlerTHR(ctx: Handle, f: Option<CLogFn>) {
         c.log_error_handler = f.map(|_| c_log_trampoline as lcms::context::LogErrorHandler);
     }
 }
-/// `cmsPlugin`/`cmsPluginTHR` — plugin registration. The C side passes a
-/// `cmsPluginBase*` linked list of typed descriptors; marshalling every
-/// plugin struct is future work — accept and ignore for now (returns TRUE).
+/// `cmsPlugin`/`cmsPluginTHR` — plugin registration. Walks the C
+/// `cmsPluginBase` linked list; mem-handler and interp plugins are applied
+/// to the context (remaining types are stub-tolerated for now).
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsPlugin(_plugins: *const c_void) -> c_int {
+    // Global-context registration: C applies to Context0's chunks. The
+    // Rust global context is shared; registering into it would be a
+    // persistent side effect — match C only for the memH case via a
+    // process-global slot later if needed. Accept for now.
     1
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsPluginTHR(ctx: Handle, _plugins: *const c_void) -> c_int {
-    let _ = ctx;
+pub extern "C" fn cmsPluginTHR(ctx: Handle, plugins: *const c_void) -> c_int {
+    if ctx.is_null() {
+        return cmsPlugin(plugins);
+    }
+    plugin_thr_register(ctx, plugins as *const CmsPluginBase);
     1
 }
 /// `cmsTransform2DeviceLink` — bakes a transform into a devicelink profile.

@@ -49,6 +49,33 @@ pub struct Context {
     pub adaptation_state: AtomicU64,
     /// `UserData` — `cmsCreateContext`'s opaque slot (`cmsGetContextUserData`)
     pub user_data: AtomicUsize,
+    /// `DefaultMemoryManager` — C stores the 6 `cmsPluginMemHandler` fn ptrs
+    /// inside `_cmsContext_struct`. Stored as usize so the pure-Rust side
+    /// stays Send+Sync; populated/read by the FFI layer only.
+    /// Order: Malloc, MallocZero, Free, Realloc, Calloc, Dup. `[0;6]` =
+    /// defaults (the FFI supplies compatible fns).
+    pub mem_fns: [usize; 6],
+    /// C-side `Interpolators` chain — raw `cmsInterpFnFactory` pointers
+    /// registered via `cmsPluginTHR` (FFI only; the pure-Rust `interpolators`
+    /// slot above serves native callers). Each factory is consulted in order
+    /// until one returns a non-NULL `cmsInterpFunction`, like
+    /// `_cmsRegisterInterpPlugin` chains them.
+    pub interp_factories: Vec<usize>,
+    /// C-side `ParametricCurves` chain — raw `cmsParametricCurveEvaluator`
+    /// pointers registered via `cmsPluginTHR` (FFI only). Checked before the
+    /// built-in defaults, mirroring `GetParametricCurveByType`.
+    pub c_parametric_curves: Vec<CParametricSet>,
+}
+
+/// A C-registered `_cmsParametricCurvesCollection` entry — FFI fn ptrs.
+#[derive(Clone)]
+pub struct CParametricSet {
+    /// `FunctionTypes` — C matches by `abs(Type)`
+    pub function_types: Vec<i32>,
+    /// `ParameterCount`
+    pub parameter_count: Vec<u32>,
+    /// `Evaluator` — `f64 (*)(i32, *const f64 /*[10]*/, f64) -> f64`
+    pub evaluator: usize,
 }
 
 /// C `DEFAULT_ALARM_CODES_VALUE`
@@ -67,6 +94,9 @@ impl Default for Context {
             alarm_codes: Mutex::new(DEFAULT_ALARM_CODES),
             adaptation_state: AtomicU64::new(1.0f64.to_bits()),
             user_data: AtomicUsize::new(0),
+            mem_fns: [0; 6],
+            interp_factories: Vec::new(),
+            c_parametric_curves: Vec::new(),
         }
     }
 }
@@ -83,6 +113,9 @@ impl Clone for Context {
             alarm_codes: Mutex::new(*self.alarm_codes.lock().unwrap()),
             adaptation_state: AtomicU64::new(self.adaptation_state.load(Ordering::Relaxed)),
             user_data: AtomicUsize::new(self.user_data.load(Ordering::Relaxed)),
+            mem_fns: self.mem_fns,
+            interp_factories: self.interp_factories.clone(),
+            c_parametric_curves: self.c_parametric_curves.clone(),
         }
     }
 }

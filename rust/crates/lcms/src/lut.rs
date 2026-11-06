@@ -63,6 +63,9 @@ pub struct CLutData {
     pub n_outputs: u32,
     pub dw_flags: u32,
     pub interpolation: Interpolation,
+    /// Foreign (C-plugin) kernel mirror — set when the params were built
+    /// under a ctx whose `cmsPluginTHR` factory supplied the kernel.
+    pub foreign: Option<Box<crate::intrp::CmsInterpParams>>,
 }
 
 /// `_cmsStageToneCurvesData` — `Vec<ToneCurve>` (TheCurves = Vec elements).
@@ -310,6 +313,7 @@ fn evaluate_clut_float(input: &[f32], output: &mut [f32], mpe: &Stage) {
             opta: d.opta,
             table: InterpTable::F32(d.tab_float.as_deref().unwrap_or(&[])),
             interpolation: d.interpolation,
+            foreign: d.foreign.clone(),
         };
         p.eval_float(input, output);
     }
@@ -331,6 +335,7 @@ fn evaluate_clut_float_in16(input: &[f32], output: &mut [f32], mpe: &Stage) {
             opta: d.opta,
             table: InterpTable::U16(d.tab16.as_deref().unwrap_or(&[])),
             interpolation: d.interpolation,
+            foreign: d.foreign.clone(),
         };
         p.eval16(&in16, &mut out16[..mpe.output_channels as usize]);
         from_16_to_float(&out16, output, mpe.output_channels as usize);
@@ -391,6 +396,7 @@ pub fn stage_alloc_clut16bit_granular(
         let (n_samples, domain, opta) = (p.n_samples, p.domain, p.opta);
         let (n_inputs, n_outputs, dw_flags, interpolation) =
             (p.n_inputs, p.n_outputs, p.dw_flags, p.interpolation);
+        let foreign = p.foreign.clone();
         CLutData {
             tab16: Some(tab),
             tab_float: None,
@@ -403,6 +409,7 @@ pub fn stage_alloc_clut16bit_granular(
             n_outputs,
             dw_flags,
             interpolation,
+            foreign,
         }
     };
 
@@ -463,6 +470,7 @@ pub fn stage_alloc_clut_float_granular(
         let (n_samples, domain, opta) = (p.n_samples, p.domain, p.opta);
         let (n_inputs, n_outputs, dw_flags, interpolation) =
             (p.n_inputs, p.n_outputs, p.dw_flags, p.interpolation);
+        let foreign = p.foreign.clone();
         CLutData {
             tab16: None,
             tab_float: Some(tab),
@@ -475,6 +483,7 @@ pub fn stage_alloc_clut_float_granular(
             n_outputs,
             dw_flags,
             interpolation,
+            foreign,
         }
     };
 

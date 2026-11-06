@@ -120,6 +120,7 @@ impl ToneCurve {
             opta: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             table: InterpTable::U16(&self.table16),
             interpolation: Interpolation::Lerp16(self.interp16),
+            foreign: None,
         };
         let mut out = [0u16; 1];
         p.eval16(&[v], &mut out);
@@ -176,6 +177,7 @@ fn eval_segmented_fn(g: &ToneCurve, r: f64) -> f64 {
                         opta: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                         table: InterpTable::F32(pts),
                         interpolation: Interpolation::LerpFloat(kernel),
+                        foreign: None,
                     };
                     let mut out32 = [0.0f32; 1];
                     kernel(&[r1], &mut out32, &p);

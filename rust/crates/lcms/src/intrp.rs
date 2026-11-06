@@ -9,6 +9,7 @@
 //! factory returns `None` where C returns a zeroed union.
 
 use crate::context::{Context, or_global};
+use std::ffi::c_void;
 use crate::err;
 use crate::fixed::{fixed_rest_to_int, fixed_to_int, round_fixed_to_int, to_fixed_domain};
 use crate::types::{ERROR_RANGE, ERROR_UNKNOWN_EXTENSION};
@@ -30,11 +31,56 @@ pub type InterpFn16 = fn(input: &[u16], output: &mut [u16], p: &InterpParams);
 /// `_cmsInterpFnFloat`
 pub type InterpFnFloat = fn(input: &[f32], output: &mut [f32], p: &InterpParams);
 
+/// `cmsInterpParams` — the C-layout params block handed to foreign
+/// (plugin-registered `_cmsInterpFn16`/`_cmsInterpFnFloat`) kernels.
+/// Matches `lcms2_internal.h`'s `_cms_interp_struc` field order; pointers
+/// are stored as `usize` so the struct stays Send+Sync — the FFI layer
+/// casts it back to `*const CmsInterpParams` when invoking the kernel.
+#[repr(C)]
+#[derive(Clone)]
+pub struct CmsInterpParams {
+    pub context_id: usize,
+    pub dw_flags: u32,
+    pub n_inputs: u32,
+    pub n_outputs: u32,
+    pub n_samples: [u32; MAX_INPUT_DIMENSIONS],
+    pub domain: [u32; MAX_INPUT_DIMENSIONS],
+    pub opta: [u32; MAX_INPUT_DIMENSIONS],
+    pub table: usize,
+    /// `cmsInterpFunction` union — one fn pointer.
+    pub interpolation: usize,
+}
+
 /// `cmsInterpFunction` union — one member is live at a time.
 #[derive(Clone, Copy)]
 pub enum Interpolation {
     Lerp16(InterpFn16),
     LerpFloat(InterpFnFloat),
+}
+
+/// Foreign-kernel plumbing — registered by `lcms2-ffi` (which may use
+/// `unsafe`; this crate forbids it). When `InterpParams::foreign` is set,
+/// `eval16`/`eval_float` dispatch through these hooks instead of the
+/// built-in kernel — mirroring C where `p->Interpolation` is simply the
+/// plugin's fn pointer.
+pub type ForeignKernel16 = fn(&[u16], &mut [u16], &CmsInterpParams);
+pub type ForeignKernelFloat = fn(&[f32], &mut [f32], &CmsInterpParams);
+/// `cmsInterpFnFactory` — returns the `cmsInterpFunction` union (usize)
+/// or 0; the extra arg is the factory's own address.
+pub type ForeignFactory = fn(usize, u32, u32, u32) -> usize;
+
+#[derive(Clone, Copy)]
+pub struct ForeignHooks {
+    pub factory: ForeignFactory,
+    pub kernel16: ForeignKernel16,
+    pub kernel_float: ForeignKernelFloat,
+}
+static FOREIGN_HOOKS: std::sync::OnceLock<ForeignHooks> = std::sync::OnceLock::new();
+pub fn install_foreign_hooks(h: ForeignHooks) {
+    let _ = FOREIGN_HOOKS.set(h);
+}
+fn foreign_hooks() -> Option<ForeignHooks> {
+    FOREIGN_HOOKS.get().copied()
 }
 
 /// The borrowed LUT a params struct points at.
@@ -60,6 +106,10 @@ pub struct InterpParams<'a> {
     pub opta: [u32; MAX_INPUT_DIMENSIONS],
     pub table: InterpTable<'a>,
     pub interpolation: Interpolation,
+    /// Foreign (C-plugin) kernel — `Some` when a `cmsPluginTHR`-registered
+    /// `cmsInterpFnFactory` supplied the kernel; `interpolation` stays the
+    /// built-in default for any consumer that doesn't consult `foreign`.
+    pub foreign: Option<Box<CmsInterpParams>>,
 }
 
 impl<'a> InterpParams<'a> {
@@ -83,6 +133,12 @@ impl<'a> InterpParams<'a> {
     /// kernel is the float one, like C would crash on a null call.
     #[inline]
     pub fn eval16(&self, input: &[u16], output: &mut [u16]) {
+        if let Some(fb) = &self.foreign {
+            if let Some(h) = foreign_hooks() {
+                (h.kernel16)(input, output, fb);
+                return;
+            }
+        }
         match self.interpolation {
             Interpolation::Lerp16(f) => f(input, output, self),
             Interpolation::LerpFloat(_) => unreachable!("Lerp16 on float params"),
@@ -91,10 +147,35 @@ impl<'a> InterpParams<'a> {
     /// `p->Interpolation.LerpFloat(input, output, p)`
     #[inline]
     pub fn eval_float(&self, input: &[f32], output: &mut [f32]) {
+        if let Some(fb) = &self.foreign {
+            if let Some(h) = foreign_hooks() {
+                (h.kernel_float)(input, output, fb);
+                return;
+            }
+        }
         match self.interpolation {
             Interpolation::LerpFloat(f) => f(input, output, self),
             Interpolation::Lerp16(_) => unreachable!("LerpFloat on u16 params"),
         }
+    }
+    /// Build the C-layout params mirror handed to a foreign kernel.
+    fn to_c_params(&self) -> Box<CmsInterpParams> {
+        Box::new(CmsInterpParams {
+            context_id: 0,
+            dw_flags: self.dw_flags,
+            n_inputs: self.n_inputs,
+            n_outputs: self.n_outputs,
+            n_samples: self.n_samples,
+            domain: self.domain,
+            opta: self.opta,
+            table: match &self.table {
+                InterpTable::U16(t) => t.as_ptr() as usize,
+                InterpTable::F32(t) => t.as_ptr() as usize,
+                InterpTable::U16Rc(t) => t.as_ptr() as usize,
+                InterpTable::F32Rc(t) => t.as_ptr() as usize,
+            },
+            interpolation: 0,
+        })
     }
 }
 
@@ -103,8 +184,20 @@ impl<'a> InterpParams<'a> {
 pub fn set_interpolation_routine(ctx: Option<&Context>, p: &mut InterpParams) -> bool {
     let c = or_global(ctx);
 
-    // Invoke factory, possibly in the Plug-in
+    // FFI-registered C factories (`cmsPluginTHR` inpH) — consulted like C's
+    // `Interpolators` chain; first factory returning non-NULL wins.
     let mut interp: Option<Interpolation> = None;
+    if let Some(hooks) = foreign_hooks() {
+        for &f in &c.interp_factories {
+            let r = (hooks.factory)(f, p.n_inputs, p.n_outputs, p.dw_flags);
+            if r != 0 {
+                let mut cp = p.to_c_params();
+                cp.interpolation = r;
+                p.foreign = Some(cp);
+                break;
+            }
+        }
+    }
     if let Some(factory) = c.interpolators {
         interp = factory(p.n_inputs, p.n_outputs, p.dw_flags);
     }
@@ -147,6 +240,7 @@ pub fn compute_interp_params_ex<'a>(
         opta: [0; MAX_INPUT_DIMENSIONS],
         table,
         interpolation: Interpolation::Lerp16(|_, _, _| {}),
+        foreign: None,
     };
 
     // Fill samples per input direction and domain (nodes minus one)

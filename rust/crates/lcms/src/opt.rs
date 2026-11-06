@@ -762,6 +762,7 @@ pub(crate) fn prelin_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> b
             opta: c.opta,
             table: InterpTable::U16(c.tab16.as_deref().unwrap_or(&[])),
             interpolation: c.interpolation,
+            foreign: c.foreign.clone(),
         };
         p.eval16(&stage_abc[..ni], &mut stage_def[..no]);
     }
@@ -1495,6 +1496,7 @@ fn optimize_by_resampling(
                 clut_data.tab16.as_deref().unwrap_or(&[]),
             )),
             interpolation: clut_data.interpolation,
+            foreign: clut_data.foreign.clone(),
         };
         dest.opt_data = Some(OptData::ClutOnly(Box::new(ClutOnly {
             clut: clut_data,
