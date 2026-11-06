@@ -654,3 +654,168 @@ pub const INTENT_PERCEPTUAL_C: c_uint = INTENT_PERCEPTUAL;
 pub const INTENT_RELATIVE_COLORIMETRIC_C: c_uint = lcms::types::INTENT_RELATIVE_COLORIMETRIC;
 pub const INTENT_SATURATION_C: c_uint = lcms::types::INTENT_SATURATION;
 pub const INTENT_ABSOLUTE_COLORIMETRIC_C: c_uint = lcms::types::INTENT_ABSOLUTE_COLORIMETRIC;
+
+// ---------------------------------------------------------------------------
+// additional tone-curve + delta-E surface (testbed coverage)
+// ---------------------------------------------------------------------------
+
+/// `cmsCurveSegment` — matches C's layout (`cmsCurveSegment`)
+#[repr(C)]
+pub struct CmsCurveSegment {
+    pub x0: f32,
+    pub x1: f32,
+    pub r#type: c_int,
+    pub params: [f64; 10],
+    pub n_grid_points: c_uint,
+    pub sampled_points: *const f32,
+}
+
+/// `cmsBuildSegmentedToneCurve`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsBuildSegmentedToneCurve(_ctx: Handle, seg: *const CmsCurveSegment) -> Handle {
+    if seg.is_null() {
+        return ptr::null_mut();
+    }
+    let s = unsafe { &*seg };
+    let sampled = if s.n_grid_points > 0 && !s.sampled_points.is_null() {
+        Some(unsafe {
+            std::slice::from_raw_parts(s.sampled_points, s.n_grid_points as usize)
+        }.to_vec())
+    } else {
+        None
+    };
+    let seg0 = lcms::gamma::CurveSegment {
+        x0: s.x0,
+        x1: s.x1,
+        r#type: s.r#type,
+        params: s.params,
+        n_grid_points: s.n_grid_points,
+        sampled_points: sampled,
+    };
+    lcms::gamma::build_segmented_tone_curve(None, &[seg0])
+        .map(|b| Box::into_raw(Box::new(b)) as Handle)
+        .unwrap_or(ptr::null_mut())
+}
+
+/// `cmsBuildTabulatedToneCurveFloat`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsBuildTabulatedToneCurveFloat(
+    _ctx: Handle,
+    n: c_uint,
+    table: *const f32,
+) -> Handle {
+    if table.is_null() || n == 0 {
+        return ptr::null_mut();
+    }
+    let slice = unsafe { std::slice::from_raw_parts(table, n as usize) };
+    lcms::gamma::build_tabulated_tone_curve_float(None, slice)
+        .map(|b| Box::into_raw(Box::new(b)) as Handle)
+        .unwrap_or(ptr::null_mut())
+}
+
+/// `cmsDupToneCurve`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsDupToneCurve(curve: Handle) -> Handle {
+    if curve.is_null() {
+        return ptr::null_mut();
+    }
+    let c = unsafe { &*(curve as *const lcms::gamma::ToneCurve) };
+    lcms::gamma::dup_tone_curve(c, None)
+        .map(|b| Box::into_raw(Box::new(b)) as Handle)
+        .unwrap_or(ptr::null_mut())
+}
+
+/// `cmsReverseToneCurve`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsReverseToneCurve(curve: Handle) -> Handle {
+    if curve.is_null() {
+        return ptr::null_mut();
+    }
+    let c = unsafe { &*(curve as *const lcms::gamma::ToneCurve) };
+    lcms::gamma::reverse_tone_curve(c)
+        .map(|b| Box::into_raw(Box::new(b)) as Handle)
+        .unwrap_or(ptr::null_mut())
+}
+
+/// `cmsReverseToneCurveEx`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsReverseToneCurveEx(n: c_uint, curve: Handle) -> Handle {
+    if curve.is_null() {
+        return ptr::null_mut();
+    }
+    let c = unsafe { &*(curve as *const lcms::gamma::ToneCurve) };
+    lcms::gamma::reverse_tone_curve_ex(n, c)
+        .map(|b| Box::into_raw(Box::new(b)) as Handle)
+        .unwrap_or(ptr::null_mut())
+}
+
+/// `cmsSmoothToneCurve`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsSmoothToneCurve(curve: Handle, lambda: f64) -> c_int {
+    if curve.is_null() {
+        return 0;
+    }
+    let c = unsafe { &mut *(curve as *mut lcms::gamma::ToneCurve) };
+    if lcms::gamma::smooth_tone_curve(None, c, lambda) { 1 } else { 0 }
+}
+
+/// `cmsJoinToneCurve`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsJoinToneCurve(c1: Handle, c2: Handle, n: c_uint) -> Handle {
+    if c1.is_null() || c2.is_null() {
+        return ptr::null_mut();
+    }
+    let (a, b) = unsafe {
+        (
+            &*(c1 as *const lcms::gamma::ToneCurve),
+            &*(c2 as *const lcms::gamma::ToneCurve),
+        )
+    };
+    lcms::gamma::join_tone_curve(None, a, b, n)
+        .map(|b2| Box::into_raw(Box::new(b2)) as Handle)
+        .unwrap_or(ptr::null_mut())
+}
+
+/// `cmsFreeToneCurveTriple` — frees a `[3]` array of curves
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsFreeToneCurveTriple(curves: *const Handle) {
+    if curves.is_null() {
+        return;
+    }
+    for i in 0..3 {
+        let c = unsafe { *curves.add(i) };
+        if !c.is_null() {
+            drop(unsafe { Box::from_raw(c as *mut lcms::gamma::ToneCurve) });
+        }
+    }
+}
+
+/// `cmsEstimateGamma`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsEstimateGamma(curve: Handle, precision: f64) -> f64 {
+    if curve.is_null() {
+        return -1.0;
+    }
+    let c = unsafe { &*(curve as *const lcms::gamma::ToneCurve) };
+    lcms::gamma::estimate_gamma(c, precision)
+}
+
+/// `cmsCIELab` — `{f64 L, a, b}` repr matching C's `cmsCIELab`
+#[repr(C)]
+pub struct CmsLab {
+    pub l: f64,
+    pub a: f64,
+    pub b: f64,
+}
+
+/// `cmsDeltaE` — `cmsCIELab*` → `lcms::types::CieLab`
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsDeltaE(lab1: *const CmsLab, lab2: *const CmsLab) -> f64 {
+    if lab1.is_null() || lab2.is_null() {
+        return 0.0;
+    }
+    let (l1, l2) = unsafe { (&*lab1, &*lab2) };
+    let lab1 = lcms::types::CieLab { L: l1.l, a: l1.a, b: l1.b };
+    let lab2 = lcms::types::CieLab { L: l2.l, a: l2.a, b: l2.b };
+    lcms::pcs::delta_e(&lab1, &lab2)
+}
