@@ -667,7 +667,10 @@ fn create_transform_ctx(
     let n = profs.len();
     let mut bpc = vec![flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; n];
     let intents = vec![intent; n];
-    let adapt = vec![1.0f64; n];
+    // C's `cmsCreateTransform` uses `cmsGetAdaptationState(ContextID)` per
+    // profile — a `cmsSetAdaptationState` lingers globally and changes every
+    // later transform's chromatic adaptation.
+    let adapt = vec![xform::get_adaptation_state(ctx.as_ref()); n];
     let t = xform_to_handle(xform::create_extended_transform(
         ctx,
         &mut profs,
@@ -710,9 +713,9 @@ pub extern "C" fn cmsCreateMultiprofileTransform(
     }
     let mut bpc = vec![flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; n];
     let intents = vec![intent; n];
-    let adapt = vec![1.0f64; n];
     // C's `cmsCreateMultiprofileTransform` uses `cmsGetProfileContextID(hProfiles[0])`
     let ctx = profs[0].ctx.clone();
+    let adapt = vec![xform::get_adaptation_state(ctx.as_ref()); n];
     let t = xform_to_handle(xform::create_extended_transform(
         ctx,
         &mut profs,
@@ -2611,7 +2614,7 @@ pub extern "C" fn cmsCreateProofingTransform(
     ];
     let mut bpc = [flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; 4];
     let intents = [intent, intent, 1 /*INTENT_RELATIVE_COLORIMETRIC*/, proof_intent];
-    let adapt = [1.0f64; 4];
+    let adapt = [xform::get_adaptation_state(i.ctx.as_ref()); 4];
     let t = xform_to_handle(xform::create_extended_transform(
         None,
         &mut profs,
