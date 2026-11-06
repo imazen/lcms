@@ -243,16 +243,17 @@ pub fn compute_interp_params_ex<'a>(
         foreign: None,
     };
 
-    // Fill samples per input direction and domain (nodes minus one)
+    // Fill samples per input direction and domain (nodes minus one).
+    // C computes these on u32 — wrap like C (parametric curves pass 0 nodes).
     for i in 0..input_chan as usize {
         p.n_samples[i] = n_samples[i];
-        p.domain[i] = n_samples[i] - 1;
+        p.domain[i] = n_samples[i].wrapping_sub(1);
     }
 
     // Factors to apply to each component to index the grid array
     p.opta[0] = p.n_outputs;
     for i in 1..input_chan as usize {
-        p.opta[i] = p.opta[i - 1] * n_samples[input_chan as usize - i];
+        p.opta[i] = p.opta[i - 1].wrapping_mul(n_samples[input_chan as usize - i]);
     }
 
     if !set_interpolation_routine(ctx, &mut p) {

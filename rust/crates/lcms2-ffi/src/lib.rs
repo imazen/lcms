@@ -2847,13 +2847,11 @@ pub extern "C" fn cmsEstimateTAC(h: Handle) -> f64 {
     cmsDetectTAC(h)
 }
 
-/// `cmsGBDAlloc` — gamut-boundary descriptor (Lab→profile)
+/// `cmsGBDAlloc` — gamut-boundary descriptor. The argument is a `cmsContext`,
+/// not a profile (C: `cmsGBDAlloc(cmsContext ContextID)`).
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsGBDAlloc(h: Handle) -> Handle {
-    if prof_ref(h).is_none() {
-        return ptr::null_mut();
-    }
-    let g = lcms::gbd::Gbd::alloc(None);
+    let g = lcms::gbd::Gbd::alloc(ctx_ref(h).map(|c| c.clone()));
     Box::into_raw(Box::new(g)) as Handle
 }
 /// `cmsGBDFree`
@@ -5134,12 +5132,14 @@ pub extern "C" fn cmsPluginTHR(ctx: Handle, plugins: *const c_void) -> c_int {
     }
 }
 /// `cmsTransform2DeviceLink` — bakes a transform into a devicelink profile.
-/// Needs a sampled-CLUT bake path that `lcms` doesn't expose yet (stub NULL).
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsTransform2DeviceLink(
-    _h: Handle,
-    _version: f64,
-    _flags: c_uint,
+    h: Handle,
+    version: f64,
+    flags: c_uint,
 ) -> Handle {
-    ptr::null_mut()
+    let Some(t) = xform_ref(h) else {
+        return ptr::null_mut();
+    };
+    prof_to_handle(lcms::virt::transform2_device_link(t, version, flags))
 }

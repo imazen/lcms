@@ -711,3 +711,397 @@ pub fn create_bchsw_abstract_profile(
     }
     Some(icc)
 }
+
+// ---------------------------------------------------------------------------
+// `cmsTransform2DeviceLink` — bake a transform into a devicelink profile
+// ---------------------------------------------------------------------------
+
+/// `IsPCS` — XYZ or Lab
+fn is_pcs(color_space: u32) -> bool {
+    color_space == cs::SigXYZData || color_space == cs::SigLabData
+}
+
+/// `FixColorSpaces` — device class + space/PCS from the transform's spaces
+fn fix_color_spaces(icc: &mut IccProfile, color_space: u32, pcs: u32, dw_flags: u32) {
+    if dw_flags & crate::types::FLAGS_GUESSDEVICECLASS != 0 {
+        if is_pcs(color_space) && is_pcs(pcs) {
+            icc.device_class = pc::SigAbstractClass;
+            icc.color_space = color_space;
+            icc.pcs = pcs;
+            return;
+        }
+        if is_pcs(color_space) && !is_pcs(pcs) {
+            icc.device_class = pc::SigOutputClass;
+            icc.pcs = color_space;
+            icc.color_space = pcs;
+            return;
+        }
+        if is_pcs(pcs) && !is_pcs(color_space) {
+            icc.device_class = pc::SigInputClass;
+            icc.color_space = color_space;
+            icc.pcs = pcs;
+            return;
+        }
+    }
+    icc.device_class = pc::SigLinkClass;
+    icc.color_space = color_space;
+    icc.pcs = pcs;
+}
+
+/// `cmsAllowedLUT` — stage sequences serializable per tag type/version
+struct AllowedLut {
+    is_v4: bool,
+    required_tag: u32,
+    lut_type: u32,
+    mpe_types: &'static [u32],
+}
+
+use crate::signatures::stage as ssig;
+use crate::signatures::tagtype as tsig;
+
+const ALLOWED_LUT_TYPES: &[AllowedLut] = &[
+    AllowedLut {
+        is_v4: false,
+        required_tag: 0,
+        lut_type: tsig::SigLut16Type,
+        mpe_types: &[
+            ssig::SigMatrixElemType,
+            ssig::SigCurveSetElemType,
+            ssig::SigCLutElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+    AllowedLut {
+        is_v4: false,
+        required_tag: 0,
+        lut_type: tsig::SigLut16Type,
+        mpe_types: &[
+            ssig::SigCurveSetElemType,
+            ssig::SigCLutElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+    AllowedLut {
+        is_v4: false,
+        required_tag: 0,
+        lut_type: tsig::SigLut16Type,
+        mpe_types: &[ssig::SigCurveSetElemType, ssig::SigCLutElemType],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: 0,
+        lut_type: tsig::SigLutAtoBType,
+        mpe_types: &[ssig::SigCurveSetElemType],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: tags::SigAToB0Tag,
+        lut_type: tsig::SigLutAtoBType,
+        mpe_types: &[
+            ssig::SigCurveSetElemType,
+            ssig::SigMatrixElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: tags::SigAToB0Tag,
+        lut_type: tsig::SigLutAtoBType,
+        mpe_types: &[
+            ssig::SigCurveSetElemType,
+            ssig::SigCLutElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: tags::SigAToB0Tag,
+        lut_type: tsig::SigLutAtoBType,
+        mpe_types: &[
+            ssig::SigCurveSetElemType,
+            ssig::SigCLutElemType,
+            ssig::SigCurveSetElemType,
+            ssig::SigMatrixElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: tags::SigBToA0Tag,
+        lut_type: tsig::SigLutBtoAType,
+        mpe_types: &[ssig::SigCurveSetElemType],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: tags::SigBToA0Tag,
+        lut_type: tsig::SigLutBtoAType,
+        mpe_types: &[
+            ssig::SigCurveSetElemType,
+            ssig::SigMatrixElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: tags::SigBToA0Tag,
+        lut_type: tsig::SigLutBtoAType,
+        mpe_types: &[
+            ssig::SigCurveSetElemType,
+            ssig::SigCLutElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+    AllowedLut {
+        is_v4: true,
+        required_tag: tags::SigBToA0Tag,
+        lut_type: tsig::SigLutBtoAType,
+        mpe_types: &[
+            ssig::SigCurveSetElemType,
+            ssig::SigMatrixElemType,
+            ssig::SigCurveSetElemType,
+            ssig::SigCLutElemType,
+            ssig::SigCurveSetElemType,
+        ],
+    },
+];
+
+/// `CheckOne` — the pipeline's stage-type sequence matches exactly
+fn check_one(tab: &AllowedLut, lut: &crate::lut::Pipeline) -> bool {
+    let mut n = 0usize;
+    let mut mpe = lut.elements.as_deref();
+    while let Some(s) = mpe {
+        if n >= tab.mpe_types.len() {
+            return false;
+        }
+        if s.stage_type() != tab.mpe_types[n] {
+            return false;
+        }
+        mpe = s.next.as_deref();
+        n += 1;
+    }
+    n == tab.mpe_types.len()
+}
+
+/// `FindCombination` — first allowed stage sequence for version + tag
+fn find_combination<'a>(
+    lut: &crate::lut::Pipeline,
+    is_v4: bool,
+    destination_tag: u32,
+) -> Option<&'a AllowedLut> {
+    for tab in ALLOWED_LUT_TYPES {
+        if is_v4 != tab.is_v4 {
+            continue;
+        }
+        if tab.required_tag != 0 && tab.required_tag != destination_tag {
+            continue;
+        }
+        if check_one(tab, lut) {
+            return Some(tab);
+        }
+        let _ = tab.lut_type;
+    }
+    None
+}
+
+/// `CreateNamedColorDevicelink` — dump a named-color transform's list to a
+/// profile, evaluating each colorant through the transform
+fn create_named_color_devicelink(
+    xform: &mut crate::xform::Transform,
+) -> Option<Box<IccProfile>> {
+    let mut icc = create_profile_placeholder(xform.ctx.clone());
+    icc.device_class = pc::SigNamedColorClass;
+    icc.color_space = xform.exit_color_space;
+    icc.pcs = cs::SigLabData;
+
+    if !set_text_tags(&mut icc, &wide("Named color devicelink")) {
+        return None;
+    }
+    let original = crate::xform::get_named_color_list(xform)?;
+    let n_colors = crate::named::named_color_count(original);
+    let mut nc2 = crate::named::dup_named_color_list(original)?;
+    nc2.colorant_count = xform.lut.as_ref()?.output_channels;
+
+    // TYPE_NAMED_COLOR_INDEX = CHANNELS_SH(1)|BYTES_SH(2)
+    let out_fmt = (crate::pcs::lcms_color_space(xform.exit_color_space) as u32) << 16
+        | (channels_of_color_space(xform.exit_color_space) as u32) << 3
+        | 2;
+    if !xform.change_buffers_format(1 << 3 | 2, out_fmt) {
+        return None;
+    }
+    for i in 0..n_colors {
+        // C passes &i (u32) read as a u16 index — little-endian low half
+        let ib = (i as u16).to_le_bytes();
+        let mut ob = [0u8; 32];
+        let n_out = (channels_of_color_space(xform.exit_color_space).max(0) as usize) * 2;
+        xform.do_transform(&ib, &mut ob[..n_out.max(2)], 1);
+        for (j, b) in ob.chunks_exact(2).enumerate() {
+            nc2.list[i as usize].device_colorant[j] = u16::from_le_bytes([b[0], b[1]]);
+        }
+    }
+    if !cms_write_tag(&mut icc, tags::SigNamedColor2Tag, Some(TagObject::NamedColor(nc2))) {
+        return None;
+    }
+    Some(icc)
+}
+
+/// `cmsTransform2DeviceLink` — converts a transform into a device link
+/// profile (cmsvirt.c:1198)
+pub fn transform2_device_link(
+    xform: &mut crate::xform::Transform,
+    version: f64,
+    mut dw_flags: u32,
+) -> Option<Box<IccProfile>> {
+    let x_lut = xform.lut.as_ref()?;
+
+    // Named-color transform → the named-color devicelink path
+    if let Some(first) = x_lut.elements.as_ref() {
+        if first.stage_type() == ssig::SigNamedColorElemType {
+            return create_named_color_devicelink(xform);
+        }
+    }
+
+    let mut lut = x_lut.dup()?;
+    let ctx = xform.ctx.as_ref();
+
+    // Lab2/Lab4 PCS encoding fixups
+    if xform.entry_color_space == cs::SigLabData && version < 4.0 {
+        let st = crate::lut::stage_alloc_lab_v2_to_v4_curves(ctx)?;
+        if !lut.insert_stage(StageLoc::AtBegin, st) {
+            return None;
+        }
+    }
+    if xform.exit_color_space == cs::SigLabData && version < 4.0 {
+        dw_flags |= crate::types::FLAGS_NOWHITEONWHITEFIXUP;
+        let st = crate::lut::stage_alloc_lab_v4_to_v2(ctx)?;
+        if !lut.insert_stage(StageLoc::AtEnd, st) {
+            return None;
+        }
+    }
+
+    let mut icc = create_profile_placeholder(xform.ctx.clone());
+    profile::set_profile_version(&mut icc, version);
+    fix_color_spaces(
+        &mut icc,
+        xform.entry_color_space,
+        xform.exit_color_space,
+        dw_flags,
+    );
+
+    // 16-bit formats: COLORSPACE_SH|CHANNELS_SH|BYTES_SH(2)
+    let chans_in = channels_of_color_space(xform.entry_color_space);
+    let chans_out = channels_of_color_space(xform.exit_color_space);
+    let mut frm_in = (crate::pcs::lcms_color_space(xform.entry_color_space) as u32) << 16
+        | (chans_in as u32) << 3
+        | 2;
+    let mut frm_out = (crate::pcs::lcms_color_space(xform.exit_color_space) as u32) << 16
+        | (chans_out as u32) << 3
+        | 2;
+
+    let device_class = icc.device_class;
+    let destination_tag = if device_class == pc::SigOutputClass {
+        tags::SigBToA0Tag
+    } else {
+        tags::SigAToB0Tag
+    };
+
+    // Check if the profile/version can store the result
+    let mut allowed = if dw_flags & crate::types::FLAGS_FORCE_CLUT != 0 {
+        None
+    } else {
+        find_combination(&lut, version >= 4.0, destination_tag)
+    };
+    if allowed.is_none() {
+        crate::opt::optimize_pipeline(
+            ctx,
+            &mut lut,
+            xform.rendering_intent,
+            &mut frm_in,
+            &mut frm_out,
+            &mut dw_flags,
+        );
+        allowed = find_combination(&lut, version >= 4.0, destination_tag);
+    }
+
+    // If no way, force CLUT that for sure can be written
+    if allowed.is_none() {
+        dw_flags |= crate::types::FLAGS_FORCE_CLUT;
+        crate::opt::optimize_pipeline(
+            ctx,
+            &mut lut,
+            xform.rendering_intent,
+            &mut frm_in,
+            &mut frm_out,
+            &mut dw_flags,
+        );
+
+        if let Some(first) = lut.first_stage() {
+            if first.stage_type() != ssig::SigCurveSetElemType {
+                let st = stage_alloc_identity_curves(ctx, chans_in.max(0) as u32)?;
+                if !lut.insert_stage(StageLoc::AtBegin, st) {
+                    return None;
+                }
+            }
+        }
+        if let Some(last) = lut.last_stage() {
+            if last.stage_type() != ssig::SigCurveSetElemType {
+                let st = stage_alloc_identity_curves(ctx, chans_out.max(0) as u32)?;
+                if !lut.insert_stage(StageLoc::AtEnd, st) {
+                    return None;
+                }
+            }
+        }
+        allowed = find_combination(&lut, version >= 4.0, destination_tag);
+    }
+    allowed?;
+
+    if dw_flags & crate::types::FLAGS_8BITS_DEVICELINK != 0 {
+        lut.set_save_as_8bits(true);
+    }
+    if !set_text_tags(&mut icc, &wide("devicelink")) {
+        return None;
+    }
+    if !cms_write_tag(&mut icc, destination_tag, Some(TagObject::Lut16(lut))) {
+        return None;
+    }
+
+    // Colorant tables have special rules depending on device class
+    if let Some(clrt) = &xform.input_colorants {
+        if device_class == pc::SigLinkClass || device_class == pc::SigInputClass {
+            if !cms_write_tag(
+                &mut icc,
+                tags::SigColorantTableTag,
+                Some(TagObject::ColorantTable(clrt.clone())),
+            ) {
+                return None;
+            }
+        }
+    }
+    if let Some(clrt) = &xform.output_colorants {
+        let tag = if device_class == pc::SigLinkClass {
+            tags::SigColorantTableOutTag
+        } else {
+            tags::SigColorantTableTag
+        };
+        if !cms_write_tag(&mut icc, tag, Some(TagObject::ColorantTable(clrt.clone()))) {
+            return None;
+        }
+    }
+
+    // `_cmsWriteProfileSequence` for link class — our Transform does not
+    // retain the profile-sequence data (C's `xform->Sequence`), so there is
+    // nothing to write; equivalent to Sequence == NULL.
+
+    let wp = if device_class == pc::SigInputClass {
+        xform.entry_white_point
+    } else {
+        xform.exit_white_point
+    };
+    if !cms_write_tag(&mut icc, tags::SigMediaWhitePointTag, Some(TagObject::Xyz(wp))) {
+        return None;
+    }
+
+    // Per 7.2.15 in spec 4.3
+    icc.rendering_intent = xform.rendering_intent;
+
+    Some(icc)
+}
