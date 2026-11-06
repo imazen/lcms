@@ -262,7 +262,13 @@ pub fn unroll_planar_bytes(
         let index = if do_swap { n_chan - i - 1 } else { i };
         let mut v = f8to16(accum[pos]) as u32;
         plane += 1;
-        pos = plane * stride;
+        // `extra_first` planes are offset by `extra` extra-channel planes:
+        // color plane `i` lives at `(extra + i)*stride`, not `i*stride`.
+        pos = if extra_first {
+            (extra + plane) * stride
+        } else {
+            plane * stride
+        };
         if reverse {
             v = 0xffff - v;
         }
