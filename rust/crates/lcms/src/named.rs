@@ -771,7 +771,8 @@ pub struct DictEntry {
     pub display_name: Option<Mlu>,
     pub display_value: Option<Mlu>,
     pub name: Vec<Wchar>,
-    pub value: Vec<Wchar>,
+    /// `None` = NULL `Value` (dict offset 0 on disk); `Some([..,0])` = L"".
+    pub value: Option<Vec<Wchar>>,
 }
 
 /// `cmsDICT` — entries stored newest-first (C prepends to a linked list).
@@ -797,7 +798,7 @@ pub fn dict_alloc(_ctx: Option<&Context>) -> Dict {
 pub fn dict_add_entry(
     dict: &mut Dict,
     name: &[Wchar],
-    value: &[Wchar],
+    value: Option<&[Wchar]>,
     display_name: Option<&Mlu>,
     display_value: Option<&Mlu>,
 ) -> bool {
@@ -807,7 +808,7 @@ pub fn dict_add_entry(
             display_name: display_name.and_then(mlu_dup),
             display_value: display_value.and_then(mlu_dup),
             name: dup_wcs(name),
-            value: dup_wcs(value),
+            value: value.map(dup_wcs),
         },
     );
     true
@@ -821,7 +822,7 @@ pub fn dict_dup(dict: &Dict) -> Dict {
         dict_add_entry(
             &mut new,
             &e.name,
-            &e.value,
+            e.value.as_deref(),
             e.display_name.as_ref(),
             e.display_value.as_ref(),
         );

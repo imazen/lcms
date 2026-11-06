@@ -353,7 +353,7 @@ fn dict_and_seq() {
             ptr::null_mut(),
             ptr::null_mut(),
         );
-        dict_add_entry(&mut r_dict, &name1, &val1, None, None);
+        dict_add_entry(&mut r_dict, &name1, Some(&val1), None, None);
         c::cmsDictAddEntry(
             c_dict,
             name2.as_ptr(),
@@ -361,7 +361,7 @@ fn dict_and_seq() {
             ptr::null_mut(),
             ptr::null_mut(),
         );
-        dict_add_entry(&mut r_dict, &name2, &val2, None, None);
+        dict_add_entry(&mut r_dict, &name2, Some(&val2), None, None);
 
         assert_eq!(r_dict.entries.len(), 2);
         assert_eq!(r_dict.entries[0].name, name2); // prepend order

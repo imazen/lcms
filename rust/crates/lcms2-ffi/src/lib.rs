@@ -511,29 +511,425 @@ pub extern "C" fn cmsReadTag(h: Handle, sig: c_uint) -> Handle {
         TagObject::UInt32(v) => boxed_data(v),
         TagObject::UInt64(v) => boxed_data(v),
         TagObject::S15Fixed16(v) | TagObject::U16Fixed16(v) => boxed_data(v),
-        TagObject::DateTime(t) => Box::into_raw(Box::new(t.clone())) as Handle,
-        TagObject::Measurement(m) => Box::into_raw(Box::new(*m)) as Handle,
-        TagObject::Screening(s) => Box::into_raw(Box::new(s.clone())) as Handle,
-        TagObject::ViewingConditions(v) => Box::into_raw(Box::new(v.clone())) as Handle,
-        TagObject::UcrBg(u) => Box::into_raw(Box::new(u.clone())) as Handle,
-        TagObject::VideoSignal(v) => Box::into_raw(Box::new(*v)) as Handle,
-        TagObject::Dictionary(d) => Box::into_raw(Box::new(d.clone())) as Handle,
-        TagObject::ProfileSeqDesc(s) | TagObject::ProfileSeqId(s) => {
-            Box::into_raw(Box::new(s.clone())) as Handle
+        TagObject::DateTime(t) => Box::into_raw(Box::new(CTm {
+            tm_sec: t.tm_sec,
+            tm_min: t.tm_min,
+            tm_hour: t.tm_hour,
+            tm_mday: t.tm_mday,
+            tm_mon: t.tm_mon,
+            tm_year: t.tm_year,
+            tm_wday: t.tm_wday,
+            tm_yday: t.tm_yday,
+            tm_isdst: t.tm_isdst,
+        })) as Handle,
+        TagObject::Measurement(m) => Box::into_raw(Box::new(CMeasCond {
+            observer: m.observer,
+            backing: lcms::types::CieXyz {
+                X: lcms::fixed::s15_fixed16_to_double(m.backing.X),
+                Y: lcms::fixed::s15_fixed16_to_double(m.backing.Y),
+                Z: lcms::fixed::s15_fixed16_to_double(m.backing.Z),
+            },
+            geometry: m.geometry,
+            flare: m.flare,
+            illuminant: m.illuminant,
+        })) as Handle,
+        TagObject::Screening(s) => {
+            let mut c = CScreening {
+                flag: s.flag,
+                n_channels: s.n_channels,
+                channels: [CScreeningChannel {
+                    frequency: 0.0,
+                    angle: 0.0,
+                    spot_shape: 0,
+                }; 16],
+            };
+            for (i, ch) in s.channels.iter().enumerate() {
+                c.channels[i] = CScreeningChannel {
+                    frequency: ch.frequency,
+                    angle: ch.angle,
+                    spot_shape: ch.spot_shape,
+                };
+            }
+            Box::into_raw(Box::new(c)) as Handle
         }
-        TagObject::Vcgt(v) => Box::into_raw(Box::new(v.clone())) as Handle,
-        TagObject::Mhc2(v) => Box::into_raw(Box::new(v.clone())) as Handle,
-        TagObject::Data(d) => Box::into_raw(Box::new(d.clone())) as Handle,
+        TagObject::ViewingConditions(v) => Box::into_raw(Box::new(CViewCond {
+            illuminant_xyz: v.illuminant_xyz,
+            surround_xyz: v.surround_xyz,
+            illuminant_type: v.illuminant_type,
+        })) as Handle,
+        TagObject::UcrBg(u) => Box::into_raw(Box::new(CUcrBg {
+            ucr: rust_to_tc(ptr::null_mut(), u.ucr.clone()),
+            bg: rust_to_tc(ptr::null_mut(), u.bg.clone()),
+            desc: Box::into_raw(Box::new(u.desc.clone())) as Handle,
+        })) as Handle,
+        TagObject::VideoSignal(v) => Box::into_raw(Box::new(CVideo {
+            primaries: v.colour_primaries,
+            transfer: v.transfer_characteristics,
+            matrix: v.matrix_coefficients,
+            range_flag: v.video_full_range_flag,
+        })) as Handle,
+        TagObject::Dictionary(d) => dict_to_cdict(d),
+        TagObject::ProfileSeqDesc(s) | TagObject::ProfileSeqId(s) => rust_to_cseq(s),
+        TagObject::Vcgt(v) => {
+            use lcms::tagtypes::VcgtData;
+            let curves: [Handle; 3] = match v {
+                VcgtData::Curves(cs) => [
+                    rust_to_tc(ptr::null_mut(), cs[0].clone()),
+                    rust_to_tc(ptr::null_mut(), cs[1].clone()),
+                    rust_to_tc(ptr::null_mut(), cs[2].clone()),
+                ],
+                VcgtData::Table {
+                    channels,
+                    elems,
+                    bytes,
+                    data,
+                } => {
+                    if *channels != 3 {
+                        return ptr::null_mut();
+                    }
+                    let mut out = [ptr::null_mut(); 3];
+                    for (n, slot) in out.iter_mut().enumerate() {
+                        let mut table = Vec::with_capacity(*elems as usize);
+                        let base = n * (*elems as usize) * (*bytes as usize);
+                        for i in 0..*elems as usize {
+                            let v16 = match *bytes {
+                                1 => {
+                                    let v = *data.get(base + i).unwrap_or(&0);
+                                    ((v as u16) << 8) | (v as u16)
+                                }
+                                _ => {
+                                    let hi = *data.get(base + 2 * i).unwrap_or(&0);
+                                    let lo = *data.get(base + 2 * i + 1).unwrap_or(&0);
+                                    ((hi as u16) << 8) | (lo as u16)
+                                }
+                            };
+                            table.push(v16);
+                        }
+                        let Some(tc) = lcms::gamma::build_tabulated_tone_curve16(
+                            None,
+                            *elems as u32,
+                            Some(&table),
+                        ) else {
+                            return ptr::null_mut();
+                        };
+                        *slot = rust_to_tc(ptr::null_mut(), tc);
+                    }
+                    out
+                }
+            };
+            Box::into_raw(Box::new(curves)) as Handle
+        }
+        TagObject::Mhc2(v) => {
+            let red = v.red_curve.clone().into_boxed_slice();
+            let green = v.green_curve.clone().into_boxed_slice();
+            let blue = v.blue_curve.clone().into_boxed_slice();
+            Box::into_raw(Box::new(CMhc2 {
+                curve_entries: v.curve_entries,
+                red_curve: Box::into_raw(red) as *const f64,
+                green_curve: Box::into_raw(green) as *const f64,
+                blue_curve: Box::into_raw(blue) as *const f64,
+                min_luminance: v.min_luminance,
+                peak_luminance: v.peak_luminance,
+                xyz2xyz_matrix: v.xyz2xyz_matrix,
+            })) as Handle
+        }
+        TagObject::Data(d) => {
+            let mut buf = Vec::with_capacity(8 + d.data.len());
+            buf.extend_from_slice(&d.len.to_ne_bytes());
+            buf.extend_from_slice(&d.flag.to_ne_bytes());
+            buf.extend_from_slice(&d.data);
+            Box::into_raw(buf.into_boxed_slice()) as Handle
+        }
     }
 }
 fn boxed_data<T: Clone>(v: &[T]) -> Handle {
     let b = v.to_vec().into_boxed_slice();
     Box::into_raw(b) as Handle
 }
+
+// ---------------------------------------------------------------------------
+// C-layout shims for `cmsWriteTag`/`cmsReadTag` marshalling. The Rust-side
+// `TagObject` payloads are not `repr(C)` (or use different field order /
+// inline-vs-pointer layout), so each boundary type gets an explicit shim.
+// ---------------------------------------------------------------------------
+
+/// `cmsUcrBg` — three *pointers*, not inline values.
+#[repr(C)]
+struct CUcrBg {
+    ucr: Handle,
+    bg: Handle,
+    desc: Handle,
+}
+/// `cmsScreeningChannel`
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CScreeningChannel {
+    frequency: f64,
+    angle: f64,
+    spot_shape: u32,
+}
+/// `cmsScreening` — C field order is flag, nChannels, channels.
+#[repr(C)]
+struct CScreening {
+    flag: u32,
+    n_channels: u32,
+    channels: [CScreeningChannel; 16],
+}
+/// `cmsICCMeasurementConditions` — Backing is decoded `cmsCIEXYZ` doubles.
+#[repr(C)]
+struct CMeasCond {
+    observer: u32,
+    backing: lcms::types::CieXyz,
+    geometry: u32,
+    flare: f64,
+    illuminant: u32,
+}
+/// `cmsICCViewingConditions`
+#[repr(C)]
+struct CViewCond {
+    illuminant_xyz: lcms::types::CieXyz,
+    surround_xyz: lcms::types::CieXyz,
+    illuminant_type: u32,
+}
+/// `cmsMHC2Type`
+#[repr(C)]
+struct CMhc2 {
+    curve_entries: u32,
+    red_curve: *const f64,
+    green_curve: *const f64,
+    blue_curve: *const f64,
+    min_luminance: f64,
+    peak_luminance: f64,
+    xyz2xyz_matrix: [[f64; 4]; 3],
+}
+/// `struct tm` (first 9 fields, C order)
+#[repr(C)]
+struct CTm {
+    tm_sec: i32,
+    tm_min: i32,
+    tm_hour: i32,
+    tm_mday: i32,
+    tm_mon: i32,
+    tm_year: i32,
+    tm_wday: i32,
+    tm_yday: i32,
+    tm_isdst: i32,
+}
+/// `cmsICCData` header (variable-length payload follows)
+#[repr(C)]
+struct CData {
+    len: u32,
+    flag: u32,
+}
+/// `cmsVideoSignalType` — 4 packed bytes
+#[repr(C)]
+struct CVideo {
+    primaries: u8,
+    transfer: u8,
+    matrix: u8,
+    range_flag: u8,
+}
+/// `cmsPSEQDESC` — MLU fields are handles.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CPseqDesc {
+    device_mfg: u32,
+    device_model: u32,
+    attributes: u64,
+    technology: u32,
+    profile_id: [u8; 16],
+    _pad: u32,
+    manufacturer: Handle,
+    model: Handle,
+    description: Handle,
+}
+/// `cmsSEQ`
+#[repr(C)]
+struct CSeq {
+    n: u32,
+    ctx: Handle,
+    seq: *mut CPseqDesc,
+}
+
+/// `cmsSEQ*` → `ProfileSeqDesc`
+unsafe fn cseq_to_rust(s: *const CSeq) -> Option<named::ProfileSeqDesc> {
+    if s.is_null() {
+        return None;
+    }
+    let c = unsafe { &*s };
+    if c.n == 0 || c.seq.is_null() {
+        return None;
+    }
+    let arr = unsafe { std::slice::from_raw_parts(c.seq, c.n as usize) };
+    let mut out = named::ProfileSeqDesc { seq: Vec::new() };
+    for e in arr {
+        out.seq.push(named::PSeqDesc {
+            device_mfg: e.device_mfg,
+            device_model: e.device_model,
+            attributes: e.attributes,
+            technology: e.technology,
+            profile_id: lcms::types::ProfileId { id8: e.profile_id },
+            manufacturer: mlu_ref(e.manufacturer).map(|m| m.clone()),
+            model: mlu_ref(e.model).map(|m| m.clone()),
+            description: mlu_ref(e.description).map(|m| m.clone()),
+        });
+    }
+    Some(out)
+}
+
+/// `ProfileSeqDesc` → `cmsSEQ*` (fresh MLU handles, C owns them)
+fn rust_to_cseq(d: &named::ProfileSeqDesc) -> Handle {
+    let arr: Vec<CPseqDesc> = d
+        .seq
+        .iter()
+        .map(|e| CPseqDesc {
+            device_mfg: e.device_mfg,
+            device_model: e.device_model,
+            attributes: e.attributes,
+            technology: e.technology,
+            profile_id: e.profile_id.id8,
+            _pad: 0,
+            manufacturer: e
+                .manufacturer
+                .as_ref()
+                .map(|m| Box::into_raw(Box::new(m.clone())) as Handle)
+                .unwrap_or(ptr::null_mut()),
+            model: e
+                .model
+                .as_ref()
+                .map(|m| Box::into_raw(Box::new(m.clone())) as Handle)
+                .unwrap_or(ptr::null_mut()),
+            description: e
+                .description
+                .as_ref()
+                .map(|m| Box::into_raw(Box::new(m.clone())) as Handle)
+                .unwrap_or(ptr::null_mut()),
+        })
+        .collect();
+    let seq = Box::into_raw(arr.into_boxed_slice()) as *mut CPseqDesc;
+    Box::into_raw(Box::new(CSeq {
+        n: d.seq.len() as u32,
+        ctx: ptr::null_mut(),
+        seq,
+    })) as Handle
+}
+
+unsafe fn read_cdata(data: *const c_void) -> Option<lcms::tagtypes::IccData> {
+    let h = unsafe { &*(data as *const CData) };
+    let bytes = unsafe {
+        std::slice::from_raw_parts((data as *const u8).add(8), h.len as usize)
+    };
+    Some(lcms::tagtypes::IccData {
+        len: h.len,
+        flag: h.flag,
+        data: bytes.to_vec(),
+    })
+}
+
+unsafe fn read_cmhc2(m: &CMhc2) -> lcms::tagtypes::Mhc2 {
+    let n = m.curve_entries as usize;
+    let take = |p: *const f64| -> Vec<f64> {
+        if p.is_null() || n == 0 {
+            Vec::new()
+        } else {
+            unsafe { std::slice::from_raw_parts(p, n) }.to_vec()
+        }
+    };
+    lcms::tagtypes::Mhc2 {
+        curve_entries: m.curve_entries,
+        red_curve: take(m.red_curve),
+        green_curve: take(m.green_curve),
+        blue_curve: take(m.blue_curve),
+        min_luminance: m.min_luminance,
+        peak_luminance: m.peak_luminance,
+        xyz2xyz_matrix: m.xyz2xyz_matrix,
+    }
+}
+
+/// `CDict` (C linked list) → `lcms::named::Dict`. C's `cmsWriteTag` stores
+/// `cmsDictDup(data)` — a *reversed* list — so the stored `entries` run
+/// oldest-first (entries[0] = oldest = the C dup's head).
+/// `DictEntry.name`/`value` keep the trailing NUL (matches `dup_wcs`).
+fn cdict_to_dict(h: Handle) -> Option<lcms::named::Dict> {
+    let mut out = lcms::named::Dict::default();
+    let mut e = dict_ref(h)?.head;
+    while !e.is_null() {
+        let en = unsafe { &*e };
+        let mut name = unsafe { wcs_to_slice(en.name) }.unwrap_or_default();
+        if !en.name.is_null() {
+            name.push(0);
+        }
+        let value = if en.value.is_null() {
+            None
+        } else {
+            let mut v = unsafe { wcs_to_slice(en.value) }.unwrap_or_default();
+            v.push(0);
+            Some(v)
+        };
+        let display_name = mlu_ref(en.display_name).map(|m| m.clone());
+        let display_value = mlu_ref(en.display_value).map(|m| m.clone());
+        out.entries.insert(
+            0,
+            lcms::named::DictEntry {
+                display_name,
+                display_value,
+                name,
+                value,
+            },
+        );
+        e = en.next;
+    }
+    Some(out)
+}
+
+/// `lcms::named::Dict` → `CDict` handle (`cmsDictAddEntry` prepends, so feed
+/// last→first to keep head = entries[0]).
+fn dict_to_cdict(d: &lcms::named::Dict) -> Handle {
+    let h = cmsDictAlloc(ptr::null_mut());
+    for e in d.entries.iter().rev() {
+        // name/value vecs already carry a trailing NUL when non-empty.
+        let name = if e.name.is_empty() {
+            ptr::null()
+        } else {
+            e.name.as_ptr() as *const WcharT
+        };
+        let value = match &e.value {
+            None => ptr::null(),
+            Some(v) => v.as_ptr() as *const WcharT,
+        };
+        let dn = e
+            .display_name
+            .as_ref()
+            .map(|m| Box::into_raw(Box::new(m.clone())) as Handle)
+            .unwrap_or(ptr::null_mut());
+        let dv = e
+            .display_value
+            .as_ref()
+            .map(|m| Box::into_raw(Box::new(m.clone())) as Handle)
+            .unwrap_or(ptr::null_mut());
+        cmsDictAddEntry(h, name, value, dn, dv);
+        // cmsDictAddEntry dups both MLUs — drop our temporaries.
+        cmsMLUfree(dn);
+        cmsMLUfree(dv);
+    }
+    h
+}
+
+/// `cmsVideoSignalType` → `TagObject::VideoSignal`
+fn cvideo_to_vs(v: &CVideo) -> lcms::tagtypes::VideoSignal {
+    lcms::tagtypes::VideoSignal {
+        colour_primaries: v.primaries,
+        transfer_characteristics: v.transfer,
+        matrix_coefficients: v.matrix,
+        video_full_range_flag: v.range_flag,
+    }
+}
+
 /// `cmsWriteTag` — dispatch the tag signature to the `TagObject` variant the
 /// handle points at; `cms_write_tag` validates against the descriptor.
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_int {
+    use lcms::signatures::tag as t;
     use lcms::tagtypes::TagObject;
     let Some(p) = prof_ref(h) else {
         return 0;
@@ -542,59 +938,178 @@ pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_
         return profile::cms_write_tag(p, sig, None) as c_int;
     }
     let obj: Option<TagObject> = match sig {
-        s if s == lcms::signatures::tag::SigNamedColor2Tag => {
+        s if s == t::SigNamedColor2Tag => {
             ncl_ref(data as Handle).map(|l| TagObject::NamedColor(l.clone()))
         }
-        s if s == lcms::signatures::tag::SigColorantTableTag => {
+        s if s == t::SigColorantTableTag || s == t::SigColorantTableOutTag => {
             ncl_ref(data as Handle).map(|l| TagObject::ColorantTable(l.clone()))
         }
-        s if s == lcms::signatures::tag::SigMediaWhitePointTag
-            || s == lcms::signatures::tag::SigMediaBlackPointTag
-            || s == lcms::signatures::tag::SigChromaticAdaptationTag
-            || s == lcms::signatures::tag::SigRedColorantTag
-            || s == lcms::signatures::tag::SigGreenColorantTag
-            || s == lcms::signatures::tag::SigBlueColorantTag =>
+        s if s == t::SigChromaticAdaptationTag => {
+            // `cmsFloat64Number[9]` → s15f16 array, decoded on write
+            Some(TagObject::S15Fixed16(
+                unsafe { *(data as *const [f64; 9]) }.to_vec(),
+            ))
+        }
+        s if s == t::SigMediaWhitePointTag
+            || s == t::SigMediaBlackPointTag
+            || s == t::SigRedColorantTag
+            || s == t::SigGreenColorantTag
+            || s == t::SigBlueColorantTag
+            || s == t::SigLuminanceTag =>
         {
             Some(TagObject::Xyz(unsafe { *(data as *const lcms::types::CieXyz) }))
         }
-        s if s == lcms::signatures::tag::SigChromaticityTag => Some(
-            TagObject::Chromaticity(unsafe { *(data as *const lcms::types::CiexyYTriple) }),
-        ),
-        s if s == lcms::signatures::tag::SigGrayTRCTag
-            || s == lcms::signatures::tag::SigRedTRCTag
-            || s == lcms::signatures::tag::SigGreenTRCTag
-            || s == lcms::signatures::tag::SigBlueTRCTag =>
+        s if s == t::SigChromaticityTag => Some(TagObject::Chromaticity(unsafe {
+            *(data as *const lcms::types::CiexyYTriple)
+        })),
+        s if s == t::SigGrayTRCTag
+            || s == t::SigRedTRCTag
+            || s == t::SigGreenTRCTag
+            || s == t::SigBlueTRCTag =>
         {
             curve_rust(data as Handle).map(TagObject::Curve)
         }
-        s if s == lcms::signatures::tag::SigAToB0Tag
-            || s == lcms::signatures::tag::SigAToB1Tag
-            || s == lcms::signatures::tag::SigAToB2Tag =>
-        {
+        s if s == t::SigAToB0Tag || s == t::SigAToB1Tag || s == t::SigAToB2Tag => {
             pipe_ref(data as Handle).map(|p| TagObject::LutA2B(p.clone()))
         }
-        s if s == lcms::signatures::tag::SigBToA0Tag
-            || s == lcms::signatures::tag::SigBToA1Tag
-            || s == lcms::signatures::tag::SigBToA2Tag
-            || s == lcms::signatures::tag::SigGamutTag
-            || s == lcms::signatures::tag::SigPreview0Tag
-            || s == lcms::signatures::tag::SigPreview1Tag
-            || s == lcms::signatures::tag::SigPreview2Tag =>
+        s if s == t::SigBToA0Tag
+            || s == t::SigBToA1Tag
+            || s == t::SigBToA2Tag
+            || s == t::SigGamutTag
+            || s == t::SigPreview0Tag
+            || s == t::SigPreview1Tag
+            || s == t::SigPreview2Tag =>
         {
             pipe_ref(data as Handle).map(|p| TagObject::LutB2A(p.clone()))
         }
-        s if s == lcms::signatures::tag::SigColorantOrderTag => Some(
-            TagObject::ColorantOrder(unsafe { *(data as *const [u8; lcms::xform::MAX_CHANNELS]) }),
-        ),
-        s if s == lcms::signatures::tag::SigUcrBgTag => {
-            ucrbg_ref(data as Handle).map(|u| TagObject::UcrBg(u.clone()))
+        s if s == t::SigDToB0Tag
+            || s == t::SigDToB1Tag
+            || s == t::SigDToB2Tag
+            || s == t::SigDToB3Tag
+            || s == t::SigBToD0Tag
+            || s == t::SigBToD1Tag
+            || s == t::SigBToD2Tag
+            || s == t::SigBToD3Tag =>
+        {
+            pipe_ref(data as Handle).map(|p| TagObject::Mpe(p.clone()))
         }
-        s if s == lcms::signatures::tag::SigProfileSequenceDescTag => {
-            seqdesc_ref(data as Handle).map(|d| TagObject::ProfileSeqDesc(d.clone()))
+        s if s == t::SigColorantOrderTag => Some(TagObject::ColorantOrder(unsafe {
+            *(data as *const [u8; lcms::xform::MAX_CHANNELS])
+        })),
+        s if s == t::SigUcrBgTag => {
+            let c = unsafe { &*(data as *const CUcrBg) };
+            let (Some(ucr), Some(bg), Some(desc)) = (
+                curve_rust(c.ucr),
+                curve_rust(c.bg),
+                mlu_ref(c.desc).map(|m| m.clone()),
+            ) else {
+                return 0;
+            };
+            Some(TagObject::UcrBg(lcms::tagtypes::UcrBg { ucr, bg, desc }))
         }
-        s if s == lcms::signatures::tag::SigProfileSequenceIdTag => {
-            seqdesc_ref(data as Handle).map(|d| TagObject::ProfileSeqId(d.clone()))
+        s if s == t::SigProfileSequenceDescTag => {
+            unsafe { cseq_to_rust(data as *const CSeq) }.map(TagObject::ProfileSeqDesc)
         }
+        s if s == t::SigProfileSequenceIdTag => {
+            unsafe { cseq_to_rust(data as *const CSeq) }.map(TagObject::ProfileSeqId)
+        }
+        s if s == t::SigPs2CRD0Tag
+            || s == t::SigPs2CRD1Tag
+            || s == t::SigPs2CRD2Tag
+            || s == t::SigPs2CRD3Tag
+            || s == t::SigPs2CSATag
+            || s == t::SigPs2RenderingIntentTag =>
+        {
+            unsafe { read_cdata(data) }.map(TagObject::Data)
+        }
+        s if s == t::SigColorimetricIntentImageStateTag
+            || s == t::SigPerceptualRenderingIntentGamutTag
+            || s == t::SigSaturationRenderingIntentGamutTag
+            || s == t::SigTechnologyTag =>
+        {
+            Some(TagObject::Signature(unsafe { *(data as *const u32) }))
+        }
+        s if s == t::SigCalibrationDateTimeTag || s == t::SigDateTimeTag => {
+            let c = unsafe { &*(data as *const CTm) };
+            Some(TagObject::DateTime(lcms::tagtypes::Tm {
+                tm_sec: c.tm_sec,
+                tm_min: c.tm_min,
+                tm_hour: c.tm_hour,
+                tm_mday: c.tm_mday,
+                tm_mon: c.tm_mon,
+                tm_year: c.tm_year,
+                tm_wday: c.tm_wday,
+                tm_yday: c.tm_yday,
+                tm_isdst: c.tm_isdst,
+            }))
+        }
+        s if s == t::SigMeasurementTag => {
+            let c = unsafe { &*(data as *const CMeasCond) };
+            Some(TagObject::Measurement(
+                lcms::types::IccMeasurementConditions {
+                    observer: c.observer,
+                    backing: lcms::types::EncodedXyzNumber {
+                        X: lcms::fixed::double_to_s15_fixed16(c.backing.X),
+                        Y: lcms::fixed::double_to_s15_fixed16(c.backing.Y),
+                        Z: lcms::fixed::double_to_s15_fixed16(c.backing.Z),
+                    },
+                    geometry: c.geometry,
+                    flare: c.flare,
+                    illuminant: c.illuminant,
+                },
+            ))
+        }
+        s if s == t::SigCrdInfoTag => {
+            mlu_ref(data as Handle).map(|m| TagObject::CrdInfo(m.clone()))
+        }
+        s if s == t::SigScreeningTag => {
+            let c = unsafe { &*(data as *const CScreening) };
+            let mut sc = lcms::tagtypes::Screening {
+                flag: c.flag,
+                channels: [lcms::tagtypes::ScreeningChannel::default(); 16],
+                n_channels: c.n_channels,
+            };
+            for (i, ch) in c.channels.iter().enumerate() {
+                sc.channels[i] = lcms::tagtypes::ScreeningChannel {
+                    frequency: ch.frequency,
+                    angle: ch.angle,
+                    spot_shape: ch.spot_shape,
+                };
+            }
+            Some(TagObject::Screening(sc))
+        }
+        s if s == t::SigViewingConditionsTag => {
+            let c = unsafe { &*(data as *const CViewCond) };
+            Some(TagObject::ViewingConditions(
+                lcms::tagtypes::IccViewingConditions {
+                    illuminant_xyz: c.illuminant_xyz,
+                    surround_xyz: c.surround_xyz,
+                    illuminant_type: c.illuminant_type,
+                },
+            ))
+        }
+        s if s == t::SigVcgtTag => {
+            let arr = unsafe { &*(data as *const [Handle; 3]) };
+            let (Some(a), Some(b), Some(cc)) = (
+                curve_rust(arr[0]),
+                curve_rust(arr[1]),
+                curve_rust(arr[2]),
+            ) else {
+                return 0;
+            };
+            Some(TagObject::Vcgt(lcms::tagtypes::VcgtData::Curves([
+                a, b, cc,
+            ])))
+        }
+        s if s == t::SigMetaTag => cdict_to_dict(data as Handle).map(TagObject::Dictionary),
+        s if s == t::SigcicpTag => {
+            Some(TagObject::VideoSignal(cvideo_to_vs(unsafe {
+                &*(data as *const CVideo)
+            })))
+        }
+        s if s == t::SigMHC2Tag => Some(TagObject::Mhc2(unsafe {
+            read_cmhc2(&*(data as *const CMhc2))
+        })),
         s if is_mlu_tag(s) => {
             mlu_ref(data as Handle).map(|m| TagObject::Mlu(m.clone()))
         }
@@ -1695,7 +2210,7 @@ pub extern "C" fn cmsMLUgetASCII(
         m,
         &unsafe { code2(lang) },
         &unsafe { code2(cntry) },
-        None,
+        Some(size),
     );
     if !buf.is_null() && size > 0 {
         let n = (size as usize).min(data.len());
@@ -1719,7 +2234,7 @@ pub extern "C" fn cmsMLUgetUTF8(
         m,
         &unsafe { code2(lang) },
         &unsafe { code2(cntry) },
-        None,
+        Some(size),
     );
     if !buf.is_null() && size > 0 {
         let n = (size as usize).min(data.len());
@@ -1743,7 +2258,7 @@ pub extern "C" fn cmsMLUgetWide(
         m,
         &unsafe { code2(lang) },
         &unsafe { code2(cntry) },
-        None,
+        Some(size),
     );
     if !buf.is_null() && size > 0 {
         let n = (size as usize / 4).min(data.len());
@@ -1778,17 +2293,13 @@ fn ncl_ref<'a>(h: Handle) -> Option<&'a mut named::NamedColorList> {
     }
     Some(unsafe { &mut *(h as *mut named::NamedColorList) })
 }
-fn seqdesc_ref<'a>(h: Handle) -> Option<&'a mut named::ProfileSeqDesc> {
-    if h.is_null() {
-        return None;
-    }
-    Some(unsafe { &mut *(h as *mut named::ProfileSeqDesc) })
+fn seqdesc_ref<'a>(_h: Handle) -> Option<&'a mut named::ProfileSeqDesc> {
+    // `cmsSEQ` is C-layout (see `CSeq`) — never cast a handle to `ProfileSeqDesc`.
+    unreachable!("seqdesc_ref: cmsSEQ is C-layout, use cseq_to_rust")
 }
-fn ucrbg_ref<'a>(h: Handle) -> Option<&'a mut lcms::tagtypes::UcrBg> {
-    if h.is_null() {
-        return None;
-    }
-    Some(unsafe { &mut *(h as *mut lcms::tagtypes::UcrBg) })
+fn ucrbg_ref<'a>(_h: Handle) -> Option<&'a mut lcms::tagtypes::UcrBg> {
+    // `cmsUcrBg` is C-layout (see `CUcrBg`) — never cast a handle to `UcrBg`.
+    unreachable!("ucrbg_ref: cmsUcrBg is C-layout, use CUcrBg")
 }
 /// `cmsFreeNamedColorList`
 #[unsafe(no_mangle)]
@@ -1826,18 +2337,59 @@ pub extern "C" fn cmsAppendNamedColor(
     };
     named::append_named_color(l, Some(n.as_bytes()), p, c) as c_int
 }
-/// `cmsAllocProfileSequenceDescription`
+/// `cmsAllocProfileSequenceDescription` — C-layout `cmsSEQ` with a zeroed
+/// `seq` array of `n` `cmsPSEQDESC` (max 255, as C).
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsAllocProfileSequenceDescription(_ctx: Handle, n: c_uint) -> Handle {
-    named::alloc_profile_seq_desc(None, n)
-        .map(|b| Box::into_raw(Box::new(b)) as Handle)
-        .unwrap_or(ptr::null_mut())
+    if n == 0 || n > 255 {
+        return ptr::null_mut();
+    }
+    let arr = vec![
+        CPseqDesc {
+            device_mfg: 0,
+            device_model: 0,
+            attributes: 0,
+            technology: 0,
+            profile_id: [0; 16],
+            _pad: 0,
+            manufacturer: ptr::null_mut(),
+            model: ptr::null_mut(),
+            description: ptr::null_mut(),
+        };
+        n as usize
+    ];
+    let seq = Box::into_raw(arr.into_boxed_slice()) as *mut CPseqDesc;
+    Box::into_raw(Box::new(CSeq {
+        n,
+        ctx: ptr::null_mut(),
+        seq,
+    })) as Handle
 }
-/// `cmsFreeProfileSequenceDescription`
+/// `cmsDupProfileSequenceDescription` — C-layout deep copy.
+#[unsafe(no_mangle)]
+pub extern "C" fn cmsDupProfileSequenceDescription(s: Handle) -> Handle {
+    let Some(r) = (unsafe { cseq_to_rust(s as *const CSeq) }) else {
+        return ptr::null_mut();
+    };
+    rust_to_cseq(&r)
+}
+/// `cmsFreeProfileSequenceDescription` — free MLU handles, the seq array and
+/// the `cmsSEQ` itself.
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsFreeProfileSequenceDescription(d: Handle) {
-    if !d.is_null() {
-        drop(unsafe { Box::from_raw(d as *mut named::ProfileSeqDesc) });
+    if d.is_null() {
+        return;
+    }
+    let c = unsafe { Box::from_raw(d as *mut CSeq) };
+    if !c.seq.is_null() {
+        let arr = unsafe {
+            Box::from_raw(std::ptr::slice_from_raw_parts_mut(c.seq, c.n as usize))
+        };
+        for e in arr.iter() {
+            cmsMLUfree(e.manufacturer);
+            cmsMLUfree(e.model);
+            cmsMLUfree(e.description);
+        }
     }
 }
 

@@ -2801,12 +2801,6 @@ fn write_set_of_curves(s: &TagTypeHandler, io: &mut IoHandler, typ: u32, mpe: &S
         } else {
             typ
         };
-        eprintln!(
-            "v4w: curve segs={} types={:?} → {:#x}",
-            c.segments.len(),
-            c.segments.iter().map(|s| s.r#type).collect::<Vec<_>>(),
-            current
-        );
         let ok = if !io::write_type_base(io, current) {
             return false;
         } else if current == tsig::SigCurveType {
@@ -2903,10 +2897,6 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
         return false;
     };
     let base_offset = io.tell().wrapping_sub(8);
-    eprintln!(
-        "v4w: enter is_b2a={is_b2a} elems={}",
-        lut.elements.is_some()
-    );
 
     // Resolve A/B/M/Matrix/CLUT stages via the allowed shape checks
     let (mut a, mut b, mut m, mut matrix, mut clut) = (None, None, None, None, None);
@@ -4075,9 +4065,13 @@ fn type_dictionary_read(
             None
         };
         let rc = match (&name_w, &value_w) {
-            (Some(n), Some(v)) => {
-                crate::named::dict_add_entry(&mut dict, n, v, dn.as_ref(), dv.as_ref())
-            }
+            (Some(n), Some(v)) => crate::named::dict_add_entry(
+                &mut dict,
+                n,
+                Some(v),
+                dn.as_ref(),
+                dv.as_ref(),
+            ),
             _ => {
                 err::signal_error(None, ERROR_CORRUPTION_DETECTED, "Bad dictionary Name/Value");
                 false
@@ -4128,6 +4122,12 @@ fn read_dic_mlu(
     }
 }
 
+/// `mywcslen` — slice up to (not including) the first NUL.
+fn wcs_body(v: &[Wchar]) -> &[Wchar] {
+    let n = v.iter().position(|&c| c == 0).unwrap_or(v.len());
+    &v[..n]
+}
+
 /// `Type_Dictionary_Write`
 fn type_dictionary_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32) -> bool {
     let TagObject::Dictionary(dict) = p else {
@@ -4166,22 +4166,28 @@ fn type_dictionary_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, 
 
     // Write each element
     for (i, entry) in dict.entries.iter().enumerate() {
-        // WriteOneWChar — name
+        // `WriteOneWChar` — writes `mywcslen` wchars (no NUL); NULL → offset 0.
         let before = io.tell();
         name.offsets[i] = before.wrapping_sub(base_offset);
-        let nw = entry.name.len() as u32;
-        if !write_wchar_array(io, &entry.name) {
+        if !write_wchar_array(io, wcs_body(&entry.name)) {
             return false;
         }
         name.sizes[i] = io.tell().wrapping_sub(before);
-        let _ = nw;
 
-        let before = io.tell();
-        value.offsets[i] = before.wrapping_sub(base_offset);
-        if !write_wchar_array(io, &entry.value) {
-            return false;
+        match &entry.value {
+            None => {
+                value.offsets[i] = 0;
+                value.sizes[i] = 0;
+            }
+            Some(v) => {
+                let before = io.tell();
+                value.offsets[i] = before.wrapping_sub(base_offset);
+                if !write_wchar_array(io, wcs_body(v)) {
+                    return false;
+                }
+                value.sizes[i] = io.tell().wrapping_sub(before);
+            }
         }
-        value.sizes[i] = io.tell().wrapping_sub(before);
 
         if let Some(m) = &entry.display_name {
             let before = io.tell();
