@@ -359,8 +359,9 @@ fn lin_lerp_1d_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
         // Rest is 16 LSB bits
         let rest = val2 - cell0 as f32;
 
-        let y0 = tbl_getf(lut_table, cell0 as usize);
-        let y1 = tbl_getf(lut_table, cell1 as usize);
+        let m = lut_table.len();
+        let y0 = lut_table[(cell0 as usize).min(m - 1)];
+        let y1 = lut_table[(cell1 as usize).min(m - 1)];
 
         output[0] = y0 + (y1 - y0) * rest;
     }
@@ -427,9 +428,16 @@ fn eval1_input_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
         let cell0 = cell0 * p.opta[0] as i32;
         let cell1 = cell1 * p.opta[0] as i32;
 
-        for out_chan in 0..p.n_outputs as usize {
-            let y0 = tbl_getf(lut_table, cell0 as usize + out_chan);
-            let y1 = tbl_getf(lut_table, cell1 as usize + out_chan);
+        let n = p.n_outputs as usize;
+        let m = lut_table.len() - n;
+        let c0 = (cell0 as usize).min(m);
+        let c1 = (cell1 as usize).min(m);
+        let d0 = &lut_table[c0..c0 + n];
+        let d1 = &lut_table[c1..c1 + n];
+        let output = &mut output[..n];
+        for out_chan in 0..n {
+            let y0 = d0[out_chan];
+            let y1 = d1[out_chan];
 
             output[out_chan] = y0 + (y1 - y0) * rest;
         }
