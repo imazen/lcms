@@ -299,14 +299,20 @@ pub(crate) fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptDa
         return false;
     };
     // Zip keeps the Vec/channel bounds in the iterator (no per-channel
-    // Vec check); `idx.min(len-1)` makes the table index provably in range.
+    // Vec check). Full-width 65536-entry tables index directly like C's
+    // `Out[i] = Curves[i][In[i]]`; narrower tables scale (`*len >> 16`).
     for (cur, (&v, out)) in c
         .curves
         .iter()
         .zip(input.iter().zip(output.iter_mut()))
     {
-        let len = cur.len();
-        *out = cur[((v as usize * len) >> 16).min(len - 1)];
+        let cur = &cur[..];
+        *out = if cur.len() == 0x10000 {
+            cur[v as usize]
+        } else {
+            let len = cur.len();
+            cur[((v as usize * len) >> 16).min(len - 1)]
+        };
     }
     true
 }
@@ -417,17 +423,15 @@ fn optimize_by_joining_curves(
             return false;
         }
         let is_8bit = crate::pack::t_bytes(*input_format) == 1;
-        let table: Vec<Vec<u16>> = gamma_tables.iter().map(|g| g.table16.clone()).collect();
         *dw_flags |= crate::xform::FLAGS_NOCACHE;
         if is_8bit {
-            let curves: Vec<Vec<u16>> = table
+            // C `CurvesAlloc(nElements=256)` — `cmsEvalToneCurve16(G[i], FROM_8_TO_16(j))`
+            let curves: Vec<Vec<u16>> = gamma_tables
                 .iter()
-                .map(|t| {
-                    let mut v = vec![0u16; 256];
-                    for i in 0..256 {
-                        v[i] = t[i * (PRELINEARIZATION_POINTS as usize - 1) / 255];
-                    }
-                    v
+                .map(|g| {
+                    (0..256u32)
+                        .map(|j| g.eval16(((j << 8) | j) as u16))
+                        .collect()
                 })
                 .collect();
             dest.opt_data = Some(OptData::Curves16(Curves16Data { curves }));
@@ -437,6 +441,12 @@ fn optimize_by_joining_curves(
                 }
             };
         } else {
+            // C `CurvesAlloc(nElements=65536)` — `cmsEvalToneCurve16(G[i], j)`
+            // over the whole 16-bit domain (interpolated, not truncated).
+            let table: Vec<Vec<u16>> = gamma_tables
+                .iter()
+                .map(|g| (0..65536u32).map(|j| g.eval16(j as u16)).collect())
+                .collect();
             dest.opt_data = Some(OptData::Curves16(Curves16Data { curves: table }));
             dest.eval16_fn = |i, o, l| {
                 if let Some(d) = &l.opt_data {
