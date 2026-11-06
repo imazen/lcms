@@ -140,7 +140,26 @@ impl<'a> InterpParams<'a> {
             }
         }
         match self.interpolation {
-            Interpolation::Lerp16(f) => f(input, output, self),
+            Interpolation::Lerp16(f) => {
+                // Known kernels become direct calls — the caller can then
+                // inline them into the autoversioned pixel loop instead of
+                // paying an indirect call per pixel.
+                if std::ptr::fn_addr_eq(f, eval4_inputs as InterpFn16) {
+                    eval4_inputs(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, tetrahedral_interp16 as InterpFn16) {
+                    tetrahedral_interp16(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, trilinear_interp16 as InterpFn16) {
+                    trilinear_interp16(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, bilinear_interp16 as InterpFn16) {
+                    bilinear_interp16(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, eval1_input as InterpFn16) {
+                    eval1_input(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, lin_lerp_1d as InterpFn16) {
+                    lin_lerp_1d(input, output, self)
+                } else {
+                    f(input, output, self)
+                }
+            }
             Interpolation::LerpFloat(_) => unreachable!("Lerp16 on float params"),
         }
     }
@@ -154,7 +173,23 @@ impl<'a> InterpParams<'a> {
             }
         }
         match self.interpolation {
-            Interpolation::LerpFloat(f) => f(input, output, self),
+            Interpolation::LerpFloat(f) => {
+                if std::ptr::fn_addr_eq(f, eval4_inputs_float as InterpFnFloat) {
+                    eval4_inputs_float(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, tetrahedral_interp_float as InterpFnFloat) {
+                    tetrahedral_interp_float(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, trilinear_interp_float as InterpFnFloat) {
+                    trilinear_interp_float(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, bilinear_interp_float as InterpFnFloat) {
+                    bilinear_interp_float(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, eval1_input_float as InterpFnFloat) {
+                    eval1_input_float(input, output, self)
+                } else if std::ptr::fn_addr_eq(f, lin_lerp_1d_float as InterpFnFloat) {
+                    lin_lerp_1d_float(input, output, self)
+                } else {
+                    f(input, output, self)
+                }
+            }
             Interpolation::Lerp16(_) => unreachable!("LerpFloat on u16 params"),
         }
     }
