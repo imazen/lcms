@@ -983,6 +983,110 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
     }
 }
 
+/// Corner block for `tetra3_interp16`: four consecutive u16s as one u64.
+/// Offsets beyond `cell.len()` clamp to the last element — matching the
+/// scalar `.min(last)` reads; in-range blocks take the single-load path.
+#[inline(always)]
+fn corner_u64(cell: &[u16], off: usize, last: usize) -> u64 {
+    match cell.get(off..off + 4) {
+        Some(s) => {
+            (s[0] as u64) | ((s[1] as u64) << 16) | ((s[2] as u64) << 32) | ((s[3] as u64) << 48)
+        }
+        None => {
+            let l = |i: usize| cell[(off + i).min(last)] as u64;
+            l(0) | (l(1) << 16) | (l(2) << 32) | (l(3) << 48)
+        }
+    }
+}
+
+/// `tetrahedral_interp16` specialized to 3 inputs / 3 outputs — the
+/// fused-path kernel. Identical index math and 6-arm selection; the
+/// per-corner blocks load as single u64s instead of per-channel u16s.
+#[inline]
+pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
+    let lut_table = p.table_u16();
+
+    let fx = to_fixed_domain((vin[0] as i32).wrapping_mul(p.domain[0] as i32));
+    let fy = to_fixed_domain((vin[1] as i32).wrapping_mul(p.domain[1] as i32));
+    let fz = to_fixed_domain((vin[2] as i32).wrapping_mul(p.domain[2] as i32));
+
+    let x0 = fixed_to_int(fx);
+    let y0 = fixed_to_int(fy);
+    let z0 = fixed_to_int(fz);
+
+    let rx = fixed_rest_to_int(fx);
+    let ry = fixed_rest_to_int(fy);
+    let rz = fixed_rest_to_int(fz);
+
+    let x0i = (p.opta[2] as u32).wrapping_mul(x0 as u32);
+    let mut x1 = if vin[0] == 0xFFFF { 0 } else { p.opta[2] };
+    let y0i = (p.opta[1] as u32).wrapping_mul(y0 as u32);
+    let mut y1 = if vin[1] == 0xFFFF { 0 } else { p.opta[1] };
+    let z0i = (p.opta[0] as u32).wrapping_mul(z0 as u32);
+    let mut z1 = if vin[2] == 0xFFFF { 0 } else { p.opta[0] };
+
+    let base = (x0i + y0i + z0i) as usize;
+    let cell = &lut_table[base..];
+    let last = cell.len() - 1;
+    let mut out = [0u16; 3];
+
+    // Per-arm: pick the 3 corner offsets, run the arm's diff chain on the
+    // four u16 lanes of each corner block, finish with the shared lerp.
+    macro_rules! arm {
+        (|$c1:ident, $c2:ident, $c3:ident, $c0:ident| $chain:expr) => {{
+            let c0v = corner_u64(cell, 0, last);
+            let c1v = corner_u64(cell, x1 as usize, last);
+            let c2v = corner_u64(cell, y1 as usize, last);
+            let c3v = corner_u64(cell, z1 as usize, last);
+            for oi in 0..3 {
+                let $c0 = ((c0v >> (oi * 16)) & 0xffff) as i32;
+                let $c1 = ((c1v >> (oi * 16)) & 0xffff) as i32;
+                let $c2 = ((c2v >> (oi * 16)) & 0xffff) as i32;
+                let $c3 = ((c3v >> (oi * 16)) & 0xffff) as i32;
+                let ($c1, $c2, $c3) = $chain;
+                let rest = $c1
+                    .wrapping_mul(rx)
+                    .wrapping_add($c2.wrapping_mul(ry))
+                    .wrapping_add($c3.wrapping_mul(rz))
+                    .wrapping_add(0x8001);
+                out[oi] =
+                    ($c0 as u16).wrapping_add((rest.wrapping_add(rest >> 16) >> 16) as u16);
+            }
+        }};
+    }
+
+    if rx >= ry {
+        if ry >= rz {
+            y1 += x1;
+            z1 += y1;
+            arm!(|c1, c2, c3, c0| (c1 - c0, c2 - c1, c3 - c2));
+        } else if rz >= rx {
+            x1 += z1;
+            y1 += x1;
+            arm!(|c1, c2, c3, c0| (c1 - c3, c2 - c1, c3 - c0));
+        } else {
+            z1 += x1;
+            y1 += z1;
+            arm!(|c1, c2, c3, c0| (c1 - c0, c2 - c3, c3 - c1));
+        }
+    } else {
+        if rx >= rz {
+            x1 += y1;
+            z1 += x1;
+            arm!(|c1, c2, c3, c0| (c1 - c2, c2 - c0, c3 - c1));
+        } else if ry >= rz {
+            z1 += y1;
+            x1 += z1;
+            arm!(|c1, c2, c3, c0| (c1 - c3, c2 - c0, c3 - c2));
+        } else {
+            y1 += z1;
+            x1 += y1;
+            arm!(|c1, c2, c3, c0| (c1 - c2, c2 - c3, c3 - c0));
+        }
+    }
+    out
+}
+
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
 #[inline]
 #[inline]
