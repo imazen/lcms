@@ -712,37 +712,47 @@ pub(crate) fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &In
             p.opta[0] as i32
         };
 
-    for out_chan in 0..total_out {
-        let dens = |i: i32, j: i32, k: i32| tbl_getf(lut_table, (i + j + k) as usize + out_chan);
+    let n = total_out;
+    let m = lut_table.len() - n;
+    let w = |off: i32| &lut_table[((off as usize).min(m))..][..n];
+    let d000 = w(x0i + y0i + z0i);
+    let d001 = w(x0i + y0i + z1);
+    let d010 = w(x0i + y1 + z0i);
+    let d011 = w(x0i + y1 + z1);
+    let d100 = w(x1 + y0i + z0i);
+    let d101 = w(x1 + y0i + z1);
+    let d110 = w(x1 + y1 + z0i);
+    let d111 = w(x1 + y1 + z1);
+    let output = &mut output[..n];
 
-        // These are the 6 Tetrahedral
-        let c0 = dens(x0i, y0i, z0i);
+    for out_chan in 0..n {
+        let c0 = d000[out_chan];
         let (c1, c2, c3);
 
         if rx >= ry && ry >= rz {
-            c1 = dens(x1, y0i, z0i) - c0;
-            c2 = dens(x1, y1, z0i) - dens(x1, y0i, z0i);
-            c3 = dens(x1, y1, z1) - dens(x1, y1, z0i);
+            c1 = d100[out_chan] - c0;
+            c2 = d110[out_chan] - d100[out_chan];
+            c3 = d111[out_chan] - d110[out_chan];
         } else if rx >= rz && rz >= ry {
-            c1 = dens(x1, y0i, z0i) - c0;
-            c2 = dens(x1, y1, z1) - dens(x1, y0i, z1);
-            c3 = dens(x1, y0i, z1) - dens(x1, y0i, z0i);
+            c1 = d100[out_chan] - c0;
+            c2 = d111[out_chan] - d101[out_chan];
+            c3 = d101[out_chan] - d100[out_chan];
         } else if rz >= rx && rx >= ry {
-            c1 = dens(x1, y0i, z1) - dens(x0i, y0i, z1);
-            c2 = dens(x1, y1, z1) - dens(x1, y0i, z1);
-            c3 = dens(x0i, y0i, z1) - c0;
+            c1 = d101[out_chan] - d001[out_chan];
+            c2 = d111[out_chan] - d101[out_chan];
+            c3 = d001[out_chan] - c0;
         } else if ry >= rx && rx >= rz {
-            c1 = dens(x1, y1, z0i) - dens(x0i, y1, z0i);
-            c2 = dens(x0i, y1, z0i) - c0;
-            c3 = dens(x1, y1, z1) - dens(x1, y1, z0i);
+            c1 = d110[out_chan] - d010[out_chan];
+            c2 = d010[out_chan] - c0;
+            c3 = d111[out_chan] - d110[out_chan];
         } else if ry >= rz && rz >= rx {
-            c1 = dens(x1, y1, z1) - dens(x0i, y1, z1);
-            c2 = dens(x0i, y1, z0i) - c0;
-            c3 = dens(x0i, y1, z1) - dens(x0i, y1, z0i);
+            c1 = d111[out_chan] - d011[out_chan];
+            c2 = d010[out_chan] - c0;
+            c3 = d011[out_chan] - d010[out_chan];
         } else if rz >= ry && ry >= rx {
-            c1 = dens(x1, y1, z1) - dens(x0i, y1, z1);
-            c2 = dens(x0i, y1, z1) - dens(x0i, y0i, z1);
-            c3 = dens(x0i, y0i, z1) - c0;
+            c1 = d111[out_chan] - d011[out_chan];
+            c2 = d011[out_chan] - d001[out_chan];
+            c3 = d001[out_chan] - c0;
         } else {
             c1 = 0.0;
             c2 = 0.0;
