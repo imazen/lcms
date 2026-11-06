@@ -119,7 +119,9 @@ fn pixel_size(fmt: u32) -> u32 {
 /// `U`/`P` are generic so `xform16_run` can pass fn ITEMS (direct,
 /// inlinable calls) for the hot formatters instead of fn ptrs.
 #[allow(clippy::too_many_arguments)]
+#[archmage::autoversion]
 fn xform16_eval_loop<E, U, P>(
+    _token: archmage::SimdToken,
     unroll: U,
     pack: P,
     info: &PackInfo,
