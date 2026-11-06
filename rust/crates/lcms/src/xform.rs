@@ -60,6 +60,20 @@ pub enum Worker {
     Float,
     NullFloat,
     Noop,
+    /// A C `cmsPluginTransform`-supplied `_cmsTransformFn` — dispatched
+    /// through `XFORM_HOOKS` with a C-ABI `_cmstransform_struct` view.
+    Foreign,
+}
+
+/// `_cmsTRANSFORM::OldXform` + plugin user data — raw C fn ptrs/addresses.
+#[derive(Clone, Copy)]
+pub struct ForeignXform {
+    /// The C `_cmsTransformFn` returned by the factory.
+    pub old_xform: usize,
+    /// `UserData` out-param from the factory.
+    pub user_data: usize,
+    /// `FreePrivateDataFn` out-param (0 = none).
+    pub free_fn: usize,
 }
 
 /// `_cmsTRANSFORM`
@@ -85,6 +99,8 @@ pub struct Transform {
     pub exit_white_point: CieXyz,
     /// transform-plugin user data
     pub user_data: Option<Box<dyn std::any::Any + Send + Sync>>,
+    /// C plugin transform (`cmsPluginTransform` factory result)
+    pub foreign: Option<ForeignXform>,
     /// `_cmsTRANSFORM::InputColorant` — dup of the input profile's colorant table
     pub input_colorants: Option<crate::named::NamedColorList>,
     /// `_cmsTRANSFORM::OutputColorant` — dup of the output profile's colorant table
@@ -315,6 +331,7 @@ impl Transform {
             entry_white_point: self.entry_white_point,
             exit_white_point: self.exit_white_point,
             user_data: None,
+            foreign: self.foreign,
             input_colorants: self.input_colorants.clone(),
             output_colorants: self.output_colorants.clone(),
             _pad: (),
@@ -385,6 +402,21 @@ impl Transform {
             Worker::CachedGamutCheck => self.xform16(input, output, ppl, lines, stride, true, true),
             Worker::Float => self.xform_f32(input, output, ppl, lines, stride, false),
             Worker::Noop => {}
+            Worker::Foreign => {
+                if let Some(invoke) = *crate::context::XFORM_HOOKS.read().unwrap() {
+                    invoke(
+                        self as *const Transform as usize,
+                        input.as_ptr(),
+                        output.as_mut_ptr(),
+                        ppl,
+                        lines,
+                        stride.bytes_per_line_in,
+                        stride.bytes_per_line_out,
+                        stride.bytes_per_plane_in,
+                        stride.bytes_per_plane_out,
+                    );
+                }
+            }
         }
     }
 
@@ -1003,6 +1035,7 @@ fn alloc_empty_transform(
             Z: 0.0,
         },
         user_data: None,
+        foreign: None,
         input_colorants: None,
         output_colorants: None,
         _pad: (),

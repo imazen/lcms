@@ -78,7 +78,30 @@ pub struct Context {
     /// registered via `cmsPluginTHR` (FFI only). `create_transform` consults
     /// these for non-standard intents before the built-in intent table.
     pub c_intents: Vec<CIntentSet>,
+    /// C-side `cmsPluginTransform` factories — `(factory_fn_ptr, ctx_handle)`
+    /// registered via `cmsPluginTHR` (FFI only). `create_transform` invokes
+    /// them newest-first after the built-in optimization.
+    pub c_xform_factories: Vec<(usize, usize)>,
 }
+
+/// Bridge fn — FFI builds a C-ABI `_cmstransform_struct` view of the Rust
+/// `Transform` and invokes the plugin's `_cmsTransformFn`. Args:
+/// `(transform_ptr, in, out, ppl, lines, bpl_in, bpl_out, bpp_in, bpp_out)`.
+pub type XformInvokeFn = fn(
+    usize,
+    *const u8,
+    *mut u8,
+    u32,
+    u32,
+    u32,
+    u32,
+    u32,
+    u32,
+);
+
+/// Set once by the FFI layer (`ensure_foreign_hooks`).
+pub static XFORM_HOOKS: std::sync::RwLock<Option<XformInvokeFn>> =
+    std::sync::RwLock::new(None);
 
 /// A C-registered `cmsPluginHeader` entry — FFI fn ptrs (`_cmsRead/WriteProfileHeaderFn`).
 #[derive(Clone, Copy, Default)]
@@ -186,6 +209,7 @@ impl Default for Context {
             interpolators: None,
             parametric_curves: Vec::new(),
             mpe_handlers: Vec::new(),
+            c_xform_factories: Vec::new(),
             tag_type_handlers: Vec::new(),
             tag_descriptors: Vec::new(),
             alarm_codes: Mutex::new(DEFAULT_ALARM_CODES),
@@ -208,6 +232,7 @@ impl Clone for Context {
             interpolators: self.interpolators,
             parametric_curves: self.parametric_curves.clone(),
             mpe_handlers: self.mpe_handlers.clone(),
+            c_xform_factories: self.c_xform_factories.clone(),
             tag_type_handlers: self.tag_type_handlers.clone(),
             tag_descriptors: self.tag_descriptors.clone(),
             alarm_codes: Mutex::new(*self.alarm_codes.lock().unwrap()),

@@ -1238,6 +1238,10 @@ fn create_transform_ctx(
     // profile — a `cmsSetAdaptationState` lingers globally and changes every
     // later transform's chromatic adaptation.
     let adapt = vec![xform::get_adaptation_state(ctx.as_ref()); n];
+    let factories = ctx
+        .as_ref()
+        .map(|c| c.c_xform_factories.clone())
+        .unwrap_or_default();
     let t = xform_to_handle(xform::create_extended_transform(
         ctx,
         &mut profs,
@@ -1253,7 +1257,73 @@ fn create_transform_ctx(
     for b in profs {
         std::mem::forget(b);
     }
+    // `cmsPluginTransform` factories — consulted newest-first after the
+    // built-in optimizer; the first TRUE installs its `xform` worker.
+    if !t.is_null() {
+        apply_xform_factories(&factories, t);
+    }
     t
+}
+
+/// Give each registered `cmsPluginTransform` factory a shot at the freshly
+/// created transform — C's `cmsCreateTransform` plugin-collection walk.
+fn apply_xform_factories(factories: &[(usize, usize)], t: Handle) {
+    let Some(tf) = xform_ref(t) else {
+        return;
+    };
+    type Factory = unsafe extern "C" fn(
+        *mut usize,        // _cmsTransformFn* xform
+        *mut *mut c_void,  // void** UserData
+        *mut usize,        // _cmsFreeUserDataFn* FreePrivateDataFn
+        *mut *mut c_void,  // cmsPipeline** Lut
+        *mut u32,          // InputFormat
+        *mut u32,          // OutputFormat
+        *mut u32,          // dwFlags
+    ) -> c_int;
+    for &(fp, _ctx) in factories.iter().rev() {
+        if fp == 0 {
+            continue;
+        }
+        let mut xform_fn: usize = 0;
+        let mut user_data: *mut c_void = ptr::null_mut();
+        let mut free_fn: usize = 0;
+        let lut_ptr = tf
+            .lut
+            .as_mut()
+            .map(|p| p as *mut lcms::lut::Pipeline)
+            .unwrap_or(ptr::null_mut());
+        let mut lut_arg = lut_ptr as *mut c_void;
+        let mut in_f = tf.input_format;
+        let mut out_f = tf.output_format;
+        let mut fl = tf.dw_flags;
+        let f: Factory = unsafe { std::mem::transmute(fp) };
+        let ok = unsafe {
+            f(
+                &mut xform_fn,
+                &mut user_data,
+                &mut free_fn,
+                &mut lut_arg,
+                &mut in_f,
+                &mut out_f,
+                &mut fl,
+            )
+        };
+        if ok != 0 {
+            tf.input_format = in_f;
+            tf.output_format = out_f;
+            tf.dw_flags = fl;
+            if lut_arg != lut_ptr as *mut c_void && !lut_arg.is_null() {
+                tf.lut = Some(*unsafe { Box::from_raw(lut_arg as *mut lcms::lut::Pipeline) });
+            }
+            tf.foreign = Some(lcms::xform::ForeignXform {
+                old_xform: xform_fn,
+                user_data: user_data as usize,
+                free_fn,
+            });
+            tf.worker = lcms::xform::Worker::Foreign;
+            return;
+        }
+    }
 }
 /// `cmsCreateMultiprofileTransform` — n-profile link
 #[unsafe(no_mangle)]
@@ -1304,7 +1374,16 @@ pub extern "C" fn cmsCreateMultiprofileTransform(
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsDeleteTransform(h: Handle) {
     if !h.is_null() {
-        drop(unsafe { Box::from_raw(h as *mut Transform) });
+        let t = unsafe { Box::from_raw(h as *mut Transform) };
+        // `FreePrivateDataFn` — a transform plugin's user-data destructor
+        if let Some(fx) = t.foreign {
+            if fx.free_fn != 0 {
+                type F = unsafe extern "C" fn(*mut c_void);
+                let f: F = unsafe { std::mem::transmute(fx.free_fn) };
+                unsafe { f(fx.user_data as *mut c_void) };
+            }
+        }
+        drop(t);
     }
 }
 /// `cmsDoTransform` — contiguous n pixels
@@ -2841,6 +2920,17 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                         ))
                 };
             }
+            PLUGIN_TRANSFORM_SIG => {
+                // `cmsPluginTransform` — transform factory (legacy `fact`
+                // member is the first union word).
+                ensure_foreign_hooks();
+                let t = unsafe { &*(p as *const CmsPluginTransform) };
+                unsafe {
+                    (*(ctx as *mut lcms::context::Context))
+                        .c_xform_factories
+                        .push((t.factory, ctx as usize))
+                };
+            }
             PLUGIN_INTENT_SIG => {
                 let h = unsafe { &*(p as *const CmsPluginRenderingIntent) };
                 if h.link != 0 {
@@ -3874,6 +3964,7 @@ fn ensure_foreign_hooks() {
         });
         *lcms::context::MPE_LOOKUP.write().unwrap() = Some(mpe_lookup);
         *lcms::context::STAGE_BOX.write().unwrap() = Some(stage_box);
+        *lcms::context::XFORM_HOOKS.write().unwrap() = Some(foreign_xform_invoke);
     });
 }
 
@@ -3890,6 +3981,121 @@ fn stage_box(ptr: usize) -> Option<Box<lcms::lut::Stage>> {
     }
     Some(unsafe { *Box::from_raw(ptr as *mut lcms::lut::Stage) })
         .map(Box::new)
+}
+
+// ---------------------------------------------------------------------------
+// Transform-plugin bridge — `cmsPluginTransform` factory + foreign `xform`
+// ---------------------------------------------------------------------------
+
+/// `cmsPluginTransform` — base + a union {`fact`,`fact2`}; the first member
+/// is the legacy `_cmsTransformFactory`.
+#[repr(C)]
+struct CmsPluginTransform {
+    base: CmsPluginBase,
+    factory: usize, // union { _cmsTransformFactory fact; _cmsTransform2Factory fact2 }
+}
+
+/// `_cmstransform_struct` (lcms2_internal.h:1076) — the `CMMcargo` arg of a
+/// C `_cmsTransformFn`. Layout must match C exactly.
+#[repr(C)]
+struct CTransform {
+    input_format: u32,
+    output_format: u32,
+    xform: usize,            // _cmsTransform2Fn
+    from_input: usize,       // cmsFormatter16
+    to_output: usize,
+    from_input_float: usize, // cmsFormatterFloat
+    to_output_float: usize,
+    cache: [u16; 32],        // _cmsCACHE: CacheIn[16]+CacheOut[16]
+    lut: *mut c_void,        // cmsPipeline*
+    gamut_check: *mut c_void,
+    input_colorant: *mut c_void, // cmsNAMEDCOLORLIST*
+    output_colorant: *mut c_void,
+    entry_color_space: u32,
+    exit_color_space: u32,
+    entry_white_point: [f64; 3],
+    exit_white_point: [f64; 3],
+    sequence: *mut c_void,   // cmsSEQ*
+    dw_original_flags: u32,
+    adaptation_state: f64,
+    rendering_intent: u32,
+    context_id: Handle,
+    user_data: *mut c_void,
+    free_user_data: usize,   // _cmsFreeUserDataFn
+    old_xform: usize,        // _cmsTransformFn (legacy worker)
+    worker: usize,           // _cmsTransform2Fn
+    max_workers: i32,
+    worker_flags: u32,
+}
+
+/// Build the C-ABI view of a Rust `Transform` for a foreign `xform` call.
+fn ctransform_view(t: &lcms::xform::Transform) -> CTransform {
+    let f = t.foreign.unwrap_or(lcms::xform::ForeignXform {
+        old_xform: 0,
+        user_data: 0,
+        free_fn: 0,
+    });
+    CTransform {
+        input_format: t.input_format,
+        output_format: t.output_format,
+        xform: 0,
+        from_input: 0,
+        to_output: 0,
+        from_input_float: 0,
+        to_output_float: 0,
+        cache: [0u16; 32],
+        lut: ptr::null_mut(),
+        gamut_check: ptr::null_mut(),
+        input_colorant: ptr::null_mut(),
+        output_colorant: ptr::null_mut(),
+        entry_color_space: t.entry_color_space,
+        exit_color_space: t.exit_color_space,
+        entry_white_point: [t.entry_white_point.X, t.entry_white_point.Y, t.entry_white_point.Z],
+        exit_white_point: [t.exit_white_point.X, t.exit_white_point.Y, t.exit_white_point.Z],
+        sequence: ptr::null_mut(),
+        dw_original_flags: t.dw_flags,
+        adaptation_state: 1.0,
+        rendering_intent: t.rendering_intent,
+        context_id: ptr::null_mut(),
+        user_data: f.user_data as *mut c_void,
+        free_user_data: f.free_fn,
+        old_xform: f.old_xform,
+        worker: 0,
+        max_workers: 0,
+        worker_flags: 0,
+    }
+}
+
+/// `XFORM_HOOKS` — call the plugin's legacy `_cmsTransformFn` per line.
+fn foreign_xform_invoke(
+    t_ptr: usize,
+    input: *const u8,
+    output: *mut u8,
+    ppl: u32,
+    lines: u32,
+    bpl_in: u32,
+    bpl_out: u32,
+    bpp_in: u32,
+    _bpp_out: u32,
+) {
+    let t = unsafe { &*(t_ptr as *const lcms::xform::Transform) };
+    let Some(fx) = t.foreign else {
+        return;
+    };
+    if fx.old_xform == 0 {
+        return;
+    }
+    type OldFn =
+        unsafe extern "C" fn(*mut CTransform, *const c_void, *mut c_void, u32, u32);
+    let f: OldFn = unsafe { std::mem::transmute(fx.old_xform) };
+    let mut ct = ctransform_view(t);
+    let line_in = if bpl_in != 0 { bpl_in } else { bpp_in };
+    let line_out = if bpl_out != 0 { bpl_out } else { bpp_in };
+    for line in 0..lines {
+        let ip = unsafe { input.add(line as usize * line_in as usize) as *const c_void };
+        let op = unsafe { output.add(line as usize * line_out as usize) as *mut c_void };
+        unsafe { f(&mut ct, ip, op, ppl, bpp_in) };
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -4299,6 +4505,7 @@ const PLUGIN_INTENT_SIG: c_uint = 0x696E_7448; // 'intH'
 const PLUGIN_TAGTYPE_SIG: c_uint = 0x7479_7048; // 'typH'
 const PLUGIN_TAG_SIG: c_uint = 0x7461_6748; // 'tagH'
 const PLUGIN_MPE_SIG: c_uint = 0x6D70_6548; // 'mpeH'
+const PLUGIN_TRANSFORM_SIG: c_uint = 0x7A66_6D48; // 'xfmH'
 const LCMS_VERSION: c_uint = 2200;
 
 /// `_cmsFindMemoryPlugin` — scan the plugin chain for a mem-handler
