@@ -3162,7 +3162,51 @@ fn ensure_foreign_hooks() {
             kernel16: fmt_kernel16,
             kernelf32: fmt_kernelf32,
         });
+        lcms::cnvrt::set_intent_link_hook(intent_link_hook);
     });
+}
+/// `cmsIntentFn` C signature — `(ContextID, nProfiles, Intents[], hProfiles[],
+/// BPC[], AdaptationStates[], dwFlags) → cmsPipeline*`.
+type IntentFnC = unsafe extern "C" fn(
+    Handle,
+    c_uint,
+    *const c_uint,
+    *const Handle,
+    *const c_int,
+    *const f64,
+    c_uint,
+) -> Handle;
+/// Invoke a C-registered `cmsIntentFn` — marshal the profile/context handles
+/// and arrays, `Box::from_raw` the returned `cmsPipeline*` (an FFI handle).
+fn intent_link_hook(
+    ctx: Option<&lcms::context::Context>,
+    link: usize,
+    profiles: &mut [Box<IccProfile>],
+    intents: &[u32],
+    bpc: &[bool],
+    adapt: &[f64],
+    flags: u32,
+) -> Option<Box<lcms::lut::Pipeline>> {
+    let f: IntentFnC = unsafe { std::mem::transmute(link) };
+    let ctx_h = ctx.map(|c| c as *const _ as Handle).unwrap_or(ptr::null_mut());
+    let profs: Vec<Handle> = profiles.iter_mut().map(|p| p.as_mut() as *mut _ as Handle).collect();
+    let bpcs: Vec<c_int> = bpc.iter().map(|&b| b as c_int).collect();
+    let h = unsafe {
+        f(
+            ctx_h,
+            profiles.len() as c_uint,
+            intents.as_ptr(),
+            profs.as_ptr(),
+            bpcs.as_ptr(),
+            adapt.as_ptr(),
+            flags,
+        )
+    };
+    if h.is_null() {
+        None
+    } else {
+        Some(unsafe { Box::from_raw(h as *mut lcms::lut::Pipeline) })
+    }
 }
 /// `cmsFormatterFactory` C call — `(Type, Dir, dwFlags)` → `cmsFormatter` union.
 fn fmt_factory_hook(cfn: usize, ty: u32, dir: u32, flags: u32) -> usize {

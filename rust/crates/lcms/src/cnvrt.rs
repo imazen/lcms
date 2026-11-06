@@ -440,6 +440,24 @@ fn default_icc_intents(
     Some(result)
 }
 
+/// FFI-installed hook for C-registered `cmsIntentFn` plugins — invokes the
+/// plugin's `Link` over the raw profile/context handles and returns the
+/// `cmsPipeline*` it built as a `Pipeline`. `lcms` forbids `unsafe`; the FFI
+/// performs the transmute/`from_raw`.
+pub type IntentLinkHook = fn(
+    Option<&Context>,
+    usize,             // `cmsIntentFn` ptr
+    &mut [Box<IccProfile>],
+    &[u32],            // intents
+    &[bool],           // bpc
+    &[f64],            // adaptation states
+    u32,               // dwFlags
+) -> Option<Box<Pipeline>>;
+static INTENT_LINK_HOOK: std::sync::OnceLock<IntentLinkHook> = std::sync::OnceLock::new();
+pub fn set_intent_link_hook(h: IntentLinkHook) {
+    let _ = INTENT_LINK_HOOK.set(h);
+}
+
 /// `_cmsLinkProfiles` — intent lookup then link
 pub fn link_profiles(
     ctx: Option<Context>,
@@ -449,6 +467,20 @@ pub fn link_profiles(
     adaptation_states: &[f64],
     dw_flags: u32,
 ) -> Option<Pipeline> {
+    // C consults ctx-registered `cmsPluginRenderingIntent` `Link` fns for
+    // non-standard intents before the built-in intent table
+    // (`_cmsLinkProfiles`/`GetIntentPlugin`).
+    if let Some(h) = INTENT_LINK_HOOK.get() {
+        if let Some(cctx) = ctx.as_ref() {
+            for ci in &cctx.c_intents {
+                if ci.intent as u32 == intents[0] {
+                    if let Some(p) = h(ctx.as_ref(), ci.link, profiles, intents, bpc, adaptation_states, dw_flags) {
+                        return Some(*p);
+                    }
+                }
+            }
+        }
+    }
     link_profiles_inner(ctx, profiles, intents, bpc, adaptation_states, dw_flags)
 }
 
