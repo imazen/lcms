@@ -663,6 +663,7 @@ pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPa
 }
 
 /// `TetrahedralInterpFloat` — Sakamoto tetrahedral interpolation, float.
+#[inline]
 fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
     let total_out = p.n_outputs as usize;
@@ -750,6 +751,7 @@ fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams)
 /// `x = (Rest + ((Rest+0x7fff)/0xFFFF) + 0x8000) >> 16` replaced by
 /// `t = Rest+0x8001; x = (t + (t>>16)) >> 16` — off by one at 0x7fff/0x17ffe,
 /// which is C's actual behaviour and is preserved.
+#[inline]
 #[inline]
 pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
@@ -921,6 +923,7 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
 
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
 #[inline]
+#[inline]
 pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut tmp1 = [0u16; MAX_STAGE_CHANNELS];
@@ -973,7 +976,11 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
             p.opta[0] as i32
         };
 
-    // Inner tetrahedral eval shared by the K0 and K1 passes.
+    // Inner tetrahedral eval shared by the K0 and K1 passes — C's layout:
+    // the tetrahedron ladder is chosen once, then each arm runs the
+    // output-channel loop with 4 table loads and 3 subs (offsets computed
+    // once; `.min` keeps `o+oc < cell.len()` provable, eliding bounds
+    // checks in the channel loop).
     fn tetra16(
         lut_table: &[u16],
         base: i32,
@@ -989,56 +996,72 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
         n_outputs: usize,
         out: &mut [u16],
     ) {
-        // One bounded slice: every corner index i+j+k ≤ x1+y1+z1 (each
-        // coord ≤ its far corner), so the `.min` is a semantic no-op that
-        // lets LLVM elide the per-node bounds checks. `cell` is sliced to
-        // exactly `max_off + n_outputs`, making `min+oc < len` provable.
-        let max_off = x1.wrapping_add(y1).wrapping_add(z1);
-        let span = base as usize + max_off as usize + n_outputs;
-        let cell = &lut_table[base as usize..span];
-        let dens = |i: i32, j: i32, k: i32, out_chan: usize| {
-            cell[((i + j + k).min(max_off)) as usize + out_chan] as i32
-        };
-        for out_chan in 0..n_outputs {
-            let c0 = dens(x0i, y0i, z0i, out_chan);
-            let (c1, c2, c3);
+        let c0_off = x0i + y0i + z0i;
+        let d_x = x1 - x0i;
+        let d_y = y1 - y0i;
+        let d_z = z1 - z0i;
+        let max_off = d_x + d_y + d_z;
+        let start = (base + c0_off) as usize;
+        let cell = &lut_table[start..start + max_off as usize + n_outputs];
 
-            if rx >= ry && ry >= rz {
-                c1 = dens(x1, y0i, z0i, out_chan) - c0;
-                c2 = dens(x1, y1, z0i, out_chan) - dens(x1, y0i, z0i, out_chan);
-                c3 = dens(x1, y1, z1, out_chan) - dens(x1, y1, z0i, out_chan);
-            } else if rx >= rz && rz >= ry {
-                c1 = dens(x1, y0i, z0i, out_chan) - c0;
-                c2 = dens(x1, y1, z1, out_chan) - dens(x1, y0i, z1, out_chan);
-                c3 = dens(x1, y0i, z1, out_chan) - dens(x1, y0i, z0i, out_chan);
-            } else if rz >= rx && rx >= ry {
-                c1 = dens(x1, y0i, z1, out_chan) - dens(x0i, y0i, z1, out_chan);
-                c2 = dens(x1, y1, z1, out_chan) - dens(x1, y0i, z1, out_chan);
-                c3 = dens(x0i, y0i, z1, out_chan) - c0;
-            } else if ry >= rx && rx >= rz {
-                c1 = dens(x1, y1, z0i, out_chan) - dens(x0i, y1, z0i, out_chan);
-                c2 = dens(x0i, y1, z0i, out_chan) - c0;
-                c3 = dens(x1, y1, z1, out_chan) - dens(x1, y1, z0i, out_chan);
-            } else if ry >= rz && rz >= rx {
-                c1 = dens(x1, y1, z1, out_chan) - dens(x0i, y1, z1, out_chan);
-                c2 = dens(x0i, y1, z0i, out_chan) - c0;
-                c3 = dens(x0i, y1, z1, out_chan) - dens(x0i, y1, z0i, out_chan);
-            } else if rz >= ry && ry >= rx {
-                c1 = dens(x1, y1, z1, out_chan) - dens(x0i, y1, z1, out_chan);
-                c2 = dens(x0i, y1, z1, out_chan) - dens(x0i, y0i, z1, out_chan);
-                c3 = dens(x0i, y0i, z1, out_chan) - c0;
-            } else {
-                c1 = 0;
-                c2 = 0;
-                c3 = 0;
+        #[inline(always)]
+        fn arm<F: Fn(i32, i32, i32, i32) -> (i32, i32, i32)>(
+            cell: &[u16],
+            o1: i32,
+            o2: i32,
+            o3: i32,
+            max_off: i32,
+            rx: i32,
+            ry: i32,
+            rz: i32,
+            n_outputs: usize,
+            out: &mut [u16],
+            diffs: F,
+        ) {
+            let o1 = o1.min(max_off);
+            let o2 = o2.min(max_off);
+            let o3 = o3.min(max_off);
+            for oc in 0..n_outputs {
+                let c0 = cell[oc] as i32;
+                let t1 = cell[(o1 + oc as i32) as usize] as i32;
+                let t2 = cell[(o2 + oc as i32) as usize] as i32;
+                let t3 = cell[(o3 + oc as i32) as usize] as i32;
+                let (c1, c2, c3) = diffs(c0, t1, t2, t3);
+                let rest = c1
+                    .wrapping_mul(rx)
+                    .wrapping_add(c2.wrapping_mul(ry))
+                    .wrapping_add(c3.wrapping_mul(rz))
+                    .wrapping_add(0x8001);
+                out[oc] = (c0 as u16).wrapping_add((rest.wrapping_add(rest >> 16) >> 16) as u16);
             }
+        }
 
-            let rest = c1
-                .wrapping_mul(rx)
-                .wrapping_add(c2.wrapping_mul(ry))
-                .wrapping_add(c3.wrapping_mul(rz))
-                .wrapping_add(0x8001);
-            out[out_chan] = (c0 as u16).wrapping_add((rest.wrapping_add(rest >> 16) >> 16) as u16);
+        if rx >= ry {
+            if ry >= rz {
+                arm(cell, d_x, d_x + d_y, max_off, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                    (t1 - c0, t2 - t1, t3 - t2)
+                });
+            } else if rz >= rx {
+                arm(cell, d_x + d_z, max_off, d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                    (t1 - t3, t2 - t1, t3 - c0)
+                });
+            } else {
+                arm(cell, d_x, max_off, d_x + d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                    (t1 - c0, t2 - t3, t3 - t1)
+                });
+            }
+        } else if rx >= rz {
+            arm(cell, d_x + d_y, d_y, max_off, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                (t1 - t2, t2 - c0, t3 - t1)
+            });
+        } else if ry >= rz {
+            arm(cell, max_off, d_y, d_y + d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                (t1 - t3, t2 - c0, t3 - t2)
+            });
+        } else {
+            arm(cell, max_off, d_y + d_z, d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                (t1 - t2, t2 - t3, t3 - c0)
+            });
         }
     }
 
@@ -1056,6 +1079,7 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
 }
 
 /// `Eval4InputsFloat` — two tetrahedral evals + lerp, float.
+#[inline]
 fn eval4_inputs_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
     let mut tmp1 = [0.0f32; MAX_STAGE_CHANNELS];
