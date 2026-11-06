@@ -1031,14 +1031,22 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
             prev_rk: Option<(&[u16], i32)>,
             diffs: F,
         ) {
-            let o1 = o1.min(max_off);
-            let o2 = o2.min(max_off);
-            let o3 = o3.min(max_off);
+            // `o+oc` stays in-bounds by `o.min(max_off)` + cell's
+            // `max_off + n` span — re-slice so the channel loop's four
+            // table reads carry one bounds check each, not `4×n`.
+            let o1 = (o1.min(max_off)) as usize;
+            let o2 = (o2.min(max_off)) as usize;
+            let o3 = (o3.min(max_off)) as usize;
+            let c0s = &cell[..n_outputs];
+            let t1s = &cell[o1..o1 + n_outputs];
+            let t2s = &cell[o2..o2 + n_outputs];
+            let t3s = &cell[o3..o3 + n_outputs];
+            let out = &mut out[..n_outputs];
             for oc in 0..n_outputs {
-                let c0 = cell[oc] as i32;
-                let t1 = cell[(o1 + oc as i32) as usize] as i32;
-                let t2 = cell[(o2 + oc as i32) as usize] as i32;
-                let t3 = cell[(o3 + oc as i32) as usize] as i32;
+                let c0 = c0s[oc] as i32;
+                let t1 = t1s[oc] as i32;
+                let t2 = t2s[oc] as i32;
+                let t3 = t3s[oc] as i32;
                 let (c1, c2, c3) = diffs(c0, t1, t2, t3);
                 let rest = c1
                     .wrapping_mul(rx)
