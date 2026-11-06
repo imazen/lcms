@@ -2022,7 +2022,7 @@ pub extern "C" fn cmsCreateContext(plugin: *const c_void, user_data: *mut c_void
     unsafe { ptr::write(raw as *mut lcms::context::Context, c) };
     pool_register(raw);
     // register remaining (non-mem) plugins in the bundle
-    plugin_thr_register(raw, plugin as *const CmsPluginBase);
+    let _ = plugin_thr_register(raw, plugin as *const CmsPluginBase);
     raw
 }
 /// `cmsDupContext`
@@ -2073,15 +2073,15 @@ unsafe fn mem_dealloc_ctx(fns: &[usize; 6], id: Handle, p: *mut c_void) {
 /// Walk a C plugin bundle and apply each recognized entry to `ctx`.
 /// Currently: mem-handler (installed into `Context::mem_fns`) and the
 /// interpolation factory (stored for `cmsComputeInterpParams`).
-fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) {
+fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
     if !pool_contains(ctx) {
-        return;
+        return false;
     }
     let mut hops = 0;
     while !p.is_null() && hops < 128 {
         let b = unsafe { &*p };
         if b.magic != PLUGIN_MAGIC || b.expected_version > LCMS_VERSION {
-            return;
+            return false;
         }
         match b.ty {
             PLUGIN_MEMHANDLER_SIG => {
@@ -2117,11 +2117,20 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) {
                     };
                 }
             }
+            PLUGIN_HEADER_SIG => {
+                // C: required callbacks — a header plugin missing Read/Write/
+                // GetSize is rejected.
+                let h = unsafe { &*(p as *const CmsPluginHeader) };
+                if h.read_ptr == 0 || h.write_ptr == 0 || h.get_size_ptr == 0 {
+                    return false;
+                }
+            }
             _ => {}
         }
         p = b.next;
         hops += 1;
     }
+    true
 }
 
 /// `cmsSetAlarmCodes` — writes `n` codes into the alarm slot
@@ -3103,10 +3112,20 @@ type ParametricEvalC = unsafe extern "C" fn(c_int, *const f64, f64) -> f64;
 type LerpFloatC = unsafe extern "C" fn(*const f32, *mut f32, *const CmsInterpParams);
 /// `_cmsInterpFn16` C signature
 type Lerp16C = unsafe extern "C" fn(*const u16, *mut u16, *const CmsInterpParams);
+/// `cmsPluginHeader` — base + 4 header I/O callbacks
+#[repr(C)]
+struct CmsPluginHeader {
+    base: CmsPluginBase,
+    read_ptr: usize,
+    write_ptr: usize,
+    get_size_ptr: usize,
+    get_info_ptr: usize,
+}
 const PLUGIN_MAGIC: c_uint = 0x6163_7070; // 'acpp'
 const PLUGIN_MEMHANDLER_SIG: c_uint = 0x6D65_6D48; // 'memH'
 const PLUGIN_INTERP_SIG: c_uint = 0x696E_7048; // 'inpH'
 const PLUGIN_PARAMETRIC_SIG: c_uint = 0x7061_7248; // 'parH'
+const PLUGIN_HEADER_SIG: c_uint = 0x6864_7248; // 'hdrH'
 const LCMS_VERSION: c_uint = 2200;
 
 /// `_cmsFindMemoryPlugin` — scan the plugin chain for a mem-handler
@@ -4392,8 +4411,11 @@ pub extern "C" fn cmsPluginTHR(ctx: Handle, plugins: *const c_void) -> c_int {
     if ctx.is_null() {
         return cmsPlugin(plugins);
     }
-    plugin_thr_register(ctx, plugins as *const CmsPluginBase);
-    1
+    if plugin_thr_register(ctx, plugins as *const CmsPluginBase) {
+        1
+    } else {
+        0
+    }
 }
 /// `cmsTransform2DeviceLink` — bakes a transform into a devicelink profile.
 /// Needs a sampled-CLUT bake path that `lcms` doesn't expose yet (stub NULL).
