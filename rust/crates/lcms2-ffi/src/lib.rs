@@ -93,6 +93,16 @@ pub extern "C" fn cmsCloseProfile(h: Handle) -> c_int {
         }
         p.is_write = false;
     }
+    // `_cmsSetProfileUserData`'s destructor runs on close (C: cmsio0.c)
+    if p.user_data != 0 && p.free_user_data_fn != 0 {
+        let f: FreeUserDataC = unsafe { std::mem::transmute(p.free_user_data_fn) };
+        let cid = p
+            .ctx
+            .as_ref()
+            .map(|c| c as *const lcms::context::Context as Handle)
+            .unwrap_or(ptr::null_mut());
+        unsafe { f(cid, p.user_data as *mut c_void) };
+    }
     drop(p);
     rc
 }
@@ -4167,10 +4177,22 @@ pub extern "C" fn _cmsStageAllocNamedColor(list: Handle, use_pcs: c_int) -> Hand
 pub extern "C" fn _cmsGetProfileUserData(h: Handle) -> *mut c_void {
     hdr(h, |p| p.user_data as *mut c_void, ptr::null_mut())
 }
-/// `_cmsSetProfileUserData` — stores `data` + its `_cmsFreeUserDataFn`
+/// `_cmsFreeUserDataFn` — `void (*)(cmsContext ContextID, void* Data)`
+type FreeUserDataC = unsafe extern "C" fn(Handle, *mut c_void);
+/// `_cmsSetProfileUserData` — frees any previous user data via its stored
+/// `FreeUsrData` before installing the new pair.
 #[unsafe(no_mangle)]
 pub extern "C" fn _cmsSetProfileUserData(h: Handle, data: *mut c_void, free_fn: *const c_void) {
     if let Some(p) = prof_ref(h) {
+        if p.user_data != 0 && p.free_user_data_fn != 0 {
+            let f: FreeUserDataC = unsafe { std::mem::transmute(p.free_user_data_fn) };
+            let cid = p
+                .ctx
+                .as_ref()
+                .map(|c| c as *const lcms::context::Context as Handle)
+                .unwrap_or(ptr::null_mut());
+            unsafe { f(cid, p.user_data as *mut c_void) };
+        }
         p.user_data = data as usize;
         p.free_user_data_fn = free_fn as usize;
     }
