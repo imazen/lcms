@@ -53,6 +53,9 @@ pub struct IccProfile {
     /// `_cmsFreeUserDataFn` destructor (usize-punned; FFI layer invokes it).
     pub user_data: usize,
     pub free_user_data_fn: usize,
+    /// `IsWrite` — profile opened in a write access mode; `cmsCloseProfile`
+    /// serializes before closing.
+    pub is_write: bool,
 
     // Tag dictionary
     pub tag_count: u32,
@@ -91,6 +94,7 @@ impl Default for IccProfile {
             profile_id: ProfileId::default(),
             user_data: 0,
             free_user_data_fn: 0,
+            is_write: false,
             tag_count: 0,
             tag_names: [0; MAX_TABLE_TAG],
             tag_linked: [0; MAX_TABLE_TAG],
@@ -540,6 +544,7 @@ pub fn open_profile_from_mem(ctx: Option<Context>, data: &[u8]) -> Option<Box<Ic
     let mut icc = Box::new(IccProfile {
         io: Some(io),
         ctx,
+        is_write: false,
         ..Default::default()
     });
     if !read_header(&mut icc) {
@@ -920,6 +925,7 @@ pub fn open_profile_from_file(
     let mut icc = Box::new(IccProfile {
         io: Some(io),
         ctx,
+        is_write: access.starts_with('w') || access.starts_with('W'),
         ..Default::default()
     });
     if access.starts_with('r') && !read_header(&mut icc) {

@@ -82,8 +82,19 @@ pub extern "C" fn cmsCloseProfile(h: Handle) -> c_int {
     if h.is_null() {
         return 0;
     }
-    drop(unsafe { Box::from_raw(h as *mut IccProfile) });
-    1
+    let mut p = unsafe { Box::from_raw(h as *mut IccProfile) };
+    let mut rc = 1;
+    if p.is_write {
+        // `cmsSaveProfileToIOhandler(h, NULL)` — serialize into the profile's
+        // own (write-mode) IO handler before closing.
+        let mut io = p.io.take();
+        if profile::save_profile_to_iohandler(&mut p, io.as_mut()) == 0 {
+            rc = 0;
+        }
+        p.is_write = false;
+    }
+    drop(p);
+    rc
 }
 /// `cmsSaveProfileToFile`
 #[unsafe(no_mangle)]
@@ -381,29 +392,143 @@ pub extern "C" fn cmsFreeToneCurve(curve: Handle) {
 pub extern "C" fn cmsIsTag(h: Handle, sig: c_uint) -> c_int {
     hdr(h, |p| if profile::cms_is_tag(p, sig) { 1 } else { 0 }, 0)
 }
-/// `cmsReadTag` — returns an opaque tag-object handle (NOT freeable by caller;
-/// matches C's borrowed-pointer contract where the profile owns the object)
+/// `cmsReadTag` — marshal the stored `TagObject` to the C-side handle type
+/// the caller expects for this tag.
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsReadTag(h: Handle, sig: c_uint) -> Handle {
-    match prof_ref(h) {
-        Some(p) => match profile::cms_read_tag(p, sig) {
-            Some(obj) => obj as *const _ as *mut c_void,
-            None => ptr::null_mut(),
-        },
-        None => ptr::null_mut(),
+    use lcms::tagtypes::TagObject;
+    let Some(p) = prof_ref(h) else {
+        return ptr::null_mut();
+    };
+    let Some(obj) = profile::cms_read_tag(p, sig) else {
+        return ptr::null_mut();
+    };
+    match obj {
+        TagObject::Xyz(x) => Box::into_raw(Box::new(*x)) as Handle,
+        TagObject::Chromaticity(x) => Box::into_raw(Box::new(*x)) as Handle,
+        TagObject::Text(m) | TagObject::TextDescription(m) | TagObject::Mlu(m)
+        | TagObject::CrdInfo(m) => Box::into_raw(Box::new(m.clone())) as Handle,
+        TagObject::Curve(t) | TagObject::ParametricCurve(t) => rust_to_tc(t.clone()),
+        TagObject::NamedColor(l) | TagObject::ColorantTable(l) => {
+            Box::into_raw(Box::new(l.clone())) as Handle
+        }
+        TagObject::Lut8(p) | TagObject::Lut16(p) | TagObject::LutA2B(p)
+        | TagObject::LutB2A(p) | TagObject::Mpe(p) => {
+            Box::into_raw(Box::new(p.clone())) as Handle
+        }
+        TagObject::MpeElem(s) => Box::into_raw(Box::new(s.clone())) as Handle,
+        TagObject::Signature(s) => Box::into_raw(Box::new(*s)) as Handle,
+        TagObject::ColorantOrder(c) => Box::into_raw(Box::new(*c)) as Handle,
+        TagObject::UInt8(v) | TagObject::Raw(v) => boxed_data(v),
+        TagObject::UInt32(v) => boxed_data(v),
+        TagObject::UInt64(v) => boxed_data(v),
+        TagObject::S15Fixed16(v) | TagObject::U16Fixed16(v) => boxed_data(v),
+        TagObject::DateTime(t) => Box::into_raw(Box::new(t.clone())) as Handle,
+        TagObject::Measurement(m) => Box::into_raw(Box::new(*m)) as Handle,
+        TagObject::Screening(s) => Box::into_raw(Box::new(s.clone())) as Handle,
+        TagObject::ViewingConditions(v) => Box::into_raw(Box::new(v.clone())) as Handle,
+        TagObject::UcrBg(u) => Box::into_raw(Box::new(u.clone())) as Handle,
+        TagObject::VideoSignal(v) => Box::into_raw(Box::new(*v)) as Handle,
+        TagObject::Dictionary(d) => Box::into_raw(Box::new(d.clone())) as Handle,
+        TagObject::ProfileSeqDesc(s) | TagObject::ProfileSeqId(s) => {
+            Box::into_raw(Box::new(s.clone())) as Handle
+        }
+        TagObject::Vcgt(v) => Box::into_raw(Box::new(v.clone())) as Handle,
+        TagObject::Mhc2(v) => Box::into_raw(Box::new(v.clone())) as Handle,
+        TagObject::Data(d) => Box::into_raw(Box::new(d.clone())) as Handle,
     }
 }
-/// `cmsWriteTag` — cooked write via TagObject (only a few forms exposed;
-/// callers needing structured tags should use the Rust API)
+fn boxed_data<T: Clone>(v: &[T]) -> Handle {
+    let b = v.to_vec().into_boxed_slice();
+    Box::into_raw(b) as Handle
+}
+/// `cmsWriteTag` — dispatch the tag signature to the `TagObject` variant the
+/// handle points at; `cms_write_tag` validates against the descriptor.
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, _data: *const c_void) -> c_int {
-    if prof_ref(h).is_none() {
+pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_int {
+    use lcms::tagtypes::TagObject;
+    let Some(p) = prof_ref(h) else {
         return 0;
+    };
+    if data.is_null() {
+        return profile::cms_write_tag(p, sig, None) as c_int;
     }
-    // Generic cooked tag write requires a TagObject — not expressible across
-    // the C boundary; return success iff the tag already exists (no-op) as a
-    // conservative placeholder for structured writes.
-    if prof_ref(h).is_some() { 1 } else { 0 }
+    let obj: Option<TagObject> = match sig {
+        s if s == lcms::signatures::tag::SigNamedColor2Tag => {
+            ncl_ref(data as Handle).map(|l| TagObject::NamedColor(l.clone()))
+        }
+        s if s == lcms::signatures::tag::SigColorantTableTag => {
+            ncl_ref(data as Handle).map(|l| TagObject::ColorantTable(l.clone()))
+        }
+        s if s == lcms::signatures::tag::SigMediaWhitePointTag
+            || s == lcms::signatures::tag::SigMediaBlackPointTag
+            || s == lcms::signatures::tag::SigChromaticAdaptationTag
+            || s == lcms::signatures::tag::SigRedColorantTag
+            || s == lcms::signatures::tag::SigGreenColorantTag
+            || s == lcms::signatures::tag::SigBlueColorantTag =>
+        {
+            Some(TagObject::Xyz(unsafe { *(data as *const lcms::types::CieXyz) }))
+        }
+        s if s == lcms::signatures::tag::SigChromaticityTag => Some(
+            TagObject::Chromaticity(unsafe { *(data as *const lcms::types::CiexyYTriple) }),
+        ),
+        s if s == lcms::signatures::tag::SigGrayTRCTag
+            || s == lcms::signatures::tag::SigRedTRCTag
+            || s == lcms::signatures::tag::SigGreenTRCTag
+            || s == lcms::signatures::tag::SigBlueTRCTag =>
+        {
+            curve_rust(data as Handle).map(TagObject::Curve)
+        }
+        s if s == lcms::signatures::tag::SigAToB0Tag
+            || s == lcms::signatures::tag::SigAToB1Tag
+            || s == lcms::signatures::tag::SigAToB2Tag =>
+        {
+            pipe_ref(data as Handle).map(|p| TagObject::LutA2B(p.clone()))
+        }
+        s if s == lcms::signatures::tag::SigBToA0Tag
+            || s == lcms::signatures::tag::SigBToA1Tag
+            || s == lcms::signatures::tag::SigBToA2Tag
+            || s == lcms::signatures::tag::SigGamutTag
+            || s == lcms::signatures::tag::SigPreview0Tag
+            || s == lcms::signatures::tag::SigPreview1Tag
+            || s == lcms::signatures::tag::SigPreview2Tag =>
+        {
+            pipe_ref(data as Handle).map(|p| TagObject::LutB2A(p.clone()))
+        }
+        s if s == lcms::signatures::tag::SigColorantOrderTag => Some(
+            TagObject::ColorantOrder(unsafe { *(data as *const [u8; lcms::xform::MAX_CHANNELS]) }),
+        ),
+        s if s == lcms::signatures::tag::SigUcrBgTag => {
+            ucrbg_ref(data as Handle).map(|u| TagObject::UcrBg(u.clone()))
+        }
+        s if s == lcms::signatures::tag::SigProfileSequenceDescTag => {
+            seqdesc_ref(data as Handle).map(|d| TagObject::ProfileSeqDesc(d.clone()))
+        }
+        s if s == lcms::signatures::tag::SigProfileSequenceIdTag => {
+            seqdesc_ref(data as Handle).map(|d| TagObject::ProfileSeqId(d.clone()))
+        }
+        s if is_mlu_tag(s) => {
+            mlu_ref(data as Handle).map(|m| TagObject::Mlu(m.clone()))
+        }
+        _ => None,
+    };
+    let Some(obj) = obj else {
+        return 0;
+    };
+    profile::cms_write_tag(p, sig, Some(obj)) as c_int
+}
+fn is_mlu_tag(sig: u32) -> bool {
+    use lcms::signatures::tag::*;
+    [
+        SigProfileDescriptionTag,
+        SigCopyrightTag,
+        SigDeviceMfgDescTag,
+        SigDeviceModelDescTag,
+        SigViewingCondDescTag,
+        SigCharTargetTag,
+        SigScreeningDescTag,
+    ]
+    .contains(&sig)
 }
 
 // ---------------------------------------------------------------------------
@@ -1374,6 +1499,18 @@ fn ncl_ref<'a>(h: Handle) -> Option<&'a mut named::NamedColorList> {
         return None;
     }
     Some(unsafe { &mut *(h as *mut named::NamedColorList) })
+}
+fn seqdesc_ref<'a>(h: Handle) -> Option<&'a mut named::ProfileSeqDesc> {
+    if h.is_null() {
+        return None;
+    }
+    Some(unsafe { &mut *(h as *mut named::ProfileSeqDesc) })
+}
+fn ucrbg_ref<'a>(h: Handle) -> Option<&'a mut lcms::tagtypes::UcrBg> {
+    if h.is_null() {
+        return None;
+    }
+    Some(unsafe { &mut *(h as *mut lcms::tagtypes::UcrBg) })
 }
 /// `cmsFreeNamedColorList`
 #[unsafe(no_mangle)]
@@ -2605,13 +2742,131 @@ pub extern "C" fn _cmsFreeInterpParams(p: Handle) {
 }
 /// `_cmsGetFormatter` — formatter plugin lookup; not yet plumbed (returns 0)
 #[unsafe(no_mangle)]
+/// `_cmsTRANSFORM` cargo's first two fields — `InputFormat, OutputFormat`.
+/// Formatters read only these, so the trampolines decode them directly.
+fn cargo_formats(cargo: *mut c_void) -> (u32, u32) {
+    let p = cargo as *const u32;
+    unsafe { (*p, *p.add(1)) }
+}
+const FMT_BUF_LEN: usize = 1 << 16;
+
+/// `cmsFormatter16` input (Unroll* — Buffer → Values)
+unsafe extern "C" fn fmt16_unpack(
+    cargo: *mut c_void,
+    values: *mut u16,
+    buffer: *mut u8,
+    stride: u32,
+) -> *mut u8 {
+    let (i, o) = cargo_formats(cargo);
+    let pi = lcms::pack::PackInfo {
+        input_format: i,
+        output_format: o,
+        stride,
+    };
+    if let lcms::pack::Formatter::Unpack16(f) =
+        lcms::pack::get_stock_input_formatter(i, 0)
+    {
+        let mut w = [0u16; lcms::xform::MAX_CHANNELS];
+        let buf = unsafe { std::slice::from_raw_parts(buffer, FMT_BUF_LEN) };
+        let c = f(&pi, &mut w, buf, stride);
+        unsafe { std::ptr::copy_nonoverlapping(w.as_ptr(), values, lcms::xform::MAX_CHANNELS) };
+        unsafe { buffer.add(c) }
+    } else {
+        buffer
+    }
+}
+/// `cmsFormatter16` output (Pack* — Values → Buffer)
+unsafe extern "C" fn fmt16_pack(
+    cargo: *mut c_void,
+    values: *mut u16,
+    buffer: *mut u8,
+    stride: u32,
+) -> *mut u8 {
+    let (i, o) = cargo_formats(cargo);
+    let pi = lcms::pack::PackInfo {
+        input_format: i,
+        output_format: o,
+        stride,
+    };
+    if let lcms::pack::Formatter::Pack16(f) =
+        lcms::pack::get_stock_output_formatter(o, 0)
+    {
+        let w: &[u16; lcms::xform::MAX_CHANNELS] = unsafe { &*(values as *const [u16; lcms::xform::MAX_CHANNELS]) };
+        let buf = unsafe { std::slice::from_raw_parts_mut(buffer, FMT_BUF_LEN) };
+        let c = f(&pi, w, buf, stride);
+        unsafe { buffer.add(c) }
+    } else {
+        buffer
+    }
+}
+/// `cmsFormatterFloat` input
+unsafe extern "C" fn fmt_float_unpack(
+    cargo: *mut c_void,
+    values: *mut f32,
+    buffer: *mut u8,
+    stride: u32,
+) -> *mut u8 {
+    let (i, o) = cargo_formats(cargo);
+    let pi = lcms::pack::PackInfo {
+        input_format: i,
+        output_format: o,
+        stride,
+    };
+    if let lcms::pack::Formatter::UnpackF32(f) =
+        lcms::pack::get_stock_input_formatter(i, 1)
+    {
+        let mut w = [0.0f32; lcms::xform::MAX_CHANNELS];
+        let buf = unsafe { std::slice::from_raw_parts(buffer, FMT_BUF_LEN) };
+        let c = f(&pi, &mut w, buf, stride);
+        unsafe {
+            std::ptr::copy_nonoverlapping(w.as_ptr(), values, lcms::xform::MAX_CHANNELS)
+        };
+        unsafe { buffer.add(c) }
+    } else {
+        buffer
+    }
+}
+/// `cmsFormatterFloat` output
+unsafe extern "C" fn fmt_float_pack(
+    cargo: *mut c_void,
+    values: *mut f32,
+    buffer: *mut u8,
+    stride: u32,
+) -> *mut u8 {
+    let (i, o) = cargo_formats(cargo);
+    let pi = lcms::pack::PackInfo {
+        input_format: i,
+        output_format: o,
+        stride,
+    };
+    if let lcms::pack::Formatter::PackF32(f) =
+        lcms::pack::get_stock_output_formatter(o, 1)
+    {
+        let w: &[f32; lcms::xform::MAX_CHANNELS] = unsafe { &*(values as *const [f32; lcms::xform::MAX_CHANNELS]) };
+        let buf = unsafe { std::slice::from_raw_parts_mut(buffer, FMT_BUF_LEN) };
+        let c = f(&pi, w, buf, stride);
+        unsafe { buffer.add(c) }
+    } else {
+        buffer
+    }
+}
+/// `_cmsGetFormatter` — returns a `cmsFormatter` union (Fmt16/FmtFloat slot).
+/// The trampolines decode the type from the transform's format fields, so a
+/// single fn ptr per (direction, precision) suffices.
+#[unsafe(no_mangle)]
 pub extern "C" fn _cmsGetFormatter(
     _ctx: Handle,
     _ty: c_uint,
-    _dir: c_int,
-    _flags: c_uint,
+    dir: c_int,
+    flags: c_uint,
 ) -> usize {
-    0
+    let float = flags & 1 != 0;
+    match (dir, float) {
+        (0, false) => fmt16_unpack as usize,
+        (0, true) => fmt_float_unpack as usize,
+        (1, false) => fmt16_pack as usize,
+        _ => fmt_float_pack as usize,
+    }
 }
 /// `_cmsOptimizePipeline` — takes `cmsPipeline**` (the optimizer may replace
 /// the pipeline in place; `optimize_pipeline` mutates `&mut Pipeline`, so the
