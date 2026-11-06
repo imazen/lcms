@@ -75,6 +75,111 @@ pub type Unpack16Fn = fn(&PackInfo, &mut [u16; crate::xform::MAX_CHANNELS], &[u8
 pub type Pack16Fn = fn(&PackInfo, &[u16; crate::xform::MAX_CHANNELS], &mut [u8], u32) -> usize;
 pub type UnpackF32Fn = fn(&PackInfo, &mut [f32; crate::xform::MAX_CHANNELS], &[u8], u32) -> usize;
 pub type PackF32Fn = fn(&PackInfo, &[f32; crate::xform::MAX_CHANNELS], &mut [u8], u32) -> usize;
+
+/// Foreign (C-registered) formatter dispatch — `cmsPluginFormatters` plugins
+/// return `cmsFormatter` unions pointing at C `cmsFormatter16`/`Float` fns.
+/// `lcms` forbids `unsafe`, so `lcms2-ffi` installs these hooks and the eval
+/// loops reach the C fns through `Unpack16Fn`/`Pack16Fn`-compatible trampolines.
+/// Formatters read `InputFormat`/`OutputFormat` off `PackInfo`, never a live
+/// `_cmsTRANSFORM*` — the hook's first arg is a null info ptr.
+pub struct ForeignFmtHooks {
+    /// Invoke a `cmsFormatterFactory(Type, Dir, dwFlags)` → `cmsFormatter`
+    /// union (one fn ptr) or 0.
+    pub factory: fn(usize, u32, u32, u32) -> usize,
+    /// Invoke a `cmsFormatter16` — returns the accum offset consumed/produced.
+    pub kernel16: fn(usize, &mut [u16], &[u8], u32) -> usize,
+    /// Invoke a `cmsFormatterFloat` — returns the accum offset.
+    pub kernelf32: fn(usize, &mut [f32], &[u8], u32) -> usize,
+}
+static FMT_HOOKS: std::sync::OnceLock<ForeignFmtHooks> = std::sync::OnceLock::new();
+/// `(dir as u8, format) → C formatter fn ptr` — populated when a transform
+/// consults a ctx formatter factory (mirrors the C `Formatters` plugin chain).
+static FOREIGN_FMT: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<(u8, u32), usize>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+pub fn set_foreign_fmt_hooks(h: ForeignFmtHooks) {
+    let _ = FMT_HOOKS.set(h);
+}
+
+/// First non-NULL `cmsFormatter` union from the ctx's formatter factories
+/// (`_cmsGetFormatter`'s plugin consult) — `dir` 0=Input 1=Output, `flags`
+/// `CMS_PACK_FLAGS_*`.
+pub fn foreign_formatter_fn(ctx: Option<&crate::context::Context>, ty: u32, dir: u32, flags: u32) -> Option<usize> {
+    let cctx = ctx?;
+    let hooks = FMT_HOOKS.get()?;
+    for &f in &cctx.formatter_factories {
+        let r = (hooks.factory)(f, ty, dir, flags);
+        if r != 0 {
+            return Some(r);
+        }
+    }
+    None
+}
+
+/// Bind a foreign formatter ptr under `(dir, ty)` — the trampolines resolve it.
+pub fn register_foreign_format(dir: u32, ty: u32, cfn: usize) {
+    FOREIGN_FMT
+        .lock()
+        .unwrap()
+        .insert((dir as u8, ty), cfn);
+}
+
+fn foreign16(dir: u8, fmt: u32) -> Option<(usize, &'static ForeignFmtHooks)> {
+    let cf = *FOREIGN_FMT.lock().unwrap().get(&(dir, fmt))?;
+    Some((cf, FMT_HOOKS.get()?))
+}
+
+/// `Unpack16Fn` trampoline for a C `cmsFormatter16` input formatter.
+pub fn foreign_unpack16(
+    i: &PackInfo,
+    w: &mut [u16; crate::xform::MAX_CHANNELS],
+    a: &[u8],
+    stride: u32,
+) -> usize {
+    let Some((cf, h)) = foreign16(0, i.input_format) else {
+        return 0;
+    };
+    (h.kernel16)(cf, w, a, stride)
+}
+/// `Pack16Fn` trampoline for a C `cmsFormatter16` output formatter.
+pub fn foreign_pack16(
+    i: &PackInfo,
+    w: &[u16; crate::xform::MAX_CHANNELS],
+    out: &mut [u8],
+    stride: u32,
+) -> usize {
+    let Some((cf, h)) = foreign16(1, i.output_format) else {
+        return 0;
+    };
+    let mut w_tmp = *w;
+    (h.kernel16)(cf, &mut w_tmp, out, stride)
+}
+/// `UnpackF32Fn` trampoline for a C `cmsFormatterFloat` input formatter.
+pub fn foreign_unpack_f32(
+    i: &PackInfo,
+    w: &mut [f32; crate::xform::MAX_CHANNELS],
+    a: &[u8],
+    stride: u32,
+) -> usize {
+    let Some((cf, h)) = foreign16(0, i.input_format) else {
+        return 0;
+    };
+    (h.kernelf32)(cf, w, a, stride)
+}
+/// `PackF32Fn` trampoline for a C `cmsFormatterFloat` output formatter.
+pub fn foreign_pack_f32(
+    i: &PackInfo,
+    w: &[f32; crate::xform::MAX_CHANNELS],
+    out: &mut [u8],
+    stride: u32,
+) -> usize {
+    let Some((cf, h)) = foreign16(1, i.output_format) else {
+        return 0;
+    };
+    let mut w_tmp = *w;
+    (h.kernelf32)(cf, &mut w_tmp, out, stride)
+}
 pub type UnpackDblFn = fn(&PackInfo, &mut [f64], &[u8], u32) -> usize;
 
 // ---------------------------------------------------------------------------
@@ -3234,6 +3339,40 @@ pub enum FormatterDir {
 pub fn get_formatter(ty: u32, dir: FormatterDir, dw_flags: u32) -> Formatter {
     if t_channels(ty) == 0 {
         return Formatter::None;
+    }
+    match dir {
+        FormatterDir::Input => get_stock_input_formatter(ty, dw_flags),
+        FormatterDir::Output => get_stock_output_formatter(ty, dw_flags),
+    }
+}
+
+/// `_cmsGetFormatter` — C consults ctx-registered `cmsFormattersFactory`
+/// plugins before the stock tables. `ctx` supplies the factories; on a
+/// non-NULL `cmsFormatter` result the C fn is registered and a `Formatter`
+/// wrapping the trampoline is returned.
+pub fn get_formatter_ctx(
+    ctx: Option<&crate::context::Context>,
+    ty: u32,
+    dir: FormatterDir,
+    dw_flags: u32,
+) -> Formatter {
+    if t_channels(ty) == 0 {
+        return Formatter::None;
+    }
+    let d = match dir {
+        FormatterDir::Input => 0u32,
+        FormatterDir::Output => 1u32,
+    };
+    // plugin factories first — first non-NULL `cmsFormatter` wins
+    if let Some(cfn) = foreign_formatter_fn(ctx, ty, d, dw_flags) {
+        register_foreign_format(d, ty, cfn);
+        let float = dw_flags & 1 != 0;
+        return match (d, float) {
+            (0, false) => Formatter::Unpack16(foreign_unpack16),
+            (0, true) => Formatter::UnpackF32(foreign_unpack_f32),
+            (1, false) => Formatter::Pack16(foreign_pack16),
+            _ => Formatter::PackF32(foreign_pack_f32),
+        };
     }
     match dir {
         FormatterDir::Input => get_stock_input_formatter(ty, dw_flags),

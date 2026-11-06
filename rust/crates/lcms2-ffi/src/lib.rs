@@ -632,6 +632,21 @@ pub extern "C" fn cmsCreateTransform(
     intent: c_uint,
     flags: c_uint,
 ) -> Handle {
+    // C's `cmsCreateTransform` uses `cmsGetProfileContextID(Input)` — the
+    // profile's own context — not the global. NULL input → global.
+    let ctx = prof_ref(input).and_then(|p| p.ctx.clone());
+    create_transform_ctx(ctx, input, in_fmt, output, out_fmt, intent, flags)
+}
+fn create_transform_ctx(
+    ctx: Option<lcms::context::Context>,
+    input: Handle,
+    in_fmt: c_uint,
+    output: Handle,
+    out_fmt: c_uint,
+    intent: c_uint,
+    flags: c_uint,
+) -> Handle {
+    ensure_foreign_hooks();
     // `cmsFLAGS_NULLTRANSFORM` needs no profiles at all (C checks the flag
     // before dereferencing them).
     if flags & lcms::types::FLAGS_NULLTRANSFORM == 0 {
@@ -654,7 +669,7 @@ pub extern "C" fn cmsCreateTransform(
     let intents = vec![intent; n];
     let adapt = vec![1.0f64; n];
     let t = xform_to_handle(xform::create_extended_transform(
-        None,
+        ctx,
         &mut profs,
         &mut bpc,
         &intents,
@@ -680,6 +695,7 @@ pub extern "C" fn cmsCreateMultiprofileTransform(
     intent: c_uint,
     flags: c_uint,
 ) -> Handle {
+    ensure_foreign_hooks();
     if profiles.is_null() || n_profiles <= 0 {
         return ptr::null_mut();
     }
@@ -695,8 +711,10 @@ pub extern "C" fn cmsCreateMultiprofileTransform(
     let mut bpc = vec![flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; n];
     let intents = vec![intent; n];
     let adapt = vec![1.0f64; n];
+    // C's `cmsCreateMultiprofileTransform` uses `cmsGetProfileContextID(hProfiles[0])`
+    let ctx = profs[0].ctx.clone();
     let t = xform_to_handle(xform::create_extended_transform(
-        None,
+        ctx,
         &mut profs,
         &mut bpc,
         &intents,
@@ -1552,6 +1570,7 @@ pub extern "C" fn cmsCreate_OkLabProfile() -> Handle {
 /// `cmsChangeBuffersFormat` — reformats a transform's in/out formats
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsChangeBuffersFormat(h: Handle, in_fmt: c_uint, out_fmt: c_uint) -> c_int {
+    ensure_foreign_hooks();
     match xform_ref(h) {
         Some(t) => t.change_buffers_format(in_fmt, out_fmt) as c_int,
         None => 0,
@@ -2136,6 +2155,7 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
             PLUGIN_FORMATTERS_SIG => {
                 let f = unsafe { (*(p as *const CmsPluginFormatters)).formatters_factory };
                 if f != 0 {
+                    ensure_foreign_hooks();
                     unsafe { (*(ctx as *mut lcms::context::Context)).formatter_factories.push(f) };
                 }
             }
@@ -2334,7 +2354,7 @@ pub extern "C" fn cmsMD5free(m: Handle) {
 /// `cmsCreateTransformTHR`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsCreateTransformTHR(
-    _ctx: Handle,
+    ctx: Handle,
     input: Handle,
     in_fmt: c_uint,
     output: Handle,
@@ -2342,7 +2362,8 @@ pub extern "C" fn cmsCreateTransformTHR(
     intent: c_uint,
     flags: c_uint,
 ) -> Handle {
-    cmsCreateTransform(input, in_fmt, output, out_fmt, intent, flags)
+    let ctx = unsafe { cctx(ctx).cloned() };
+    create_transform_ctx(ctx, input, in_fmt, output, out_fmt, intent, flags)
 }
 /// `cmsCreateRGBProfileTHR`
 #[unsafe(no_mangle)]
@@ -2556,6 +2577,7 @@ pub extern "C" fn cmsCreateProofingTransform(
     proof_intent: c_uint,
     flags: c_uint,
 ) -> Handle {
+    ensure_foreign_hooks();
     let (i, o, pr) = (prof_ref(input), prof_ref(output), prof_ref(proof));
     let (Some(i), Some(o), Some(pr)) = (i, o, pr) else {
         return ptr::null_mut();
@@ -3118,7 +3140,32 @@ fn ensure_foreign_hooks() {
             kernel16: foreign_kernel16,
             kernel_float: foreign_kernel_float,
         });
+        lcms::pack::set_foreign_fmt_hooks(lcms::pack::ForeignFmtHooks {
+            factory: fmt_factory_hook,
+            kernel16: fmt_kernel16,
+            kernelf32: fmt_kernelf32,
+        });
     });
+}
+/// `cmsFormatterFactory` C call — `(Type, Dir, dwFlags)` → `cmsFormatter` union.
+fn fmt_factory_hook(cfn: usize, ty: u32, dir: u32, flags: u32) -> usize {
+    let f: FormatterFactoryC = unsafe { std::mem::transmute(cfn) };
+    unsafe { f(ty, dir as c_int, flags) }
+}
+/// `cmsFormatter16` C call — the formatter's `info` arg is unused by plugin
+/// formatters (they unpack/pack `w`↔`accum`), so a null info is passed.
+type Formatter16C = unsafe extern "C" fn(*mut c_void, *mut u16, *mut u8, u32) -> *mut u8;
+fn fmt_kernel16(cfn: usize, w: &mut [u16], a: &[u8], stride: u32) -> usize {
+    let f: Formatter16C = unsafe { std::mem::transmute(cfn) };
+    let ret = unsafe { f(ptr::null_mut(), w.as_mut_ptr(), a.as_ptr() as *mut u8, stride) };
+    (ret as usize).saturating_sub(a.as_ptr() as usize)
+}
+/// `cmsFormatterFloat` C call.
+type FormatterFloatC = unsafe extern "C" fn(*mut c_void, *mut f32, *mut u8, u32) -> *mut u8;
+fn fmt_kernelf32(cfn: usize, w: &mut [f32], a: &[u8], stride: u32) -> usize {
+    let f: FormatterFloatC = unsafe { std::mem::transmute(cfn) };
+    let ret = unsafe { f(ptr::null_mut(), w.as_mut_ptr(), a.as_ptr() as *mut u8, stride) };
+    (ret as usize).saturating_sub(a.as_ptr() as usize)
 }
 /// `cmsParametricCurveEvaluator` C signature
 type ParametricEvalC = unsafe extern "C" fn(c_int, *const f64, f64) -> f64;

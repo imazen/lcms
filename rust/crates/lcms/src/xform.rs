@@ -6,7 +6,8 @@ use crate::cnvrt;
 use crate::context::Context;
 use crate::lut::Pipeline;
 use crate::pack::{
-    CMS_PACK_FLAGS_16BITS, CMS_PACK_FLAGS_FLOAT, Formatter, FormatterDir, PackInfo, get_formatter,
+    CMS_PACK_FLAGS_16BITS, CMS_PACK_FLAGS_FLOAT, Formatter, FormatterDir, PackInfo,
+    get_formatter_ctx,
     t_channels,
 };
 use crate::profile::IccProfile;
@@ -817,17 +818,18 @@ impl Transform {
         if self.ctx.is_none() && self.user_data.is_none() {
             // dwFlags CAN_CHANGE_FORMATTER check happens at create; here just swap
         }
+        // C's `IsFloat` = `T_FLOAT(in) || T_FLOAT(out)` — bit 22 only. DBL
+        // formats set FLOAT_SH, so `t_bytes==0` is redundant and wrongly
+        // routes BYTES_SH(0) 16-bit formats (e.g. TYPE_RGB_565) to float.
         let is_float = crate::pack::t_float(input_format) != 0
-            || crate::pack::t_float(output_format) != 0
-            || crate::pack::t_bytes(input_format) == 0
-            || crate::pack::t_bytes(output_format) == 0;
+            || crate::pack::t_float(output_format) != 0;
         let flags = if is_float {
             CMS_PACK_FLAGS_FLOAT
         } else {
             CMS_PACK_FLAGS_16BITS
         };
-        let dir_in = get_formatter(input_format, FormatterDir::Input, flags);
-        let dir_out = get_formatter(output_format, FormatterDir::Output, flags);
+        let dir_in = get_formatter_ctx(self.ctx.as_ref(), input_format, FormatterDir::Input, flags);
+        let dir_out = get_formatter_ctx(self.ctx.as_ref(), output_format, FormatterDir::Output, flags);
         let fmt = match (is_float, dir_in, dir_out) {
             (true, Formatter::UnpackF32(u), Formatter::PackF32(p)) => {
                 Fmt::F32 { unroll: u, pack: p }
@@ -901,15 +903,16 @@ fn alloc_empty_transform(
 ) -> Option<Box<Transform>> {
     let mut flags = dw_flags;
     // transform-plugin hook — no plugin chunk yet, so stock only
+    // C's `IsFloat` = `T_FLOAT(in) || T_FLOAT(out)` — bit 22 only (see
+    // `change_buffers_format`); `t_bytes==0` wrongly routes BYTES_SH(0)
+    // 16-bit formats (TYPE_RGB_565) to the float formatter path.
     let is_float = crate::pack::t_float(input_format) != 0
-        || crate::pack::t_float(output_format) != 0
-        || crate::pack::t_bytes(input_format) == 0
-        || crate::pack::t_bytes(output_format) == 0;
+        || crate::pack::t_float(output_format) != 0;
     let fmt: Fmt;
     let worker: Worker;
     if is_float {
-        let dir_in = get_formatter(input_format, FormatterDir::Input, CMS_PACK_FLAGS_FLOAT);
-        let dir_out = get_formatter(output_format, FormatterDir::Output, CMS_PACK_FLAGS_FLOAT);
+        let dir_in = get_formatter_ctx(ctx.as_ref(), input_format, FormatterDir::Input, CMS_PACK_FLAGS_FLOAT);
+        let dir_out = get_formatter_ctx(ctx.as_ref(), output_format, FormatterDir::Output, CMS_PACK_FLAGS_FLOAT);
         fmt = match (dir_in, dir_out) {
             (Formatter::UnpackF32(u), Formatter::PackF32(p)) => Fmt::F32 { unroll: u, pack: p },
             _ => {
@@ -931,8 +934,8 @@ fn alloc_empty_transform(
             fmt = Fmt::Noop;
             flags |= FLAGS_CAN_CHANGE_FORMATTER;
         } else {
-            let dir_in = get_formatter(input_format, FormatterDir::Input, CMS_PACK_FLAGS_16BITS);
-            let dir_out = get_formatter(output_format, FormatterDir::Output, CMS_PACK_FLAGS_16BITS);
+            let dir_in = get_formatter_ctx(ctx.as_ref(), input_format, FormatterDir::Input, CMS_PACK_FLAGS_16BITS);
+            let dir_out = get_formatter_ctx(ctx.as_ref(), output_format, FormatterDir::Output, CMS_PACK_FLAGS_16BITS);
             fmt = match (dir_in, dir_out) {
                 (Formatter::Unpack16(u), Formatter::Pack16(p)) => Fmt::F16 { unroll: u, pack: p },
                 _ => {
