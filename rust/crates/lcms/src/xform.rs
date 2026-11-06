@@ -140,13 +140,17 @@ fn xform16_eval_loop<E: Fn(&[u16], &mut [u16])>(
         let mut out_pos = o_off;
         for _ in 0..ppl {
             accum += unroll(info, &mut w_in, &input[accum..], stride.bytes_per_plane_in);
-            if cache && w_in[..MAX_CHANNELS] == cache_in[..MAX_CHANNELS] {
-                w_out[..MAX_CHANNELS].copy_from_slice(&cache_out[..MAX_CHANNELS]);
+            // Fixed-size array compare/copy — LLVM vectorizes to a few
+            // SIMD ops (matching C's `memcmp(&wIn, &Cache, sizeof(wIn))`
+            // constant-size fold). Channels the unroll/eval don't write
+            // stay zero in both, so comparing all MAX_CHANNELS is safe.
+            if cache && w_in == *cache_in {
+                w_out = *cache_out;
             } else {
                 eval(&w_in, &mut w_out);
                 if cache {
-                    cache_in[..MAX_CHANNELS].copy_from_slice(&w_in[..MAX_CHANNELS]);
-                    cache_out[..MAX_CHANNELS].copy_from_slice(&w_out[..MAX_CHANNELS]);
+                    *cache_in = w_in;
+                    *cache_out = w_out;
                 }
             }
             out_pos += pack(

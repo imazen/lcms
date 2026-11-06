@@ -990,13 +990,14 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
         out: &mut [u16],
     ) {
         // One bounded slice: every corner index i+j+k ≤ x1+y1+z1 (each
-        // coord ≤ its far corner), so `.min` is a semantic no-op that lets
-        // LLVM elide the per-node bounds checks.
+        // coord ≤ its far corner), so the `.min` is a semantic no-op that
+        // lets LLVM elide the per-node bounds checks. `cell` is sliced to
+        // exactly `max_off + n_outputs`, making `min+oc < len` provable.
         let max_off = x1.wrapping_add(y1).wrapping_add(z1);
-        let cell = &lut_table[base as usize..];
-        let last = cell.len() - 1;
+        let span = base as usize + max_off as usize + n_outputs;
+        let cell = &lut_table[base as usize..span];
         let dens = |i: i32, j: i32, k: i32, out_chan: usize| {
-            cell[(((i + j + k).min(max_off)) as usize + out_chan).min(last)] as i32
+            cell[((i + j + k).min(max_off)) as usize + out_chan] as i32
         };
         for out_chan in 0..n_outputs {
             let c0 = dens(x0i, y0i, z0i, out_chan);
@@ -1072,11 +1073,23 @@ fn eval4_inputs_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
             p.opta[3] as i32
         };
 
-    // p1 = *p with Domain shifted left (dims 1..3 become dims 0..2)
-    let mut p1 = p.clone();
+    // p1 = *p with Domain shifted left (dims 1..3 become dims 0..2).
+    // `foreign` is consulted only at the outer kernel entry — the inner
+    // recursion uses built-in kernels, so it is not copied (avoids a per-
+    // pixel `Box` clone of `CmsInterpParams`).
+    let mut p1 = InterpParams {
+        dw_flags: p.dw_flags,
+        n_inputs: p.n_inputs,
+        n_outputs: p.n_outputs,
+        n_samples: p.n_samples,
+        domain: p.domain,
+        opta: p.opta,
+        table: InterpTable::F32(&lut_table[k0i as usize..]),
+        interpolation: p.interpolation,
+        foreign: None,
+    };
     p1.domain[..3].copy_from_slice(&p.domain[1..4]);
 
-    p1.table = InterpTable::F32(&lut_table[k0i as usize..]);
     tetrahedral_interp_float(&input[1..], &mut tmp1, &p1);
 
     p1.table = InterpTable::F32(&lut_table[k1 as usize..]);
@@ -1105,11 +1118,21 @@ fn eval_chain16(input: &[u16], output: &mut [u16], p: &InterpParams, n: usize) {
     let k0i = (p.opta[nm] as i32).wrapping_mul(k0);
     let k1i = (p.opta[nm] as i32).wrapping_mul(k0 + if input[0] != 0xFFFF { 1 } else { 0 });
 
-    // p1 = *p16 with Domain[0..NM] = Domain[1..=NM]
-    let mut p1 = p.clone();
+    // p1 = *p16 with Domain[0..NM] = Domain[1..=NM] — see the `foreign`
+    // note in eval4_inputs_float
+    let mut p1 = InterpParams {
+        dw_flags: p.dw_flags,
+        n_inputs: p.n_inputs,
+        n_outputs: p.n_outputs,
+        n_samples: p.n_samples,
+        domain: p.domain,
+        opta: p.opta,
+        table: InterpTable::U16(&lut_table[k0i as usize..]),
+        interpolation: p.interpolation,
+        foreign: None,
+    };
     p1.domain[..nm].copy_from_slice(&p.domain[1..=nm]);
 
-    p1.table = InterpTable::U16(&lut_table[k0i as usize..]);
     eval_dispatch16(&input[1..], &mut tmp1, &p1, nm);
 
     p1.table = InterpTable::U16(&lut_table[k1i as usize..]);
@@ -1139,10 +1162,19 @@ fn eval_chain_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: usiz
             p.opta[nm] as i32
         };
 
-    let mut p1 = p.clone();
+    let mut p1 = InterpParams {
+        dw_flags: p.dw_flags,
+        n_inputs: p.n_inputs,
+        n_outputs: p.n_outputs,
+        n_samples: p.n_samples,
+        domain: p.domain,
+        opta: p.opta,
+        table: InterpTable::F32(&lut_table[k0i as usize..]),
+        interpolation: p.interpolation,
+        foreign: None,
+    };
     p1.domain[..nm].copy_from_slice(&p.domain[1..=nm]);
 
-    p1.table = InterpTable::F32(&lut_table[k0i as usize..]);
     eval_dispatch_float(&input[1..], &mut tmp1, &p1, nm);
 
     p1.table = InterpTable::F32(&lut_table[k1i as usize..]);
