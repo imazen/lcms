@@ -2166,6 +2166,16 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                     unsafe { (*(ctx as *mut lcms::context::Context)).formatter_factories.push(f) };
                 }
             }
+            PLUGIN_INTENT_SIG => {
+                let h = unsafe { &*(p as *const CmsPluginRenderingIntent) };
+                if h.link != 0 {
+                    unsafe {
+                        (*(ctx as *mut lcms::context::Context)).c_intents.push(
+                            lcms::context::CIntentSet { intent: h.intent, link: h.link },
+                        )
+                    };
+                }
+            }
             _ => {}
         }
         p = b.next;
@@ -3196,6 +3206,14 @@ struct CmsPluginFormatters {
     base: CmsPluginBase,
     formatters_factory: usize,
 }
+/// `cmsPluginRenderingIntent` — base + `Intent` + `Link` + `Description`
+#[repr(C)]
+struct CmsPluginRenderingIntent {
+    base: CmsPluginBase,
+    intent: c_int,
+    link: usize,
+    description: [c_char; 256],
+}
 /// `cmsFormatterFactory` C signature — `(Type, Dir, dwFlags)` → `cmsFormatter`
 /// union (one pointer) by value.
 type FormatterFactoryC = unsafe extern "C" fn(c_uint, c_int, c_uint) -> usize;
@@ -3205,6 +3223,7 @@ const PLUGIN_INTERP_SIG: c_uint = 0x696E_7048; // 'inpH'
 const PLUGIN_PARAMETRIC_SIG: c_uint = 0x7061_7248; // 'parH'
 const PLUGIN_HEADER_SIG: c_uint = 0x6864_7248; // 'hdrH'
 const PLUGIN_FORMATTERS_SIG: c_uint = 0x6672_6D48; // 'frmH'
+const PLUGIN_INTENT_SIG: c_uint = 0x696E_7448; // 'intH'
 const LCMS_VERSION: c_uint = 2200;
 
 /// `_cmsFindMemoryPlugin` — scan the plugin chain for a mem-handler

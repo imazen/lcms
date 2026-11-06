@@ -74,6 +74,10 @@ pub struct Context {
     /// the standard 128-byte profile header is read/written; `icc_version` is
     /// the maximum profile version the plugin accepts.
     pub c_header: CHeaderSet,
+    /// C-side `RenderingIntent` chain — `cmsPluginRenderingIntent{Intent,Link}`
+    /// registered via `cmsPluginTHR` (FFI only). `create_transform` consults
+    /// these for non-standard intents before the built-in intent table.
+    pub c_intents: Vec<CIntentSet>,
 }
 
 /// A C-registered `cmsPluginHeader` entry — FFI fn ptrs (`_cmsRead/WriteProfileHeaderFn`).
@@ -82,6 +86,13 @@ pub struct CHeaderSet {
     pub icc_version: u32,
     pub read_ptr: usize,
     pub write_ptr: usize,
+}
+
+/// A C-registered `cmsPluginRenderingIntent` entry — `cmsIntentFn` ptr.
+#[derive(Clone, Copy, Default)]
+pub struct CIntentSet {
+    pub intent: i32,
+    pub link: usize,
 }
 
 /// A C-registered `_cmsParametricCurvesCollection` entry — FFI fn ptrs.
@@ -116,6 +127,7 @@ impl Default for Context {
             c_parametric_curves: Vec::new(),
             formatter_factories: Vec::new(),
             c_header: CHeaderSet::default(),
+            c_intents: Vec::new(),
         }
     }
 }
@@ -137,6 +149,7 @@ impl Clone for Context {
             c_parametric_curves: self.c_parametric_curves.clone(),
             formatter_factories: self.formatter_factories.clone(),
             c_header: self.c_header,
+            c_intents: self.c_intents.clone(),
         }
     }
 }
