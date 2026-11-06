@@ -279,7 +279,9 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
 
 /// Float twin of `xform16_eval_loop` — `OptData` arm evals monomorphized.
 #[allow(clippy::too_many_arguments)]
+#[archmage::autoversion]
 fn xform_f32_eval_loop<E, U, P>(
+    _token: archmage::SimdToken,
     unroll: U,
     pack: P,
     info: &PackInfo,
