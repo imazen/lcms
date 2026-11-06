@@ -287,21 +287,30 @@ fn fast_eval_curves8(input: &[u16], output: &mut [u16], data: &OptData) -> bool 
     }
     true
 }
-/// `FastEvaluateCurves16` — direct index
+/// `FastEvaluateCurves16` — direct index; the curve is indexed by scaling
+/// the 16-bit input into the table width (`In16[i]>>4` for 4096-pt,
+/// `>>8` for 256-pt in C — `*len >> 16` covers both).
 pub(crate) fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptData) -> bool {
     let OptData::Curves16(c) = data else {
         return false;
     };
     for i in 0..c.curves.len() {
-        output[i] = c.curves[i][input[i] as usize];
+        output[i] = c.curves[i][input[i] as usize * c.curves[i].len() >> 16];
     }
     true
 }
 /// `eval_opt16` — dispatch an `OptData` to its concrete eval16
 pub(crate) fn eval_opt16(input: &[u16], output: &mut [u16], d: &OptData) {
     match d {
-        OptData::Curves16(_) => {
-            fast_eval_curves16(input, output, d);
+        OptData::Curves16(c) => {
+            // The 8-bit matrix-shaper opt bakes 256-pt curves — dispatch by
+            // table length, not the enum variant (C chooses the eval fn at
+            // build time).
+            if c.curves.first().map(|t| t.len() == 256).unwrap_or(false) {
+                fast_eval_curves8(input, output, d);
+            } else {
+                fast_eval_curves16(input, output, d);
+            }
         }
         OptData::MatShaper(_) => {
             mat_shaper_eval16(input, output, d);
