@@ -1015,6 +1015,10 @@ fn alloc_empty_transform(
 
 /// `cmsDetectRGBProfileGamma` — estimate display gamma from the TRCs.
 /// C creates an sRGB→Lab transform and fits; we use the curve's own fit.
+#[doc(hidden)]
+pub fn dbg_detect_rgb_profile_gamma(icc: &mut IccProfile, threshold: f64) -> f64 {
+    detect_rgb_profile_gamma(icc, threshold)
+}
 fn detect_rgb_profile_gamma(icc: &mut IccProfile, threshold: f64) -> f64 {
     use crate::signatures::tag as tg;
     use crate::tagtypes::TagObject;
