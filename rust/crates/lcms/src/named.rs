@@ -280,14 +280,18 @@ pub fn mlu_set_wide(mlu: &mut Mlu, lang: &[u8], cntry: &[u8], wide: &[Wchar]) ->
     let lang16 = str_to16(lang);
     let cntry16 = str_to16(cntry);
 
-    let mut len = (mywcslen(wide) * 4) as u32;
+    let n = mywcslen(wide).min(wide.len());
+    let mut len = (n * 4) as u32;
     if len == 0 {
         len = 4;
     }
     let mut block = Vec::with_capacity(len as usize);
-    for &w in &wide[..len as usize / 4] {
+    for &w in &wide[..n] {
         block.extend_from_slice(&w.to_ne_bytes());
     }
+    // `len` covers the UTF-32 NUL terminator — pad short when the source
+    // string is empty/truncated (C always writes a 4-byte NUL block).
+    block.resize(len as usize, 0);
     add_mlu_block(mlu, len, &block, lang16, cntry16)
 }
 
@@ -779,7 +783,9 @@ pub struct Dict {
 /// `DupWcs` — duplicate a NUL-terminated wide string (keeps the NUL).
 fn dup_wcs(src: &[Wchar]) -> Vec<Wchar> {
     let n = mywcslen(src);
-    src[..n + 1].to_vec()
+    // `n` is the NUL index; if the slice has no NUL mywcslen returns
+    // src.len(), so clamp before the NUL-inclusive copy.
+    src[..(n + 1).min(src.len())].to_vec()
 }
 
 /// `cmsDictAlloc`

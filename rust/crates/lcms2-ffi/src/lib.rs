@@ -984,27 +984,42 @@ fn curve_rust(h: Handle) -> Option<lcms::gamma::ToneCurve> {
 
 /// `cmsBuildSegmentedToneCurve`
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsBuildSegmentedToneCurve(_ctx: Handle, seg: *const CmsCurveSegment) -> Handle {
-    if seg.is_null() {
+pub extern "C" fn cmsBuildSegmentedToneCurve(
+    _ctx: Handle,
+    n_segments: c_uint,
+    seg: *const CmsCurveSegment,
+) -> Handle {
+    if seg.is_null() || n_segments == 0 {
         return ptr::null_mut();
     }
-    let s = unsafe { &*seg };
-    let sampled = if s.n_grid_points > 0 && !s.sampled_points.is_null() {
-        Some(unsafe {
-            std::slice::from_raw_parts(s.sampled_points, s.n_grid_points as usize)
-        }.to_vec())
-    } else {
-        None
-    };
-    let seg0 = lcms::gamma::CurveSegment {
-        x0: s.x0,
-        x1: s.x1,
-        r#type: s.r#type,
-        params: s.params,
-        n_grid_points: s.n_grid_points,
-        sampled_points: sampled,
-    };
-    lcms::gamma::build_segmented_tone_curve(None, &[seg0])
+    // `Seg` is a `cmsCurveSegment[n_segments]` array — C-layout per element.
+    let segs: Vec<lcms::gamma::CurveSegment> = (0..n_segments as usize)
+        .map(|i| {
+            let s = unsafe { &*seg.add(i) };
+            lcms::gamma::CurveSegment {
+                x0: s.x0,
+                x1: s.x1,
+                r#type: s.r#type,
+                params: s.params,
+                n_grid_points: s.n_grid_points,
+                // Only Type-0 (sampled) segments carry SampledPoints — C's
+                // BuildSegmentedToneCurve reads them only there, so parametric
+                // segments' uninitialized fields must not be copied.
+                sampled_points: if s.r#type == 0
+                    && s.n_grid_points > 0
+                    && !s.sampled_points.is_null()
+                {
+                    Some(unsafe {
+                        std::slice::from_raw_parts(s.sampled_points, s.n_grid_points as usize)
+                    }
+                    .to_vec())
+                } else {
+                    None
+                },
+            }
+        })
+        .collect();
+    lcms::gamma::build_segmented_tone_curve(None, &segs)
         .map(rust_to_tc)
         .unwrap_or(ptr::null_mut())
 }
@@ -1755,18 +1770,24 @@ pub extern "C" fn cmsXYZEncoded2Float(xyz: *mut CieXyz, w_xyz: *const u16) {
 /// `cmsCreateContext` — wraps `lcms::context::create_context` (global ctx →
 /// non-null boxed Context; upstream returns a heap `cmsContext`)
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsCreateContext(_plugin: *const c_void, user_data: c_uint) -> Handle {
+pub extern "C" fn cmsCreateContext(_plugin: *const c_void, user_data: *mut c_void) -> Handle {
     let c = lcms::context::create_context(None, user_data as usize);
     Box::into_raw(Box::new(c)) as Handle
 }
 /// `cmsDupContext`
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsDupContext(src: Handle, _plugin: *const c_void, user_data: c_uint) -> Handle {
+// C's `cmsDupContext` is (src, NewUserData) — 2 args; NULL inherits.
+pub extern "C" fn cmsDupContext(src: Handle, user_data: *mut c_void) -> Handle {
     if src.is_null() {
-        return cmsCreateContext(_plugin, user_data);
+        return cmsCreateContext(ptr::null_mut(), user_data);
     }
     let s = unsafe { &*(src as *const lcms::context::Context) };
-    let c = lcms::context::dup_context(s, None, user_data as usize);
+    let ud = if user_data.is_null() {
+        s.user_data.load(std::sync::atomic::Ordering::Relaxed)
+    } else {
+        user_data as usize
+    };
+    let c = lcms::context::dup_context(s, None, ud);
     Box::into_raw(Box::new(c)) as Handle
 }
 /// `cmsDeleteContext`
@@ -2507,6 +2528,7 @@ pub extern "C" fn cmsDetectRGBProfileGamma(h: Handle, precision: f64) -> f64 {
 /// `cmsGetPostScriptCRD` — writes PS CRD into caller `*mut c_void`/`size`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsGetPostScriptCRD(
+    _ctx: Handle,
     h: Handle,
     intent: c_uint,
     flags: c_uint,
@@ -2536,6 +2558,7 @@ pub extern "C" fn cmsGetPostScriptCRD(
 /// `cmsGetPostScriptCSA`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsGetPostScriptCSA(
+    _ctx: Handle,
     h: Handle,
     intent: c_uint,
     flags: c_uint,
