@@ -2190,22 +2190,27 @@ pub extern "C" fn cmsCreateProofingTransform(
     let (Some(i), Some(o), Some(pr)) = (i, o, pr) else {
         return ptr::null_mut();
     };
+    // C's `cmsCreateProofingTransformTHR`: {Input, Proofing, Proofing,
+    // Output} with intents {nIntent, nIntent, RELATIVE_COLORIMETRIC,
+    // ProofingIntent} and the proofing profile as the gamut-check profile at
+    // position 1.
     let mut profs: Vec<Box<IccProfile>> = vec![
         unsafe { Box::from_raw(i) },
-        unsafe { Box::from_raw(o) },
         unsafe { Box::from_raw(pr) },
+        unsafe { Box::from_raw(pr) },
+        unsafe { Box::from_raw(o) },
     ];
-    let mut bpc = [flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; 3];
-    let intents = [intent, proof_intent, proof_intent];
-    let adapt = [1.0f64; 3];
+    let mut bpc = [flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; 4];
+    let intents = [intent, intent, 1 /*INTENT_RELATIVE_COLORIMETRIC*/, proof_intent];
+    let adapt = [1.0f64; 4];
     let t = xform_to_handle(xform::create_extended_transform(
         None,
         &mut profs,
         &mut bpc,
         &intents,
         &adapt,
-        None,
-        0,
+        Some(prof_ref(proof).unwrap()),
+        1,
         in_fmt,
         out_fmt,
         flags,
