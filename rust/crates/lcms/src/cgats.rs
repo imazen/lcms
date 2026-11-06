@@ -511,9 +511,21 @@ impl It8 {
         value: Option<&str>,
         write_as: WriteMode,
     ) -> bool {
-        // check dup for the two count keys
+        // C's `AddToList`: an existing key+subkey reuses the node —
+        // `WriteAs` and `Value` are overwritten in place.
         let exists = if list_is_header {
-            self.is_available_on_list(&self.get_table().header_list, key, subkey)
+            self.get_table()
+                .header_list
+                .iter()
+                .position(|kv| match subkey {
+                    None => strcasecmp(&kv.keyword, key) == 0,
+                    Some(sk) => {
+                        strcasecmp(&kv.keyword, key) == 0
+                            && kv.subkey
+                                .as_deref()
+                                .is_some_and(|a| strcasecmp(a, sk) == 0)
+                    }
+                })
         } else {
             None
         };
@@ -522,6 +534,12 @@ impl It8 {
         {
             self.syn_error(&format!("duplicate key <{key}>"));
             return false;
+        }
+        if let Some(i) = exists {
+            let kv = &mut self.get_table_mut().header_list[i];
+            kv.write_as = write_as;
+            kv.value = value.map(|s| s.to_string());
+            return true;
         }
         let kv = KeyValue {
             keyword: key.to_string(),

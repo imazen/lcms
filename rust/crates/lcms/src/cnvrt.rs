@@ -474,9 +474,18 @@ pub fn link_profiles(
         if let Some(cctx) = ctx.as_ref() {
             for ci in &cctx.c_intents {
                 if ci.intent as u32 == intents[0] {
-                    if let Some(p) = h(ctx.as_ref(), ci.link, profiles, intents, bpc, adaptation_states, dw_flags) {
-                        return Some(*p);
-                    }
+                    // C's `Intent->Link` returning NULL fails the transform —
+                    // the result is not retried against the default table.
+                    return h(
+                        ctx.as_ref(),
+                        ci.link,
+                        profiles,
+                        intents,
+                        bpc,
+                        adaptation_states,
+                        dw_flags,
+                    )
+                    .map(|p| *p);
                 }
             }
         }
@@ -510,6 +519,31 @@ fn link_profiles_inner(
         {
             bpc[i] = true;
         }
+    }
+    // `SearchIntent` — intents[0] must be a registered intent (default table
+    // or ctx-registered), else "Unsupported intent" and no link at all.
+    let registered = matches!(
+        intents[0],
+        INTENT_PERCEPTUAL
+            | INTENT_RELATIVE_COLORIMETRIC
+            | INTENT_SATURATION
+            | INTENT_ABSOLUTE_COLORIMETRIC
+            | INTENT_PRESERVE_K_ONLY_PERCEPTUAL
+            | INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC
+            | INTENT_PRESERVE_K_ONLY_SATURATION
+            | INTENT_PRESERVE_K_PLANE_PERCEPTUAL
+            | INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC
+            | INTENT_PRESERVE_K_PLANE_SATURATION
+    ) || ctx
+        .as_ref()
+        .is_some_and(|c| c.c_intents.iter().any(|ci| ci.intent as u32 == intents[0]));
+    if !registered {
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_UNKNOWN_EXTENSION,
+            &format!("Unsupported intent '{}'", intents[0]),
+        );
+        return None;
     }
     // default + black-preserving intents dispatch via the intent table
     match intents[0] {
