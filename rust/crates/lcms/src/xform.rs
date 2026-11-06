@@ -939,6 +939,108 @@ impl Transform {
                     }
                 }
             }
+            const GRAY16: u32 = 3 << 16 | 1 << 3 | 2;
+            // Fused `unroll1_word`→`eval1_input`→N-word pack — resampled
+            // 1-input CLUTs (gray→gray, gray→Lab, gray→RGB).
+            if self.input_format == GRAY16 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                        let of = self.output_format;
+                        let plain16 = crate::pack::t_bytes(of) == 2
+                            && crate::pack::t_extra(of) == 0
+                            && crate::pack::t_doswap(of) == 0
+                            && crate::pack::t_flavor(of) == 0
+                            && crate::pack::t_swapfirst(of) == 0
+                            && crate::pack::t_endian16(of) == 0
+                            && crate::pack::t_premul(of) == 0
+                            && crate::pack::t_planar(of) == 0;
+                        let n_out = c.params16.n_outputs as usize;
+                        let interp1d = match c.params16.interpolation {
+                            crate::intrp::Interpolation::Lerp16(f)
+                                if std::ptr::fn_addr_eq(
+                                    f,
+                                    crate::intrp::eval1_input
+                                        as crate::intrp::InterpFn16,
+                                ) =>
+                            {
+                                Some(crate::intrp::eval1_input as crate::intrp::InterpFn16)
+                            }
+                            crate::intrp::Interpolation::Lerp16(f)
+                                if std::ptr::fn_addr_eq(
+                                    f,
+                                    crate::intrp::lin_lerp_1d
+                                        as crate::intrp::InterpFn16,
+                                ) =>
+                            {
+                                Some(crate::intrp::lin_lerp_1d as crate::intrp::InterpFn16)
+                            }
+                            _ => None,
+                        };
+                        if plain16
+                            && (1..=4).contains(&n_out)
+                            && crate::pack::t_channels(of) == n_out as u32
+                            && interp1d.is_some()
+                        {
+                            let eval1d = interp1d.unwrap();
+                            let p = &c.params16;
+                            let obpp = n_out * 2;
+                            let ppl2 = ppl as usize * 2;
+                            let pplo = ppl as usize * obpp;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl2];
+                                let oline = &mut output[o_off..o_off + pplo];
+                                let mut w_out = [0u16; 4];
+                                for i in 0..ppl as usize {
+                                    let px = i * 2;
+                                    let v = u16::from_le_bytes(
+                                        iline[px..px + 2].try_into().unwrap(),
+                                    );
+                                    eval1d(&[v], &mut w_out, p);
+                                    let po = i * obpp;
+                                    for cch in 0..n_out {
+                                        oline[po + cch * 2..po + cch * 2 + 2]
+                                            .copy_from_slice(&w_out[cch].to_le_bytes());
+                                    }
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            if self.input_format == GRAY16 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
+                        // Fused `unroll1_word`→1-curve `Curves16`→`pack1_word`.
+                        if c.curves.first().map(|t| t.len()) == Some(0x10000) {
+                            let t: &[u16; 0x10000] =
+                                c.curves[0].as_slice().try_into().unwrap();
+                            let ppl2 = ppl as usize * 2;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl2];
+                                let oline = &mut output[o_off..o_off + ppl2];
+                                for i in 0..ppl as usize {
+                                    let px = i * 2;
+                                    let v = t[u16::from_le_bytes(
+                                        iline[px..px + 2].try_into().unwrap(),
+                                    )
+                                        as usize];
+                                    oline[px..px + 2].copy_from_slice(&v.to_le_bytes());
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
         }
         let info = PackInfo {
             input_format: self.input_format,
