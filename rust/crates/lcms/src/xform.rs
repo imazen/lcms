@@ -845,6 +845,51 @@ impl Transform {
                         }
                         return;
                     }
+                    if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
+                        // Fused `unroll3_words`→`Curves16`→`pack3_words` —
+                        // 3 full-width tables indexed straight from registers,
+                        // no `w_in`/`w_out` stack round-trip.
+                        if c.curves.len() == 3
+                            && c.curves.iter().all(|t| t.len() == 0x10000)
+                        {
+                            let t0: &[u16; 0x10000] =
+                                c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 0x10000] =
+                                c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 0x10000] =
+                                c.curves[2].as_slice().try_into().unwrap();
+                            let ppl6 = ppl as usize * 6;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl6];
+                                let oline = &mut output[o_off..o_off + ppl6];
+                                for i in 0..ppl as usize {
+                                    let px = i * 6;
+                                    let r = t0[u16::from_le_bytes(
+                                        iline[px..px + 2].try_into().unwrap(),
+                                    )
+                                        as usize];
+                                    let g = t1[u16::from_le_bytes(
+                                        iline[px + 2..px + 4].try_into().unwrap(),
+                                    )
+                                        as usize];
+                                    let b = t2[u16::from_le_bytes(
+                                        iline[px + 4..px + 6].try_into().unwrap(),
+                                    )
+                                        as usize];
+                                    let px64 = (r as u64)
+                                        | ((g as u64) << 16)
+                                        | ((b as u64) << 32);
+                                    oline[px..px + 6]
+                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
                 }
             }
         }
