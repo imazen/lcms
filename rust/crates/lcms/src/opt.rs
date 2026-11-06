@@ -758,22 +758,38 @@ pub(crate) fn prelin_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> b
     };
     let ni = p16.n_inputs as usize;
     let no = p16.n_outputs as usize;
+    let input = &input[..ni];
+    let output = &mut output[..no];
     let mut stage_abc = [0u16; 8];
     let mut stage_def = [0u16; 16];
-    for i in 0..ni {
-        stage_abc[i] = if i < p16.in_curves.len() {
-            p16.in_curves[i].eval16(input[i])
-        } else {
-            eval16_nop1d(input[i])
-        };
+    // Curve vectors almost always cover all channels — take one fast
+    // branch per pixel instead of an `i < len` branch per channel.
+    if p16.in_curves.len() >= ni {
+        for i in 0..ni {
+            stage_abc[i] = p16.in_curves[i].eval16(input[i]);
+        }
+    } else {
+        for i in 0..ni {
+            stage_abc[i] = if i < p16.in_curves.len() {
+                p16.in_curves[i].eval16(input[i])
+            } else {
+                eval16_nop1d(input[i])
+            };
+        }
     }
     p16.params16.eval16(&stage_abc[..ni], &mut stage_def[..no]);
-    for i in 0..no {
-        output[i] = if i < p16.out_curves.len() {
-            p16.out_curves[i].eval16(stage_def[i])
-        } else {
-            eval16_nop1d(stage_def[i])
-        };
+    if p16.out_curves.len() >= no {
+        for i in 0..no {
+            output[i] = p16.out_curves[i].eval16(stage_def[i]);
+        }
+    } else {
+        for i in 0..no {
+            output[i] = if i < p16.out_curves.len() {
+                p16.out_curves[i].eval16(stage_def[i])
+            } else {
+                eval16_nop1d(stage_def[i])
+            };
+        }
     }
     true
 }
