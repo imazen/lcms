@@ -17,8 +17,8 @@ lcms-sys = { path = "../lcms-sys" }
 bytemuck = { version = "1.25.0", default-features = false, features = ["extern_crate_alloc"] }
 # Safe SIMD via CPU-token dispatch — lets release builds run AVX2/AVX-512
 # paths the C oracle's baseline `-O2` codegen can't reach.
-magetypes = { path = "/home/lilith/work/archmage/magetypes", default-features = false }
-archmage = { path = "/home/lilith/work/archmage", default-features = false }
+magetypes = { path = "/home/lilith/work/archmage/magetypes", features = ["avx512"] }
+archmage = { path = "/home/lilith/work/archmage", features = ["avx512"] }
 
 [dev-dependencies]
 lcms-cref = { path = "../lcms-cref" }
