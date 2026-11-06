@@ -1085,9 +1085,55 @@ impl Transform {
                         } else {
                             run16!(f)
                         }
+                }
+                // Fused [ToneCurves, Matrix, ToneCurves] eval for
+                // matshaper pipelines — C walks the stage chain per
+                // pixel; we fold all 3 stages into one inlined eval.
+                if !matches!(
+                    l.opt_data.as_ref(),
+                    Some(crate::opt::OptData::ClutOnly(_))
+                ) {
+                    let mut s = l.elements.as_deref();
+                    let mut parts = (None, None, None);
+                    for slot in 0..3 {
+                        let Some(st) = s else { break };
+                        match &st.data {
+                            crate::lut::StageData::ToneCurves(v) if slot != 1 => {
+                                if slot == 0 { parts.0 = Some(v) } else { parts.2 = Some(v) }
+                            }
+                            crate::lut::StageData::Matrix { double, offset } if slot == 1 => {
+                                parts.1 = Some((double, offset))
+                            }
+                            _ => break,
+                        }
+                        s = st.next.as_deref();
+                    }
+                    if s.is_none() {
+                        if let (Some(ci), Some((m, off)), Some(co)) = parts {
+                            if ci.len() == 3 && m.len() == 9 && co.len() == 3 {
+                                return xform_f32_run(
+                                    unroll, pack, &info, input, output, ppl, lines, stride,
+                                    |i: &[f32], o: &mut [f32]| {
+                                        let a0 = ci[0].eval_float(i[0]);
+                                        let a1 = ci[1].eval_float(i[1]);
+                                        let a2 = ci[2].eval_float(i[2]);
+                                        for r in 0..3 {
+                                            let mut t = a0 as f64 * m[r * 3]
+                                                + a1 as f64 * m[r * 3 + 1]
+                                                + a2 as f64 * m[r * 3 + 2];
+                                            if let Some(of) = off {
+                                                t += of[r];
+                                            }
+                                            o[r] = co[r].eval_float(t as f32);
+                                        }
+                                    },
+                                );
+                            }
+                        }
                     }
                 }
             }
+        }
         }
         let mut f_in = [0f32; MAX_CHANNELS];
         let mut f_out = [0f32; MAX_CHANNELS];

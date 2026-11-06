@@ -291,7 +291,7 @@ pub fn compute_interp_params<'a>(
 /// dead — substituting 0 preserves the output bit-for-bit while the port stays
 /// in bounds.
 #[inline]
-fn tbl_get16(t: &[u16], i: usize) -> i32 {
+pub(crate) fn tbl_get16(t: &[u16], i: usize) -> i32 {
     t.get(i).copied().unwrap_or(0) as i32
 }
 
@@ -303,7 +303,7 @@ fn tbl_getf(t: &[f32], i: usize) -> f32 {
 
 /// `LinearInterp` — inline fixed-point interpolation.
 #[inline]
-fn linear_interp(a: i32, l: i32, h: i32) -> u16 {
+pub(crate) fn linear_interp(a: i32, l: i32, h: i32) -> u16 {
     let dif = ((h - l) as u32).wrapping_mul(a as u32).wrapping_add(0x8000);
     ((dif >> 16).wrapping_add(l as u32)) as u16
 }

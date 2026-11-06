@@ -111,6 +111,20 @@ impl ToneCurve {
 
     /// `cmsEvalToneCurve16`
     pub fn eval16(&self, v: u16) -> u16 {
+        // Fast path — `LinLerp1D` over `table16`/`domain0` without building
+        // a full `InterpParams` (C caches the params inside cmsToneCurve).
+        if self.interp16 == crate::intrp::lin_lerp_1d as InterpFn16 {
+            let d = self.domain0;
+            if v == 0xffff || d == 0 {
+                return crate::intrp::tbl_get16(&self.table16, d as usize) as u16;
+            }
+            let val3 = crate::fixed::to_fixed_domain(d.wrapping_mul(v as u32) as i32);
+            let cell0 = crate::fixed::fixed_to_int(val3) as usize;
+            let rest = crate::fixed::fixed_rest_to_int(val3);
+            let y0 = crate::intrp::tbl_get16(&self.table16, cell0);
+            let y1 = crate::intrp::tbl_get16(&self.table16, cell0 + 1);
+            return crate::intrp::linear_interp(rest, y0, y1);
+        }
         let p = InterpParams {
             dw_flags: LERP_FLAGS_16BITS,
             n_inputs: 1,
