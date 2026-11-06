@@ -740,6 +740,10 @@ pub struct Prelin16Data {
     pub clut: crate::lut::CLutData,
     /// per-output curves; empty = nop
     pub out_curves: Vec<crate::gamma::ToneCurve>,
+    /// Baked `InterpParams` for the CLUT — built once so `prelin_eval16`
+    /// doesn't reconstruct ~100B of params (incl. a `foreign` Box clone)
+    /// per pixel.
+    pub params16: crate::intrp::InterpParams<'static>,
 }
 
 /// `Eval16nop1D` — pass-through single-channel
@@ -763,22 +767,7 @@ pub(crate) fn prelin_eval16(input: &[u16], output: &mut [u16], d: &OptData) -> b
             eval16_nop1d(input[i])
         };
     }
-    {
-        use crate::intrp::{InterpParams, InterpTable};
-        let c = &p16.clut;
-        let p = InterpParams {
-            dw_flags: c.dw_flags,
-            n_inputs: c.n_inputs,
-            n_outputs: c.n_outputs,
-            n_samples: c.n_samples,
-            domain: c.domain,
-            opta: c.opta,
-            table: InterpTable::U16(c.tab16.as_deref().unwrap_or(&[])),
-            interpolation: c.interpolation,
-            foreign: c.foreign.clone(),
-        };
-        p.eval16(&stage_abc[..ni], &mut stage_def[..no]);
-    }
+    p16.params16.eval16(&stage_abc[..ni], &mut stage_def[..no]);
     for i in 0..no {
         output[i] = if i < p16.out_curves.len() {
             p16.out_curves[i].eval16(stage_def[i])
@@ -1339,12 +1328,26 @@ fn optimize_by_computing_linearization(
             }
         };
     } else {
+        let params16 = crate::intrp::InterpParams {
+            dw_flags: clut_data.dw_flags,
+            n_inputs: clut_data.n_inputs,
+            n_outputs: clut_data.n_outputs,
+            n_samples: clut_data.n_samples,
+            domain: clut_data.domain,
+            opta: clut_data.opta,
+            table: crate::intrp::InterpTable::U16Rc(std::sync::Arc::from(
+                clut_data.tab16.as_deref().unwrap_or(&[]),
+            )),
+            interpolation: clut_data.interpolation,
+            foreign: clut_data.foreign.clone(),
+        };
         optimized.opt_data = Some(OptData::Prelin16(Box::new(Prelin16Data {
             n_inputs: 3,
             n_outputs: 3,
             in_curves: prelin_curves,
             clut: clut_data,
             out_curves: Vec::new(),
+            params16,
         })));
         optimized.eval16_fn = |i, o, l| {
             if let Some(d) = &l.opt_data {
@@ -1557,12 +1560,26 @@ fn optimize_by_resampling(
             }
         };
     } else {
+        let params16 = crate::intrp::InterpParams {
+            dw_flags: clut_data.dw_flags,
+            n_inputs: clut_data.n_inputs,
+            n_outputs: clut_data.n_outputs,
+            n_samples: clut_data.n_samples,
+            domain: clut_data.domain,
+            opta: clut_data.opta,
+            table: crate::intrp::InterpTable::U16Rc(std::sync::Arc::from(
+                clut_data.tab16.as_deref().unwrap_or(&[]),
+            )),
+            interpolation: clut_data.interpolation,
+            foreign: clut_data.foreign.clone(),
+        };
         dest.opt_data = Some(OptData::Prelin16(Box::new(Prelin16Data {
             n_inputs: dest.input_channels,
             n_outputs: dest.output_channels,
             in_curves: data_in,
             clut: clut_data,
             out_curves: data_out,
+            params16,
         })));
         dest.eval16_fn = |i, o, l| {
             if let Some(d) = &l.opt_data {
