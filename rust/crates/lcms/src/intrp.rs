@@ -386,14 +386,19 @@ pub(crate) fn eval1_input(input: &[u16], output: &mut [u16], p: &InterpParams) {
 
         let k1 = k0 + if input[0] != 0xFFFF { 1 } else { 0 };
 
-        let k0i = (p.opta[0] as i32) * k0;
-        let k1i = (p.opta[0] as i32) * k1;
+        let n = p.n_outputs as usize;
+        let m = lut_table.len() - n;
+        let k0i = ((p.opta[0] as i32) * k0).clamp(0, m as i32) as usize;
+        let k1i = ((p.opta[0] as i32) * k1).clamp(0, m as i32) as usize;
+        let d0 = &lut_table[k0i..k0i + n];
+        let d1 = &lut_table[k1i..k1i + n];
+        let output = &mut output[..n];
 
-        for out_chan in 0..p.n_outputs as usize {
+        for out_chan in 0..n {
             output[out_chan] = linear_interp(
                 rk as i32,
-                tbl_get16(lut_table, (k0i + out_chan as i32) as usize),
-                tbl_get16(lut_table, (k1i + out_chan as i32) as usize),
+                d0[out_chan] as i32,
+                d1[out_chan] as i32,
             );
         }
     }
