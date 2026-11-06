@@ -547,23 +547,26 @@ impl Transform {
                                 let r = p.shaper1[0][iline[px] as usize];
                                 let g = p.shaper1[1][iline[px + 1] as usize];
                                 let b = p.shaper1[2][iline[px + 2] as usize];
-                                let l1 = (p.mat[0][0].wrapping_mul(r)
-                                    + p.mat[0][1].wrapping_mul(g)
-                                    + p.mat[0][2].wrapping_mul(b)
-                                    + p.off[0]
-                                    + 0x2000)
+                                let l1 = (p.mat[0][0]
+                                    .wrapping_mul(r)
+                                    .wrapping_add(p.mat[0][1].wrapping_mul(g))
+                                    .wrapping_add(p.mat[0][2].wrapping_mul(b))
+                                    .wrapping_add(p.off[0])
+                                    .wrapping_add(0x2000))
                                     >> 14;
-                                let l2 = (p.mat[1][0].wrapping_mul(r)
-                                    + p.mat[1][1].wrapping_mul(g)
-                                    + p.mat[1][2].wrapping_mul(b)
-                                    + p.off[1]
-                                    + 0x2000)
+                                let l2 = (p.mat[1][0]
+                                    .wrapping_mul(r)
+                                    .wrapping_add(p.mat[1][1].wrapping_mul(g))
+                                    .wrapping_add(p.mat[1][2].wrapping_mul(b))
+                                    .wrapping_add(p.off[1])
+                                    .wrapping_add(0x2000))
                                     >> 14;
-                                let l3 = (p.mat[2][0].wrapping_mul(r)
-                                    + p.mat[2][1].wrapping_mul(g)
-                                    + p.mat[2][2].wrapping_mul(b)
-                                    + p.off[2]
-                                    + 0x2000)
+                                let l3 = (p.mat[2][0]
+                                    .wrapping_mul(r)
+                                    .wrapping_add(p.mat[2][1].wrapping_mul(g))
+                                    .wrapping_add(p.mat[2][2].wrapping_mul(b))
+                                    .wrapping_add(p.off[2])
+                                    .wrapping_add(0x2000))
                                     >> 14;
                                 oline[px] =
                                     crate::pack::f16to8(p.shaper2[l1.clamp(0, 16384) as usize]);
