@@ -2648,12 +2648,22 @@ pub fn pack_half_from16(
     let swap_first = t_swapfirst(i.output_format) != 0;
     let extra = t_extra(i.output_format) as usize;
     let extra_first = do_swap ^ swap_first;
+    let maximum = if is_ink_space(i.output_format) {
+        655.35f32
+    } else {
+        65535.0
+    };
     let mut o = if extra_first { extra * 2 } else { 0 };
-    let mut last = 0u16;
+    let mut last = 0f32;
     for c in 0..n_chan {
         let index = if do_swap { n_chan - c - 1 } else { c };
-        let v = if reverse { 0xffff - w[index] } else { w[index] };
-        let h = crate::half::float2half(v as f32 / 65535.0);
+        // C: v = wOut/maximum; Reverse → v = maximum - v (post-division)
+        let v = if reverse {
+            maximum - w[index] as f32 / maximum
+        } else {
+            w[index] as f32 / maximum
+        };
+        let h = crate::half::float2half(v);
         out[o] = (h & 0xff) as u8;
         out[o + 1] = (h >> 8) as u8;
         o += 2;
@@ -2666,7 +2676,7 @@ pub fn pack_half_from16(
         let mut buf = vec![0u8; (n_chan - 1) * 2];
         buf.copy_from_slice(&out[0..(n_chan - 1) * 2]);
         out[2..2 + (n_chan - 1) * 2].copy_from_slice(&buf);
-        let h = crate::half::float2half(last as f32 / 65535.0);
+        let h = crate::half::float2half(last);
         out[0] = (h & 0xff) as u8;
         out[1] = (h >> 8) as u8;
     }

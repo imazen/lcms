@@ -129,28 +129,48 @@ pub extern "C" fn cmsSaveProfileToFile(h: Handle, path: *const c_char) -> c_int 
         0
     }
 }
-/// `cmsSaveProfileToMem` — writes serialized bytes; returns size via `size`
+/// `cmsSaveProfileToMem` — C maps this to `cmsSaveProfileToIOhandler`:
+/// NULL buf → sizing pass only (one WriteHeader/plugin call); real buf →
+/// one call = pass-1 sizing + pass-2 write (two plugin calls).
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsSaveProfileToMem(h: Handle, buf: *mut c_void, size: *mut c_uint) -> c_int {
     let Some(p) = prof_ref(h) else {
         return 0;
     };
-    let Some(data) = profile::save_profile_to_mem(p) else {
-        return 0;
+    if buf.is_null() {
+        let used = profile::save_profile_to_iohandler(p, None);
+        if used == 0 {
+            return 0;
+        }
+        unsafe {
+            if !size.is_null() {
+                *size = used as c_uint;
+            }
+        }
+        return 1;
+    }
+    // Real write: a mem io over a capacity-sized block, then copy out
+    let cap = unsafe { *size } as usize;
+    let mut io = match lcms::io::io_handler_from_mem(None, vec![0u8; cap], "w") {
+        Some(io) => io,
+        None => return 0,
     };
+    let used = profile::save_profile_to_iohandler(p, Some(&mut io));
+    if used == 0 {
+        return 0;
+    }
     unsafe {
+        if (used as usize) > cap {
+            if !size.is_null() {
+                *size = used as c_uint;
+            }
+            return 0;
+        }
+        if let lcms::io::IoStream::Mem(m) = &io.stream {
+            ptr::copy_nonoverlapping(m.block.as_ptr(), buf as *mut u8, used as usize);
+        }
         if !size.is_null() {
-            if buf.is_null() {
-                *size = data.len() as c_uint;
-                return 1;
-            }
-            let cap = *size as usize;
-            if cap < data.len() {
-                *size = data.len() as c_uint;
-                return 0;
-            }
-            ptr::copy_nonoverlapping(data.as_ptr(), buf as *mut u8, data.len());
-            *size = data.len() as c_uint;
+            *size = used as c_uint;
         }
     }
     1

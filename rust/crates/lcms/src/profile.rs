@@ -160,11 +160,7 @@ fn supported_icc_version(ctx: Option<&Context>) -> u32 {
 /// `_cmsReadHeader`/`_cmsWriteHeader` plugin hook — invoke the registered
 /// C header callback with the io positioned right after the 128-byte
 /// header; restore the cursor afterwards like C does.
-fn invoke_header_plugin(
-    icc: &mut IccProfile,
-    io: Option<&mut IoHandler>,
-    is_read: bool,
-) -> bool {
+fn invoke_header_plugin(icc: &IccProfile, io: &mut IoHandler, is_read: bool) -> bool {
     let Some(c) = icc.ctx.as_ref() else {
         return true;
     };
@@ -176,12 +172,7 @@ fn invoke_header_plugin(
     if cb == 0 {
         return true;
     }
-    let icc_ptr = icc as *mut IccProfile as usize;
-    let io = match io {
-        Some(io) => io,
-        None => icc.io.as_mut().unwrap(),
-    };
-    invoke_header_raw(cb, ctx_handle, icc_ptr, io, is_read)
+    invoke_header_raw(cb, ctx_handle, icc as *const IccProfile as usize, io, is_read)
 }
 
 /// The borrow-free core of `invoke_header_plugin` — call sites that already
@@ -414,6 +405,10 @@ pub fn write_header(icc: &IccProfile, used_space: u32, io_out: &mut IoHandler) -
     // remaining bytes = reserved zeros
 
     if !io_out.write(128, &h) {
+        return false;
+    }
+    // Header plugin — invoked with io at 128 (`_cmsWriteHeader` hook point)
+    if !invoke_header_plugin(icc, io_out, false) {
         return false;
     }
 
@@ -941,11 +936,10 @@ pub fn save_profile_to_iohandler(icc: &mut IccProfile, out: Option<&mut IoHandle
     let used_space = null_io.used_space;
 
     // Pass 2: real write into the target handler. The header plugin runs
-    // right after the 128-byte header (io at 128), like `_cmsWriteHeader`.
+    // inside `write_header` right after the 128-byte header.
     if let Some(out_io) = out {
         if !set_links(icc)
             || !write_header(icc, used_space, out_io)
-            || !invoke_header_plugin(icc, Some(&mut *out_io), false)
             || !save_tags(icc, out_io, orig_io.as_mut(), &orig_offsets, &orig_sizes)
         {
             restore_dir(icc, &orig_offsets, &orig_sizes);
