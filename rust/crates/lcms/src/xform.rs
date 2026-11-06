@@ -1070,16 +1070,8 @@ pub fn create_extended_transform(
     dw_flags: u32,
 ) -> Option<Box<Transform>> {
     let mut flags = dw_flags;
-    let n = profiles.len();
-    if n == 0 || n > 255 {
-        crate::err::signal_error(
-            ctx.as_ref(),
-            crate::types::ERROR_RANGE,
-            "Wrong number of profiles",
-        );
-        return None;
-    }
-    let last_intent = *intents.last()?;
+    // C checks `cmsFLAGS_NULLTRANSFORM` before validating the profile array —
+    // a null transform needs no profiles at all.
     if flags & FLAGS_NULLTRANSFORM != 0 {
         return alloc_empty_transform(
             ctx,
@@ -1090,6 +1082,16 @@ pub fn create_extended_transform(
             flags,
         );
     }
+    let n = profiles.len();
+    if n == 0 || n > 255 {
+        crate::err::signal_error(
+            ctx.as_ref(),
+            crate::types::ERROR_RANGE,
+            "Wrong number of profiles",
+        );
+        return None;
+    }
+    let last_intent = *intents.last()?;
     let has_gamut = flags & FLAGS_GAMUTCHECK != 0 && gamut_profile.is_some();
     if !has_gamut {
         flags &= !FLAGS_GAMUTCHECK;

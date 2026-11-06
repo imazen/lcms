@@ -632,13 +632,20 @@ pub extern "C" fn cmsCreateTransform(
     intent: c_uint,
     flags: c_uint,
 ) -> Handle {
-    let Some(i) = prof_ref(input) else {
-        return ptr::null_mut();
-    };
+    // `cmsFLAGS_NULLTRANSFORM` needs no profiles at all (C checks the flag
+    // before dereferencing them).
+    if flags & lcms::types::FLAGS_NULLTRANSFORM == 0 {
+        let Some(i) = prof_ref(input) else {
+            return ptr::null_mut();
+        };
+    }
+    let mut profs: Vec<Box<IccProfile>> = Vec::new();
+    if let Some(i) = prof_ref(input) {
+        profs.push(unsafe { Box::from_raw(i) });
+    }
     // C: `cmsCreateMultiprofileTransformTHR(..., Output==NULL ? 1 : 2, ...)` —
     // a NULL output profile yields a single-profile transform (devicelink
     // applied forward).
-    let mut profs: Vec<Box<IccProfile>> = vec![unsafe { Box::from_raw(i) }];
     if let Some(o) = prof_ref(output) {
         profs.push(unsafe { Box::from_raw(o) });
     }
