@@ -590,6 +590,7 @@ fn trilinear_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
 
 /// `TrilinearInterp16` — trilinear, fixed point.
 #[inline]
+#[inline(always)]
 pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let total_out = p.n_outputs as usize;
@@ -753,6 +754,7 @@ fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams)
 /// which is C's actual behaviour and is preserved.
 #[inline]
 #[inline]
+#[inline(always)]
 pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut total_out = p.n_outputs as usize;
@@ -924,6 +926,7 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
 #[inline]
 #[inline]
+#[inline(always)]
 pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut tmp1 = [0u16; MAX_STAGE_CHANNELS];
@@ -981,6 +984,7 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
     // output-channel loop with 4 table loads and 3 subs (offsets computed
     // once; `.min` keeps `o+oc < cell.len()` provable, eliding bounds
     // checks in the channel loop).
+    #[inline(always)]
     fn tetra16(
         lut_table: &[u16],
         base: i32,

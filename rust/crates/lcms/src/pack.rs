@@ -353,6 +353,9 @@ macro_rules! unroll8 {
 
 unroll8!(unroll4_bytes, [0, 1, 2, 3], 0);
 unroll8!(unroll4_bytes_reverse, [0, 1, 2, 3], 0, rev);
+/// `UnrollChunkyBytes` specialized to chunky 3ch+ex1 (TYPE_RGBA_8 & kin —
+/// C's table falls through to the generic for this shape).
+unroll8!(unroll3_bytes_skip1, [0, 1, 2], 1);
 unroll8!(unroll4_bytes_swap_first, [3, 0, 1, 2], 0);
 unroll8!(unroll4_bytes_swap, [3, 2, 1, 0], 0);
 unroll8!(unroll4_bytes_swap_swap_first, [2, 1, 0, 3], 0);
@@ -676,6 +679,9 @@ macro_rules! unrollw {
 }
 
 unrollw!(unroll4_words, [0, 1, 2, 3], 0);
+/// `UnrollAnyWords` specialized to chunky 3ch+ex1 (TYPE_RGBA_16 & kin —
+/// C's table has no plain `ch3|by2|ex1` entry, so the generic runs).
+unrollw!(unroll3_words_skip1, [0, 1, 2], 2);
 // `Unroll4WordsReverse` — REVERSE_FLAVOR_16 on each channel
 pub fn unroll4_words_reverse(
     _i: &PackInfo,
@@ -1540,6 +1546,73 @@ pub fn pack6_words_swap(
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
     o + 0
+}
+
+/// `UnrollAnyWords` specialized to chunky 4ch+ex1 (TYPE_RGBA_16 & kin):
+/// C reaches the generic AnyWords for this shape — the specialized fn
+/// skips the per-pixel bitfield decode.
+#[inline]
+pub fn unroll4_words_skip1(
+    _i: &PackInfo,
+    w: &mut [u16; crate::xform::MAX_CHANNELS],
+    a: &[u8],
+    _s: u32,
+) -> usize {
+    w[0] = rd16(a, 0);
+    w[1] = rd16(a, 2);
+    w[2] = rd16(a, 4);
+    w[3] = rd16(a, 6);
+    10
+}
+
+/// `PackAnyWords` specialized to chunky 4ch+ex1 (extra bytes untouched —
+/// `_cmsHandleExtraChannels` owns them).
+#[inline]
+pub fn pack4_words_skip1(
+    _i: &PackInfo,
+    w: &[u16; crate::xform::MAX_CHANNELS],
+    out: &mut [u8],
+    _s: u32,
+) -> usize {
+    out[0] = (w[0] & 0xff) as u8;
+    out[1] = (w[0] >> 8) as u8;
+    out[2] = (w[1] & 0xff) as u8;
+    out[3] = (w[1] >> 8) as u8;
+    out[4] = (w[2] & 0xff) as u8;
+    out[5] = (w[2] >> 8) as u8;
+    out[6] = (w[3] & 0xff) as u8;
+    out[7] = (w[3] >> 8) as u8;
+    10
+}
+
+/// `UnrollChunkyBytes` specialized to chunky 4ch+ex1 (TYPE_RGBA_8 & kin).
+#[inline]
+pub fn unroll4_bytes_skip1(
+    _i: &PackInfo,
+    w: &mut [u16; crate::xform::MAX_CHANNELS],
+    a: &[u8],
+    _s: u32,
+) -> usize {
+    w[0] = f8to16(a[0]);
+    w[1] = f8to16(a[1]);
+    w[2] = f8to16(a[2]);
+    w[3] = f8to16(a[3]);
+    5
+}
+
+/// `PackChunkyBytes` specialized to chunky 4ch+ex1.
+#[inline]
+pub fn pack4_bytes_skip1(
+    _i: &PackInfo,
+    w: &[u16; crate::xform::MAX_CHANNELS],
+    out: &mut [u8],
+    _s: u32,
+) -> usize {
+    out[0] = f16to8(w[0]);
+    out[1] = f16to8(w[1]);
+    out[2] = f16to8(w[2]);
+    out[3] = f16to8(w[3]);
+    5
 }
 
 pub fn pack4_bytes(

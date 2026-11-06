@@ -116,10 +116,12 @@ fn pixel_size(fmt: u32) -> u32 {
 /// Generic `Precalculated`/`Cached` (!gamut) pixel loop with the eval
 /// monomorphized — each `OptData` arm instantiates this with its eval
 /// inlined, so no per-pixel `opt_data` match or `eval16_fn` indirection.
+/// `U`/`P` are generic so `xform16_run` can pass fn ITEMS (direct,
+/// inlinable calls) for the hot formatters instead of fn ptrs.
 #[allow(clippy::too_many_arguments)]
-fn xform16_eval_loop<E: Fn(&[u16], &mut [u16])>(
-    unroll: crate::pack::Unpack16Fn,
-    pack: crate::pack::Pack16Fn,
+fn xform16_eval_loop<E, U, P>(
+    unroll: U,
+    pack: P,
     info: &PackInfo,
     input: &[u8],
     output: &mut [u8],
@@ -130,7 +132,11 @@ fn xform16_eval_loop<E: Fn(&[u16], &mut [u16])>(
     cache_in: &mut [u16; MAX_CHANNELS],
     cache_out: &mut [u16; MAX_CHANNELS],
     eval: E,
-) {
+) where
+    E: Fn(&[u16], &mut [u16]),
+    U: Fn(&PackInfo, &mut [u16; MAX_CHANNELS], &[u8], u32) -> usize,
+    P: Fn(&PackInfo, &[u16; MAX_CHANNELS], &mut [u8], u32) -> usize,
+{
     let mut w_in = [0u16; MAX_CHANNELS];
     let mut w_out = [0u16; MAX_CHANNELS];
     let mut i_off = 0usize;
@@ -163,6 +169,110 @@ fn xform16_eval_loop<E: Fn(&[u16], &mut [u16])>(
         i_off += stride.bytes_per_line_in as usize;
         o_off += stride.bytes_per_line_out as usize;
     }
+}
+
+/// Dispatch on the (unroll, pack) fn-ptr identity: for the hot
+/// channel/byte combos pass fn ITEMS so the calls inside the pixel loop
+/// are direct + inlinable (C's formatters are always indirect). Fallback
+/// keeps the fn-ptr path for every other formatter (incl. foreign).
+#[allow(clippy::too_many_arguments)]
+fn xform16_run<E: Fn(&[u16], &mut [u16])>(
+    unroll: crate::pack::Unpack16Fn,
+    pack: crate::pack::Pack16Fn,
+    info: &PackInfo,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    cache: bool,
+    ci: &mut [u16; MAX_CHANNELS],
+    co: &mut [u16; MAX_CHANNELS],
+    eval: E,
+) {
+    use crate::pack as pk;
+    type U16F = crate::pack::Unpack16Fn;
+    type P16F = crate::pack::Pack16Fn;
+    /// chunky `ch`ch+ex1, no swap/reverse/endian/premul/planar — the shape
+    /// the generic Any*/Chunky* formatters decode per pixel.
+    let is_ch_ex1 = |fmt: u32, ch: u32, bytes: u32| {
+        pk::t_channels(fmt) == ch
+            && pk::t_extra(fmt) == 1
+            && pk::t_bytes(fmt) == bytes
+            && pk::t_doswap(fmt) == 0
+            && pk::t_flavor(fmt) == 0
+            && pk::t_swapfirst(fmt) == 0
+            && pk::t_endian16(fmt) == 0
+            && pk::t_premul(fmt) == 0
+            && pk::t_planar(fmt) == 0
+    };
+    macro_rules! go {
+        ($u:expr, $p:expr) => {
+            return xform16_eval_loop(
+                $u, $p, info, input, output, ppl, lines, stride, cache, ci, co, eval,
+            )
+        };
+    }
+    macro_rules! with_pack {
+        ($u:expr) => {{
+            if pack == pk::pack4_bytes as P16F {
+                go!($u, pk::pack4_bytes);
+            }
+            if pack == pk::pack3_bytes as P16F {
+                go!($u, pk::pack3_bytes);
+            }
+            if pack == pk::pack4_words as P16F {
+                go!($u, pk::pack4_words);
+            }
+            if pack == pk::pack3_words as P16F {
+                go!($u, pk::pack3_words);
+            }
+            if pack == pk::pack3_words_and_skip1 as P16F {
+                go!($u, pk::pack3_words_and_skip1);
+            }
+            if pack == pk::pack3_bytes_and_skip1 as P16F {
+                go!($u, pk::pack3_bytes_and_skip1);
+            }
+            if pack == pk::pack_chunky_words as P16F && is_ch_ex1(info.output_format, 4, 2) {
+                go!($u, pk::pack4_words_skip1);
+            }
+            if pack == pk::pack_chunky_words as P16F && is_ch_ex1(info.output_format, 3, 2) {
+                go!($u, pk::pack3_words_and_skip1);
+            }
+            if pack == pk::pack_chunky_bytes as P16F && is_ch_ex1(info.output_format, 4, 1) {
+                go!($u, pk::pack4_bytes_skip1);
+            }
+            if pack == pk::pack_chunky_bytes as P16F && is_ch_ex1(info.output_format, 3, 1) {
+                go!($u, pk::pack3_bytes_and_skip1);
+            }
+            go!($u, pack);
+        }};
+    }
+    if unroll == pk::unroll4_bytes as U16F {
+        with_pack!(pk::unroll4_bytes);
+    }
+    if unroll == pk::unroll3_bytes as U16F {
+        with_pack!(pk::unroll3_bytes);
+    }
+    if unroll == pk::unroll4_words as U16F {
+        with_pack!(pk::unroll4_words);
+    }
+    if unroll == pk::unroll3_words as U16F {
+        with_pack!(pk::unroll3_words);
+    }
+    if unroll == pk::unroll_any_words as U16F && is_ch_ex1(info.input_format, 4, 2) {
+        with_pack!(pk::unroll4_words_skip1);
+    }
+    if unroll == pk::unroll_any_words as U16F && is_ch_ex1(info.input_format, 3, 2) {
+        with_pack!(pk::unroll3_words_skip1);
+    }
+    if unroll == pk::unroll_chunky_bytes as U16F && is_ch_ex1(info.input_format, 4, 1) {
+        with_pack!(pk::unroll4_bytes_skip1);
+    }
+    if unroll == pk::unroll_chunky_bytes as U16F && is_ch_ex1(info.input_format, 3, 1) {
+        with_pack!(pk::unroll3_bytes_skip1);
+    }
+    with_pack!(unroll);
 }
 
 /// `IsProperColorSpace` — format's PT_* vs the profile-chain space
@@ -612,7 +722,7 @@ impl Transform {
                             };
                             macro_rules! run {
                                 ($k:expr) => {
-                                    return xform16_eval_loop(
+                                    return xform16_run(
                                         unroll,
                                         pack,
                                         &info,
@@ -643,7 +753,7 @@ impl Transform {
                             } else if f == ip::eval1_input as InterpFn16 {
                                 run!(ip::eval1_input)
                             } else {
-                                return xform16_eval_loop(
+                                return xform16_run(
                                     unroll,
                                     pack,
                                     &info,
@@ -660,7 +770,7 @@ impl Transform {
                             }
                         }
                         crate::opt::OptData::MatShaper(_) => {
-                            return xform16_eval_loop(
+                            return xform16_run(
                                 unroll,
                                 pack,
                                 &info,
@@ -678,7 +788,7 @@ impl Transform {
                             );
                         }
                         crate::opt::OptData::Curves16(_) => {
-                            return xform16_eval_loop(
+                            return xform16_run(
                                 unroll,
                                 pack,
                                 &info,
@@ -696,7 +806,7 @@ impl Transform {
                             );
                         }
                         crate::opt::OptData::Prelin16(_) => {
-                            return xform16_eval_loop(
+                            return xform16_run(
                                 unroll,
                                 pack,
                                 &info,
@@ -714,7 +824,7 @@ impl Transform {
                             );
                         }
                         crate::opt::OptData::Prelin8(_) => {
-                            return xform16_eval_loop(
+                            return xform16_run(
                                 unroll,
                                 pack,
                                 &info,
@@ -732,7 +842,7 @@ impl Transform {
                             );
                         }
                         crate::opt::OptData::Identity => {
-                            return xform16_eval_loop(
+                            return xform16_run(
                                 unroll,
                                 pack,
                                 &info,
