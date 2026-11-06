@@ -632,19 +632,20 @@ pub extern "C" fn cmsCreateTransform(
     intent: c_uint,
     flags: c_uint,
 ) -> Handle {
-    let (i, o) = (prof_ref(input), prof_ref(output));
-    let (Some(i), Some(o)) = (i, o) else {
+    let Some(i) = prof_ref(input) else {
         return ptr::null_mut();
     };
-    // Alias the caller's profiles (transform only reads them); mem::forget
-    // keeps ownership with the caller's handles — no double-free.
-    let mut profs: Vec<Box<IccProfile>> = vec![
-        unsafe { Box::from_raw(i) },
-        unsafe { Box::from_raw(o) },
-    ];
-    let mut bpc = [flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; 2];
-    let intents = [intent, intent];
-    let adapt = [1.0f64; 2];
+    // C: `cmsCreateMultiprofileTransformTHR(..., Output==NULL ? 1 : 2, ...)` —
+    // a NULL output profile yields a single-profile transform (devicelink
+    // applied forward).
+    let mut profs: Vec<Box<IccProfile>> = vec![unsafe { Box::from_raw(i) }];
+    if let Some(o) = prof_ref(output) {
+        profs.push(unsafe { Box::from_raw(o) });
+    }
+    let n = profs.len();
+    let mut bpc = vec![flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; n];
+    let intents = vec![intent; n];
+    let adapt = vec![1.0f64; n];
     let t = xform_to_handle(xform::create_extended_transform(
         None,
         &mut profs,

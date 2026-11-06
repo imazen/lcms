@@ -129,6 +129,9 @@ pub fn create_rgb_profile(
         if !build_rgb2xyz_transfer_matrix(&mut m_colorants, &max_white, pr) {
             return None;
         }
+        // C writes the UNADAPTED colorants — the white point's adaptation
+        // lives in `cmsSigChromaticAdaptationTag`; the transform's
+        // absolute-intent path compensates via `chad_in`.
         let (r, g, b) = (
             CieXyz {
                 X: m_colorants.v[0].n[0],

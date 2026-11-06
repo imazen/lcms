@@ -220,7 +220,7 @@ pub fn adaptation_matrix(
 }
 
 /// `_cmsAdaptMatrixToD50` (static in C) — assuming D50 destination
-fn adapt_matrix_to_d50(r: &mut Mat3, source_white_pt: &CiexyY) -> bool {
+pub(crate) fn adapt_matrix_to_d50(r: &mut Mat3, source_white_pt: &CiexyY) -> bool {
     let dn = xyy2xyz(source_white_pt);
     let mut bradford = Mat3::default();
 
