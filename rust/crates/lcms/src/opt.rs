@@ -1290,14 +1290,35 @@ fn optimize_by_computing_linearization(
         }
         out
     };
-    let clut_data = if let StageData::CLut(d) = &clut.data {
-        d.as_ref().clone()
-    } else {
-        return false;
-    };
     if !optimized.insert_stage(StageLoc::AtEnd, clut) {
         return false;
     }
+    // FixWhiteMisalignment BEFORE snapshotting the CLUT into opt_data —
+    // patch_lut edits the stage's table; the opt eval reads a cloned copy
+    // taken below, so it must capture the patched table (C shares it).
+    if intent == crate::types::INTENT_ABSOLUTE_COLORIMETRIC {
+        *dw_flags |= crate::types::FLAGS_NOWHITEONWHITEFIXUP;
+    }
+    if *dw_flags & crate::types::FLAGS_NOWHITEONWHITEFIXUP == 0 {
+        if !fix_white_misalignment(&mut optimized, color_space, output_space) {
+            return false;
+        }
+    }
+    let clut_data = {
+        let mut st = optimized.elements.as_deref();
+        let mut found = None;
+        while let Some(s) = st {
+            if let StageData::CLut(d) = &s.data {
+                found = Some(d.as_ref().clone());
+                break;
+            }
+            st = s.next.as_deref();
+        }
+        found
+    };
+    let Some(clut_data) = clut_data else {
+        return false;
+    };
     if crate::pack::t_bytes(*input_format) == 1 {
         let p8 = prelin_opt8alloc(
             &clut_data,
@@ -1326,14 +1347,6 @@ fn optimize_by_computing_linearization(
                 prelin_eval16(i, o, d);
             }
         };
-    }
-    if intent == crate::types::INTENT_ABSOLUTE_COLORIMETRIC {
-        *dw_flags |= crate::types::FLAGS_NOWHITEONWHITEFIXUP;
-    }
-    if *dw_flags & crate::types::FLAGS_NOWHITEONWHITEFIXUP == 0 {
-        if !fix_white_misalignment(&mut optimized, color_space, output_space) {
-            return false;
-        }
     }
     *lut = optimized;
     true
@@ -1455,6 +1468,15 @@ fn optimize_by_resampling(
     // keep_* stages are consumed/dropped here (C frees them)
     let _ = keep_pre;
     let _ = keep_post;
+    // FixWhiteMisalignment BEFORE snapshotting the CLUT into opt_data —
+    // patch_lut edits the stage's table; the opt eval reads a cloned copy
+    // taken below, so it must capture the patched table (C shares it).
+    if intent == crate::types::INTENT_ABSOLUTE_COLORIMETRIC {
+        *dw_flags |= crate::types::FLAGS_NOWHITEONWHITEFIXUP;
+    }
+    if *dw_flags & crate::types::FLAGS_NOWHITEONWHITEFIXUP == 0 {
+        fix_white_misalignment(&mut dest, color_space, output_space);
+    }
     // set the opt eval — CLUT-only or prelin16
     let clut_stage_data = {
         let mut st = dest.elements.as_deref_mut();
@@ -1529,12 +1551,6 @@ fn optimize_by_resampling(
                 prelin_eval16(i, o, d);
             }
         };
-    }
-    if intent == crate::types::INTENT_ABSOLUTE_COLORIMETRIC {
-        *dw_flags |= crate::types::FLAGS_NOWHITEONWHITEFIXUP;
-    }
-    if *dw_flags & crate::types::FLAGS_NOWHITEONWHITEFIXUP == 0 {
-        fix_white_misalignment(&mut dest, color_space, output_space);
     }
     *lut = dest;
     true

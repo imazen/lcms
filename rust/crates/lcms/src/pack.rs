@@ -357,9 +357,9 @@ unroll8!(unroll4_bytes_swap_first, [3, 0, 1, 2], 0);
 unroll8!(unroll4_bytes_swap, [3, 2, 1, 0], 0);
 unroll8!(unroll4_bytes_swap_swap_first, [2, 1, 0, 3], 0);
 unroll8!(unroll3_bytes, [0, 1, 2], 0);
-unroll8!(unroll3_bytes_skip1_swap, [2, 1, 0], 1);
 // A B G R → skip A first, then B,G,R into w[2],w[1],w[0]
-pub fn unroll3_bytes_skip1_swap_real(
+// (`Unroll3BytesSkip1Swap` — the skip is leading, not trailing)
+pub fn unroll3_bytes_skip1_swap(
     i: &PackInfo,
     w: &mut [u16; crate::xform::MAX_CHANNELS],
     a: &[u8],
@@ -676,13 +676,41 @@ macro_rules! unrollw {
 }
 
 unrollw!(unroll4_words, [0, 1, 2, 3], 0);
-unrollw!(unroll4_words_reverse, [0, 1, 2, 3], 0);
+// `Unroll4WordsReverse` — REVERSE_FLAVOR_16 on each channel
+pub fn unroll4_words_reverse(
+    _i: &PackInfo,
+    w: &mut [u16; crate::xform::MAX_CHANNELS],
+    a: &[u8],
+    _s: u32,
+) -> usize {
+    let mut o = 0;
+    for c in 0..4 {
+        w[c] = 0xffff - rd16(a, o);
+        o += 2;
+    }
+    o
+}
 unrollw!(unroll4_words_swap_first, [3, 0, 1, 2], 0);
 unrollw!(unroll4_words_swap, [3, 2, 1, 0], 0);
 unrollw!(unroll4_words_swap_swap_first, [2, 1, 0, 3], 0);
 unrollw!(unroll3_words, [0, 1, 2], 0);
 unrollw!(unroll3_words_swap, [2, 1, 0], 0);
-unrollw!(unroll3_words_skip1_swap, [2, 1, 0], 2);
+// A B G R words → skip A first, then B,G,R into w[2],w[1],w[0]
+// (`Unroll3WordsSkip1Swap` — leading skip, not trailing)
+pub fn unroll3_words_skip1_swap(
+    _i: &PackInfo,
+    w: &mut [u16; crate::xform::MAX_CHANNELS],
+    a: &[u8],
+    _s: u32,
+) -> usize {
+    let mut o = 2;
+    w[2] = rd16(a, o);
+    o += 2;
+    w[1] = rd16(a, o);
+    o += 2;
+    w[0] = rd16(a, o);
+    o + 2
+}
 unrollw!(unroll3_words_skip1_swap_first, [255, 0, 1, 2], 0);
 pub fn unroll1_word(
     _i: &PackInfo,
