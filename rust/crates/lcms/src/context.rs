@@ -65,6 +65,10 @@ pub struct Context {
     /// pointers registered via `cmsPluginTHR` (FFI only). Checked before the
     /// built-in defaults, mirroring `GetParametricCurveByType`.
     pub c_parametric_curves: Vec<CParametricSet>,
+    /// C-side `Formatters` chain — raw `cmsFormattersFactory` pointers
+    /// registered via `cmsPluginTHR` (FFI only). Consulted before the stock
+    /// formatters in `_cmsGetFormatter`.
+    pub formatter_factories: Vec<usize>,
 }
 
 /// A C-registered `_cmsParametricCurvesCollection` entry — FFI fn ptrs.
@@ -97,6 +101,7 @@ impl Default for Context {
             mem_fns: [0; 6],
             interp_factories: Vec::new(),
             c_parametric_curves: Vec::new(),
+            formatter_factories: Vec::new(),
         }
     }
 }
@@ -116,6 +121,7 @@ impl Clone for Context {
             mem_fns: self.mem_fns,
             interp_factories: self.interp_factories.clone(),
             c_parametric_curves: self.c_parametric_curves.clone(),
+            formatter_factories: self.formatter_factories.clone(),
         }
     }
 }

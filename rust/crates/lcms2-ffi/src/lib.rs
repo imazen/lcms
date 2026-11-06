@@ -2133,6 +2133,12 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                     return false;
                 }
             }
+            PLUGIN_FORMATTERS_SIG => {
+                let f = unsafe { (*(p as *const CmsPluginFormatters)).formatters_factory };
+                if f != 0 {
+                    unsafe { (*(ctx as *mut lcms::context::Context)).formatter_factories.push(f) };
+                }
+            }
             _ => {}
         }
         p = b.next;
@@ -3129,11 +3135,21 @@ struct CmsPluginHeader {
     get_size_ptr: usize,
     get_info_ptr: usize,
 }
+/// `cmsPluginFormatters` — base + `FormattersFactory`
+#[repr(C)]
+struct CmsPluginFormatters {
+    base: CmsPluginBase,
+    formatters_factory: usize,
+}
+/// `cmsFormatterFactory` C signature — `(Type, Dir, dwFlags)` → `cmsFormatter`
+/// union (one pointer) by value.
+type FormatterFactoryC = unsafe extern "C" fn(c_uint, c_int, c_uint) -> usize;
 const PLUGIN_MAGIC: c_uint = 0x6163_7070; // 'acpp'
 const PLUGIN_MEMHANDLER_SIG: c_uint = 0x6D65_6D48; // 'memH'
 const PLUGIN_INTERP_SIG: c_uint = 0x696E_7048; // 'inpH'
 const PLUGIN_PARAMETRIC_SIG: c_uint = 0x7061_7248; // 'parH'
 const PLUGIN_HEADER_SIG: c_uint = 0x6864_7248; // 'hdrH'
+const PLUGIN_FORMATTERS_SIG: c_uint = 0x6672_6D48; // 'frmH'
 const LCMS_VERSION: c_uint = 2200;
 
 /// `_cmsFindMemoryPlugin` — scan the plugin chain for a mem-handler
@@ -3486,11 +3502,22 @@ unsafe extern "C" fn fmt_float_pack(
 /// single fn ptr per (direction, precision) suffices.
 #[unsafe(no_mangle)]
 pub extern "C" fn _cmsGetFormatter(
-    _ctx: Handle,
-    _ty: c_uint,
+    ctx: Handle,
+    ty: c_uint,
     dir: c_int,
     flags: c_uint,
 ) -> usize {
+    // C consults ctx-registered `cmsFormattersFactory` plugins first — first
+    // factory to return a non-NULL `cmsFormatter` wins (`_cmsGetFormatter`).
+    if let Some(cctx) = unsafe { cctx(ctx) } {
+        for &f in &cctx.formatter_factories {
+            let factory: FormatterFactoryC = unsafe { std::mem::transmute(f) };
+            let fmt = unsafe { factory(ty, dir, flags) };
+            if fmt != 0 {
+                return fmt;
+            }
+        }
+    }
     let float = flags & 1 != 0;
     match (dir, float) {
         (0, false) => fmt16_unpack as usize,
