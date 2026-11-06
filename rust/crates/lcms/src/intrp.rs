@@ -935,7 +935,6 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
 pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut tmp1 = [0u16; MAX_STAGE_CHANNELS];
-    let mut tmp2 = [0u16; MAX_STAGE_CHANNELS];
 
     let fk = to_fixed_domain((input[0] as i32).wrapping_mul(p.domain[0] as i32));
     let fx = to_fixed_domain((input[1] as i32).wrapping_mul(p.domain[1] as i32));
@@ -1004,6 +1003,10 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
         rz: i32,
         n_outputs: usize,
         out: &mut [u16],
+        // K1 pass: lerp the just-computed tetra output against the K0 pass
+        // result (`prev`) — folds `linear_interp` into the channel loop and
+        // avoids a second temp array + separate interp tail.
+        prev_rk: Option<(&[u16], i32)>,
     ) {
         let c0_off = x0i + y0i + z0i;
         let d_x = x1 - x0i;
@@ -1025,6 +1028,7 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
             rz: i32,
             n_outputs: usize,
             out: &mut [u16],
+            prev_rk: Option<(&[u16], i32)>,
             diffs: F,
         ) {
             let o1 = o1.min(max_off);
@@ -1041,34 +1045,38 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
                     .wrapping_add(c2.wrapping_mul(ry))
                     .wrapping_add(c3.wrapping_mul(rz))
                     .wrapping_add(0x8001);
-                out[oc] = (c0 as u16).wrapping_add((rest.wrapping_add(rest >> 16) >> 16) as u16);
+                let v = (c0 as u16).wrapping_add((rest.wrapping_add(rest >> 16) >> 16) as u16);
+                out[oc] = match prev_rk {
+                    Some((prev, rk)) => linear_interp(rk, prev[oc] as i32, v as i32),
+                    None => v,
+                };
             }
         }
 
         if rx >= ry {
             if ry >= rz {
-                arm(cell, d_x, d_x + d_y, max_off, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                arm(cell, d_x, d_x + d_y, max_off, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
                     (t1 - c0, t2 - t1, t3 - t2)
                 });
             } else if rz >= rx {
-                arm(cell, d_x + d_z, max_off, d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                arm(cell, d_x + d_z, max_off, d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
                     (t1 - t3, t2 - t1, t3 - c0)
                 });
             } else {
-                arm(cell, d_x, max_off, d_x + d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+                arm(cell, d_x, max_off, d_x + d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
                     (t1 - c0, t2 - t3, t3 - t1)
                 });
             }
         } else if rx >= rz {
-            arm(cell, d_x + d_y, d_y, max_off, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+            arm(cell, d_x + d_y, d_y, max_off, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
                 (t1 - t2, t2 - c0, t3 - t1)
             });
         } else if ry >= rz {
-            arm(cell, max_off, d_y, d_y + d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+            arm(cell, max_off, d_y, d_y + d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
                 (t1 - t3, t2 - c0, t3 - t2)
             });
         } else {
-            arm(cell, max_off, d_y + d_z, d_z, max_off, rx, ry, rz, n_outputs, out, |c0, t1, t2, t3| {
+            arm(cell, max_off, d_y + d_z, d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
                 (t1 - t2, t2 - t3, t3 - c0)
             });
         }
@@ -1076,15 +1084,12 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
 
     let n_outputs = p.n_outputs as usize;
     tetra16(
-        lut_table, k0i, x0i, x1, y0i, y1, z0i, z1, rx, ry, rz, n_outputs, &mut tmp1,
+        lut_table, k0i, x0i, x1, y0i, y1, z0i, z1, rx, ry, rz, n_outputs, &mut tmp1, None,
     );
     tetra16(
-        lut_table, k1, x0i, x1, y0i, y1, z0i, z1, rx, ry, rz, n_outputs, &mut tmp2,
+        lut_table, k1, x0i, x1, y0i, y1, z0i, z1, rx, ry, rz, n_outputs, output,
+        Some((&tmp1, rk)),
     );
-
-    for i in 0..n_outputs {
-        output[i] = linear_interp(rk, tmp1[i] as i32, tmp2[i] as i32);
-    }
 }
 
 /// `Eval4InputsFloat` — two tetrahedral evals + lerp, float.
@@ -1181,6 +1186,7 @@ fn eval_chain16(input: &[u16], output: &mut [u16], p: &InterpParams, n: usize) {
 fn eval_chain_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: usize) {
     let lut_table = p.table_f32();
     let mut tmp1 = [0.0f32; MAX_STAGE_CHANNELS];
+    let mut tmp2 = [0.0f32; MAX_STAGE_CHANNELS];
     let mut tmp2 = [0.0f32; MAX_STAGE_CHANNELS];
 
     let pk = fclamp(input[0]) * p.domain[0] as f32;
