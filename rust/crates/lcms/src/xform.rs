@@ -857,13 +857,18 @@ impl Transform {
     }
 }
 
-/// `cmsSetAdaptationState` — stored per-context; affects absolute-intent math
+/// `cmsSetAdaptationState` — stored per-context; affects absolute-intent math.
+/// C treats `d < 0` as a read (`cmsplugin.c`: `if (d >= 0) *ptr = d`).
 pub fn set_adaptation_state(ctx: Option<&Context>, d: f64) -> f64 {
     let c = crate::context::or_global(ctx);
-    f64::from_bits(
-        c.adaptation_state
-            .swap(d.to_bits(), std::sync::atomic::Ordering::Relaxed),
-    )
+    if d >= 0.0 {
+        f64::from_bits(
+            c.adaptation_state
+                .swap(d.to_bits(), std::sync::atomic::Ordering::Relaxed),
+        )
+    } else {
+        get_adaptation_state(ctx)
+    }
 }
 
 /// `cmsGetAdaptationState`
