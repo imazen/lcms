@@ -1164,7 +1164,10 @@ impl Pipeline {
         }
 
         if self.input_channels == 4 {
-            x[3] = target[3];
+            // C reads `Target[3]` past the 3-element target slice (UB; the
+            // 4th solved channel's seed). Bounded: 0 keeps the port in-range
+            // while the solver drives the channel anyway.
+            x[3] = target.get(3).copied().unwrap_or(0.0);
         }
 
         let mut fx = [0.0f32; 4];

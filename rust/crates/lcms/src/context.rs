@@ -9,6 +9,8 @@
 //! Slots are added as the modules that consume them are ported.
 
 use std::sync::OnceLock;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 /// `cmsLogErrorHandlerFunction` — receives the error code and the formatted text.
 pub type LogErrorHandler = fn(&Context, code: i32, text: &str);
@@ -25,7 +27,6 @@ pub type ParametricCurveEvaluator = fn(r#type: i32, params: &[f64; 10], r: f64) 
 /// plugin-pointer fields (memory management excluded — the port allocates
 /// with Rust allocators, matching C semantics where the allocator is
 /// unobservable in outputs).
-#[derive(Default, Clone)]
 pub struct Context {
     /// `LogErrorHandler` plugin slot (cmserr.c)
     pub log_error_handler: Option<LogErrorHandler>,
@@ -42,6 +43,48 @@ pub struct Context {
     /// `_cmsTagPluginChunkType.Tag` — plugin-registered tag descriptors
     /// (signature, descriptor), checked before `SupportedTags`
     pub tag_descriptors: Vec<(u32, crate::tagtypes::TagDescriptor)>,
+    /// `_cmsAlarmCodesChunkType` (cmsxform.c) — default {0x7F00,0x7F00,0x7F00,0,...}
+    pub alarm_codes: Mutex<[u16; 16]>,
+    /// `_cmsAdaptationStateChunkType` — default 1.0 (f64 bits)
+    pub adaptation_state: AtomicU64,
+    /// `UserData` — `cmsCreateContext`'s opaque slot (`cmsGetContextUserData`)
+    pub user_data: AtomicUsize,
+}
+
+/// C `DEFAULT_ALARM_CODES_VALUE`
+pub const DEFAULT_ALARM_CODES: [u16; 16] =
+    [0x7F00, 0x7F00, 0x7F00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+impl Default for Context {
+    fn default() -> Self {
+        Context {
+            log_error_handler: None,
+            interpolators: None,
+            parametric_curves: Vec::new(),
+            mpe_handlers: Vec::new(),
+            tag_type_handlers: Vec::new(),
+            tag_descriptors: Vec::new(),
+            alarm_codes: Mutex::new(DEFAULT_ALARM_CODES),
+            adaptation_state: AtomicU64::new(1.0f64.to_bits()),
+            user_data: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl Clone for Context {
+    fn clone(&self) -> Self {
+        Context {
+            log_error_handler: self.log_error_handler,
+            interpolators: self.interpolators,
+            parametric_curves: self.parametric_curves.clone(),
+            mpe_handlers: self.mpe_handlers.clone(),
+            tag_type_handlers: self.tag_type_handlers.clone(),
+            tag_descriptors: self.tag_descriptors.clone(),
+            alarm_codes: Mutex::new(*self.alarm_codes.lock().unwrap()),
+            adaptation_state: AtomicU64::new(self.adaptation_state.load(Ordering::Relaxed)),
+            user_data: AtomicUsize::new(self.user_data.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 /// The global context, used wherever C passes `NULL`.
@@ -124,8 +167,9 @@ impl Context {
 }
 
 /// `cmsCreateContext` — a fresh context with plugins applied
-pub fn create_context(plugins: Option<&[Plugin]>, _user_data: u32) -> Context {
+pub fn create_context(plugins: Option<&[Plugin]>, user_data: usize) -> Context {
     let mut ctx = Context::default();
+    ctx.user_data.store(user_data, Ordering::Relaxed);
     if let Some(p) = plugins {
         ctx.plugin(p);
     }
@@ -133,8 +177,9 @@ pub fn create_context(plugins: Option<&[Plugin]>, _user_data: u32) -> Context {
 }
 
 /// `cmsDupContext` — clone a context, apply new plugins + user data
-pub fn dup_context(src: &Context, plugins: Option<&[Plugin]>, _new_user_data: u32) -> Context {
+pub fn dup_context(src: &Context, plugins: Option<&[Plugin]>, new_user_data: usize) -> Context {
     let mut ctx = src.clone();
+    ctx.user_data.store(new_user_data, Ordering::Relaxed);
     if let Some(p) = plugins {
         ctx.plugin(p);
     }

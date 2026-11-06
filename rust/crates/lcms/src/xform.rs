@@ -859,17 +859,30 @@ impl Transform {
 
 /// `cmsSetAdaptationState` — stored per-context; affects absolute-intent math
 pub fn set_adaptation_state(ctx: Option<&Context>, d: f64) -> f64 {
-    // C stores the adaptation state in a context chunk and returns it.
-    // Our contexts are immutable `&Context` in this API — callers keep
-    // their own state; the per-transform adaptation is plumbed via the
-    // `adaptation_states` slice on `create_extended_transform`.
-    let _ = ctx;
-    d
+    let c = crate::context::or_global(ctx);
+    f64::from_bits(
+        c.adaptation_state
+            .swap(d.to_bits(), std::sync::atomic::Ordering::Relaxed),
+    )
+}
+
+/// `cmsGetAdaptationState`
+pub fn get_adaptation_state(ctx: Option<&Context>) -> f64 {
+    f64::from_bits(
+        crate::context::or_global(ctx)
+            .adaptation_state
+            .load(std::sync::atomic::Ordering::Relaxed),
+    )
 }
 
 /// `cmsSetAlarmCodes`/`cmsGetAlarmCodes` — per-context alarm values
 pub fn set_alarm_codes(ctx: Option<&Context>, codes: &[u16; MAX_CHANNELS]) {
-    let _ = ctx;
+    *crate::context::or_global(ctx).alarm_codes.lock().unwrap() = *codes;
+}
+
+/// `cmsGetAlarmCodes`
+pub fn get_alarm_codes(ctx: Option<&Context>) -> [u16; MAX_CHANNELS] {
+    *crate::context::or_global(ctx).alarm_codes.lock().unwrap()
 }
 
 /// `AllocEmptyTransform` — bind lut + formatters, pick the worker
@@ -960,7 +973,7 @@ fn alloc_empty_transform(
         output_format,
         lut,
         gamut_check: None,
-        alarm_codes: [0; MAX_CHANNELS],
+        alarm_codes: get_alarm_codes(ctx.as_ref()),
         ctx,
         stride: Stride::default(),
         fmt,

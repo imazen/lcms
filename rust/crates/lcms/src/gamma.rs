@@ -537,6 +537,19 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
 // Construction
 // ---------------------------------------------------------------------------
 
+/// `AllocateToneCurveStruct` — FFI-visible rebuild from raw parts (the FFI
+/// layer publishes `cmsToneCurve` fields directly; mutations are synced back
+/// through this constructor on each call).
+#[doc(hidden)]
+pub fn dbg_allocate_tone_curve_struct(
+    ctx: Option<&Context>,
+    n_entries: u32,
+    n_segments: u32,
+    segments: Option<&[CurveSegment]>,
+    values: Option<&[u16]>,
+) -> Option<ToneCurve> {
+    allocate_tone_curve_struct(ctx, n_entries, n_segments, segments, values)
+}
 /// `AllocateToneCurveStruct`
 fn allocate_tone_curve_struct(
     ctx: Option<&Context>,

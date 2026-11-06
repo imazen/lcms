@@ -297,6 +297,18 @@ fn color_space_is_compatible(a: u32, b: u32) -> bool {
 }
 
 /// `DefaultICCintents` — link n profiles into one pipeline
+/// `_cmsDefaultICCintents` — FFI-visible wrapper
+#[doc(hidden)]
+pub fn dbg_default_icc_intents(
+    ctx: Option<&Context>,
+    profiles: &mut [Box<IccProfile>],
+    intents: &[u32],
+    bpc: &mut [bool],
+    adaptation_states: &[f64],
+    dw_flags: u32,
+) -> Option<Pipeline> {
+    default_icc_intents(ctx, profiles, intents, bpc, adaptation_states, dw_flags)
+}
 fn default_icc_intents(
     /* traced */
     ctx: Option<&Context>,

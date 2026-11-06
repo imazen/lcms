@@ -49,6 +49,10 @@ pub struct IccProfile {
     pub attributes: u64,
     pub creator: u32,
     pub profile_id: ProfileId,
+    /// `UserData` — `_cmsSetProfileUserData`'s opaque pointer slot + its
+    /// `_cmsFreeUserDataFn` destructor (usize-punned; FFI layer invokes it).
+    pub user_data: usize,
+    pub free_user_data_fn: usize,
 
     // Tag dictionary
     pub tag_count: u32,
@@ -85,6 +89,8 @@ impl Default for IccProfile {
             attributes: 0,
             creator: 0,
             profile_id: ProfileId::default(),
+            user_data: 0,
+            free_user_data_fn: 0,
             tag_count: 0,
             tag_names: [0; MAX_TABLE_TAG],
             tag_linked: [0; MAX_TABLE_TAG],
