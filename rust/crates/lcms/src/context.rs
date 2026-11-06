@@ -69,6 +69,19 @@ pub struct Context {
     /// registered via `cmsPluginTHR` (FFI only). Consulted before the stock
     /// formatters in `_cmsGetFormatter`.
     pub formatter_factories: Vec<usize>,
+    /// C-side `Header` plugin — `cmsPluginHeader{ICCVersion,ReadPtr,WritePtr}`
+    /// registered via `cmsPluginTHR` (FFI only). Read/Write are invoked after
+    /// the standard 128-byte profile header is read/written; `icc_version` is
+    /// the maximum profile version the plugin accepts.
+    pub c_header: CHeaderSet,
+}
+
+/// A C-registered `cmsPluginHeader` entry — FFI fn ptrs (`_cmsRead/WriteProfileHeaderFn`).
+#[derive(Clone, Copy, Default)]
+pub struct CHeaderSet {
+    pub icc_version: u32,
+    pub read_ptr: usize,
+    pub write_ptr: usize,
 }
 
 /// A C-registered `_cmsParametricCurvesCollection` entry — FFI fn ptrs.
@@ -102,6 +115,7 @@ impl Default for Context {
             interp_factories: Vec::new(),
             c_parametric_curves: Vec::new(),
             formatter_factories: Vec::new(),
+            c_header: CHeaderSet::default(),
         }
     }
 }
@@ -122,6 +136,7 @@ impl Clone for Context {
             interp_factories: self.interp_factories.clone(),
             c_parametric_curves: self.c_parametric_curves.clone(),
             formatter_factories: self.formatter_factories.clone(),
+            c_header: self.c_header,
         }
     }
 }

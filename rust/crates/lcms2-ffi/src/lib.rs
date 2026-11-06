@@ -2145,12 +2145,19 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                 }
             }
             PLUGIN_HEADER_SIG => {
-                // C: required callbacks — a header plugin missing Read/Write/
-                // GetSize is rejected.
+                // C: required callbacks — a header plugin missing Read/Write
+                // is rejected (ICCVersion + ReadPtr + WritePtr layout).
                 let h = unsafe { &*(p as *const CmsPluginHeader) };
-                if h.read_ptr == 0 || h.write_ptr == 0 || h.get_size_ptr == 0 {
+                if h.read_ptr == 0 || h.write_ptr == 0 {
                     return false;
                 }
+                unsafe {
+                    (*(ctx as *mut lcms::context::Context)).c_header = lcms::context::CHeaderSet {
+                        icc_version: h.icc_version,
+                        read_ptr: h.read_ptr,
+                        write_ptr: h.write_ptr,
+                    }
+                };
             }
             PLUGIN_FORMATTERS_SIG => {
                 let f = unsafe { (*(p as *const CmsPluginFormatters)).formatters_factory };
@@ -3173,14 +3180,15 @@ type ParametricEvalC = unsafe extern "C" fn(c_int, *const f64, f64) -> f64;
 type LerpFloatC = unsafe extern "C" fn(*const f32, *mut f32, *const CmsInterpParams);
 /// `_cmsInterpFn16` C signature
 type Lerp16C = unsafe extern "C" fn(*const u16, *mut u16, *const CmsInterpParams);
-/// `cmsPluginHeader` — base + 4 header I/O callbacks
+/// `cmsPluginHeader` — base + `ICCVersion` + `ReadPtr`/`WritePtr` (C
+/// `_cmsReadProfileHeaderFn`/`_cmsWriteProfileHeaderFn` invoked after the
+/// standard 128-byte header is read/written).
 #[repr(C)]
 struct CmsPluginHeader {
     base: CmsPluginBase,
+    icc_version: c_uint,
     read_ptr: usize,
     write_ptr: usize,
-    get_size_ptr: usize,
-    get_info_ptr: usize,
 }
 /// `cmsPluginFormatters` — base + `FormattersFactory`
 #[repr(C)]
