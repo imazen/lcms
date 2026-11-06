@@ -2714,11 +2714,13 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                 if h.read_ptr == 0 || h.write_ptr == 0 {
                     return false;
                 }
+                ensure_foreign_hooks();
                 unsafe {
                     (*(ctx as *mut lcms::context::Context)).c_header = lcms::context::CHeaderSet {
                         icc_version: h.icc_version,
                         read_ptr: h.read_ptr,
                         write_ptr: h.write_ptr,
+                        ctx_handle: ctx as usize,
                     }
                 };
             }
@@ -2955,8 +2957,8 @@ pub extern "C" fn cmsCreateRGBProfileTHR(
 }
 /// `cmsCreate_sRGBProfileTHR`
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsCreate_sRGBProfileTHR(_ctx: Handle) -> Handle {
-    cmsCreate_sRGBProfile()
+pub extern "C" fn cmsCreate_sRGBProfileTHR(ctx: Handle) -> Handle {
+    prof_to_handle(lcms::virt::create_srgb_profile(ctx_ref(ctx).map(|c| c.clone())))
 }
 /// `cmsCreateXYZProfileTHR`
 #[unsafe(no_mangle)]
@@ -3088,25 +3090,50 @@ pub extern "C" fn cmsNamedColorInfo(
 /// `cmsOpenProfileFromFileTHR`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsOpenProfileFromFileTHR(
-    _ctx: Handle,
+    ctx: Handle,
     path: *const c_char,
     mode: *const c_char,
 ) -> Handle {
-    cmsOpenProfileFromFile(path, mode)
+    let Some(p) = (unsafe { cstr(path) }) else {
+        return ptr::null_mut();
+    };
+    let m = unsafe { cstr(mode) }.unwrap_or_else(|| "r".to_string());
+    prof_to_handle(profile::open_profile_from_file(
+        ctx_ref(ctx).map(|c| c.clone()),
+        &p,
+        &m,
+    ))
 }
 /// `cmsOpenProfileFromMemTHR`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsOpenProfileFromMemTHR(
-    _ctx: Handle,
+    ctx: Handle,
     buf: *const c_void,
     size: c_uint,
 ) -> Handle {
-    cmsOpenProfileFromMem(buf, size)
+    if buf.is_null() {
+        lcms::err::signal_error(
+            None,
+            lcms::types::ERROR_READ,
+            "Couldn't read profile from NULL pointer",
+        );
+        return ptr::null_mut();
+    }
+    if size == 0 {
+        return ptr::null_mut();
+    }
+    let data = unsafe { std::slice::from_raw_parts(buf as *const u8, size as usize) };
+    prof_to_handle(profile::open_profile_from_mem(
+        ctx_ref(ctx).map(|c| c.clone()),
+        data,
+    ))
 }
 /// `cmsCreateProfilePlaceholder` (+ `THR`)
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsCreateProfilePlaceholder(_ctx: Handle) -> Handle {
-    prof_to_handle(Some(profile::create_profile_placeholder(None)))
+pub extern "C" fn cmsCreateProfilePlaceholder(ctx: Handle) -> Handle {
+    prof_to_handle(Some(profile::create_profile_placeholder(
+        ctx_ref(ctx).map(|c| c.clone()),
+    )))
 }
 /// `cmsCreateInkLimitingDeviceLink`/`THR` — CMYK ink-limit devlink
 #[unsafe(no_mangle)]
@@ -3724,7 +3751,88 @@ fn ensure_foreign_hooks() {
             kernelf32: fmt_kernelf32,
         });
         lcms::cnvrt::set_intent_link_hook(intent_link_hook);
+        *lcms::context::HEADER_INVOKE.write().unwrap() = Some(header_invoke);
     });
+}
+
+// ---------------------------------------------------------------------------
+// Header-plugin bridge — a C-ABI `cmsIOHANDLER` shim over the Rust IoHandler
+// ---------------------------------------------------------------------------
+
+/// `struct _cms_io_handler` (lcms2_plugin.h:118) — exact field order; plugin
+/// code calls `io->Tell(io)`/`io->Seek(io, x)`/`io->Read/Write` directly.
+#[repr(C)]
+struct CIohandler {
+    stream: *mut c_void, // &mut lcms::io::IoHandler
+    context_id: Handle,  // cmsContext
+    used_space: u32,
+    reported_size: u32,
+    physical_file: [u8; 256], // cmsMAX_PATH
+    read: usize,
+    seek: usize,
+    close: usize,
+    tell: usize,
+    write: usize,
+}
+
+unsafe extern "C" fn cio_read(
+    io: *mut CIohandler,
+    buf: *mut c_void,
+    size: u32,
+    count: u32,
+) -> u32 {
+    let ioh = unsafe { &mut *((*io).stream as *mut lcms::io::IoHandler) };
+    let n = (size as usize).saturating_mul(count as usize);
+    let slice = unsafe { std::slice::from_raw_parts_mut(buf as *mut u8, n) };
+    ioh.read(slice, size, count)
+}
+unsafe extern "C" fn cio_seek(io: *mut CIohandler, off: u32) -> c_int {
+    let ioh = unsafe { &mut *((*io).stream as *mut lcms::io::IoHandler) };
+    ioh.seek(off) as c_int
+}
+unsafe extern "C" fn cio_close(_io: *mut CIohandler) -> c_int {
+    1 // C never closes through this shim mid-save
+}
+unsafe extern "C" fn cio_tell(io: *mut CIohandler) -> u32 {
+    let ioh = unsafe { &mut *((*io).stream as *mut lcms::io::IoHandler) };
+    ioh.tell()
+}
+unsafe extern "C" fn cio_write(io: *mut CIohandler, size: u32, buf: *const c_void) -> c_int {
+    let ioh = unsafe { &mut *((*io).stream as *mut lcms::io::IoHandler) };
+    let slice = unsafe { std::slice::from_raw_parts(buf as *const u8, size as usize) };
+    ioh.write(size, slice) as c_int
+}
+
+/// `HeaderInvokeFn` — build the shim and call the C read/write callback.
+fn header_invoke(ctx_handle: usize, profile: usize, io: usize, is_read: bool) -> bool {
+    let Some(c) = (unsafe { cctx(ctx_handle as Handle) }) else {
+        return false;
+    };
+    let cb = if is_read {
+        c.c_header.read_ptr
+    } else {
+        c.c_header.write_ptr
+    };
+    if cb == 0 {
+        return false;
+    }
+    let ioh = io as *mut lcms::io::IoHandler;
+    let mut shim = CIohandler {
+        stream: ioh as *mut c_void,
+        context_id: ctx_handle as Handle,
+        used_space: unsafe { (*ioh).used_space },
+        reported_size: unsafe { (*ioh).reported_size },
+        physical_file: [0; 256],
+        read: cio_read as usize,
+        seek: cio_seek as usize,
+        close: cio_close as usize,
+        tell: cio_tell as usize,
+        write: cio_write as usize,
+    };
+    type HdrFn = unsafe extern "C" fn(Handle, Handle, *mut CIohandler) -> c_int;
+    let f: HdrFn = unsafe { std::mem::transmute(cb) };
+    let rc = unsafe { f(ctx_handle as Handle, profile as Handle, &mut shim) };
+    rc != 0
 }
 /// `cmsIntentFn` C signature — `(ContextID, nProfiles, Intents[], hProfiles[],
 /// BPC[], AdaptationStates[], dwFlags) → cmsPipeline*`.

@@ -86,7 +86,19 @@ pub struct CHeaderSet {
     pub icc_version: u32,
     pub read_ptr: usize,
     pub write_ptr: usize,
+    /// FFI handle of the registering `cmsContext` — the `ContextID` argument
+    /// passed to the C callbacks.
+    pub ctx_handle: usize,
 }
+
+/// Bridge fn — FFI builds a C-ABI `cmsIOHANDLER` around the Rust `IoHandler`
+/// and invokes the C `read_ptr`/`write_ptr`. Args: `(ctx_handle, profile_ptr,
+/// io_handler_ptr, is_read)`. Returns the C callback's cmsBool.
+pub type HeaderInvokeFn = fn(usize, usize, usize, bool) -> bool;
+
+/// Set once by the FFI layer (`ensure_foreign_hooks`); `None` = no bridge.
+pub static HEADER_INVOKE: std::sync::RwLock<Option<HeaderInvokeFn>> =
+    std::sync::RwLock::new(None);
 
 /// A C-registered `cmsPluginRenderingIntent` entry — `cmsIntentFn` ptr.
 #[derive(Clone, Copy, Default)]

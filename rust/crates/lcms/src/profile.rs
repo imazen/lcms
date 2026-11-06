@@ -148,9 +148,60 @@ fn valid_device_class(cl: u32) -> bool {
         )
 }
 
-/// `SupportedICCVersion` — plugin chunk else default
-fn supported_icc_version(_ctx: Option<&Context>) -> u32 {
-    DEFAULT_MAX_VERSION
+/// `SupportedICCVersion` — plugin chunk else default. A registered header
+/// plugin raises the ceiling to its declared `ICCVersion`.
+fn supported_icc_version(ctx: Option<&Context>) -> u32 {
+    let plugin_max = ctx
+        .map(|c| c.c_header.icc_version)
+        .unwrap_or(0);
+    DEFAULT_MAX_VERSION.max(plugin_max)
+}
+
+/// `_cmsReadHeader`/`_cmsWriteHeader` plugin hook — invoke the registered
+/// C header callback with the io positioned right after the 128-byte
+/// header; restore the cursor afterwards like C does.
+fn invoke_header_plugin(
+    icc: &mut IccProfile,
+    io: Option<&mut IoHandler>,
+    is_read: bool,
+) -> bool {
+    let Some(c) = icc.ctx.as_ref() else {
+        return true;
+    };
+    let (cb, ctx_handle) = if is_read {
+        (c.c_header.read_ptr, c.c_header.ctx_handle)
+    } else {
+        (c.c_header.write_ptr, c.c_header.ctx_handle)
+    };
+    if cb == 0 {
+        return true;
+    }
+    let icc_ptr = icc as *mut IccProfile as usize;
+    let io = match io {
+        Some(io) => io,
+        None => icc.io.as_mut().unwrap(),
+    };
+    invoke_header_raw(cb, ctx_handle, icc_ptr, io, is_read)
+}
+
+/// The borrow-free core of `invoke_header_plugin` — call sites that already
+/// hold `icc.io` use this directly.
+fn invoke_header_raw(
+    cb: usize,
+    ctx_handle: usize,
+    icc_ptr: usize,
+    io: &mut IoHandler,
+    is_read: bool,
+) -> bool {
+    let Some(invoke) = *crate::context::HEADER_INVOKE.read().unwrap() else {
+        return true;
+    };
+    let pos = io.tell();
+    let rc = invoke(ctx_handle, icc_ptr, io as *mut IoHandler as usize, is_read);
+    if pos != io.tell() {
+        io.seek(pos);
+    }
+    rc
 }
 
 /// `IsTypeSupported`
@@ -195,6 +246,15 @@ pub fn search_tag(icc: &IccProfile, mut sig: u32, follow_links: bool) -> i32 {
 
 /// `_cmsReadHeader` — parse + validate the profile header & tag directory
 pub fn read_header(icc: &mut IccProfile) -> bool {
+    // Header-plugin bits extracted before `io` takes the mutable borrow
+    let (hdr_cb, hdr_ctx, icc_ptr) = {
+        let c = icc.ctx.as_ref();
+        (
+            c.map(|x| x.c_header.read_ptr).unwrap_or(0),
+            c.map(|x| x.c_header.ctx_handle).unwrap_or(0),
+            icc as *mut IccProfile as usize,
+        )
+    };
     let io = icc.io.as_mut().unwrap();
 
     let mut hdr = [0u8; 128];
@@ -250,6 +310,10 @@ pub fn read_header(icc: &mut IccProfile) -> bool {
     icc.profile_id.id8.copy_from_slice(&hdr[84..100]);
 
     // Tag directory
+    // Header plugin — invoked with io at 128 (end of the fixed header)
+    if hdr_cb != 0 && !invoke_header_raw(hdr_cb, hdr_ctx, icc_ptr, io, true) {
+        return false;
+    }
     let mut tag_count = 0u32;
     if !io::read_u32(io, &mut tag_count) {
         return false;
@@ -840,6 +904,18 @@ fn set_links(icc: &mut IccProfile) -> bool {
 /// `cmsSaveProfileToIOhandler` — two-pass save; `out = None` computes sizes
 /// only (C passes NULL). Returns bytes used, 0 on error.
 pub fn save_profile_to_iohandler(icc: &mut IccProfile, out: Option<&mut IoHandler>) -> u32 {
+    // Header-plugin version ceiling — the registered plugin declares the
+    // maximum ICC version it accepts; above it the save fails.
+    if let Some(c) = icc.ctx.as_ref() {
+        if c.c_header.write_ptr != 0 && icc.version > c.c_header.icc_version {
+            err::signal_error(
+                Some(c),
+                ERROR_UNKNOWN_EXTENSION,
+                "Unsupported ICC version",
+            );
+            return 0;
+        }
+    }
     // Keep = pre-swap profile; its io is the blind-copy source
     let mut orig_io = icc.io.take();
 
@@ -864,10 +940,12 @@ pub fn save_profile_to_iohandler(icc: &mut IccProfile, out: Option<&mut IoHandle
     }
     let used_space = null_io.used_space;
 
-    // Pass 2: real write into the target handler
+    // Pass 2: real write into the target handler. The header plugin runs
+    // right after the 128-byte header (io at 128), like `_cmsWriteHeader`.
     if let Some(out_io) = out {
         if !set_links(icc)
             || !write_header(icc, used_space, out_io)
+            || !invoke_header_plugin(icc, Some(&mut *out_io), false)
             || !save_tags(icc, out_io, orig_io.as_mut(), &orig_offsets, &orig_sizes)
         {
             restore_dir(icc, &orig_offsets, &orig_sizes);
