@@ -97,6 +97,11 @@ impl IoHandler {
                     // FileRead: fread(Buffer, size, 1, file) per item
                     let want = size as usize;
                     if f.read_exact(&mut buf[..want]).is_err() {
+                        err::signal_error(
+                            None,
+                            ERROR_FILE,
+                            &format!("Read error. Got 0 bytes, block should be of {size} bytes"),
+                        );
                         return n_readed;
                     }
                     n_readed += 1;
@@ -265,7 +270,13 @@ pub fn io_handler_from_file(_ctx: Option<&Context>, path: &str, access: &str) ->
 
     let (f, reported) = match mode[0] {
         b'r' => {
-            let f = std::io::BufReader::new(std::fs::File::open(path).ok()?);
+            let f = std::io::BufReader::new(match std::fs::File::open(path) {
+                Ok(f) => f,
+                Err(_) => {
+                    err::signal_error(None, ERROR_FILE, &format!("File '{path}' not found"));
+                    return None;
+                }
+            });
             let len = f.get_ref().metadata().ok()?.len();
             if len > u32::MAX as u64 {
                 err::signal_error(None, ERROR_FILE, "File is too large");

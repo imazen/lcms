@@ -70,7 +70,15 @@ pub extern "C" fn cmsOpenProfileFromFile(path: *const c_char, mode: *const c_cha
 /// `cmsOpenProfileFromMem`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsOpenProfileFromMem(buf: *const c_void, size: c_uint) -> Handle {
-    if buf.is_null() || size == 0 {
+    if buf.is_null() {
+        lcms::err::signal_error(
+            None,
+            lcms::types::ERROR_READ,
+            "Couldn't read profile from NULL pointer",
+        );
+        return ptr::null_mut();
+    }
+    if size == 0 {
         return ptr::null_mut();
     }
     let data = unsafe { std::slice::from_raw_parts(buf as *const u8, size as usize) };
