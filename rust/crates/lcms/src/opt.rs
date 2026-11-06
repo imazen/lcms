@@ -15,6 +15,10 @@ use crate::lut::Pipeline;
 pub struct ClutOnly {
     pub clut: crate::lut::CLutData,
     pub params16: crate::intrp::InterpParams<'static>,
+    /// Float-table params — `Some` when the CLUT stores `tab_float`, so
+    /// `xform_f32` can specialize like `xform16` instead of walking the
+    /// stage chain per pixel.
+    pub params_f: Option<crate::intrp::InterpParams<'static>>,
 }
 
 /// Optimization payload — C's `Eval16Fn` data union, closed-world enum
@@ -1529,9 +1533,23 @@ fn optimize_by_resampling(
             interpolation: clut_data.interpolation,
             foreign: clut_data.foreign.clone(),
         };
+        let params_f = clut_data.tab_float.as_deref().map(|tab| {
+            crate::intrp::InterpParams {
+                dw_flags: clut_data.dw_flags,
+                n_inputs: clut_data.n_inputs,
+                n_outputs: clut_data.n_outputs,
+                n_samples: clut_data.n_samples,
+                domain: clut_data.domain,
+                opta: clut_data.opta,
+                table: crate::intrp::InterpTable::F32Rc(std::sync::Arc::from(tab)),
+                interpolation: clut_data.interpolation,
+                foreign: clut_data.foreign.clone(),
+            }
+        });
         dest.opt_data = Some(OptData::ClutOnly(Box::new(ClutOnly {
             clut: clut_data,
             params16,
+            params_f,
         })));
         dest.eval16_fn = |i, o, l| {
             if let Some(d) = &l.opt_data {

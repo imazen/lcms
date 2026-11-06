@@ -275,6 +275,90 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     with_pack!(unroll);
 }
 
+/// Float twin of `xform16_eval_loop` — `OptData` arm evals monomorphized.
+#[allow(clippy::too_many_arguments)]
+fn xform_f32_eval_loop<E, U, P>(
+    unroll: U,
+    pack: P,
+    info: &PackInfo,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    eval: E,
+) where
+    E: Fn(&[f32], &mut [f32]),
+    U: Fn(&PackInfo, &mut [f32; MAX_CHANNELS], &[u8], u32) -> usize,
+    P: Fn(&PackInfo, &[f32; MAX_CHANNELS], &mut [u8], u32) -> usize,
+{
+    let mut f_in = [0f32; MAX_CHANNELS];
+    let mut f_out = [0f32; MAX_CHANNELS];
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let mut accum = i_off;
+        let mut out_pos = o_off;
+        for _ in 0..ppl {
+            accum += unroll(info, &mut f_in, &input[accum..], stride.bytes_per_plane_in);
+            eval(&f_in, &mut f_out);
+            out_pos += pack(info, &f_out, &mut output[out_pos..], stride.bytes_per_plane_out);
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
+/// Float twin of `xform16_run` — fn-item dispatch for the hot float
+/// formatters (interleaved floats, 16-bit↔float, 8-bit↔float).
+#[allow(clippy::too_many_arguments)]
+fn xform_f32_run<E: Fn(&[f32], &mut [f32])>(
+    unroll: crate::pack::UnpackF32Fn,
+    pack: crate::pack::PackF32Fn,
+    info: &PackInfo,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    eval: E,
+) {
+    use crate::pack as pk;
+    type UF = crate::pack::UnpackF32Fn;
+    type PF = crate::pack::PackF32Fn;
+    macro_rules! go {
+        ($u:expr, $p:expr) => {
+            return xform_f32_eval_loop(
+                $u, $p, info, input, output, ppl, lines, stride, eval,
+            )
+        };
+    }
+    macro_rules! with_pack {
+        ($u:expr) => {{
+            if pack == pk::pack_floats_from_float as PF {
+                go!($u, pk::pack_floats_from_float);
+            }
+            if pack == pk::pack_words_from_float as PF {
+                go!($u, pk::pack_words_from_float);
+            }
+            if pack == pk::pack_bytes_from_float as PF {
+                go!($u, pk::pack_bytes_from_float);
+            }
+            go!($u, pack);
+        }};
+    }
+    if unroll == pk::unroll_floats_to_float as UF {
+        with_pack!(pk::unroll_floats_to_float);
+    }
+    if unroll == pk::unroll16_to_float as UF {
+        with_pack!(pk::unroll16_to_float);
+    }
+    if unroll == pk::unroll8_to_float as UF {
+        with_pack!(pk::unroll8_to_float);
+    }
+    with_pack!(unroll);
+}
+
 /// `IsProperColorSpace` — format's PT_* vs the profile-chain space
 fn is_proper_color_space(check: u32, dw_format: u32) -> bool {
     let space1 = crate::pack::t_colorspace(dw_format) as i32;
@@ -926,6 +1010,85 @@ impl Transform {
             Fmt::F32 { unroll, pack } => (unroll, pack),
             _ => return,
         };
+        if !gamut {
+            if let Some(l) = self.lut.as_ref() {
+                if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                    if let Some(pf) = c.params_f.as_ref() {
+                        use crate::intrp::{self as ip, InterpFnFloat};
+                        let f = match pf.interpolation {
+                            ip::Interpolation::LerpFloat(f) => f,
+                            _ => unreachable!("clut_f32 on u16 params"),
+                        };
+                        macro_rules! run {
+                            ($k:expr) => {
+                                return xform_f32_run(
+                                    unroll,
+                                    pack,
+                                    &info,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
+                                    |i, o| $k(i, o, pf),
+                                )
+                            };
+                        }
+                        if f == ip::eval4_inputs_float as InterpFnFloat {
+                            run!(ip::eval4_inputs_float)
+                        } else if f == ip::tetrahedral_interp_float as InterpFnFloat {
+                            run!(ip::tetrahedral_interp_float)
+                        } else if f == ip::trilinear_interp_float as InterpFnFloat {
+                            run!(ip::trilinear_interp_float)
+                        } else {
+                            run!(f)
+                        }
+                    } else {
+                        // u16 CLUT — `EvaluateCLUTfloatIn16`: f32→u16
+                        // convert, 16-bit kernel, convert back — fused
+                        // into the loop, no per-pixel params rebuild.
+                        let pf16 = &c.params16;
+                        let n_in = pf16.n_inputs as usize;
+                        let n_out = pf16.n_outputs as usize;
+                        use crate::intrp::{self as ip, InterpFn16};
+                        let f = match pf16.interpolation {
+                            ip::Interpolation::Lerp16(f) => f,
+                            _ => unreachable!("clut16 on float params"),
+                        };
+                        macro_rules! run16 {
+                            ($k:expr) => {
+                                return xform_f32_run(
+                                    unroll,
+                                    pack,
+                                    &info,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
+                                    |i, o| {
+                                        let mut i16 = [0u16; MAX_CHANNELS];
+                                        let mut o16 = [0u16; MAX_CHANNELS];
+                                        crate::lut::from_float_to16(i, &mut i16, n_in);
+                                        $k(&i16, &mut o16[..n_out], pf16);
+                                        crate::lut::from_16_to_float(&o16, o, n_out);
+                                    },
+                                )
+                            };
+                        }
+                        if f == ip::eval4_inputs as InterpFn16 {
+                            run16!(ip::eval4_inputs)
+                        } else if f == ip::tetrahedral_interp16 as InterpFn16 {
+                            run16!(ip::tetrahedral_interp16)
+                        } else if f == ip::trilinear_interp16 as InterpFn16 {
+                            run16!(ip::trilinear_interp16)
+                        } else {
+                            run16!(f)
+                        }
+                    }
+                }
+            }
+        }
         let mut f_in = [0f32; MAX_CHANNELS];
         let mut f_out = [0f32; MAX_CHANNELS];
         let mut i_off = 0usize;

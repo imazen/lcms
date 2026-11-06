@@ -342,6 +342,7 @@ fn fclamp(v: f32) -> f32 {
 }
 
 /// `LinLerp1Dfloat` — floating-point version of 1D interpolation.
+#[inline]
 fn lin_lerp_1d_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
 
@@ -399,6 +400,7 @@ pub(crate) fn eval1_input(input: &[u16], output: &mut [u16], p: &InterpParams) {
 }
 
 /// `Eval1InputFloat` — gray LUT, one input channel (float).
+#[inline]
 fn eval1_input_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
 
@@ -431,6 +433,7 @@ fn eval1_input_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
 }
 
 /// `BilinearInterpFloat` — bilinear interpolation, float version.
+#[inline]
 fn bilinear_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
     let total_out = p.n_outputs as usize;
@@ -522,7 +525,8 @@ pub(crate) fn bilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPar
 }
 
 /// `TrilinearInterpFloat` — trilinear, float.
-fn trilinear_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
+#[inline]
+pub(crate) fn trilinear_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
     let total_out = p.n_outputs as usize;
 
@@ -665,7 +669,8 @@ pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPa
 
 /// `TetrahedralInterpFloat` — Sakamoto tetrahedral interpolation, float.
 #[inline]
-fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
+#[inline]
+pub(crate) fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
     let total_out = p.n_outputs as usize;
 
@@ -1084,7 +1089,8 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
 
 /// `Eval4InputsFloat` — two tetrahedral evals + lerp, float.
 #[inline]
-fn eval4_inputs_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
+#[inline]
+pub(crate) fn eval4_inputs_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
     let mut tmp1 = [0.0f32; MAX_STAGE_CHANNELS];
     let mut tmp2 = [0.0f32; MAX_STAGE_CHANNELS];

@@ -190,14 +190,14 @@ pub fn stage_alloc_identity(ctx: Option<&Context>, n_channels: u32) -> Stage {
 }
 
 /// `FromFloatTo16`
-fn from_float_to16(input: &[f32], output: &mut [u16], n: usize) {
+pub(crate) fn from_float_to16(input: &[f32], output: &mut [u16], n: usize) {
     for i in 0..n {
         output[i] = quick_saturate_word(input[i] as f64 * 65535.0);
     }
 }
 
 /// `From16ToFloat`
-fn from_16_to_float(input: &[u16], output: &mut [f32], n: usize) {
+pub(crate) fn from_16_to_float(input: &[u16], output: &mut [f32], n: usize) {
     for i in 0..n {
         output[i] = input[i] as f32 / 65535.0;
     }
