@@ -782,6 +782,67 @@ impl Transform {
                     }
                 }
             }
+            const RGB16: u32 = 4 << 16 | 3 << 3 | 2;
+            if self.input_format == RGB16 && self.output_format == RGB16 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::MatShaper(p)) = l.opt_data.as_ref() {
+                        let ppl6 = ppl as usize * 6;
+                        let mut i_off = 0usize;
+                        let mut o_off = 0usize;
+                        for _ in 0..lines {
+                            let iline = &input[i_off..i_off + ppl6];
+                            let oline = &mut output[o_off..o_off + ppl6];
+                            for i in 0..ppl as usize {
+                                let px = i * 6;
+                                let r = p.shaper1[0][(u16::from_le_bytes(
+                                    iline[px..px + 2].try_into().unwrap(),
+                                ) & 0xff) as usize];
+                                let g = p.shaper1[1][(u16::from_le_bytes(
+                                    iline[px + 2..px + 4].try_into().unwrap(),
+                                ) & 0xff) as usize];
+                                let b = p.shaper1[2][(u16::from_le_bytes(
+                                    iline[px + 4..px + 6].try_into().unwrap(),
+                                ) & 0xff) as usize];
+                                let l1 = (p.mat[0][0]
+                                    .wrapping_mul(r)
+                                    .wrapping_add(p.mat[0][1].wrapping_mul(g))
+                                    .wrapping_add(p.mat[0][2].wrapping_mul(b))
+                                    .wrapping_add(p.off[0])
+                                    .wrapping_add(0x2000))
+                                    >> 14;
+                                let l2 = (p.mat[1][0]
+                                    .wrapping_mul(r)
+                                    .wrapping_add(p.mat[1][1].wrapping_mul(g))
+                                    .wrapping_add(p.mat[1][2].wrapping_mul(b))
+                                    .wrapping_add(p.off[1])
+                                    .wrapping_add(0x2000))
+                                    >> 14;
+                                let l3 = (p.mat[2][0]
+                                    .wrapping_mul(r)
+                                    .wrapping_add(p.mat[2][1].wrapping_mul(g))
+                                    .wrapping_add(p.mat[2][2].wrapping_mul(b))
+                                    .wrapping_add(p.off[2])
+                                    .wrapping_add(0x2000))
+                                    >> 14;
+                                oline[px..px + 2].copy_from_slice(
+                                    &p.shaper2[l1.clamp(0, 16384) as usize].to_le_bytes(),
+                                );
+                                oline[px + 2..px + 4].copy_from_slice(
+                                    &p.shaper2[16385 + l2.clamp(0, 16384) as usize]
+                                        .to_le_bytes(),
+                                );
+                                oline[px + 4..px + 6].copy_from_slice(
+                                    &p.shaper2[2 * 16385 + l3.clamp(0, 16384) as usize]
+                                        .to_le_bytes(),
+                                );
+                            }
+                            i_off += stride.bytes_per_line_in as usize;
+                            o_off += stride.bytes_per_line_out as usize;
+                        }
+                        return;
+                    }
+                }
+            }
         }
         let info = PackInfo {
             input_format: self.input_format,
