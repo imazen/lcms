@@ -507,18 +507,18 @@ pub(crate) fn bilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPar
             p.opta[0] as i32
         };
 
-    for out_chan in 0..total_out {
-        let dens = |i: i32, j: i32| tbl_get16(lut_table, (i + j) as usize + out_chan);
-
-        let d00 = dens(x0i, y0i);
-        let d01 = dens(x0i, y1);
-        let d10 = dens(x1, y0i);
-        let d11 = dens(x1, y1);
-
-        let lerp =
-            |a: i32, l: i32, h: i32| (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16;
-        let dx0 = lerp(rx, d00, d10) as i32;
-        let dx1 = lerp(rx, d01, d11) as i32;
+    let n = total_out;
+    let m = lut_table.len() - n;
+    let w = |off: i32| &lut_table[((off as usize).min(m))..][..n];
+    let d00 = w(x0i + y0i);
+    let d01 = w(x0i + y1);
+    let d10 = w(x1 + y0i);
+    let d11 = w(x1 + y1);
+    let lerp =
+        |a: i32, l: i32, h: i32| (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16;
+    for out_chan in 0..n {
+        let dx0 = lerp(rx, d00[out_chan] as i32, d10[out_chan] as i32) as i32;
+        let dx1 = lerp(rx, d01[out_chan] as i32, d11[out_chan] as i32) as i32;
 
         output[out_chan] = lerp(ry, dx0, dx1);
     }
