@@ -2558,7 +2558,7 @@ pub fn unroll_half_to_float(
     i: &PackInfo,
     w: &mut [f32; crate::xform::MAX_CHANNELS],
     a: &[u8],
-    _s: u32,
+    stride: u32,
 ) -> usize {
     let n_chan = t_channels(i.input_format) as usize;
     let do_swap = t_doswap(i.input_format) != 0;
@@ -2571,17 +2571,29 @@ pub fn unroll_half_to_float(
     } else {
         1.0
     };
-    let mut o = if extra_first { extra * 2 } else { 0 };
+    // PLANAR puts each channel plane `stride` bytes apart (see `unroll_half_to16`)
+    let planar = t_planar(i.input_format) != 0;
+    let mut o = if extra_first {
+        if planar { extra * stride as usize } else { extra * 2 }
+    } else {
+        0
+    };
     for c in 0..n_chan {
         let index = if do_swap { n_chan - c - 1 } else { c };
-        let v = crate::half::half2float(rd16(a, o)) / maximum as f32;
+        let off = if planar { o + c * stride as usize } else { o };
+        let v = crate::half::half2float(rd16(a, off)) / maximum as f32;
         w[index] = if reverse { 1.0 - v } else { v };
-        o += 2;
+        if !planar {
+            o += 2;
+        }
     }
     if extra == 0 && swap_first {
         let tmp = w[0];
         w.copy_within(1..n_chan, 0);
         w[n_chan - 1] = tmp;
+    }
+    if planar {
+        return 2;
     }
     if !extra_first {
         o += extra * 2;
