@@ -322,10 +322,9 @@ pub(crate) fn lin_lerp_1d(input: &[u16], output: &mut [u16], p: &InterpParams) {
         let cell0 = fixed_to_int(val3); // Cell is 16 MSB bits
         let rest = fixed_rest_to_int(val3); // Rest is 16 LSB bits
 
-        let y0 = tbl_get16(lut_table, cell0 as usize) as u16;
-        let y1 = tbl_get16(lut_table, cell0 as usize + 1) as u16;
-
-        output[0] = linear_interp(rest, y0 as i32, y1 as i32);
+        let c = cell0.min(lut_table.len().saturating_sub(2) as i32).max(0) as usize;
+        let t = &lut_table[c..c + 2];
+        output[0] = linear_interp(rest, t[0] as i32, t[1] as i32);
     }
 }
 
