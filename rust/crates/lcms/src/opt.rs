@@ -298,8 +298,15 @@ pub(crate) fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptDa
     let OptData::Curves16(c) = data else {
         return false;
     };
-    for i in 0..c.curves.len() {
-        output[i] = c.curves[i][input[i] as usize * c.curves[i].len() >> 16];
+    // Zip keeps the Vec/channel bounds in the iterator (no per-channel
+    // Vec check); `idx.min(len-1)` makes the table index provably in range.
+    for (cur, (&v, out)) in c
+        .curves
+        .iter()
+        .zip(input.iter().zip(output.iter_mut()))
+    {
+        let len = cur.len();
+        *out = cur[((v as usize * len) >> 16).min(len - 1)];
     }
     true
 }
@@ -472,6 +479,44 @@ pub(crate) fn mat_shaper_eval16(input: &[u16], output: &mut [u16], d: &OptData) 
     let OptData::MatShaper(p) = d else {
         return false;
     };
+    // Tables always have 256 shaper1 entries and 3×16385 shaper2 —
+    // re-slice once so the per-pixel lookups drop their bounds checks.
+    if p.shaper1.iter().all(|t| t.len() >= 256) && p.shaper2.len() >= 3 * 16385 {
+        let input = &input[..3];
+        let output = &mut output[..3];
+        let s10 = &p.shaper1[0][..256];
+        let s11 = &p.shaper1[1][..256];
+        let s12 = &p.shaper1[2][..256];
+        let s2 = &p.shaper2[..3 * 16385];
+        let ri = (input[0] & 0xff) as usize;
+        let gi = (input[1] & 0xff) as usize;
+        let bi = (input[2] & 0xff) as usize;
+        let r = s10[ri] as i32;
+        let g = s11[gi] as i32;
+        let b = s12[bi] as i32;
+        let l1 = (p.mat[0][0].wrapping_mul(r)
+            + p.mat[0][1].wrapping_mul(g)
+            + p.mat[0][2].wrapping_mul(b)
+            + p.off[0]
+            + 0x2000)
+            >> 14;
+        let l2 = (p.mat[1][0].wrapping_mul(r)
+            + p.mat[1][1].wrapping_mul(g)
+            + p.mat[1][2].wrapping_mul(b)
+            + p.off[1]
+            + 0x2000)
+            >> 14;
+        let l3 = (p.mat[2][0].wrapping_mul(r)
+            + p.mat[2][1].wrapping_mul(g)
+            + p.mat[2][2].wrapping_mul(b)
+            + p.off[2]
+            + 0x2000)
+            >> 14;
+        output[0] = s2[l1.clamp(0, 16384) as usize];
+        output[1] = s2[16385 + l2.clamp(0, 16384) as usize];
+        output[2] = s2[2 * 16385 + l3.clamp(0, 16384) as usize];
+        return true;
+    }
     let ri = (input[0] & 0xff) as usize;
     let gi = (input[1] & 0xff) as usize;
     let bi = (input[2] & 0xff) as usize;
