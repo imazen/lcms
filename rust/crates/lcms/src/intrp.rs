@@ -466,17 +466,17 @@ fn bilinear_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
             p.opta[0] as i32
         };
 
-    for out_chan in 0..total_out {
-        let dens = |i: i32, j: i32| tbl_getf(lut_table, (i + j) as usize + out_chan);
-
-        let d00 = dens(x0i, y0i);
-        let d01 = dens(x0i, y1);
-        let d10 = dens(x1, y0i);
-        let d11 = dens(x1, y1);
-
-        let lerp = |a: f32, l: f32, h: f32| l + ((h - l) * a);
-        let dx0 = lerp(fx, d00, d10);
-        let dx1 = lerp(fx, d01, d11);
+    let n = total_out;
+    let m = lut_table.len() - n;
+    let w = |off: i32| &lut_table[((off as usize).min(m))..][..n];
+    let d00 = w(x0i + y0i);
+    let d01 = w(x0i + y1);
+    let d10 = w(x1 + y0i);
+    let d11 = w(x1 + y1);
+    let lerp = |a: f32, l: f32, h: f32| l + ((h - l) * a);
+    for out_chan in 0..n {
+        let dx0 = lerp(fx, d00[out_chan], d10[out_chan]);
+        let dx1 = lerp(fx, d01[out_chan], d11[out_chan]);
 
         output[out_chan] = lerp(fy, dx0, dx1);
     }
@@ -570,24 +570,23 @@ pub(crate) fn trilinear_interp_float(input: &[f32], output: &mut [f32], p: &Inte
             p.opta[0] as i32
         };
 
-    for out_chan in 0..total_out {
-        let dens = |i: i32, j: i32, k: i32| tbl_getf(lut_table, (i + j + k) as usize + out_chan);
-
-        let d000 = dens(x0i, y0i, z0i);
-        let d001 = dens(x0i, y0i, z1);
-        let d010 = dens(x0i, y1, z0i);
-        let d011 = dens(x0i, y1, z1);
-
-        let d100 = dens(x1, y0i, z0i);
-        let d101 = dens(x1, y0i, z1);
-        let d110 = dens(x1, y1, z0i);
-        let d111 = dens(x1, y1, z1);
-
-        let lerp = |a: f32, l: f32, h: f32| l + ((h - l) * a);
-        let dx00 = lerp(fx, d000, d100);
-        let dx01 = lerp(fx, d001, d101);
-        let dx10 = lerp(fx, d010, d110);
-        let dx11 = lerp(fx, d011, d111);
+    let n = total_out;
+    let m = lut_table.len() - n;
+    let w = |off: i32| &lut_table[((off as usize).min(m))..][..n];
+    let d000 = w(x0i + y0i + z0i);
+    let d001 = w(x0i + y0i + z1);
+    let d010 = w(x0i + y1 + z0i);
+    let d011 = w(x0i + y1 + z1);
+    let d100 = w(x1 + y0i + z0i);
+    let d101 = w(x1 + y0i + z1);
+    let d110 = w(x1 + y1 + z0i);
+    let d111 = w(x1 + y1 + z1);
+    let lerp = |a: f32, l: f32, h: f32| l + ((h - l) * a);
+    for out_chan in 0..n {
+        let dx00 = lerp(fx, d000[out_chan], d100[out_chan]);
+        let dx01 = lerp(fx, d001[out_chan], d101[out_chan]);
+        let dx10 = lerp(fx, d010[out_chan], d110[out_chan]);
+        let dx11 = lerp(fx, d011[out_chan], d111[out_chan]);
 
         let dxy0 = lerp(fy, dx00, dx10);
         let dxy1 = lerp(fy, dx01, dx11);
