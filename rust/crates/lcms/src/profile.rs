@@ -511,6 +511,7 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
     icc.tag_type_sigs[n] = handler.signature;
     let mut local = handler;
     local.icc_version = icc.version;
+    local.ctx = ctx.map(|c| c as *const Context as usize).unwrap_or(0);
     let mut elem_count = 0u32;
     let obj = (local.read)(&local, icc.io.as_mut().unwrap(), &mut elem_count, tag_size);
     match obj {
@@ -540,7 +541,7 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
 /// `cmsWriteTag` — cooked write (stores the object, serializes on save)
 pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) -> bool {
     // Delete path — C marks the slot (TagNames[i]=0), it does NOT compact
-    let Some(obj) = data else {
+    let Some(mut obj) = data else {
         let i = search_tag(icc, sig, false);
         if i < 0 {
             return false;
@@ -592,6 +593,17 @@ pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) ->
     icc.tag_sizes[i] = 0;
     icc.tag_offsets[i] = 0;
     icc.tag_save_as_raw[i] = false;
+    // `DupPtr` — C dups the caller's data via the type handler before
+    // storing it. For foreign objects the FFI hands us the raw pointer;
+    // stamp the cbox and dup through the C callback.
+    if let crate::tagtypes::TagObject::Foreign(f) = &mut obj {
+        if handler.foreign != 0 {
+            if let Some(hooks) = *crate::context::TAGTYPE_HOOKS.read().unwrap() {
+                f.cbox = handler.foreign;
+                f.ptr = (hooks.dup)(handler.foreign, f.ptr, desc.elem_count as usize);
+            }
+        }
+    }
     icc.tag_ptrs[i] = Some(obj); // DupPtr absorbed by Clone semantics
     icc.tag_raw[i] = None;
     true
@@ -726,6 +738,7 @@ pub fn cms_read_raw_tag(icc: &mut IccProfile, sig: u32, data: Option<&mut [u8]>)
         };
         let mut local = handler;
         local.icc_version = icc.version;
+        local.ctx = ctx.map(|c| c as *const Context as usize).unwrap_or(0);
         let obj = icc.tag_ptrs[i].clone().unwrap();
 
         match data {
@@ -867,6 +880,7 @@ fn save_tags(
             }
             let mut local = handler;
             local.icc_version = icc.version;
+            local.ctx = ctx.map(|c| c as *const Context as usize).unwrap_or(0);
             if !(local.write)(&local, io, &obj, desc.elem_count) {
                 err::signal_error(None, ERROR_WRITE, "Couldn't write type");
                 return false;

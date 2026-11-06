@@ -100,6 +100,63 @@ pub type HeaderInvokeFn = fn(usize, usize, usize, bool) -> bool;
 pub static HEADER_INVOKE: std::sync::RwLock<Option<HeaderInvokeFn>> =
     std::sync::RwLock::new(None);
 
+// ---------------------------------------------------------------------------
+// Foreign (C-registered) tag-type callbacks — `cmsTagTypeHandler` fn ptrs
+// ---------------------------------------------------------------------------
+
+/// Bridge fns for a C-registered `cmsTagTypeHandler`. `cbox` is a pointer to
+/// the C-ABI handler struct kept by the FFI (it supplies `self`,
+/// `self->ContextID` and the fn ptrs). `icc_version` is the per-call stamp
+/// C puts on the local handler copy.
+#[derive(Clone, Copy)]
+pub struct TagTypeHooks {
+    /// `ReadPtr(self, io, *nItems, SizeOfTag)` → `void*`
+    pub read: fn(cbox: usize, icc_version: u32, io: usize, n_items: usize, size: usize) -> usize,
+    /// `WritePtr(self, io, Ptr, nItems)` → `cmsBool`
+    pub write: fn(cbox: usize, icc_version: u32, io: usize, ptr: usize, n: usize) -> bool,
+    /// `DupPtr(self, Ptr, n)` → `void*`
+    pub dup: fn(cbox: usize, ptr: usize, n: usize) -> usize,
+    /// `FreePtr(self, Ptr)`
+    pub free: fn(cbox: usize, ptr: usize),
+}
+
+/// Set once by the FFI layer (`ensure_foreign_hooks`).
+pub static TAGTYPE_HOOKS: std::sync::RwLock<Option<TagTypeHooks>> =
+    std::sync::RwLock::new(None);
+
+/// Bridge fns for a C `cmsStage` placeholder (`_cmsStageAllocPlaceholder`) —
+/// the FFI builds a C-ABI `cmsStage` view of the Rust stage and invokes the
+/// C `EvalPtr`/`DupElemPtr`/`FreePtr`.
+#[derive(Clone, Copy)]
+pub struct StageHooks {
+    /// `EvalPtr(In, Out, mpe)` — `(stage_ptr, in_ptr, out_ptr)`
+    pub eval: fn(stage: usize, input: *const f32, output: *mut f32),
+    /// `FreePtr(mpe)`
+    pub free: fn(stage: usize),
+}
+
+/// Set once by the FFI layer (`ensure_foreign_hooks`).
+pub static STAGE_HOOKS: std::sync::RwLock<Option<StageHooks>> =
+    std::sync::RwLock::new(None);
+
+/// MPE-elem handler lookup — the FFI resolves a stamped `*const Context`
+/// (an opaque token in core, which is `forbid(unsafe_code)`) into that
+/// context's `mpe_handlers` entry for `sig`.
+pub type MpeLookupFn =
+    fn(ctx_token: usize, sig: u32) -> Option<crate::tagtypes::MpeElemHandler>;
+
+/// Set once by the FFI layer (`ensure_foreign_hooks`).
+pub static MPE_LOOKUP: std::sync::RwLock<Option<MpeLookupFn>> =
+    std::sync::RwLock::new(None);
+
+/// Re-box a `*mut lut::Stage` produced by `_cmsStageAllocPlaceholder` into an
+/// owned `Stage` — the FFI does the `from_raw` so core stays unsafe-free.
+pub type StageBoxFn = fn(ptr: usize) -> Option<Box<crate::lut::Stage>>;
+
+/// Set once by the FFI layer (`ensure_foreign_hooks`).
+pub static STAGE_BOX: std::sync::RwLock<Option<StageBoxFn>> =
+    std::sync::RwLock::new(None);
+
 /// A C-registered `cmsPluginRenderingIntent` entry — `cmsIntentFn` ptr.
 #[derive(Clone, Copy, Default)]
 pub struct CIntentSet {

@@ -528,6 +528,7 @@ pub extern "C" fn cmsReadTag(h: Handle, sig: c_uint) -> Handle {
         TagObject::NamedColor(l) | TagObject::ColorantTable(l) => {
             Box::into_raw(Box::new(l.clone())) as Handle
         }
+        TagObject::Foreign(f) => f.ptr as Handle,
         TagObject::Lut8(p) | TagObject::Lut16(p) | TagObject::LutA2B(p)
         | TagObject::LutB2A(p) | TagObject::Mpe(p) => {
             Box::into_raw(Box::new(p.clone())) as Handle
@@ -1141,7 +1142,30 @@ pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_
         s if is_mlu_tag(s) => {
             mlu_ref(data as Handle).map(|m| TagObject::Mlu(m.clone()))
         }
-        _ => None,
+        s => {
+            // Plugin-registered tag signature — marshal per the descriptor's
+            // first supported type: foreign handler → raw ptr; otherwise the
+            // built-in scalar/array marshal.
+            let ctx = p.ctx.as_ref();
+            let Some(desc) = lcms::tagtypes::get_tag_descriptor(ctx, s) else {
+                return 0;
+            };
+            let typ = desc.supported_types.first().copied().unwrap_or(0);
+            match lcms::tagtypes::get_tag_type_handler(ctx, typ) {
+                Some(h) if h.foreign != 0 => Some(TagObject::Foreign(
+                    lcms::tagtypes::ForeignTag {
+                        ptr: data as usize,
+                        cbox: 0, // stamped by cms_write_tag after decide_type
+                    },
+                )),
+                _ => match typ {
+                    lcms::signatures::tagtype::SigUInt32ArrayType => Some(
+                        TagObject::UInt32(vec![unsafe { *(data as *const u32) }]),
+                    ),
+                    _ => None,
+                },
+            }
+        }
     };
     let Some(obj) = obj else {
         return 0;
@@ -2751,6 +2775,72 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                     unsafe { (*(ctx as *mut lcms::context::Context)).formatter_factories.push(f) };
                 }
             }
+            PLUGIN_TAGTYPE_SIG => {
+                // `cmsPluginTagType` — register a foreign tag-type handler.
+                ensure_foreign_hooks();
+                let t = unsafe { &*(p as *const CmsPluginTagType) };
+                let cbox = Box::leak(Box::new(CTagTypeHandler {
+                    signature: t.handler.signature,
+                    read_ptr: t.handler.read_ptr,
+                    write_ptr: t.handler.write_ptr,
+                    dup_ptr: t.handler.dup_ptr,
+                    free_ptr: t.handler.free_ptr,
+                    context_id: ctx,
+                    icc_version: 0,
+                })) as *mut CTagTypeHandler as usize;
+                unsafe {
+                    (*(ctx as *mut lcms::context::Context))
+                        .tag_type_handlers
+                        .push(lcms::tagtypes::foreign_tag_type_handler(
+                            t.handler.signature,
+                            cbox,
+                        ))
+                };
+            }
+            PLUGIN_TAG_SIG => {
+                // `cmsPluginTag` — register a tag descriptor (signature →
+                // elem count + supported types + optional DecideType).
+                let t = unsafe { &*(p as *const CmsPluginTag) };
+                let n = (t.descriptor.n_supported_types as usize).min(20);
+                let types: &'static [u32] = Box::leak(
+                    t.descriptor.supported_types[..n].to_vec().into_boxed_slice(),
+                );
+                unsafe {
+                    (*(ctx as *mut lcms::context::Context))
+                        .tag_descriptors
+                        .push((
+                            t.signature,
+                            lcms::tagtypes::TagDescriptor {
+                                elem_count: t.descriptor.elem_count,
+                                supported_types: types,
+                                decide_type: None,
+                            },
+                        ))
+                };
+            }
+            PLUGIN_MPE_SIG => {
+                // `cmsPluginMultiProcessElement` — same `cmsTagTypeHandler`
+                // layout; registers an MPE element-type handler.
+                ensure_foreign_hooks();
+                let t = unsafe { &*(p as *const CmsPluginTagType) };
+                let cbox = Box::leak(Box::new(CTagTypeHandler {
+                    signature: t.handler.signature,
+                    read_ptr: t.handler.read_ptr,
+                    write_ptr: t.handler.write_ptr,
+                    dup_ptr: t.handler.dup_ptr,
+                    free_ptr: t.handler.free_ptr,
+                    context_id: ctx,
+                    icc_version: 0,
+                })) as *mut CTagTypeHandler as usize;
+                unsafe {
+                    (*(ctx as *mut lcms::context::Context))
+                        .mpe_handlers
+                        .push(lcms::tagtypes::foreign_mpe_elem_handler(
+                            t.handler.signature,
+                            cbox,
+                        ))
+                };
+            }
             PLUGIN_INTENT_SIG => {
                 let h = unsafe { &*(p as *const CmsPluginRenderingIntent) };
                 if h.link != 0 {
@@ -3772,7 +3862,34 @@ fn ensure_foreign_hooks() {
         });
         lcms::cnvrt::set_intent_link_hook(intent_link_hook);
         *lcms::context::HEADER_INVOKE.write().unwrap() = Some(header_invoke);
+        *lcms::context::TAGTYPE_HOOKS.write().unwrap() = Some(lcms::context::TagTypeHooks {
+            read: tagtype_read,
+            write: tagtype_write,
+            dup: tagtype_dup,
+            free: tagtype_free,
+        });
+        *lcms::context::STAGE_HOOKS.write().unwrap() = Some(lcms::context::StageHooks {
+            eval: stage_eval_invoke,
+            free: stage_free_invoke,
+        });
+        *lcms::context::MPE_LOOKUP.write().unwrap() = Some(mpe_lookup);
+        *lcms::context::STAGE_BOX.write().unwrap() = Some(stage_box);
     });
+}
+
+/// `MPE_LOOKUP` — resolve the stamped ctx to its `mpe_handlers` entry.
+fn mpe_lookup(ctx_token: usize, sig: u32) -> Option<lcms::tagtypes::MpeElemHandler> {
+    let c = unsafe { (ctx_token as *const lcms::context::Context).as_ref()? };
+    c.mpe_handlers.iter().find(|h| h.signature == sig).copied()
+}
+
+/// `STAGE_BOX` — `Box::from_raw` on a `_cmsStageAllocPlaceholder` result.
+fn stage_box(ptr: usize) -> Option<Box<lcms::lut::Stage>> {
+    if ptr == 0 {
+        return None;
+    }
+    Some(unsafe { *Box::from_raw(ptr as *mut lcms::lut::Stage) })
+        .map(Box::new)
 }
 
 // ---------------------------------------------------------------------------
@@ -3823,19 +3940,18 @@ unsafe extern "C" fn cio_write(io: *mut CIohandler, size: u32, buf: *const c_voi
     ioh.write(size, slice) as c_int
 }
 
-/// `HeaderInvokeFn` — build the shim and call the C read/write callback.
-fn header_invoke(ctx_handle: usize, profile: usize, io: usize, is_read: bool) -> bool {
-    let Some(c) = (unsafe { cctx(ctx_handle as Handle) }) else {
-        return false;
-    };
-    let cb = if is_read {
-        c.c_header.read_ptr
-    } else {
-        c.c_header.write_ptr
-    };
-    if cb == 0 {
-        return false;
-    }
+/// Live `CIohandler` shim addresses — `io_ref` consults this so plugin
+/// helpers (`_cmsReadUInt32Number` & co.) get the real IoHandler back.
+static CIO_LIVE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<usize>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// Build a `CIohandler` over `io` (a `*mut lcms::io::IoHandler`), register it
+/// in `CIO_LIVE`, run `f`, unregister.
+fn with_cio<R>(
+    io: usize,
+    ctx_handle: usize,
+    f: impl FnOnce(&mut CIohandler) -> R,
+) -> R {
     let ioh = io as *mut lcms::io::IoHandler;
     let mut shim = CIohandler {
         stream: ioh as *mut c_void,
@@ -3849,10 +3965,233 @@ fn header_invoke(ctx_handle: usize, profile: usize, io: usize, is_read: bool) ->
         tell: cio_tell as usize,
         write: cio_write as usize,
     };
-    type HdrFn = unsafe extern "C" fn(Handle, Handle, *mut CIohandler) -> c_int;
-    let f: HdrFn = unsafe { std::mem::transmute(cb) };
-    let rc = unsafe { f(ctx_handle as Handle, profile as Handle, &mut shim) };
-    rc != 0
+    let key = &mut shim as *mut CIohandler as usize;
+    CIO_LIVE.lock().unwrap().insert(key);
+    let r = f(&mut shim);
+    CIO_LIVE.lock().unwrap().remove(&key);
+    r
+}
+
+/// `HeaderInvokeFn` — build the shim and call the C read/write callback.
+fn header_invoke(ctx_handle: usize, profile: usize, io: usize, is_read: bool) -> bool {
+    let Some(c) = (unsafe { cctx(ctx_handle as Handle) }) else {
+        return false;
+    };
+    let cb = if is_read {
+        c.c_header.read_ptr
+    } else {
+        c.c_header.write_ptr
+    };
+    if cb == 0 {
+        return false;
+    }
+    with_cio(io, ctx_handle, |shim| {
+        type HdrFn = unsafe extern "C" fn(Handle, Handle, *mut CIohandler) -> c_int;
+        let f: HdrFn = unsafe { std::mem::transmute(cb) };
+        unsafe { f(ctx_handle as Handle, profile as Handle, shim) != 0 }
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Tag-type plugin bridge — C `cmsTagTypeHandler`/`cmsPluginTag` + trampolines
+// ---------------------------------------------------------------------------
+
+/// `cmsTagTypeHandler` (lcms2_plugin.h) — the `self` arg of the C callbacks.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CTagTypeHandler {
+    signature: u32,
+    read_ptr: usize,
+    write_ptr: usize,
+    dup_ptr: usize,
+    free_ptr: usize,
+    context_id: Handle,
+    icc_version: u32,
+}
+
+/// `cmsPluginTagType` — base + Handler.
+#[repr(C)]
+struct CmsPluginTagType {
+    base: CmsPluginBase,
+    handler: CTagTypeHandler,
+}
+
+/// `cmsTagDescriptor` (lcms2_plugin.h:433)
+#[repr(C)]
+struct CTagDescriptor {
+    elem_count: u32,
+    n_supported_types: u32,
+    supported_types: [u32; 20], // MAX_TYPES_IN_LCMS_PLUGIN
+    decide_type: usize,
+}
+
+/// `cmsPluginTag` — base + Signature + Descriptor.
+#[repr(C)]
+struct CmsPluginTag {
+    base: CmsPluginBase,
+    signature: u32,
+    descriptor: CTagDescriptor,
+}
+
+/// A stamped local copy of the registered handler — C does
+/// `LocalTypeHandler = *h; LocalTypeHandler.ICCVersion = v`.
+fn ctt_local(cbox: usize, icc_version: u32) -> CTagTypeHandler {
+    let mut local = unsafe { *(cbox as *const CTagTypeHandler) };
+    local.icc_version = icc_version;
+    local
+}
+
+fn tagtype_read(cbox: usize, icc_version: u32, io: usize, n_items: usize, size: usize) -> usize {
+    let cb = unsafe { (*(cbox as *const CTagTypeHandler)).read_ptr };
+    if cb == 0 {
+        return 0;
+    }
+    let mut local = ctt_local(cbox, icc_version);
+    with_cio(io, local.context_id as usize, |shim| {
+        type F = unsafe extern "C" fn(*mut CTagTypeHandler, *mut CIohandler, *mut u32, u32) -> Handle;
+        let f: F = unsafe { std::mem::transmute(cb) };
+        unsafe { f(&mut local, shim, n_items as *mut u32, size as u32) as usize }
+    })
+}
+
+fn tagtype_write(cbox: usize, icc_version: u32, io: usize, ptr: usize, n: usize) -> bool {
+    let cb = unsafe { (*(cbox as *const CTagTypeHandler)).write_ptr };
+    if cb == 0 {
+        return false;
+    }
+    let mut local = ctt_local(cbox, icc_version);
+    with_cio(io, local.context_id as usize, |shim| {
+        type F = unsafe extern "C" fn(*mut CTagTypeHandler, *mut CIohandler, Handle, u32) -> c_int;
+        let f: F = unsafe { std::mem::transmute(cb) };
+        unsafe { f(&mut local, shim, ptr as Handle, n as u32) != 0 }
+    })
+}
+
+fn tagtype_dup(cbox: usize, ptr: usize, n: usize) -> usize {
+    let h = unsafe { *(cbox as *const CTagTypeHandler) };
+    if h.dup_ptr == 0 {
+        return 0;
+    }
+    type F = unsafe extern "C" fn(*const CTagTypeHandler, *const c_void, u32) -> Handle;
+    let f: F = unsafe { std::mem::transmute(h.dup_ptr) };
+    unsafe { f(&h, ptr as *const c_void, n as u32) as usize }
+}
+
+fn tagtype_free(cbox: usize, ptr: usize) {
+    let h = unsafe { *(cbox as *const CTagTypeHandler) };
+    if h.free_ptr == 0 {
+        return;
+    }
+    type F = unsafe extern "C" fn(*const CTagTypeHandler, *mut c_void);
+    let f: F = unsafe { std::mem::transmute(h.free_ptr) };
+    unsafe { f(&h, ptr as *mut c_void) }
+}
+
+// ---------------------------------------------------------------------------
+// MPE / stage-placeholder bridge — C-ABI `cmsStage` for foreign stage eval
+// ---------------------------------------------------------------------------
+
+/// `_cmsStage_struct` (lcms2_internal.h:917) — the `mpe` arg of a C
+/// placeholder stage's `EvalPtr`/`FreeElemPtr`.
+#[repr(C)]
+struct CStage {
+    context_id: Handle,
+    ty: u32,
+    implements: u32,
+    input_channels: u32,
+    output_channels: u32,
+    eval_ptr: usize,
+    dup_elem_ptr: usize,
+    free_ptr: usize,
+    data: *mut c_void,
+    next: *mut CStage,
+}
+
+/// Build a C-ABI `cmsStage` view of a Rust `Stage` with `ForeignEval` data.
+fn cstage_view(st: &lcms::lut::Stage) -> Option<CStage> {
+    let lcms::lut::StageData::ForeignEval {
+        eval,
+        dup,
+        free,
+        data,
+        ctx,
+    } = &st.data
+    else {
+        return None;
+    };
+    Some(CStage {
+        context_id: *ctx as Handle,
+        ty: st.r#type,
+        implements: st.implements,
+        input_channels: st.input_channels,
+        output_channels: st.output_channels,
+        eval_ptr: *eval,
+        dup_elem_ptr: *dup,
+        free_ptr: *free,
+        data: *data as *mut c_void,
+        next: ptr::null_mut(),
+    })
+}
+
+/// `STAGE_HOOKS.eval` — build the view and call the C `EvalPtr`.
+fn stage_eval_invoke(stage: usize, input: *const f32, output: *mut f32) {
+    let st = unsafe { &*(stage as *const lcms::lut::Stage) };
+    let Some(view) = cstage_view(st) else {
+        return;
+    };
+    if view.eval_ptr == 0 {
+        return;
+    }
+    type F = unsafe extern "C" fn(*const f32, *mut f32, *const CStage);
+    let f: F = unsafe { std::mem::transmute(view.eval_ptr) };
+    unsafe { f(input, output, &view) }
+}
+
+/// `STAGE_HOOKS.free` — call the C `FreeElemPtr` with the stage view.
+fn stage_free_invoke(stage: usize) {
+    let st = unsafe { &*(stage as *const lcms::lut::Stage) };
+    let Some(view) = cstage_view(st) else {
+        return;
+    };
+    if view.free_ptr == 0 {
+        return;
+    }
+    type F = unsafe extern "C" fn(*const CStage);
+    let f: F = unsafe { std::mem::transmute(view.free_ptr) };
+    unsafe { f(&view) }
+}
+
+/// `_cmsStageAllocPlaceholder` — a stage whose eval is a C callback.
+#[unsafe(no_mangle)]
+pub extern "C" fn _cmsStageAllocPlaceholder(
+    ctx: Handle,
+    ty: c_uint,
+    in_ch: c_uint,
+    out_ch: c_uint,
+    eval: usize,
+    dup: usize,
+    free: usize,
+    data: *mut c_void,
+) -> Handle {
+    if eval == 0 {
+        return ptr::null_mut();
+    }
+    ensure_foreign_hooks();
+    Box::into_raw(Box::new(lcms::lut::Stage {
+        r#type: ty,
+        implements: ty,
+        input_channels: in_ch,
+        output_channels: out_ch,
+        eval_ptr: lcms::lut::Stage::foreign_stage_eval,
+        data: lcms::lut::StageData::ForeignEval {
+            eval,
+            dup,
+            free,
+            data: data as usize,
+            ctx: ctx as usize,
+        },
+        next: None,
+    })) as Handle
 }
 /// `cmsIntentFn` C signature — `(ContextID, nProfiles, Intents[], hProfiles[],
 /// BPC[], AdaptationStates[], dwFlags) → cmsPipeline*`.
@@ -3957,6 +4296,9 @@ const PLUGIN_PARAMETRIC_SIG: c_uint = 0x7061_7248; // 'parH'
 const PLUGIN_HEADER_SIG: c_uint = 0x6864_7248; // 'hdrH'
 const PLUGIN_FORMATTERS_SIG: c_uint = 0x6672_6D48; // 'frmH'
 const PLUGIN_INTENT_SIG: c_uint = 0x696E_7448; // 'intH'
+const PLUGIN_TAGTYPE_SIG: c_uint = 0x7479_7048; // 'typH'
+const PLUGIN_TAG_SIG: c_uint = 0x7461_6748; // 'tagH'
+const PLUGIN_MPE_SIG: c_uint = 0x6D70_6548; // 'mpeH'
 const LCMS_VERSION: c_uint = 2200;
 
 /// `_cmsFindMemoryPlugin` — scan the plugin chain for a mem-handler
@@ -4139,10 +4481,15 @@ pub extern "C" fn _cmsMAT3identity(a: *mut Mat3) {
     cmsMAT3identity(a)
 }
 
-// IO u16/u32 read/write — `io` is a boxed IoHandler.
+// IO u16/u32 read/write — `io` is a boxed IoHandler or a live CIohandler
+// shim (plugins call these helpers with the shim they were handed).
 fn io_ref<'a>(h: Handle) -> Option<&'a mut lcms::io::IoHandler> {
     if h.is_null() {
         return None;
+    }
+    if CIO_LIVE.lock().unwrap().contains(&(h as usize)) {
+        let c = h as *mut CIohandler;
+        return Some(unsafe { &mut *((*c).stream as *mut lcms::io::IoHandler) });
     }
     Some(unsafe { &mut *(h as *mut lcms::io::IoHandler) })
 }
@@ -4960,30 +5307,6 @@ pub extern "C" fn cmsGDBCompute(g: Handle, flags: c_uint) -> c_int {
 
 // _cmsStageAlloc* internals
 fn noop_eval(_input: &[f32], _output: &mut [f32], _stage: &lcms::lut::Stage) {}
-/// `_cmsStageAllocPlaceholder` — custom-eval stage. The C eval/dup/free fn
-/// pointers are opaque to Rust; a no-op eval is used (plugin-stage tests
-/// that install a C EvalPtr can't run it — tracked as a gap).
-#[unsafe(no_mangle)]
-pub extern "C" fn _cmsStageAllocPlaceholder(
-    _ctx: Handle,
-    ty: c_uint,
-    in_c: c_uint,
-    out_c: c_uint,
-    _eval: *const c_void,
-    _dup: *const c_void,
-    _free: *const c_void,
-    _data: *mut c_void,
-) -> Handle {
-    let s = lcms::lut::stage_alloc_placeholder(
-        None,
-        ty,
-        in_c,
-        out_c,
-        noop_eval,
-        lcms::lut::StageData::None,
-    );
-    Box::into_raw(Box::new(s)) as Handle
-}
 #[unsafe(no_mangle)]
 pub extern "C" fn _cmsStageAllocIdentity(_ctx: Handle, n: c_uint) -> Handle {
     cmsStageAllocIdentity(_ctx, n)

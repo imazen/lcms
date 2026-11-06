@@ -80,6 +80,15 @@ pub enum StageData {
     },
     CLut(Box<CLutData>),
     NamedColor(crate::named::NamedColorList),
+    /// `_cmsStageAllocPlaceholder` — a C plugin's eval/dup/free callbacks +
+    /// opaque `Data`. `eval`/`dup`/`free` are raw C fn ptrs (`0` = NULL).
+    ForeignEval {
+        eval: usize,
+        dup: usize,
+        free: usize,
+        data: usize,
+        ctx: usize,
+    },
 }
 
 /// `cmsStage`
@@ -111,10 +120,34 @@ impl Stage {
     pub fn next(&self) -> Option<&Stage> {
         self.next.as_deref()
     }
+    /// `EvalPtr(In, Out, mpe)` — foreign (C-placeholder) eval via STAGE_HOOKS
+    pub fn foreign_stage_eval(input: &[f32], output: &mut [f32], stage: &Stage) {
+        if let Some(h) = *crate::context::STAGE_HOOKS.read().unwrap() {
+            (h.eval)(
+                stage as *const Stage as usize,
+                input.as_ptr(),
+                output.as_mut_ptr(),
+            );
+        }
+    }
     /// `mpe->EvalPtr(in, out, mpe)`
     #[inline]
     pub fn eval(&self, input: &[f32], output: &mut [f32]) {
         (self.eval_ptr)(input, output, self)
+    }
+}
+
+impl Drop for Stage {
+    fn drop(&mut self) {
+        // `FreeElemPtr(mpe)` — the C plugin's destructor for ForeignEval
+        // stages; `next`'s own Drop handles the chain afterwards.
+        if let StageData::ForeignEval { free, .. } = &self.data {
+            if *free != 0 {
+                if let Some(h) = *crate::context::STAGE_HOOKS.read().unwrap() {
+                    (h.free)(self as *const Stage as usize);
+                }
+            }
+        }
     }
 }
 

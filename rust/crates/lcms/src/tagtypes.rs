@@ -148,7 +148,41 @@ pub enum TagObject {
     VideoSignal(VideoSignal),
     Vcgt(VcgtData),
     Mhc2(Mhc2),
+    /// A tag object owned by a C-registered `cmsTagTypeHandler` — the raw
+    /// `void*` from `ReadPtr`/`DupPtr`. `cbox` is the FFI-side C-ABI handler
+    /// supplying `FreePtr`/`DupPtr`/`ContextID`.
+    Foreign(ForeignTag),
     Raw(Vec<u8>),
+}
+
+/// The payload of `TagObject::Foreign` — raw `void*` + owning C handler.
+pub struct ForeignTag {
+    pub ptr: usize,
+    pub cbox: usize,
+}
+
+impl Clone for ForeignTag {
+    fn clone(&self) -> Self {
+        // `DupPtr(self, Ptr, n)` — a fresh owned copy, like C
+        if let Some(h) = *crate::context::TAGTYPE_HOOKS.read().unwrap() {
+            let dup = (h.dup)(self.cbox, self.ptr, 1);
+            if dup != 0 {
+                return ForeignTag { ptr: dup, cbox: self.cbox };
+            }
+        }
+        ForeignTag { ptr: self.ptr, cbox: self.cbox }
+    }
+}
+
+impl Drop for ForeignTag {
+    fn drop(&mut self) {
+        // `FreePtr(self, Ptr)`
+        if self.ptr != 0 {
+            if let Some(h) = *crate::context::TAGTYPE_HOOKS.read().unwrap() {
+                (h.free)(self.cbox, self.ptr);
+            }
+        }
+    }
 }
 
 /// vcgt payload — either 3 curves (formula/table) or a raw table
@@ -172,6 +206,69 @@ pub struct TagTypeHandler {
     pub write: fn(&TagTypeHandler, &mut IoHandler, &TagObject, u32) -> bool,
     // `self` copies like LocalTypeHandler get these stamped in
     pub icc_version: u32,
+    /// nonzero → a C-registered handler; the value is the FFI's C-ABI
+    /// `cmsTagTypeHandler` box passed as `self` to the C callbacks.
+    pub foreign: usize,
+    /// stamped `*const Context` — C's `self->ContextID`; lets nested
+    /// dispatch (MPE element handlers) reach the plugin lists.
+    pub ctx: usize,
+}
+
+/// Foreign `ReadPtr` — invoke the C callback through `TAGTYPE_HOOKS` and wrap
+/// the returned `void*` as `TagObject::Foreign`.
+fn foreign_read(
+    h: &TagTypeHandler,
+    io: &mut IoHandler,
+    n_items: &mut u32,
+    size: u32,
+) -> Option<TagObject> {
+    let hooks = (*crate::context::TAGTYPE_HOOKS.read().unwrap())?;
+    let ptr = (hooks.read)(
+        h.foreign,
+        h.icc_version,
+        io as *mut IoHandler as usize,
+        n_items as *mut u32 as usize,
+        size as usize,
+    );
+    if ptr == 0 {
+        None
+    } else {
+        Some(TagObject::Foreign(ForeignTag {
+            ptr,
+            cbox: h.foreign,
+        }))
+    }
+}
+
+/// Foreign `WritePtr` — pass the `Foreign` payload's raw pointer to the C
+/// callback.
+fn foreign_write(h: &TagTypeHandler, io: &mut IoHandler, obj: &TagObject, n: u32) -> bool {
+    let Some(hooks) = *crate::context::TAGTYPE_HOOKS.read().unwrap() else {
+        return false;
+    };
+    let TagObject::Foreign(f) = obj else {
+        return false;
+    };
+    (hooks.write)(
+        h.foreign,
+        h.icc_version,
+        io as *mut IoHandler as usize,
+        f.ptr,
+        n as usize,
+    )
+}
+
+/// A `TagTypeHandler` whose callbacks bridge into a C-registered
+/// `cmsTagTypeHandler` (`cbox` = FFI handler struct pointer).
+pub fn foreign_tag_type_handler(signature: u32, cbox: usize) -> TagTypeHandler {
+    TagTypeHandler {
+        signature,
+        read: foreign_read,
+        write: foreign_write,
+        icc_version: 0,
+        foreign: cbox,
+        ctx: 0,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,6 +1187,8 @@ macro_rules! handler {
             read: $read,
             write: $write,
             icc_version: 0,
+            foreign: 0,
+            ctx: 0,
         }
     };
 }
@@ -3430,6 +3529,9 @@ pub struct MpeElemHandler {
     pub signature: u32,
     pub read: Option<fn(&TagTypeHandler, &mut IoHandler, &mut u32, u32) -> Option<TagObject>>,
     pub write: Option<fn(&TagTypeHandler, &mut IoHandler, &TagObject, u32) -> bool>,
+    /// nonzero → a C-registered `cmsPluginMultiProcessElement` handler; the
+    /// value is the FFI's C-ABI `cmsTagTypeHandler` box (`self` arg).
+    pub foreign: usize,
 }
 
 /// `SupportedMPEtypes` — MPE element handler table (bACS/eACS = NULL, ignored)
@@ -3438,34 +3540,51 @@ pub static SUPPORTED_MPE_TYPES: &[MpeElemHandler] = &[
         signature: 0x62414373,
         read: None,
         write: None,
+        foreign: 0,
     }, // 'bACS'
     MpeElemHandler {
         signature: 0x65414373,
         read: None,
         write: None,
+        foreign: 0,
     }, // 'eACS'
     MpeElemHandler {
         signature: crate::signatures::stage::SigCurveSetElemType,
         read: Some(type_mpe_curve_read),
         write: Some(type_mpe_curve_write),
+        foreign: 0,
     },
     MpeElemHandler {
         signature: crate::signatures::stage::SigMatrixElemType,
         read: Some(type_mpe_matrix_read),
         write: Some(type_mpe_matrix_write),
+        foreign: 0,
     },
     MpeElemHandler {
         signature: crate::signatures::stage::SigCLutElemType,
         read: Some(type_mpe_clut_read),
         write: Some(type_mpe_clut_write),
+        foreign: 0,
     },
 ];
 
-fn mpe_handler(sig: u32, ctx: Option<&Context>) -> Option<MpeElemHandler> {
-    // plugin handlers precede built-ins
-    if let Some(c) = ctx {
-        if let Some(h) = c.mpe_handlers.iter().find(|h| h.signature == sig) {
-            return Some(*h);
+/// A plugin-registered MPE element handler (`cbox` = FFI `cmsTagTypeHandler`).
+pub fn foreign_mpe_elem_handler(signature: u32, cbox: usize) -> MpeElemHandler {
+    MpeElemHandler {
+        signature,
+        read: Some(foreign_read),
+        write: Some(foreign_write),
+        foreign: cbox,
+    }
+}
+
+fn mpe_handler(sig: u32, ctx_token: usize) -> Option<MpeElemHandler> {
+    // plugin handlers precede built-ins — the FFI resolves the ctx token
+    if ctx_token != 0 {
+        if let Some(lk) = *crate::context::MPE_LOOKUP.read().unwrap() {
+            if let Some(h) = lk(ctx_token, sig) {
+                return Some(h);
+            }
         }
     }
     SUPPORTED_MPE_TYPES
@@ -3486,10 +3605,33 @@ fn read_mpe_elem(
     if !io::read_u32(io, &mut elem_sig) || !io::read_u32(io, &mut res) {
         return false;
     }
-    let Some(h) = mpe_handler(elem_sig, None) else {
+    // `self->ContextID` — stamped on the handler copy by the caller
+    let Some(h) = mpe_handler(elem_sig, s.ctx) else {
         err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown MPE type found");
         return false;
     };
+    // Foreign (C-registered) element — `ReadPtr` returns `cmsStage*` = our
+    // boxed `Stage` produced by `_cmsStageAllocPlaceholder`.
+    if h.foreign != 0 {
+        let Some(hooks) = *crate::context::TAGTYPE_HOOKS.read().unwrap() else {
+            return false;
+        };
+        let Some(box_stage) = *crate::context::STAGE_BOX.read().unwrap() else {
+            return false;
+        };
+        let mut n = 0u32;
+        let ptr = (hooks.read)(
+            h.foreign,
+            s.icc_version,
+            io as *mut IoHandler as usize,
+            &mut n as *mut u32 as usize,
+            size_of_tag as usize,
+        );
+        let Some(stage) = box_stage(ptr) else {
+            return false;
+        };
+        return lut.insert_stage(StageLoc::AtEnd, *stage);
+    }
     // NULL read → ignored element (bACS/eACS)
     if let Some(read) = h.read {
         let mut n = 0u32;
@@ -3581,13 +3723,37 @@ fn type_mpe_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u32
     for (i, st) in elems.iter().enumerate() {
         offsets[i] = io.tell().wrapping_sub(base_offset);
         let elem_sig = st.stage_type();
-        let Some(h) = mpe_handler(elem_sig, None) else {
+        let Some(h) = mpe_handler(elem_sig, s.ctx) else {
             err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Found unknown MPE type");
             return false;
         };
         let before = io.tell();
         if !io::write_u32(io, elem_sig) || !io::write_u32(io, 0) {
             return false;
+        }
+        if h.foreign != 0 {
+            // Foreign element — `WritePtr(self, io, Ptr, n)`; the C `Ptr` is
+            // the `cmsStage*`, and plugins read `mpe->Data` — hand them the
+            // ForeignEval `data` pointer.
+            let Some(hooks) = *crate::context::TAGTYPE_HOOKS.read().unwrap() else {
+                return false;
+            };
+            let ptr = match &st.data {
+                crate::lut::StageData::ForeignEval { data, .. } => *data,
+                _ => *st as *const crate::lut::Stage as usize,
+            };
+            if !(hooks.write)(
+                h.foreign,
+                s.icc_version,
+                io as *mut IoHandler as usize,
+                ptr,
+                1,
+            ) || !io::write_alignment(io)
+            {
+                return false;
+            }
+            sizes[i] = io.tell().wrapping_sub(before);
+            continue;
         }
         let Some(write) = h.write else {
             return false;
