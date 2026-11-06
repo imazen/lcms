@@ -637,28 +637,27 @@ pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPa
 
     let max_off = x1.wrapping_add(y1).wrapping_add(z1);
     let cell = lut_table;
-    let last = cell.len() - 1;
-    for out_chan in 0..total_out {
-        let dens = |i: i32, j: i32, k: i32| {
-            cell[(((i + j + k).min(max_off)) as usize + out_chan).min(last)] as i32
-        };
-
-        let d000 = dens(x0i, y0i, z0i);
-        let d001 = dens(x0i, y0i, z1);
-        let d010 = dens(x0i, y1, z0i);
-        let d011 = dens(x0i, y1, z1);
-
-        let d100 = dens(x1, y0i, z0i);
-        let d101 = dens(x1, y0i, z1);
-        let d110 = dens(x1, y1, z0i);
-        let d111 = dens(x1, y1, z1);
-
-        let lerp =
-            |a: i32, l: i32, h: i32| (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16;
-        let dx00 = lerp(rx, d000, d100) as i32;
-        let dx01 = lerp(rx, d001, d101) as i32;
-        let dx10 = lerp(rx, d010, d110) as i32;
-        let dx11 = lerp(rx, d011, d111) as i32;
+    // Re-slice each corner into a fixed-span window — one clamp per offset
+    // instead of `.min(max_off)` + `.min(last)` on every `8×n` read.
+    let n = total_out;
+    let m = cell.len() - n;
+    let w = |off: i32| &cell[(off.min(max_off) as usize).min(m)..][..n];
+    let d000 = w(x0i + y0i + z0i);
+    let d001 = w(x0i + y0i + z1);
+    let d010 = w(x0i + y1 + z0i);
+    let d011 = w(x0i + y1 + z1);
+    let d100 = w(x1 + y0i + z0i);
+    let d101 = w(x1 + y0i + z1);
+    let d110 = w(x1 + y1 + z0i);
+    let d111 = w(x1 + y1 + z1);
+    let lerp = |a: i32, l: i32, h: i32| {
+        (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16
+    };
+    for out_chan in 0..n {
+        let dx00 = lerp(rx, d000[out_chan] as i32, d100[out_chan] as i32) as i32;
+        let dx01 = lerp(rx, d001[out_chan] as i32, d101[out_chan] as i32) as i32;
+        let dx10 = lerp(rx, d010[out_chan] as i32, d110[out_chan] as i32) as i32;
+        let dx11 = lerp(rx, d011[out_chan] as i32, d111[out_chan] as i32) as i32;
 
         let dxy0 = lerp(ry, dx00, dx10) as i32;
         let dxy1 = lerp(ry, dx01, dx11) as i32;
