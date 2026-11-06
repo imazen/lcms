@@ -736,7 +736,9 @@ fn pixel_bytes(fmt: u32) -> usize {
     let ch = lcms::pack::t_channels(fmt) as usize;
     let ex = lcms::pack::t_extra(fmt) as usize;
     let b = lcms::pack::t_bytes(fmt) as usize;
-    (ch + ex) * b
+    // `by_sh(0)` marks double-precision elements — 8 bytes, like C's
+    // `pixel_size`/`T_BYTES` handling of the DBL formats.
+    (ch + ex) * if b == 0 { 8 } else { b }
 }
 
 // ---------------------------------------------------------------------------
