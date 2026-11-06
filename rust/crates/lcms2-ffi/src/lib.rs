@@ -2516,11 +2516,22 @@ pub extern "C" fn cmsGetPostScriptCRD(
     let Some(p) = prof_ref(h) else {
         return 0;
     };
+    if buf.is_null() {
+        // Sizing call — write into the NULL handler like C does.
+        let mut io = lcms::io::io_handler_from_null(None);
+        return lcms::ps2::get_post_script_crd(None, p, intent, flags, &mut io);
+    }
     let mut io = match lcms::io::io_handler_from_mem(None, vec![0u8; size as usize], "w") {
         Some(i) => i,
         None => return 0,
     };
-    lcms::ps2::get_post_script_crd(None, p, intent, flags, &mut io)
+    let n = lcms::ps2::get_post_script_crd(None, p, intent, flags, &mut io);
+    if n > 0 {
+        if let lcms::io::IoStream::Mem(m) = &io.stream {
+            unsafe { std::ptr::copy_nonoverlapping(m.block.as_ptr(), buf as *mut u8, (n as usize).min(size as usize)) };
+        }
+    }
+    n
 }
 /// `cmsGetPostScriptCSA`
 #[unsafe(no_mangle)]
@@ -2534,11 +2545,22 @@ pub extern "C" fn cmsGetPostScriptCSA(
     let Some(p) = prof_ref(h) else {
         return 0;
     };
+    if buf.is_null() {
+        // Sizing call — write into the NULL handler like C does.
+        let mut io = lcms::io::io_handler_from_null(None);
+        return lcms::ps2::get_post_script_csa(None, p, intent, flags, &mut io);
+    }
     let mut io = match lcms::io::io_handler_from_mem(None, vec![0u8; size as usize], "w") {
         Some(i) => i,
         None => return 0,
     };
-    lcms::ps2::get_post_script_csa(None, p, intent, flags, &mut io)
+    let n = lcms::ps2::get_post_script_csa(None, p, intent, flags, &mut io);
+    if n > 0 {
+        if let lcms::io::IoStream::Mem(m) = &io.stream {
+            unsafe { std::ptr::copy_nonoverlapping(m.block.as_ptr(), buf as *mut u8, (n as usize).min(size as usize)) };
+        }
+    }
+    n
 }
 /// `cmsUnregisterPlugins` — no-op (plugins live in contexts)
 #[unsafe(no_mangle)]
