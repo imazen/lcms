@@ -486,7 +486,6 @@ fn clut16_tetra_loop_scalar(
 #[allow(clippy::too_many_arguments)]
 #[archmage::autoversion]
 fn xform16_eval_loop<E, U, P>(
-    _token: archmage::SimdToken,
     unroll: U,
     pack: P,
     info: &PackInfo,
@@ -646,7 +645,6 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
 #[allow(clippy::too_many_arguments)]
 #[archmage::autoversion]
 fn xform_f32_eval_loop<E, U, P>(
-    _token: archmage::SimdToken,
     unroll: U,
     pack: P,
     info: &PackInfo,
