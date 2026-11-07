@@ -1136,19 +1136,25 @@ pub(crate) fn prelin_eval8(input: &[u16], output: &mut [u16], d: &OptData) -> bo
     let r = (input[0] >> 8) as usize;
     let g = (input[1] >> 8) as usize;
     let b = (input[2] >> 8) as usize;
-    let x0 = p8.x0[r] as i64;
-    let y0 = p8.y0[g] as i64;
-    let z0 = p8.z0[b] as i64;
-    let rx = p8.rx[r] as i64;
-    let ry = p8.ry[g] as i64;
-    let rz = p8.rz[b] as i64;
-    let x1 = x0 + if rx == 0 { 0 } else { p8.clut.opta[2] as i64 };
-    let y1 = y0 + if ry == 0 { 0 } else { p8.clut.opta[1] as i64 };
-    let z1 = z0 + if rz == 0 { 0 } else { p8.clut.opta[0] as i64 };
+    // C computes all of this in `cmsS15Fixed16Number` (i32) — the products
+    // `c_i * r_i` reach ±4.3e9 and wrap mod 2^32 at -O2. i64 (as previously)
+    // diverged by ±1 ulp whenever a product overflowed. Wrapping i32 is the
+    // literal C arithmetic — bit-identical, not approximate.
+    let x0 = p8.x0[r] as i32;
+    let y0 = p8.y0[g] as i32;
+    let z0 = p8.z0[b] as i32;
+    let rx = p8.rx[r] as i32;
+    let ry = p8.ry[g] as i32;
+    let rz = p8.rz[b] as i32;
+    let x1 = x0.wrapping_add(if rx == 0 { 0 } else { p8.clut.opta[2] as i32 });
+    let y1 = y0.wrapping_add(if ry == 0 { 0 } else { p8.clut.opta[1] as i32 });
+    let z1 = z0.wrapping_add(if rz == 0 { 0 } else { p8.clut.opta[0] as i32 });
     let Some(tab) = &p8.clut.tab16 else {
         return false;
     };
-    let dens = |i: i64, j: i64, k: i64, oc: usize| -> i64 { tab[(i + j + k) as usize + oc] as i64 };
+    let dens = |i: i32, j: i32, k: i32, oc: usize| -> i32 {
+        tab[(i as usize + j as usize + k as usize) + oc] as i32
+    };
     let total_out = p8.clut.n_outputs as usize;
     for oc in 0..total_out {
         let c0 = dens(x0, y0, z0, oc);
@@ -1189,8 +1195,12 @@ pub(crate) fn prelin_eval8(input: &[u16], output: &mut [u16], d: &OptData) -> bo
                 dens(x0, y0, z1, oc) - c0,
             )
         };
-        let rest = c1 * rx + c2 * ry + c3 * rz + 0x8001;
-        output[oc] = (c0 + ((rest + (rest >> 16)) >> 16)) as u16;
+        let rest = c1
+            .wrapping_mul(rx)
+            .wrapping_add(c2.wrapping_mul(ry))
+            .wrapping_add(c3.wrapping_mul(rz))
+            .wrapping_add(0x8001);
+        output[oc] = c0.wrapping_add(rest.wrapping_add(rest >> 16) >> 16) as u16;
     }
     true
 }
