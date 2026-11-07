@@ -4,6 +4,7 @@
 
 use crate::cnvrt;
 use crate::context::Context;
+use archmage::SimdToken;
 use crate::lut::Pipeline;
 use crate::pack::{
     CMS_PACK_FLAGS_16BITS, CMS_PACK_FLAGS_FLOAT, Formatter, FormatterDir, PackInfo,
@@ -115,6 +116,82 @@ fn pixel_size(fmt: u32) -> u32 {
 
 /// Generic `Precalculated`/`Cached` (!gamut) pixel loop with the eval
 /// monomorphized — each `OptData` arm instantiates this with its eval
+/// Fused `unroll3_words[_skip1]`→`tetra3_i32x4`→`pack3_words[_and_skip1]`
+/// — `#[arcane]` marks the AVX2 codegen; `X64V3Token::summon()` at the
+/// dispatch site resolves once per `cmsDoTransform`, scalar twin below.
+#[archmage::arcane]
+#[allow(clippy::too_many_arguments)]
+fn clut16_tetra_loop_v3(
+    token: archmage::X64V3Token,
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    ipx: usize,
+    opx: usize,
+) {
+    let ppli = ppl as usize * ipx;
+    let pplo = ppl as usize * opx;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppli];
+        let oline = &mut output[o_off..o_off + pplo];
+        for i in 0..ppl as usize {
+            let px = i * ipx;
+            let vin = [
+                u16::from_le_bytes(iline[px..px + 2].try_into().unwrap()),
+                u16::from_le_bytes(iline[px + 2..px + 4].try_into().unwrap()),
+                u16::from_le_bytes(iline[px + 4..px + 6].try_into().unwrap()),
+            ];
+            let [r, g, b] = crate::intrp::tetra3_i32x4(token, vin, p);
+            let po = i * opx;
+            let px64 = (r as u64) | ((g as u64) << 16) | ((b as u64) << 32);
+            oline[po..po + 6].copy_from_slice(&px64.to_le_bytes()[..6]);
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
+/// Scalar fallback for `clut16_tetra_loop_v3` (non-AVX2 hosts).
+#[allow(clippy::too_many_arguments)]
+fn clut16_tetra_loop_scalar(
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    ipx: usize,
+    opx: usize,
+) {
+    let ppli = ppl as usize * ipx;
+    let pplo = ppl as usize * opx;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppli];
+        let oline = &mut output[o_off..o_off + pplo];
+        for i in 0..ppl as usize {
+            let px = i * ipx;
+            let vin = [
+                u16::from_le_bytes(iline[px..px + 2].try_into().unwrap()),
+                u16::from_le_bytes(iline[px + 2..px + 4].try_into().unwrap()),
+                u16::from_le_bytes(iline[px + 4..px + 6].try_into().unwrap()),
+            ];
+            let [r, g, b] = crate::intrp::tetra3_interp16(vin, p);
+            let po = i * opx;
+            let px64 = (r as u64) | ((g as u64) << 16) | ((b as u64) << 32);
+            oline[po..po + 6].copy_from_slice(&px64.to_le_bytes()[..6]);
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// inlined, so no per-pixel `opt_data` match or `eval16_fn` indirection.
 /// `U`/`P` are generic so `xform16_run` can pass fn ITEMS (direct,
 /// inlinable calls) for the hot formatters instead of fn ptrs.
@@ -858,38 +935,17 @@ impl Transform {
                                     )
                             )
                         {
-                            let p = &c.params16;
-                            let ppl6 = ppl as usize * 6;
-                            let mut i_off = 0usize;
-                            let mut o_off = 0usize;
-                            for _ in 0..lines {
-                                let iline = &input[i_off..i_off + ppl6];
-                                let oline = &mut output[o_off..o_off + ppl6];
-                                for i in 0..ppl as usize {
-                                    let px = i * 6;
-                                    let vin = [
-                                        u16::from_le_bytes(
-                                            iline[px..px + 2].try_into().unwrap(),
-                                        ),
-                                        u16::from_le_bytes(
-                                            iline[px + 2..px + 4].try_into().unwrap(),
-                                        ),
-                                        u16::from_le_bytes(
-                                            iline[px + 4..px + 6].try_into().unwrap(),
-                                        ),
-                                    ];
-                                    let [r, g, b] =
-                                        crate::intrp::tetra3_interp16(vin, p);
-                                    let px64 = (r as u64)
-                                        | ((g as u64) << 16)
-                                        | ((b as u64) << 32);
-                                    oline[px..px + 6]
-                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
-                                }
-                                i_off += stride.bytes_per_line_in as usize;
-                                o_off += stride.bytes_per_line_out as usize;
+                            if let Some(token) = archmage::X64V3Token::summon()
+                            {
+                                return clut16_tetra_loop_v3(
+                                    token, &c.params16, input, output, ppl,
+                                    lines, stride, 6, 6,
+                                );
                             }
-                            return;
+                            return clut16_tetra_loop_scalar(
+                                &c.params16, input, output, ppl, lines, stride,
+                                6, 6,
+                            );
                         }
                     }
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
@@ -955,38 +1011,17 @@ impl Transform {
                                     )
                             )
                         {
-                            let p = &c.params16;
-                            let ppl8 = ppl as usize * 8;
-                            let mut i_off = 0usize;
-                            let mut o_off = 0usize;
-                            for _ in 0..lines {
-                                let iline = &input[i_off..i_off + ppl8];
-                                let oline = &mut output[o_off..o_off + ppl8];
-                                for i in 0..ppl as usize {
-                                    let px = i * 8;
-                                    let vin = [
-                                        u16::from_le_bytes(
-                                            iline[px..px + 2].try_into().unwrap(),
-                                        ),
-                                        u16::from_le_bytes(
-                                            iline[px + 2..px + 4].try_into().unwrap(),
-                                        ),
-                                        u16::from_le_bytes(
-                                            iline[px + 4..px + 6].try_into().unwrap(),
-                                        ),
-                                    ];
-                                    let [r, g, b] =
-                                        crate::intrp::tetra3_interp16(vin, p);
-                                    let px64 = (r as u64)
-                                        | ((g as u64) << 16)
-                                        | ((b as u64) << 32);
-                                    oline[px..px + 6]
-                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
-                                }
-                                i_off += stride.bytes_per_line_in as usize;
-                                o_off += stride.bytes_per_line_out as usize;
+                            if let Some(token) = archmage::X64V3Token::summon()
+                            {
+                                return clut16_tetra_loop_v3(
+                                    token, &c.params16, input, output, ppl,
+                                    lines, stride, 8, 8,
+                                );
                             }
-                            return;
+                            return clut16_tetra_loop_scalar(
+                                &c.params16, input, output, ppl, lines, stride,
+                                8, 8,
+                            );
                         }
                     }
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {

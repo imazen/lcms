@@ -1109,6 +1109,119 @@ pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
     out
 }
 
+/// `tetra3_interp16` over `magetypes::i32x4` — the four corner blocks as
+/// vector lanes. Identical index math and per-arm diff chains; wrapping
+/// i32 SIMD ops match the scalar `.wrapping_*` arithmetic exactly.
+/// Called once per pixel inside `#[rite]`/`#[arcane]` loop fns.
+#[inline]
+pub(crate) fn tetra3_i32x4<T: magetypes::simd::backends::I32x4Backend>(
+    token: T,
+    vin: [u16; 3],
+    p: &InterpParams,
+) -> [u16; 3] {
+    let lut_table = p.table_u16();
+
+    let fx = to_fixed_domain((vin[0] as i32).wrapping_mul(p.domain[0] as i32));
+    let fy = to_fixed_domain((vin[1] as i32).wrapping_mul(p.domain[1] as i32));
+    let fz = to_fixed_domain((vin[2] as i32).wrapping_mul(p.domain[2] as i32));
+
+    let x0 = fixed_to_int(fx);
+    let y0 = fixed_to_int(fy);
+    let z0 = fixed_to_int(fz);
+
+    let rx = fixed_rest_to_int(fx);
+    let ry = fixed_rest_to_int(fy);
+    let rz = fixed_rest_to_int(fz);
+
+    let x0i = (p.opta[2] as u32).wrapping_mul(x0 as u32);
+    let mut x1 = if vin[0] == 0xFFFF { 0 } else { p.opta[2] };
+    let y0i = (p.opta[1] as u32).wrapping_mul(y0 as u32);
+    let mut y1 = if vin[1] == 0xFFFF { 0 } else { p.opta[1] };
+    let z0i = (p.opta[0] as u32).wrapping_mul(z0 as u32);
+    let mut z1 = if vin[2] == 0xFFFF { 0 } else { p.opta[0] };
+
+    let base = (x0i + y0i + z0i) as usize;
+    let cell = &lut_table[base..];
+    let last = cell.len() - 1;
+    let mut out = [0u16; 3];
+
+    let rxv = magetypes::simd::generic::i32x4::<T>::splat_t(token, rx);
+    let ryv = magetypes::simd::generic::i32x4::<T>::splat_t(token, ry);
+    let rzv = magetypes::simd::generic::i32x4::<T>::splat_t(token, rz);
+    let k = magetypes::simd::generic::i32x4::<T>::splat_t(token, 0x8001);
+
+    macro_rules! arm {
+        (|$c1:ident, $c2:ident, $c3:ident, $c0:ident| $chain:expr) => {{
+            let $c0 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                token,
+                lanes_u64(corner_u64(cell, 0, last)),
+            );
+            let $c1 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                token,
+                lanes_u64(corner_u64(cell, x1 as usize, last)),
+            );
+            let $c2 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                token,
+                lanes_u64(corner_u64(cell, y1 as usize, last)),
+            );
+            let $c3 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                token,
+                lanes_u64(corner_u64(cell, z1 as usize, last)),
+            );
+            let ($c1, $c2, $c3) = $chain;
+            let rest = $c1 * rxv + $c2 * ryv + $c3 * rzv + k;
+            let rest = (rest + rest.shr_arithmetic::<16>()).shr_arithmetic::<16>();
+            let ra = rest.to_array();
+            let ca = $c0.to_array();
+            for oi in 0..3 {
+                out[oi] = (ca[oi] as u16).wrapping_add(ra[oi] as u16);
+            }
+        }};
+    }
+
+    if rx >= ry {
+        if ry >= rz {
+            y1 += x1;
+            z1 += y1;
+            arm!(|c1, c2, c3, c0| (c1 - c0, c2 - c1, c3 - c2));
+        } else if rz >= rx {
+            x1 += z1;
+            y1 += x1;
+            arm!(|c1, c2, c3, c0| (c1 - c3, c2 - c1, c3 - c0));
+        } else {
+            z1 += x1;
+            y1 += z1;
+            arm!(|c1, c2, c3, c0| (c1 - c0, c2 - c3, c3 - c1));
+        }
+    } else {
+        if rx >= rz {
+            x1 += y1;
+            z1 += x1;
+            arm!(|c1, c2, c3, c0| (c1 - c2, c2 - c0, c3 - c1));
+        } else if ry >= rz {
+            z1 += y1;
+            x1 += z1;
+            arm!(|c1, c2, c3, c0| (c1 - c3, c2 - c0, c3 - c2));
+        } else {
+            y1 += z1;
+            x1 += y1;
+            arm!(|c1, c2, c3, c0| (c1 - c2, c2 - c3, c3 - c0));
+        }
+    }
+    out
+}
+
+/// u64 corner block → four i32 lanes (u16 zero-extend).
+#[inline(always)]
+fn lanes_u64(v: u64) -> [i32; 4] {
+    [
+        (v & 0xffff) as i32,
+        ((v >> 16) & 0xffff) as i32,
+        ((v >> 32) & 0xffff) as i32,
+        (v >> 48) as i32,
+    ]
+}
+
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
 #[inline]
 #[inline]
