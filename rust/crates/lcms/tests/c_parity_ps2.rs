@@ -7,6 +7,14 @@ use lcms::ps2;
 use lcms::virt;
 use lcms_cref as c;
 use std::ffi::CString;
+use std::sync::Mutex;
+
+/// C's `_cmsPSActualColumn` is a file-scope static shared by every
+/// cmsGetPostScript* call in the process. Tests run in parallel threads, so
+/// two tests' C emissions interleave and shift each other's hex-line wraps.
+/// Serialize every C PS emission (Rust is per-call and doesn't need it, but
+/// locking the whole test keeps the comparison pairs aligned).
+static PS_LOCK: Mutex<()> = Mutex::new(());
 
 const BUF: usize = 4 * 1024 * 1024;
 
@@ -87,6 +95,7 @@ fn cmp(name: &str, c_out: &[u8], r_out: &[u8]) {
 
 #[test]
 fn srgb_csa() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let prof = c::cmsCreate_sRGBProfile();
         let cout = c_ps(c::cmsGetPostScriptCSA, prof, 0, 0);
@@ -99,6 +108,7 @@ fn srgb_csa() {
 
 #[test]
 fn srgb_crd() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let prof = c::cmsCreate_sRGBProfile();
         for intent in [0u32, 1, 3] {
@@ -118,6 +128,7 @@ fn srgb_crd() {
 
 #[test]
 fn cmyk_csa_crd() {
+    let _g = PS_LOCK.lock().unwrap();
     let bytes = std::fs::read("/home/lilith/work/zen/lcms/reference/lcms2/testbed/test1.icc")
         .expect("test1.icc");
     unsafe {
@@ -208,6 +219,7 @@ fn c_named_profile_bytes() -> Vec<u8> {
 
 #[test]
 fn named_csa_crd() {
+    let _g = PS_LOCK.lock().unwrap();
     let bytes = c_named_profile_bytes();
     unsafe {
         let prof = c::cmsOpenProfileFromMem(bytes.as_ptr() as *const _, bytes.len() as u32);
