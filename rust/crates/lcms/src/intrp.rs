@@ -200,6 +200,12 @@ impl<'a> InterpParams<'a> {
                 if std::ptr::fn_addr_eq(f, eval4_inputs_float as InterpFnFloat) {
                     eval4_inputs_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, tetrahedral_interp_float as InterpFnFloat) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return evalflt_tetra3_v3(t, input, output, n_out, self);
+                        }
+                    }
                     tetrahedral_interp_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, trilinear_interp_float as InterpFnFloat) {
                     trilinear_interp_float(input, output, self)
@@ -1265,6 +1271,147 @@ pub(crate) fn eval16_eval4_v3(
     output[..4].copy_from_slice(&v);
 }
 
+/// `tetrahedral_interp_float` over `magetypes::f32x4` — the ≤4 output
+/// channels as vector lanes. Per-lane `mulps`/`addps` results are
+/// IEEE-identical to the scalar ops (no FMA — the expression order is
+/// preserved); lanes beyond n_outputs are don't-care.
+#[inline(always)]
+pub(crate) fn tetra3_f32x4<T: magetypes::simd::backends::F32x4Backend>(
+    token: T,
+    input: &[f32; 3],
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [f32; 4] {
+    let lut_table = p.table_f32();
+
+    let px = fclamp(input[0]) * p.domain[0] as f32;
+    let py = fclamp(input[1]) * p.domain[1] as f32;
+    let pz = fclamp(input[2]) * p.domain[2] as f32;
+
+    let x0 = px.floor() as i32;
+    let rx = px - x0 as f32;
+    let y0 = py.floor() as i32;
+    let ry = py - y0 as f32;
+    let z0 = pz.floor() as i32;
+    let rz = pz - z0 as f32;
+
+    let x0i = (p.opta[2] as i32).wrapping_mul(x0);
+    let x1 = x0i
+        + if fclamp(input[0]) >= 1.0 {
+            0
+        } else {
+            p.opta[2] as i32
+        };
+    let y0i = (p.opta[1] as i32).wrapping_mul(y0);
+    let y1 = y0i
+        + if fclamp(input[1]) >= 1.0 {
+            0
+        } else {
+            p.opta[1] as i32
+        };
+    let z0i = (p.opta[0] as i32).wrapping_mul(z0);
+    let z1 = z0i
+        + if fclamp(input[2]) >= 1.0 {
+            0
+        } else {
+            p.opta[0] as i32
+        };
+
+    let n = p.n_outputs as usize;
+    let m = lut_table.len() - n;
+    let last = lut_table.len() - 1;
+    let c = |off: i32| corner_f32x4(lut_table, (off as usize).min(m), last);
+
+    let d000 = c(x0i + y0i + z0i);
+    let d001 = c(x0i + y0i + z1);
+    let d010 = c(x0i + y1 + z0i);
+    let d011 = c(x0i + y1 + z1);
+    let d100 = c(x1 + y0i + z0i);
+    let d101 = c(x1 + y0i + z1);
+    let d110 = c(x1 + y1 + z0i);
+    let d111 = c(x1 + y1 + z1);
+
+    let rxv = magetypes::simd::generic::f32x4::<T>::splat_t(token, rx);
+    let ryv = magetypes::simd::generic::f32x4::<T>::splat_t(token, ry);
+    let rzv = magetypes::simd::generic::f32x4::<T>::splat_t(token, rz);
+    let lv = |a: [f32; 4]| magetypes::simd::generic::f32x4::<T>::from_array_t(token, a);
+
+    let (d000v, d001v, d010v, d011v) = (lv(d000), lv(d001), lv(d010), lv(d011));
+    let (d100v, d101v, d110v, d111v) = (lv(d100), lv(d101), lv(d110), lv(d111));
+
+    let c0 = d000v;
+    let (c1, c2, c3);
+    if rx >= ry && ry >= rz {
+        c1 = d100v - c0;
+        c2 = d110v - d100v;
+        c3 = d111v - d110v;
+    } else if rx >= rz && rz >= ry {
+        c1 = d100v - c0;
+        c2 = d111v - d101v;
+        c3 = d101v - d100v;
+    } else if rz >= rx && rx >= ry {
+        c1 = d101v - d001v;
+        c2 = d111v - d101v;
+        c3 = d001v - c0;
+    } else if ry >= rx && rx >= rz {
+        c1 = d110v - d010v;
+        c2 = d010v - c0;
+        c3 = d111v - d110v;
+    } else if ry >= rz && rz >= rx {
+        c1 = d111v - d011v;
+        c2 = d010v - c0;
+        c3 = d011v - d010v;
+    } else if rz >= ry && ry >= rx {
+        c1 = d111v - d011v;
+        c2 = d011v - d001v;
+        c3 = d001v - c0;
+    } else {
+        let z = magetypes::simd::generic::f32x4::<T>::zero_t(token);
+        c1 = z;
+        c2 = z;
+        c3 = z;
+    }
+
+    let mut out = [0f32; 4];
+    let res = ((c0 + c1 * rxv) + c2 * ryv) + c3 * rzv;
+    let ra = res.to_array();
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = ra[oc];
+    }
+    out
+}
+
+/// f32 corner block → `[f32; 4]` lanes with the same tail clamp as the
+/// scalar `w(off)` slices (lanes beyond the table end take `last`).
+#[inline(always)]
+fn corner_f32x4(tab: &[f32], off: usize, last: usize) -> [f32; 4] {
+    match tab.get(off..off + 4) {
+        Some(s) => s.try_into().unwrap(),
+        None => {
+            let l = tab[last];
+            [
+                *tab.get(off).unwrap_or(&l),
+                *tab.get(off + 1).unwrap_or(&l),
+                *tab.get(off + 2).unwrap_or(&l),
+                *tab.get(off + 3).unwrap_or(&l),
+            ]
+        }
+    }
+}
+
+/// `#[arcane]` wrapper for `eval_float`'s tetra arm.
+#[archmage::arcane]
+pub(crate) fn evalflt_tetra3_v3(
+    token: archmage::X64V3Token,
+    input: &[f32],
+    output: &mut [f32],
+    n_outputs: usize,
+    p: &InterpParams,
+) {
+    let v = tetra3_f32x4(token, &[input[0], input[1], input[2]], n_outputs, p);
+    output[..n_outputs].copy_from_slice(&v[..n_outputs]);
+}
+
 /// u64 corner block → four i32 lanes (u16 zero-extend).
 #[inline(always)]
 fn lanes_u64(v: u64) -> [i32; 4] {
@@ -1871,5 +2018,60 @@ pub fn default_interpolators_factory(
             Interpolation::Lerp16(eval15_inputs)
         }),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `tetra3_f32x4` must be bit-exact vs `tetrahedral_interp_float` —
+    /// lane order and per-lane IEEE ops preserved on every arm.
+    #[test]
+    fn tetra3_f32x4_parity() {
+        let n = 33u32;
+        let mut tab = Vec::new();
+        for z in 0..n {
+            for y in 0..n {
+                for x in 0..n {
+                    for c in 0..3u32 {
+                        tab.push(((x * 3 + y * 5 + z * 7 + c * 11) as f32) / 4096.0);
+                    }
+                }
+            }
+        }
+        let p = InterpParams {
+            dw_flags: 0,
+            n_inputs: 3,
+            n_outputs: 3,
+            n_samples: [n; 15],
+            domain: [n - 1; 15],
+            opta: [3, 3 * n, 3 * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            table: InterpTable::F32(&tab),
+            interpolation: Interpolation::LerpFloat(
+                tetrahedral_interp_float as InterpFnFloat,
+            ),
+            foreign: None,
+        };
+        let Some(tok) = x64v3_cached() else {
+            return; // non-AVX2 host — nothing to compare against
+        };
+        let mut diffs = 0u64;
+        for i in 0..200000u32 {
+            let f = [
+                ((i * 37) % 65536) as f32 / 65535.0,
+                ((i * 71 + 13) % 65536) as f32 / 65535.0,
+                ((i * 113 + 29) % 65536) as f32 / 65535.0,
+            ];
+            let mut o1 = [0f32; 4];
+            tetrahedral_interp_float(&f, &mut o1, &p);
+            let o2 = tetra3_f32x4(tok, &f, 3, &p);
+            for c in 0..3 {
+                if o1[c].to_bits() != o2[c].to_bits() {
+                    diffs += 1;
+                }
+            }
+        }
+        assert_eq!(diffs, 0);
     }
 }
