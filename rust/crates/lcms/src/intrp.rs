@@ -172,6 +172,12 @@ impl<'a> InterpParams<'a> {
                     }
                     tetrahedral_interp16(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, trilinear_interp16 as InterpFn16) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return eval16_trilinear_v3(t, input, output, self);
+                        }
+                    }
                     trilinear_interp16(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, bilinear_interp16 as InterpFn16) {
                     bilinear_interp16(input, output, self)
@@ -1634,6 +1640,103 @@ pub(crate) fn eval4_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     out
 }
 
+/// `trilinear_interp16` over `magetypes::i32x4` — the ≤4 output
+/// channels as vector lanes; the 3-level lerp chain is wrapping i32
+/// like the scalar (intermediate `as u16` truncation = `& 0xffff`).
+#[inline(always)]
+pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
+    token: T,
+    vin: [u16; 3],
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [u16; 4] {
+    let lut_table = p.table_u16();
+
+    let fx = to_fixed_domain((vin[0] as i32).wrapping_mul(p.domain[0] as i32));
+    let x0 = fixed_to_int(fx);
+    let rx = fixed_rest_to_int(fx);
+    let fy = to_fixed_domain((vin[1] as i32).wrapping_mul(p.domain[1] as i32));
+    let y0 = fixed_to_int(fy);
+    let ry = fixed_rest_to_int(fy);
+    let fz = to_fixed_domain((vin[2] as i32).wrapping_mul(p.domain[2] as i32));
+    let z0 = fixed_to_int(fz);
+    let rz = fixed_rest_to_int(fz);
+
+    let x0i = (p.opta[2] as i32).wrapping_mul(x0);
+    let x1 = x0i
+        + if vin[0] == 0xFFFF { 0 } else { p.opta[2] as i32 };
+    let y0i = (p.opta[1] as i32).wrapping_mul(y0);
+    let y1 = y0i
+        + if vin[1] == 0xFFFF { 0 } else { p.opta[1] as i32 };
+    let z0i = (p.opta[0] as i32).wrapping_mul(z0);
+    let z1 = z0i
+        + if vin[2] == 0xFFFF { 0 } else { p.opta[0] as i32 };
+
+    let max_off = x1.wrapping_add(y1).wrapping_add(z1);
+    let cell = lut_table;
+    let n = p.n_outputs as usize;
+    let m = cell.len() - n;
+    let last = cell.len() - 1;
+    let w = |off: i32| {
+        magetypes::simd::generic::i32x4::<T>::from_array_t(
+            token,
+            lanes_u64(corner_u64(
+                cell,
+                ((off.min(max_off)) as usize).min(m),
+                last,
+            )),
+        )
+    };
+
+    let d000 = w(x0i + y0i + z0i);
+    let d001 = w(x0i + y0i + z1);
+    let d010 = w(x0i + y1 + z0i);
+    let d011 = w(x0i + y1 + z1);
+    let d100 = w(x1 + y0i + z0i);
+    let d101 = w(x1 + y0i + z1);
+    let d110 = w(x1 + y1 + z0i);
+    let d111 = w(x1 + y1 + z1);
+
+    type L<T> = magetypes::simd::generic::i32x4<T>;
+    let half = L::<T>::splat_t(token, 0x8000);
+    let mask = L::<T>::splat_t(token, 0xffff);
+    let lerp =
+        |a: L<T>, l: L<T>, h: L<T>| (l + ((h - l) * a + half).shr_arithmetic::<16>()) & mask;
+
+    let dx00 = lerp(L::<T>::splat_t(token, rx), d000, d100);
+    let dx01 = lerp(L::<T>::splat_t(token, rx), d001, d101);
+    let dx10 = lerp(L::<T>::splat_t(token, rx), d010, d110);
+    let dx11 = lerp(L::<T>::splat_t(token, rx), d011, d111);
+
+    let dxy0 = lerp(L::<T>::splat_t(token, ry), dx00, dx10);
+    let dxy1 = lerp(L::<T>::splat_t(token, ry), dx01, dx11);
+
+    let res = lerp(L::<T>::splat_t(token, rz), dxy0, dxy1).to_array();
+    let mut out = [0u16; 4];
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = res[oc] as u16;
+    }
+    out
+}
+
+/// `#[arcane]` wrapper for `eval16`'s trilinear arm.
+#[archmage::arcane]
+pub(crate) fn eval16_trilinear_v3(
+    token: archmage::X64V3Token,
+    input: &[u16],
+    output: &mut [u16],
+    p: &InterpParams,
+) {
+    let n_out = p.n_outputs as usize;
+    let v = trilinear_i32x4(
+        token,
+        [input[0], input[1], input[2]],
+        n_out,
+        p,
+    );
+    output[..n_out].copy_from_slice(&v[..n_out]);
+}
+
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
 #[inline]
 #[inline]
@@ -2202,6 +2305,58 @@ mod tests {
             let o2 = eval4_f32x4(tok, &f, 4, &p);
             for c in 0..4 {
                 if o1[c].to_bits() != o2[c].to_bits() {
+                    diffs += 1;
+                }
+            }
+        }
+        assert_eq!(diffs, 0);
+    }
+
+    /// `trilinear_i32x4` must be bit-exact vs `trilinear_interp16` —
+    /// corner loads + the 3-level lerp chain (with u16 truncation)
+    /// lane-exact.
+    #[test]
+    fn trilinear_i32x4_parity() {
+        let n = 33u32;
+        let mut tab = Vec::new();
+        for z in 0..n {
+            for y in 0..n {
+                for x in 0..n {
+                    for c in 0..3u32 {
+                        tab.push((((x * 3 + y * 5 + z * 7 + c * 11) * 15) as u16)
+                            .wrapping_add(c as u16));
+                    }
+                }
+            }
+        }
+        let p = InterpParams {
+            dw_flags: 0,
+            n_inputs: 3,
+            n_outputs: 3,
+            n_samples: [n; 15],
+            domain: [n - 1; 15],
+            opta: [3, 3 * n, 3 * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            table: InterpTable::U16(&tab),
+            interpolation: Interpolation::Lerp16(
+                trilinear_interp16 as InterpFn16,
+            ),
+            foreign: None,
+        };
+        let Some(tok) = x64v3_cached() else {
+            return;
+        };
+        let mut diffs = 0u64;
+        for i in 0..200000u32 {
+            let f = [
+                ((i * 37) % 65536) as u16,
+                ((i * 71 + 13) % 65536) as u16,
+                ((i * 113 + 29) % 65536) as u16,
+            ];
+            let mut o1 = [0u16; 4];
+            trilinear_interp16(&f, &mut o1, &p);
+            let o2 = trilinear_i32x4(tok, f, 3, &p);
+            for c in 0..3 {
+                if o1[c] != o2[c] {
                     diffs += 1;
                 }
             }
