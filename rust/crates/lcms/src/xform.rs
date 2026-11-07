@@ -939,7 +939,109 @@ impl Transform {
                     }
                 }
             }
+            const GRAY8: u32 = 3 << 16 | 1 << 3 | 1;
             const GRAY16: u32 = 3 << 16 | 1 << 3 | 2;
+            // Fused `unroll1_byte`→eval→`pack1_byte`…N bytes — 8-bit
+            // variants of the 1-input gray shapes.
+            if self.input_format == GRAY8 {
+                if let Some(l) = self.lut.as_mut() {
+                    let of = self.output_format;
+                    let plain8 = crate::pack::t_bytes(of) == 1
+                        && crate::pack::t_extra(of) == 0
+                        && crate::pack::t_doswap(of) == 0
+                        && crate::pack::t_flavor(of) == 0
+                        && crate::pack::t_swapfirst(of) == 0
+                        && crate::pack::t_endian16(of) == 0
+                        && crate::pack::t_premul(of) == 0
+                        && crate::pack::t_planar(of) == 0;
+                    if plain8 {
+                        if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
+                            // 256-pt tables, eval index = input byte.
+                            if crate::pack::t_channels(of) as usize == c.curves.len()
+                                && c.curves.iter().all(|t| t.len() == 256)
+                            {
+                                let n_out = c.curves.len();
+                                let pplo = ppl as usize * n_out;
+                                let mut i_off = 0usize;
+                                let mut o_off = 0usize;
+                                for _ in 0..lines {
+                                    let iline = &input[i_off..i_off + ppl as usize];
+                                    let oline = &mut output[o_off..o_off + pplo];
+                                    for i in 0..ppl as usize {
+                                        let v = iline[i] as usize;
+                                        let po = i * n_out;
+                                        for (cch, t) in c.curves.iter().enumerate() {
+                                            oline[po + cch] =
+                                                crate::pack::f16to8(t[v]);
+                                        }
+                                    }
+                                    i_off += stride.bytes_per_line_in as usize;
+                                    o_off += stride.bytes_per_line_out as usize;
+                                }
+                                return;
+                            }
+                        }
+                        if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                            let n_out = c.params16.n_outputs as usize;
+                            let interp1d = match c.params16.interpolation {
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::eval1_input
+                                            as crate::intrp::InterpFn16,
+                                    ) =>
+                                {
+                                    Some(
+                                        crate::intrp::eval1_input
+                                            as crate::intrp::InterpFn16,
+                                    )
+                                }
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::lin_lerp_1d
+                                            as crate::intrp::InterpFn16,
+                                    ) =>
+                                {
+                                    Some(
+                                        crate::intrp::lin_lerp_1d
+                                            as crate::intrp::InterpFn16,
+                                    )
+                                }
+                                _ => None,
+                            };
+                            if (1..=4).contains(&n_out)
+                                && crate::pack::t_channels(of) == n_out as u32
+                                && interp1d.is_some()
+                            {
+                                let eval1d = interp1d.unwrap();
+                                let p = &c.params16;
+                                let pplo = ppl as usize * n_out;
+                                let mut i_off = 0usize;
+                                let mut o_off = 0usize;
+                                for _ in 0..lines {
+                                    let iline = &input[i_off..i_off + ppl as usize];
+                                    let oline = &mut output[o_off..o_off + pplo];
+                                    let mut w_out = [0u16; 4];
+                                    for i in 0..ppl as usize {
+                                        let v =
+                                            crate::pack::f8to16(iline[i]);
+                                        eval1d(&[v], &mut w_out, p);
+                                        let po = i * n_out;
+                                        for cch in 0..n_out {
+                                            oline[po + cch] =
+                                                crate::pack::f16to8(w_out[cch]);
+                                        }
+                                    }
+                                    i_off += stride.bytes_per_line_in as usize;
+                                    o_off += stride.bytes_per_line_out as usize;
+                                }
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
             // Fused `unroll1_word`→`eval1_input`→N-word pack — resampled
             // 1-input CLUTs (gray→gray, gray→Lab, gray→RGB).
             if self.input_format == GRAY16 {

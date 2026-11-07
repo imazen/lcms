@@ -52,7 +52,7 @@ pub fn pack_factor(fmt: u32) -> u32 {
     (t_channels(fmt) + t_extra(fmt)) * t_bytes(fmt)
 }
 
-fn f8to16(v: u8) -> u16 {
+pub(crate) fn f8to16(v: u8) -> u16 {
     ((v as u16) << 8) | v as u16
 }
 pub(crate) fn f16to8(v: u16) -> u8 {
