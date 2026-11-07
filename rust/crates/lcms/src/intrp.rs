@@ -79,8 +79,18 @@ static FOREIGN_HOOKS: std::sync::OnceLock<ForeignHooks> = std::sync::OnceLock::n
 pub fn install_foreign_hooks(h: ForeignHooks) {
     let _ = FOREIGN_HOOKS.set(h);
 }
-fn foreign_hooks() -> Option<ForeignHooks> {
+pub(crate) fn foreign_hooks() -> Option<ForeignHooks> {
     FOREIGN_HOOKS.get().copied()
+}
+
+/// `X64V3Token::summon()` behind a `OnceLock` — the cpuid check runs
+/// once per process, so per-pixel kernel dispatch costs a load.
+#[inline]
+fn x64v3_cached() -> Option<archmage::X64V3Token> {
+    use archmage::SimdToken;
+    static TOK: std::sync::OnceLock<Option<archmage::X64V3Token>> =
+        std::sync::OnceLock::new();
+    *TOK.get_or_init(|| archmage::X64V3Token::summon())
 }
 
 /// The borrowed LUT a params struct points at.
@@ -145,8 +155,21 @@ impl<'a> InterpParams<'a> {
                 // inline them into the autoversioned pixel loop instead of
                 // paying an indirect call per pixel.
                 if std::ptr::fn_addr_eq(f, eval4_inputs as InterpFn16) {
+                    // 4-in/4-out eval4 → SIMD kernel (bit-exact lane math).
+                    if self.n_inputs == 4 && self.n_outputs == 4 && output.len() >= 4
+                    {
+                        if let Some(t) = x64v3_cached() {
+                            return eval16_eval4_v3(t, input, output, self);
+                        }
+                    }
                     eval4_inputs(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, tetrahedral_interp16 as InterpFn16) {
+                    // 3-in/3-out tetra → SIMD kernel (bit-exact lane math).
+                    if self.n_outputs == 3 && output.len() >= 3 {
+                        if let Some(t) = x64v3_cached() {
+                            return eval16_tetra3_v3(t, input, output, self);
+                        }
+                    }
                     tetrahedral_interp16(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, trilinear_interp16 as InterpFn16) {
                     trilinear_interp16(input, output, self)
@@ -1209,6 +1232,37 @@ pub(crate) fn tetra3_i32x4<T: magetypes::simd::backends::I32x4Backend>(
         }
     }
     out
+}
+
+/// `#[arcane]` wrappers so `eval16` can reach the SIMD kernels from
+/// non-token contexts — the feature-gated body lets the i32x4 backend
+/// ops inline properly (a plain call into `tetra3_i32x4` leaves them
+/// as per-op calls).
+#[archmage::arcane]
+pub(crate) fn eval16_tetra3_v3(
+    token: archmage::X64V3Token,
+    input: &[u16],
+    output: &mut [u16],
+    p: &InterpParams,
+) {
+    let v = tetra3_i32x4(token, [input[0], input[1], input[2]], p);
+    output[..3].copy_from_slice(&v);
+}
+
+#[archmage::arcane]
+pub(crate) fn eval16_eval4_v3(
+    token: archmage::X64V3Token,
+    input: &[u16],
+    output: &mut [u16],
+    p: &InterpParams,
+) {
+    let v = eval4_i32x4(
+        token,
+        [input[0], input[1], input[2], input[3]],
+        4,
+        p,
+    );
+    output[..4].copy_from_slice(&v);
 }
 
 /// u64 corner block → four i32 lanes (u16 zero-extend).

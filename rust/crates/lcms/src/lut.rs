@@ -346,7 +346,13 @@ fn evaluate_clut_float(input: &[f32], output: &mut [f32], mpe: &Stage) {
             opta: d.opta,
             table: InterpTable::F32(d.tab_float.as_deref().unwrap_or(&[])),
             interpolation: d.interpolation,
-            foreign: d.foreign.clone(),
+            // `Box` clone allocates — only needed when a foreign kernel
+            // is actually installed; `None` falls through to built-ins.
+            foreign: if d.foreign.is_some() && crate::intrp::foreign_hooks().is_some() {
+                d.foreign.clone()
+            } else {
+                None
+            },
         };
         p.eval_float(input, output);
     }
@@ -355,10 +361,8 @@ fn evaluate_clut_float(input: &[f32], output: &mut [f32], mpe: &Stage) {
 /// `EvaluateCLUTfloatIn16` — convert → 16-bit interp → back to float.
 fn evaluate_clut_float_in16(input: &[f32], output: &mut [f32], mpe: &Stage) {
     if let StageData::CLut(d) = &mpe.data {
-        let mut in16 = [0u16; MAX_STAGE_CHANNELS];
-        let mut out16 = [0u16; MAX_STAGE_CHANNELS];
-
-        from_float_to16(input, &mut in16, mpe.input_channels as usize);
+        let n_in = mpe.input_channels as usize;
+        let n_out = mpe.output_channels as usize;
         let p = InterpParams {
             dw_flags: d.dw_flags,
             n_inputs: d.n_inputs,
@@ -368,10 +372,27 @@ fn evaluate_clut_float_in16(input: &[f32], output: &mut [f32], mpe: &Stage) {
             opta: d.opta,
             table: InterpTable::U16(d.tab16.as_deref().unwrap_or(&[])),
             interpolation: d.interpolation,
-            foreign: d.foreign.clone(),
+            // `Box` clone allocates — only needed when a foreign kernel
+            // is actually installed; `None` falls through to built-ins.
+            foreign: if d.foreign.is_some() && crate::intrp::foreign_hooks().is_some() {
+                d.foreign.clone()
+            } else {
+                None
+            },
         };
-        p.eval16(&in16, &mut out16[..mpe.output_channels as usize]);
-        from_16_to_float(&out16, output, mpe.output_channels as usize);
+        if n_in <= 4 && n_out <= 4 {
+            let mut in16 = [0u16; 4];
+            let mut out16 = [0u16; 4];
+            from_float_to16(input, &mut in16, n_in);
+            p.eval16(&in16[..n_in], &mut out16[..n_out]);
+            from_16_to_float(&out16, output, n_out);
+        } else {
+            let mut in16 = [0u16; MAX_STAGE_CHANNELS];
+            let mut out16 = [0u16; MAX_STAGE_CHANNELS];
+            from_float_to16(input, &mut in16, n_in);
+            p.eval16(&in16, &mut out16[..n_out]);
+            from_16_to_float(&out16, output, n_out);
+        }
     }
 }
 
@@ -964,8 +985,34 @@ fn bless_lut(lut: &mut Pipeline) -> bool {
 }
 
 /// `_LUTeval16` — 16-bit eval through float stages.
+/// Max channels any stage in the chain touches — the pipeline's own
+/// in/out plus each stage's in/out (a middle stage can exceed both).
+fn pipeline_max_channels(lut: &Pipeline) -> usize {
+    let mut need = lut.input_channels.max(lut.output_channels) as usize;
+    let mut mpe = lut.elements.as_deref();
+    while let Some(s) = mpe {
+        need = need
+            .max(s.input_channels as usize)
+            .max(s.output_channels as usize);
+        mpe = s.next.as_deref();
+    }
+    need
+}
+
 fn lut_eval16(input: &[u16], output: &mut [u16], lut: &Pipeline) {
-    let mut storage = [[0.0f32; MAX_STAGE_CHANNELS]; 2];
+    // The alternating-buffers storage is `MAX_STAGE_CHANNELS` wide in C
+    // but only `need` channels are ever touched — a tighter array turns
+    // the per-pixel init into a few vector stores instead of a memset.
+    let need = pipeline_max_channels(lut);
+    if need <= 4 {
+        lut_eval16_impl::<4>(input, output, lut);
+    } else {
+        lut_eval16_impl::<MAX_STAGE_CHANNELS>(input, output, lut);
+    }
+}
+
+fn lut_eval16_impl<const N: usize>(input: &[u16], output: &mut [u16], lut: &Pipeline) {
+    let mut storage = [[0.0f32; N]; 2];
     let mut phase = 0usize;
 
     from_16_to_float(input, &mut storage[phase], lut.input_channels as usize);
@@ -990,7 +1037,16 @@ fn lut_eval16(input: &[u16], output: &mut [u16], lut: &Pipeline) {
 
 /// `_LUTevalFloat`
 fn lut_eval_float(input: &[f32], output: &mut [f32], lut: &Pipeline) {
-    let mut storage = [[0.0f32; MAX_STAGE_CHANNELS]; 2];
+    let need = pipeline_max_channels(lut);
+    if need <= 4 {
+        lut_eval_float_impl::<4>(input, output, lut);
+    } else {
+        lut_eval_float_impl::<MAX_STAGE_CHANNELS>(input, output, lut);
+    }
+}
+
+fn lut_eval_float_impl<const N: usize>(input: &[f32], output: &mut [f32], lut: &Pipeline) {
+    let mut storage = [[0.0f32; N]; 2];
     let mut phase = 0usize;
 
     storage[phase][..lut.input_channels as usize]

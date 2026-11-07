@@ -1013,6 +1013,16 @@ fn unroll_fd_to_float(
     };
     let stride_elems = stride as usize / pixel_size(i.input_format) as usize;
     let start = if extra_first { extra } else { 0 };
+    // Interleaved f32 → direct loads (`v / 1.0` and `f32→f64→f32` are
+    // exact) — the dominant float-transform format.
+    if esz == 4 && !do_swap && !reverse && !planar && !swap_first && !premul
+        && maximum == 1.0
+    {
+        for c in 0..n_chan {
+            w[c] = rd32f(a, (c + start) * 4);
+        }
+        return (n_chan + extra) * 4;
+    }
     let mut alpha_factor = 1.0f64;
     if premul && extra > 0 {
         let o = if planar {
@@ -2381,6 +2391,17 @@ fn pack_fd_from_float(
     };
     let stride_elems = stride as usize / pixel_size(i.output_format) as usize;
     let start = if extra_first { extra } else { 0 };
+    // Interleaved f32 → direct stores — the dominant float-transform
+    // output format.
+    if esz == 4 && !do_swap && !reverse && !planar && !swap_first
+        && maximum == 1.0
+    {
+        for c in 0..n_chan {
+            out[(c + start) * 4..(c + start) * 4 + 4]
+                .copy_from_slice(&w[c].to_le_bytes());
+        }
+        return (n_chan + extra) * 4;
+    }
     let mut last_v: f64 = 0.0;
     for c in 0..n_chan {
         let index = if do_swap { n_chan - c - 1 } else { c };
