@@ -1655,6 +1655,73 @@ impl Transform {
         };
         if !gamut {
             if let Some(l) = self.lut.as_ref() {
+                // Fused `unroll_floats`→u16-tetra→`pack_floats` for
+                // TYPE_RGBA_FLT (the "32 bits" bench shape): 3 f32s in,
+                // quick-saturate to u16, tetra3 on the 16-bit table,
+                // back to f32 — extras write 0.0f, matching the generic
+                // path's zeroed `f_out` slots.
+                const RGBA_FLT: u32 = 1 << 22 | 4 << 16 | 1 << 7 | 3 << 3 | 4;
+                if self.input_format == RGBA_FLT && self.output_format == RGBA_FLT {
+                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                        if c.params_f.is_none()
+                            && c.params16.n_outputs == 3
+                            && matches!(
+                                c.params16.interpolation,
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::tetrahedral_interp16
+                                            as crate::intrp::InterpFn16,
+                                    )
+                            )
+                        {
+                            let p = &c.params16;
+                            let ppl16 = ppl as usize * 16;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl16];
+                                let oline = &mut output[o_off..o_off + ppl16];
+                                for i in 0..ppl as usize {
+                                    let px = i * 16;
+                                    let rd = |o: usize| {
+                                        f32::from_le_bytes(
+                                            iline[px + o..px + o + 4]
+                                                .try_into()
+                                                .unwrap(),
+                                        )
+                                    };
+                                    let vin = [
+                                        crate::fixed::quick_saturate_word(
+                                            rd(0) as f64 * 65535.0,
+                                        ),
+                                        crate::fixed::quick_saturate_word(
+                                            rd(4) as f64 * 65535.0,
+                                        ),
+                                        crate::fixed::quick_saturate_word(
+                                            rd(8) as f64 * 65535.0,
+                                        ),
+                                    ];
+                                    let [r, g, b] =
+                                        crate::intrp::tetra3_interp16(vin, p);
+                                    let out128 = [
+                                        r as f32 / 65535.0,
+                                        g as f32 / 65535.0,
+                                        b as f32 / 65535.0,
+                                        0.0f32,
+                                    ];
+                                    for (cch, v) in out128.iter().enumerate() {
+                                        oline[px + cch * 4..px + cch * 4 + 4]
+                                            .copy_from_slice(&v.to_le_bytes());
+                                    }
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
                 if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                     if let Some(pf) = c.params_f.as_ref() {
                         use crate::intrp::{self as ip, InterpFnFloat};
