@@ -46,8 +46,12 @@ fn wide(s: &str) -> Vec<Wchar> {
     s.chars().map(|c| c as Wchar).collect()
 }
 
-/// `SetSeqDescTag` — profile sequence with lcms manufacturer + model
-fn set_seq_desc_tag(icc: &mut IccProfile, model: &str) -> bool {
+/// `SetSeqDescTag` — profile sequence for the built-in profiles. C's
+/// `cmsAllocProfileSequenceDescription` leaves Manufacturer/Model/Description
+/// NULL and `cmsMLUsetASCII(NULL,…)` no-ops, so the serialized mlus are empty
+/// (observed in the C oracle). `model` is therefore intentionally unused —
+/// kept in the signature to mirror C's `SetSeqDescTag(hProfile, Model)`.
+fn set_seq_desc_tag(icc: &mut IccProfile, _model: &str) -> bool {
     let Some(mut seq) = alloc_profile_seq_desc(None, 1) else {
         return false;
     };
@@ -55,21 +59,25 @@ fn set_seq_desc_tag(icc: &mut IccProfile, model: &str) -> bool {
     seq.seq[0].device_model = 0;
     seq.seq[0].attributes = 0;
     seq.seq[0].technology = 0;
-    let Some(mut mfg) = mlu_alloc(None, 1) else {
-        return false;
-    };
-    let Some(mut mdl) = mlu_alloc(None, 1) else {
-        return false;
-    };
-    mlu_set_ascii(&mut mfg, b"en", b"US", b"Little CMS");
-    mlu_set_ascii(&mut mdl, b"en", b"US", model.as_bytes());
-    seq.seq[0].manufacturer = Some(mfg);
-    seq.seq[0].model = Some(mdl);
-    profile::cms_write_tag(
+    seq.seq[0].manufacturer = None;
+    seq.seq[0].model = None;
+    seq.seq[0].description = None;
+    // C `_cmsWriteProfileSequence`: 'pseq' always, 'psid' too when v>=4.0
+    if !profile::cms_write_tag(
         icc,
         tags::SigProfileSequenceDescTag,
-        Some(TagObject::ProfileSeqDesc(seq)),
-    )
+        Some(TagObject::ProfileSeqDesc(seq.clone())),
+    ) {
+        return false;
+    }
+    if profile::get_encoded_icc_version(icc) >= 0x04000000 {
+        return profile::cms_write_tag(
+            icc,
+            tags::SigProfileSequenceIdTag,
+            Some(TagObject::ProfileSeqId(seq)),
+        );
+    }
+    true
 }
 
 /// `cmsCreateRGBProfileTHR` — `transfer` compares by pointer like C

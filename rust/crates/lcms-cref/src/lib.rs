@@ -595,9 +595,38 @@ unsafe extern "C" {
     pub fn cmsGDBCompute(gbd: *mut c_void, flags: u32) -> i32;
     // --- cube / devicelink ---
     pub fn cmsCreateDeviceLinkFromCubeFile(path: *const i8) -> *mut c_void;
-    // --- black point ---
+    // --- black point / sampling ---
     pub fn cmsDetectBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
     pub fn cmsDetectDestinationBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
+    pub fn cmsDetectTAC(prof: *mut c_void) -> f64;
+    pub fn cmsDesaturateLab(lab: *mut c_void, amax: f64, amin: f64, bmax: f64, bmin: f64) -> i32;
+    // --- profile info (cmsio1) ---
+    pub fn cmsIsIntentSupported(prof: *mut c_void, intent: u32, direction: u32) -> i32;
+    pub fn cmsGetSupportedIntents(n_max: u32, codes: *mut u32, descriptions: *mut *mut u8) -> u32;
+    // --- virtual profile builders (cmsvirt) ---
+    pub fn cmsCreateGrayProfile(white_point: *const c_void, transfer: *mut ToneCurve) -> *mut c_void;
+    pub fn cmsCreateBCHSWabstractProfile(n_lut_points: u32, bright: f64, contrast: f64, hue: f64, saturation: f64, temp_src: u32, temp_dest: u32) -> *mut c_void;
+    pub fn cmsCreateLinearizationDeviceLinkTHR(ctx: *mut c_void, color_space: u32, transfer: *const *mut ToneCurve) -> *mut c_void;
+    pub fn cmsCreateInkLimitingDeviceLinkTHR(ctx: *mut c_void, color_space: u32, limit: f64) -> *mut c_void;
+    pub fn cmsCreateAbstractProfile(n_lut_points: u32, bright: f64, contrast: f64, hue: f64, saturation: f64, intent: u32) -> *mut c_void;
+    pub fn cmsTransform2DeviceLink(t: *mut c_void, version: f64, flags: u32) -> *mut c_void;
+    // --- transforms, extended surface ---
+    pub fn cmsCreateMultiprofileTransform(profs: *mut *mut c_void, n_profiles: i32, in_fmt: u32, out_fmt: u32, intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsCreateProofingTransform(input: *mut c_void, in_fmt: u32, output: *mut c_void, out_fmt: u32, proof: *mut c_void, intent: u32, proofing_intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsDoTransformStride(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32, stride: u32);
+    pub fn cmsDoTransformLineStride(t: *mut c_void, input: *const c_void, output: *mut c_void, ppl: u32, lines: u32, bpl_in: u32, bpl_out: u32, bpp_in: u32, bpp_out: u32);
+    pub fn cmsChangeBuffersFormat(t: *mut c_void, in_fmt: u32, out_fmt: u32) -> i32;
+    pub fn cmsGetTransformInputFormat(t: *mut c_void) -> u32;
+    pub fn cmsGetTransformOutputFormat(t: *mut c_void) -> u32;
+    pub fn cmsGetTransformGamutCheckPipeline(t: *mut c_void) -> *mut c_void;
+    pub fn cmsSetAlarmCodesTHR(ctx: *mut c_void, codes: *const u16);
+    pub fn cmsGetAlarmCodesTHR(ctx: *mut c_void, codes: *mut u16);
+    pub fn cmsSetAdaptationStateTHR(ctx: *mut c_void, d: f64) -> f64;
+    pub fn cmsGetPCSofProfile(prof: *mut c_void) -> u32;
+    pub fn cmsGetColorSpace(prof: *mut c_void) -> u32;
+    pub fn cmsGetDeviceClass(prof: *mut c_void) -> u32;
+    pub fn cmsGetEncodedICCversion(prof: *mut c_void) -> u32;
+    pub fn cmsSetEncodedICCversion(prof: *mut c_void, version: u32);
 
     // transform-internals shims for the prelin8 divergence bisect
     pub fn cref_xform_lut(t: *mut c_void) -> *mut c_void;
