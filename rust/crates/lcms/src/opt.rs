@@ -1424,6 +1424,7 @@ fn optimize_by_computing_linearization(
                 clut_data.tab16.as_deref().unwrap_or(&[]),
             )),
             interpolation: clut_data.interpolation,
+            kernel: crate::intrp::kernel_kind(clut_data.interpolation),
             foreign: clut_data.foreign.clone(),
         };
         optimized.opt_data = Some(OptData::Prelin16(Box::new(Prelin16Data {
@@ -1619,6 +1620,7 @@ fn optimize_by_resampling(
                 clut_data.tab16.as_deref().unwrap_or(&[]),
             )),
             interpolation: clut_data.interpolation,
+            kernel: crate::intrp::kernel_kind(clut_data.interpolation),
             foreign: clut_data.foreign.clone(),
         };
         let params_f = clut_data.tab_float.as_deref().map(|tab| {
@@ -1631,6 +1633,7 @@ fn optimize_by_resampling(
                 opta: clut_data.opta,
                 table: crate::intrp::InterpTable::F32Rc(std::sync::Arc::from(tab)),
                 interpolation: clut_data.interpolation,
+            kernel: crate::intrp::kernel_kind(clut_data.interpolation),
                 foreign: clut_data.foreign.clone(),
             }
         });
@@ -1656,6 +1659,7 @@ fn optimize_by_resampling(
                 clut_data.tab16.as_deref().unwrap_or(&[]),
             )),
             interpolation: clut_data.interpolation,
+            kernel: crate::intrp::kernel_kind(clut_data.interpolation),
             foreign: clut_data.foreign.clone(),
         };
         dest.opt_data = Some(OptData::Prelin16(Box::new(Prelin16Data {

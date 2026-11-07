@@ -58,6 +58,39 @@ pub enum Interpolation {
     LerpFloat(InterpFnFloat),
 }
 
+/// Which built-in kernel `interpolation` holds — resolved ONCE at params
+/// construction so `eval16`/`eval_float` match a tag instead of running a
+/// `fn_addr_eq` chain per pixel. `Other` → indirect call like C.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum KernelKind {
+    Eval4, Tetra3, Trilinear, Bilinear, Eval1, LinLerp1D, Other16,
+    Eval4F, Tetra3F, TrilinearF, BilinearF, Eval1F, LinLerp1DF, OtherF,
+}
+
+pub(crate) fn kernel_kind(interp: Interpolation) -> KernelKind {
+    use std::ptr::fn_addr_eq;
+    match interp {
+        Interpolation::Lerp16(f) => {
+            if fn_addr_eq(f, eval4_inputs as InterpFn16) { KernelKind::Eval4 }
+            else if fn_addr_eq(f, tetrahedral_interp16 as InterpFn16) { KernelKind::Tetra3 }
+            else if fn_addr_eq(f, trilinear_interp16 as InterpFn16) { KernelKind::Trilinear }
+            else if fn_addr_eq(f, bilinear_interp16 as InterpFn16) { KernelKind::Bilinear }
+            else if fn_addr_eq(f, eval1_input as InterpFn16) { KernelKind::Eval1 }
+            else if fn_addr_eq(f, lin_lerp_1d as InterpFn16) { KernelKind::LinLerp1D }
+            else { KernelKind::Other16 }
+        }
+        Interpolation::LerpFloat(f) => {
+            if fn_addr_eq(f, eval4_inputs_float as InterpFnFloat) { KernelKind::Eval4F }
+            else if fn_addr_eq(f, tetrahedral_interp_float as InterpFnFloat) { KernelKind::Tetra3F }
+            else if fn_addr_eq(f, trilinear_interp_float as InterpFnFloat) { KernelKind::TrilinearF }
+            else if fn_addr_eq(f, bilinear_interp_float as InterpFnFloat) { KernelKind::BilinearF }
+            else if fn_addr_eq(f, eval1_input_float as InterpFnFloat) { KernelKind::Eval1F }
+            else if fn_addr_eq(f, lin_lerp_1d_float as InterpFnFloat) { KernelKind::LinLerp1DF }
+            else { KernelKind::OtherF }
+        }
+    }
+}
+
 /// Foreign-kernel plumbing — registered by `lcms2-ffi` (which may use
 /// `unsafe`; this crate forbids it). When `InterpParams::foreign` is set,
 /// `eval16`/`eval_float` dispatch through these hooks instead of the
@@ -120,6 +153,9 @@ pub struct InterpParams<'a> {
     /// `cmsInterpFnFactory` supplied the kernel; `interpolation` stays the
     /// built-in default for any consumer that doesn't consult `foreign`.
     pub foreign: Option<Box<CmsInterpParams>>,
+    /// Resolved built-in kernel tag — see `kernel_kind`; `eval16`/`eval_float`
+    /// match on this instead of sniffing `interpolation`'s address per call.
+    pub kernel: KernelKind,
 }
 
 impl<'a> InterpParams<'a> {
@@ -149,59 +185,60 @@ impl<'a> InterpParams<'a> {
                 return;
             }
         }
-        match self.interpolation {
-            Interpolation::Lerp16(f) => {
-                // Known kernels become direct calls — the caller can then
-                // inline them into the autoversioned pixel loop instead of
-                // paying an indirect call per pixel.
-                if std::ptr::fn_addr_eq(f, eval4_inputs as InterpFn16) {
-                    // 4-in/4-out eval4 → SIMD kernel (bit-exact lane math).
-                    if self.n_inputs == 4 && self.n_outputs == 4 && output.len() >= 4
-                    {
-                        if let Some(t) = x64v3_cached() {
-                            return eval16_eval4_v3(t, input, output, self);
-                        }
+        match self.kernel {
+            KernelKind::Eval4 => {
+                // 4-in/4-out eval4 → SIMD kernel (bit-exact lane math).
+                if self.n_inputs == 4 && self.n_outputs == 4 && output.len() >= 4
+                {
+                    if let Some(t) = x64v3_cached() {
+                        return eval16_eval4_v3(t, input, output, self);
                     }
-                    eval4_inputs(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, tetrahedral_interp16 as InterpFn16) {
-                    // 3-in/3-out tetra → SIMD kernel (bit-exact lane math).
-                    if self.n_outputs == 3 && output.len() >= 3 {
-                        if let Some(t) = x64v3_cached() {
-                            return eval16_tetra3_v3(t, input, output, self);
-                        }
-                    }
-                    tetrahedral_interp16(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, trilinear_interp16 as InterpFn16) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return eval16_trilinear_v3(t, input, output, self);
-                        }
-                    }
-                    trilinear_interp16(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, bilinear_interp16 as InterpFn16) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return eval16_bilinear_v3(t, input, output, self);
-                        }
-                    }
-                    bilinear_interp16(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, eval1_input as InterpFn16) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return eval16_eval1_v3(t, input, output, self);
-                        }
-                    }
-                    eval1_input(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, lin_lerp_1d as InterpFn16) {
-                    lin_lerp_1d(input, output, self)
-                } else {
-                    f(input, output, self)
                 }
+                eval4_inputs(input, output, self)
             }
-            Interpolation::LerpFloat(_) => unreachable!("Lerp16 on float params"),
+            KernelKind::Tetra3 => {
+                // 3-in/3-out tetra → SIMD kernel (bit-exact lane math).
+                if self.n_outputs == 3 && output.len() >= 3 {
+                    if let Some(t) = x64v3_cached() {
+                        return eval16_tetra3_v3(t, input, output, self);
+                    }
+                }
+                tetrahedral_interp16(input, output, self)
+            }
+            KernelKind::Trilinear => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return eval16_trilinear_v3(t, input, output, self);
+                    }
+                }
+                trilinear_interp16(input, output, self)
+            }
+            KernelKind::Bilinear => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return eval16_bilinear_v3(t, input, output, self);
+                    }
+                }
+                bilinear_interp16(input, output, self)
+            }
+            KernelKind::Eval1 => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return eval16_eval1_v3(t, input, output, self);
+                    }
+                }
+                eval1_input(input, output, self)
+            }
+            KernelKind::LinLerp1D => lin_lerp_1d(input, output, self),
+            _ => {
+                let Interpolation::Lerp16(f) = self.interpolation else {
+                    unreachable!("Lerp16 on float params")
+                };
+                f(input, output, self)
+            }
         }
     }
     /// `p->Interpolation.LerpFloat(input, output, p)`
@@ -213,55 +250,59 @@ impl<'a> InterpParams<'a> {
                 return;
             }
         }
-        match self.interpolation {
-            Interpolation::LerpFloat(f) => {
-                if std::ptr::fn_addr_eq(f, eval4_inputs_float as InterpFnFloat) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return evalflt_eval4_v3(t, input, output, n_out, self);
-                        }
+        match self.kernel {
+            KernelKind::Eval4F => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return evalflt_eval4_v3(t, input, output, n_out, self);
                     }
-                    eval4_inputs_float(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, tetrahedral_interp_float as InterpFnFloat) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return evalflt_tetra3_v3(t, input, output, n_out, self);
-                        }
-                    }
-                    tetrahedral_interp_float(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, trilinear_interp_float as InterpFnFloat) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return evalflt_trilinear_v3(t, input, output, n_out, self);
-                        }
-                    }
-                    trilinear_interp_float(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, bilinear_interp_float as InterpFnFloat) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return evalflt_bilinear_v3(t, input, output, n_out, self);
-                        }
-                    }
-                    bilinear_interp_float(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, eval1_input_float as InterpFnFloat) {
-                    let n_out = self.n_outputs as usize;
-                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
-                        if let Some(t) = x64v3_cached() {
-                            return evalflt_eval1_v3(t, input, output, n_out, self);
-                        }
-                    }
-                    eval1_input_float(input, output, self)
-                } else if std::ptr::fn_addr_eq(f, lin_lerp_1d_float as InterpFnFloat) {
-                    lin_lerp_1d_float(input, output, self)
-                } else {
-                    f(input, output, self)
                 }
+                eval4_inputs_float(input, output, self)
             }
-            Interpolation::Lerp16(_) => unreachable!("LerpFloat on u16 params"),
+            KernelKind::Tetra3F => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return evalflt_tetra3_v3(t, input, output, n_out, self);
+                    }
+                }
+                tetrahedral_interp_float(input, output, self)
+            }
+            KernelKind::TrilinearF => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return evalflt_trilinear_v3(t, input, output, n_out, self);
+                    }
+                }
+                trilinear_interp_float(input, output, self)
+            }
+            KernelKind::BilinearF => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return evalflt_bilinear_v3(t, input, output, n_out, self);
+                    }
+                }
+                bilinear_interp_float(input, output, self)
+            }
+            KernelKind::Eval1F => {
+                let n_out = self.n_outputs as usize;
+                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    if let Some(t) = x64v3_cached() {
+                        return evalflt_eval1_v3(t, input, output, n_out, self);
+                    }
+                }
+                eval1_input_float(input, output, self)
+            }
+            KernelKind::LinLerp1DF => lin_lerp_1d_float(input, output, self),
+            _ => {
+                let Interpolation::LerpFloat(f) = self.interpolation else {
+                    unreachable!("LerpFloat on u16 params")
+                };
+                f(input, output, self)
+            }
         }
     }
     /// Build the C-layout params mirror handed to a foreign kernel.
@@ -346,6 +387,7 @@ pub fn compute_interp_params_ex<'a>(
         opta: [0; MAX_INPUT_DIMENSIONS],
         table,
         interpolation: Interpolation::Lerp16(|_, _, _| {}),
+            kernel: kernel_kind(Interpolation::Lerp16(|_, _, _| {})),
         foreign: None,
     };
 
@@ -1474,6 +1516,7 @@ pub(crate) fn eval4_f32x4<T: magetypes::simd::backends::F32x4Backend>(
         opta: p.opta,
         table: InterpTable::F32(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
+            kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..3].copy_from_slice(&p.domain[1..4]);
@@ -2314,6 +2357,7 @@ pub(crate) fn eval4_inputs_float(input: &[f32], output: &mut [f32], p: &InterpPa
         opta: p.opta,
         table: InterpTable::F32(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
+            kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..3].copy_from_slice(&p.domain[1..4]);
@@ -2357,6 +2401,7 @@ fn eval_chain16(input: &[u16], output: &mut [u16], p: &InterpParams, n: usize) {
         opta: p.opta,
         table: InterpTable::U16(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
+            kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..nm].copy_from_slice(&p.domain[1..=nm]);
@@ -2400,6 +2445,7 @@ fn eval_chain_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: usiz
         opta: p.opta,
         table: InterpTable::F32(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
+            kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..nm].copy_from_slice(&p.domain[1..=nm]);
@@ -2889,6 +2935,7 @@ mod tests {
             opta: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             table: InterpTable::U16(&tab16),
             interpolation: Interpolation::Lerp16(eval1_input as InterpFn16),
+            kernel: kernel_kind(Interpolation::Lerp16(eval1_input as InterpFn16)),
             foreign: None,
         };
         let pf = InterpParams {

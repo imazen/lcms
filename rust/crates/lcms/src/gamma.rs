@@ -18,7 +18,7 @@ use crate::err;
 use crate::fixed::{quantize_val, quick_saturate_word};
 use crate::intrp::{
     InterpFn16, InterpFnFloat, InterpParams, InterpTable, Interpolation, LERP_FLAGS_16BITS,
-    LERP_FLAGS_FLOAT, compute_interp_params,
+    LERP_FLAGS_FLOAT, compute_interp_params, kernel_kind,
 };
 use crate::types::CpowExt;
 use crate::types::{ERROR_RANGE, ERROR_UNKNOWN_EXTENSION};
@@ -137,6 +137,7 @@ impl ToneCurve {
             opta: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             table: InterpTable::U16(&self.table16),
             interpolation: Interpolation::Lerp16(self.interp16),
+            kernel: kernel_kind(Interpolation::Lerp16(self.interp16)),
             foreign: None,
         };
         let mut out = [0u16; 1];
@@ -194,6 +195,7 @@ fn eval_segmented_fn(g: &ToneCurve, r: f64) -> f64 {
                         opta: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                         table: InterpTable::F32(pts),
                         interpolation: Interpolation::LerpFloat(kernel),
+            kernel: kernel_kind(Interpolation::LerpFloat(kernel)),
                         foreign: None,
                     };
                     let mut out32 = [0.0f32; 1];

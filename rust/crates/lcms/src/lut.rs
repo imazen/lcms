@@ -18,7 +18,7 @@ use crate::fixed::{quantize_val, quick_saturate_word};
 use crate::gamma::{ToneCurve, build_gamma, build_parametric_tone_curve, dup_tone_curve};
 use crate::intrp::{
     InterpParams, InterpTable, Interpolation, LERP_FLAGS_16BITS, LERP_FLAGS_FLOAT,
-    MAX_INPUT_DIMENSIONS, MAX_STAGE_CHANNELS, compute_interp_params_ex,
+    MAX_INPUT_DIMENSIONS, MAX_STAGE_CHANNELS, compute_interp_params_ex, kernel_kind,
 };
 use crate::mtrx::mat3_solve;
 use crate::pcs::{lab2xyz, xyz2lab};
@@ -406,6 +406,7 @@ fn evaluate_clut_float(input: &[f32], output: &mut [f32], mpe: &Stage) {
             opta: d.opta,
             table: InterpTable::F32(d.tab_float.as_deref().unwrap_or(&[])),
             interpolation: d.interpolation,
+            kernel: kernel_kind(d.interpolation),
             // `Box` clone allocates — only needed when a foreign kernel
             // is actually installed; `None` falls through to built-ins.
             foreign: if d.foreign.is_some() && crate::intrp::foreign_hooks().is_some() {
@@ -452,6 +453,7 @@ fn evaluate_clut_float_in16(input: &[f32], output: &mut [f32], mpe: &Stage) {
             opta: d.opta,
             table: InterpTable::U16(d.tab16.as_deref().unwrap_or(&[])),
             interpolation: d.interpolation,
+            kernel: kernel_kind(d.interpolation),
             // `Box` clone allocates — only needed when a foreign kernel
             // is actually installed; `None` falls through to built-ins.
             foreign: if d.foreign.is_some() && crate::intrp::foreign_hooks().is_some() {
@@ -541,6 +543,7 @@ pub fn stage_alloc_clut16bit_granular(
             opta: p.opta,
             table: InterpTable::U16Rc(tab.clone()),
             interpolation: p.interpolation,
+            kernel: p.kernel,
             foreign: None,
         });
         CLutData {
@@ -629,6 +632,7 @@ pub fn stage_alloc_clut_float_granular(
             opta: p.opta,
             table: InterpTable::F32Rc(tab.clone()),
             interpolation: p.interpolation,
+            kernel: p.kernel,
             foreign: None,
         });
         CLutData {
