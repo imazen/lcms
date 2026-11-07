@@ -628,8 +628,13 @@ pub fn create_gamut_check_pipeline(
         }
         if let Some(s) = gamut.elements.as_deref_mut() {
             if let crate::lut::StageData::CLut(d) = &mut s.data {
-                if let Some(tab) = d.tab16.as_deref_mut() {
+                if let Some(tab) = d.tab16.as_mut().map(std::sync::Arc::make_mut) {
                     tab[node] = out[0];
+                }
+                if let Some(p) = &mut d.params16 {
+                    p.table = crate::intrp::InterpTable::U16Rc(
+                        d.tab16.clone().unwrap_or_default(),
+                    );
                 }
             }
         }

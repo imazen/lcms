@@ -393,6 +393,14 @@ fn change_interpolation_to_trilinear(lut: &mut Pipeline) {
                     c.dw_flags,
                 )
                 .map(|i| c.interpolation = i);
+                // Keep the prebuilt eval params in sync with the flip.
+                for p in [c.params16.as_deref_mut(), c.params_f.as_deref_mut()]
+                    .into_iter()
+                    .flatten()
+                {
+                    p.dw_flags = c.dw_flags;
+                    p.interpolation = c.interpolation;
+                }
             }
         }
         st = s.next.as_deref_mut();

@@ -2637,13 +2637,13 @@ fn read_clut(io: &mut IoHandler, offset: u32, in_ch: u32, out_ch: u32) -> Option
                     if io.read(std::slice::from_mut(&mut v), 1, 1) != 1 {
                         return None;
                     }
-                    if let Some(t) = &mut d.tab16 {
+                    if let Some(t) = d.tab16.as_mut().map(std::sync::Arc::make_mut) {
                         t[i] = from_8_to_16(v);
                     }
                 }
             }
             2 => {
-                if let Some(t) = &mut d.tab16 {
+                if let Some(t) = d.tab16.as_mut().map(std::sync::Arc::make_mut) {
                     if !io::read_u16_array(io, d.n_entries, Some(t)) {
                         return None;
                     }
@@ -2653,6 +2653,12 @@ fn read_clut(io: &mut IoHandler, offset: u32, in_ch: u32, out_ch: u32) -> Option
                 err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unknown precision");
                 return None;
             }
+        }
+        // `Arc::make_mut` swapped the table — re-point the prebuilt params.
+        if let Some(p) = &mut d.params16 {
+            p.table = crate::intrp::InterpTable::U16Rc(
+                d.tab16.clone().unwrap_or_default(),
+            );
         }
     }
     Some(clut)
@@ -3480,12 +3486,17 @@ fn type_mpe_clut_read(
     }
     let mut mpe = stage_alloc_clut_float_granular(None, &grid, in_ch as u32, out_ch as u32, None)?;
     if let StageData::CLut(clut) = &mut mpe.data {
-        if let Some(t) = &mut clut.tab_float {
+        if let Some(t) = clut.tab_float.as_mut().map(std::sync::Arc::make_mut) {
             for v in t.iter_mut() {
                 if !io::read_float32(io, v) {
                     return None;
                 }
             }
+        }
+        if let Some(p) = &mut clut.params_f {
+            p.table = crate::intrp::InterpTable::F32Rc(
+                clut.tab_float.clone().unwrap_or_default(),
+            );
         }
     }
     *n_items = 1;

@@ -902,10 +902,14 @@ fn patch_lut(clut: &mut crate::lut::CLutData, at: &[u16], value: &[u16]) -> bool
     } else {
         return false;
     };
-    if let Some(tab) = &mut clut.tab16 {
+    if let Some(a) = clut.tab16.as_mut() {
+        let tab = std::sync::Arc::make_mut(a);
         for (i, &v) in value.iter().enumerate() {
             tab[index + i] = v;
         }
+    }
+    if let Some(p) = &mut clut.params16 {
+        p.table = crate::intrp::InterpTable::U16Rc(clut.tab16.clone().unwrap_or_default());
     }
     true
 }

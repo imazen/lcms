@@ -49,10 +49,18 @@ pub type StageEvalFn = fn(input: &[f32], output: &mut [f32], stage: &Stage);
 /// `_cmsStageCLutData`
 #[derive(Clone)]
 pub struct CLutData {
-    /// `Tab.T` / `Tab.TFloat` union → owned vec; `None` mirrors NULL table
-    /// (only possible transiently, same as C).
-    pub tab16: Option<Vec<u16>>,
-    pub tab_float: Option<Vec<f32>>,
+    /// `Tab.T` / `Tab.TFloat` union → shared `Arc` so the prebuilt eval
+    /// params (`params16`/`params_f`) can point at the same table.
+    /// `None` mirrors NULL table (only possible transiently, same as C).
+    pub tab16: Option<std::sync::Arc<[u16]>>,
+    pub tab_float: Option<std::sync::Arc<[f32]>>,
+    /// Prebuilt `InterpParams` sharing `tab16`/`tab_float` via `U16Rc`/
+    /// `F32Rc` — the float CLUT stage evals reuse these instead of
+    /// rebuilding ~250B of params every pixel. `foreign` is `None` here;
+    /// the eval path falls back to a rebuild when foreign hooks apply.
+    /// Invalidated when `tab16`/`tab_float` is mutated.
+    pub params16: Option<Box<InterpParams<'static>>>,
+    pub params_f: Option<Box<InterpParams<'static>>>,
     pub n_entries: u32,
     pub has_float_values: bool,
     // Params (resolved kernel + grid geometry — the table pointer is not stored)
@@ -337,6 +345,14 @@ pub fn stage_alloc_matrix(
 /// `EvaluateCLUTfloat`
 fn evaluate_clut_float(input: &[f32], output: &mut [f32], mpe: &Stage) {
     if let StageData::CLut(d) = &mpe.data {
+        // Fast path: prebuilt params when the foreign-kernel arm doesn't
+        // apply — kills the per-pixel struct copy.
+        if !(d.foreign.is_some() && crate::intrp::foreign_hooks().is_some()) {
+            if let Some(p) = &d.params_f {
+                p.eval_float(input, output);
+                return;
+            }
+        }
         let p = InterpParams {
             dw_flags: d.dw_flags,
             n_inputs: d.n_inputs,
@@ -363,6 +379,26 @@ fn evaluate_clut_float_in16(input: &[f32], output: &mut [f32], mpe: &Stage) {
     if let StageData::CLut(d) = &mpe.data {
         let n_in = mpe.input_channels as usize;
         let n_out = mpe.output_channels as usize;
+        // Fast path: prebuilt params when the foreign-kernel arm doesn't
+        // apply — kills the per-pixel struct copy.
+        if !(d.foreign.is_some() && crate::intrp::foreign_hooks().is_some()) {
+            if let Some(p) = &d.params16 {
+                if n_in <= 4 && n_out <= 4 {
+                    let mut in16 = [0u16; 4];
+                    let mut out16 = [0u16; 4];
+                    from_float_to16(input, &mut in16, n_in);
+                    p.eval16(&in16[..n_in], &mut out16[..n_out]);
+                    from_16_to_float(&out16, output, n_out);
+                } else {
+                    let mut in16 = [0u16; MAX_STAGE_CHANNELS];
+                    let mut out16 = [0u16; MAX_STAGE_CHANNELS];
+                    from_float_to16(input, &mut in16, n_in);
+                    p.eval16(&in16, &mut out16[..n_out]);
+                    from_16_to_float(&out16, output, n_out);
+                }
+                return;
+            }
+        }
         let p = InterpParams {
             dw_flags: d.dw_flags,
             n_inputs: d.n_inputs,
@@ -437,6 +473,7 @@ pub fn stage_alloc_clut16bit_granular(
     if let Some(t) = table {
         tab.copy_from_slice(t);
     }
+    let tab: std::sync::Arc<[u16]> = tab.into();
 
     let data = {
         let p = compute_interp_params_ex(
@@ -444,16 +481,29 @@ pub fn stage_alloc_clut16bit_granular(
             clut_points,
             input_chan,
             output_chan,
-            InterpTable::U16(&tab),
+            InterpTable::U16(tab.as_ref()),
             LERP_FLAGS_16BITS,
         )?;
         let (n_samples, domain, opta) = (p.n_samples, p.domain, p.opta);
         let (n_inputs, n_outputs, dw_flags, interpolation) =
             (p.n_inputs, p.n_outputs, p.dw_flags, p.interpolation);
         let foreign = p.foreign.clone();
+        let params16 = Box::new(InterpParams {
+            dw_flags: p.dw_flags,
+            n_inputs: p.n_inputs,
+            n_outputs: p.n_outputs,
+            n_samples: p.n_samples,
+            domain: p.domain,
+            opta: p.opta,
+            table: InterpTable::U16Rc(tab.clone()),
+            interpolation: p.interpolation,
+            foreign: None,
+        });
         CLutData {
             tab16: Some(tab),
             tab_float: None,
+            params16: Some(params16),
+            params_f: None,
             n_entries,
             has_float_values: false,
             n_samples,
@@ -511,6 +561,7 @@ pub fn stage_alloc_clut_float_granular(
     if let Some(t) = table {
         tab.copy_from_slice(t);
     }
+    let tab: std::sync::Arc<[f32]> = tab.into();
 
     let data = {
         let p = compute_interp_params_ex(
@@ -518,16 +569,29 @@ pub fn stage_alloc_clut_float_granular(
             clut_points,
             input_chan,
             output_chan,
-            InterpTable::F32(&tab),
+            InterpTable::F32(tab.as_ref()),
             LERP_FLAGS_FLOAT,
         )?;
         let (n_samples, domain, opta) = (p.n_samples, p.domain, p.opta);
         let (n_inputs, n_outputs, dw_flags, interpolation) =
             (p.n_inputs, p.n_outputs, p.dw_flags, p.interpolation);
         let foreign = p.foreign.clone();
+        let params_f = Box::new(InterpParams {
+            dw_flags: p.dw_flags,
+            n_inputs: p.n_inputs,
+            n_outputs: p.n_outputs,
+            n_samples: p.n_samples,
+            domain: p.domain,
+            opta: p.opta,
+            table: InterpTable::F32Rc(tab.clone()),
+            interpolation: p.interpolation,
+            foreign: None,
+        });
         CLutData {
             tab16: None,
             tab_float: Some(tab),
+            params16: None,
+            params_f: Some(params_f),
             n_entries,
             has_float_values: true,
             n_samples,
@@ -637,7 +701,8 @@ pub fn stage_sample_clut16bit(mpe: &mut Stage, sampler: &mut Sampler16, dw_flags
         }
 
         if dw_flags & SAMPLER_INSPECT == 0 {
-            if let Some(tab) = &mut clut.tab16 {
+            if let Some(a) = clut.tab16.as_mut() {
+                let tab = std::sync::Arc::make_mut(a);
                 for t in 0..n_outputs {
                     tab[index + t] = out[t];
                 }
@@ -645,6 +710,9 @@ pub fn stage_sample_clut16bit(mpe: &mut Stage, sampler: &mut Sampler16, dw_flags
         }
 
         index += n_outputs;
+    }
+    if let Some(p) = &mut clut.params16 {
+        p.table = InterpTable::U16Rc(clut.tab16.clone().unwrap_or_default());
     }
     true
 }
@@ -696,7 +764,8 @@ pub fn stage_sample_clut_float(mpe: &mut Stage, sampler: &mut SamplerFloat, dw_f
         }
 
         if dw_flags & SAMPLER_INSPECT == 0 {
-            if let Some(tab) = &mut clut.tab_float {
+            if let Some(a) = clut.tab_float.as_mut() {
+                let tab = std::sync::Arc::make_mut(a);
                 for t in 0..n_outputs {
                     tab[index + t] = out[t];
                 }
@@ -704,6 +773,9 @@ pub fn stage_sample_clut_float(mpe: &mut Stage, sampler: &mut SamplerFloat, dw_f
         }
 
         index += n_outputs;
+    }
+    if let Some(p) = &mut clut.params_f {
+        p.table = InterpTable::F32Rc(clut.tab_float.clone().unwrap_or_default());
     }
     true
 }
