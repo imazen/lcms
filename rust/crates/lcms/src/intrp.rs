@@ -2284,14 +2284,31 @@ fn eval_chain_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: usiz
 /// lands on Eval4Inputs / Eval4InputsFloat at the bottom).
 fn eval_dispatch16(input: &[u16], output: &mut [u16], p: &InterpParams, n: usize) {
     match n {
-        4 => eval4_inputs(input, output, p),
+        4 => {
+            // Same SIMD arm as `eval16` — multi-ink CLUTs get vectorized
+            // eval4 on each of the two shifted cells.
+            if p.n_outputs == 4 && output.len() >= 4 {
+                if let Some(t) = x64v3_cached() {
+                    return eval16_eval4_v3(t, input, output, p);
+                }
+            }
+            eval4_inputs(input, output, p)
+        }
         _ => eval_chain16(input, output, p, n),
     }
 }
 
 fn eval_dispatch_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: usize) {
     match n {
-        4 => eval4_inputs_float(input, output, p),
+        4 => {
+            let n_out = p.n_outputs as usize;
+            if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if let Some(t) = x64v3_cached() {
+                    return evalflt_eval4_v3(t, input, output, n_out, p);
+                }
+            }
+            eval4_inputs_float(input, output, p)
+        }
         _ => eval_chain_float(input, output, p, n),
     }
 }
