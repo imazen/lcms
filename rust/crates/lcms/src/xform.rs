@@ -198,6 +198,48 @@ fn clutflt_tetra_loop_v3(
     }
 }
 
+/// `clut16_eval4_loop_v3` for `TYPE_CMYK_FLT` — four f32s in,
+/// quick-saturate to u16, eval4 on the 16-bit table, back to f32.
+#[archmage::arcane]
+#[allow(clippy::too_many_arguments)]
+fn clutflt_eval4_loop_v3(
+    token: archmage::X64V3Token,
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    let ppl16 = ppl as usize * 16;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppl16];
+        let oline = &mut output[o_off..o_off + ppl16];
+        for i in 0..ppl as usize {
+            let px = i * 16;
+            let rd = |o: usize| {
+                f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap())
+            };
+            let vin = [
+                crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
+                crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
+                crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
+                crate::fixed::quick_saturate_word(rd(12) as f64 * 65535.0),
+            ];
+            let outv = crate::intrp::eval4_i32x4(token, vin, 4, p);
+            for (cch, v) in outv.iter().enumerate() {
+                let fv = *v as f32 / 65535.0;
+                oline[px + cch * 4..px + cch * 4 + 4]
+                    .copy_from_slice(&fv.to_le_bytes());
+            }
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// Fused `unroll4_words`→`eval4_i32x4`→`pack4_words` for CMYK16→CMYK16
 /// ClutOnly transforms (4-in/4-out — i32x4 lanes = all channels).
 #[archmage::arcane]
@@ -2145,6 +2187,78 @@ impl Transform {
                                     for (cch, v) in out128.iter().enumerate() {
                                         oline[px + cch * 4..px + cch * 4 + 4]
                                             .copy_from_slice(&v.to_le_bytes());
+                                    }
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
+                // TYPE_CMYK_FLT (the "32-bit CMYK" bench shape): 4 f32s
+                // in, quick-saturate to u16, eval4 on the 16-bit table,
+                // back to f32.
+                const CMYK_FLT: u32 = 1 << 22 | 6 << 16 | 4 << 3 | 4;
+                if self.input_format == CMYK_FLT && self.output_format == CMYK_FLT {
+                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                        if c.params_f.is_none()
+                            && c.params16.n_outputs == 4
+                            && matches!(
+                                c.params16.interpolation,
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::eval4_inputs
+                                            as crate::intrp::InterpFn16,
+                                    )
+                            )
+                        {
+                            if let Some(token) = archmage::X64V3Token::summon()
+                            {
+                                return clutflt_eval4_loop_v3(
+                                    token, &c.params16, input, output, ppl,
+                                    lines, stride,
+                                );
+                            }
+                            let p = &c.params16;
+                            let ppl16 = ppl as usize * 16;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl16];
+                                let oline = &mut output[o_off..o_off + ppl16];
+                                for i in 0..ppl as usize {
+                                    let px = i * 16;
+                                    let rd = |o: usize| {
+                                        f32::from_le_bytes(
+                                            iline[px + o..px + o + 4]
+                                                .try_into()
+                                                .unwrap(),
+                                        )
+                                    };
+                                    let vin = [
+                                        crate::fixed::quick_saturate_word(
+                                            rd(0) as f64 * 65535.0,
+                                        ),
+                                        crate::fixed::quick_saturate_word(
+                                            rd(4) as f64 * 65535.0,
+                                        ),
+                                        crate::fixed::quick_saturate_word(
+                                            rd(8) as f64 * 65535.0,
+                                        ),
+                                        crate::fixed::quick_saturate_word(
+                                            rd(12) as f64 * 65535.0,
+                                        ),
+                                    ];
+                                    let mut w_out = [0u16; 4];
+                                    crate::intrp::eval4_inputs(
+                                        &vin, &mut w_out, p,
+                                    );
+                                    for cch in 0..4 {
+                                        let fv = w_out[cch] as f32 / 65535.0;
+                                        oline[px + cch * 4..px + cch * 4 + 4]
+                                            .copy_from_slice(&fv.to_le_bytes());
                                     }
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
