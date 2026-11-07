@@ -188,6 +188,12 @@ impl<'a> InterpParams<'a> {
                     }
                     bilinear_interp16(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, eval1_input as InterpFn16) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return eval16_eval1_v3(t, input, output, self);
+                        }
+                    }
                     eval1_input(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, lin_lerp_1d as InterpFn16) {
                     lin_lerp_1d(input, output, self)
@@ -242,6 +248,12 @@ impl<'a> InterpParams<'a> {
                     }
                     bilinear_interp_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, eval1_input_float as InterpFnFloat) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return evalflt_eval1_v3(t, input, output, n_out, self);
+                        }
+                    }
                     eval1_input_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, lin_lerp_1d_float as InterpFnFloat) {
                     lin_lerp_1d_float(input, output, self)
@@ -1737,6 +1749,130 @@ pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     out
 }
 
+/// `eval1_input` over `magetypes::i32x4` — 1-in/≤4-out: two u64 corner
+/// blocks + `linear_interp` per lane. `linear_interp` uses a *logical*
+/// u32 shift — `shr_logical`, not the lerp's arithmetic one.
+#[inline(always)]
+pub(crate) fn eval1_i32x4<T: magetypes::simd::backends::I32x4Backend>(
+    token: T,
+    input: u16,
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [u16; 4] {
+    let lut_table = p.table_u16();
+    let n = p.n_outputs as usize;
+    let mut out = [0u16; 4];
+    if input == 0xffff || p.domain[0] == 0 {
+        let y0 = (p.domain[0] * p.opta[0]) as usize;
+        let last = lut_table.len() - 1;
+        let lanes = lanes_u64(corner_u64(lut_table, y0.min(last), last));
+        for oc in 0..n.min(4) {
+            out[oc] = lut_table
+                .get(y0 + oc)
+                .copied()
+                .unwrap_or(lanes[oc.min(3)] as u16);
+        }
+        return out;
+    }
+    let v = (input as u32).wrapping_mul(p.domain[0]) as i32;
+    let fk = to_fixed_domain(v);
+    let k0 = fixed_to_int(fk);
+    let rk = fixed_rest_to_int(fk);
+    let k1 = k0 + if input != 0xFFFF { 1 } else { 0 };
+    let m = lut_table.len() - n;
+    let k0i = ((p.opta[0] as i32) * k0).clamp(0, m as i32) as usize;
+    let k1i = ((p.opta[0] as i32) * k1).clamp(0, m as i32) as usize;
+    let last = lut_table.len() - 1;
+    let d0 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+        token,
+        lanes_u64(corner_u64(lut_table, k0i, last)),
+    );
+    let d1 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+        token,
+        lanes_u64(corner_u64(lut_table, k1i, last)),
+    );
+    type L<T> = magetypes::simd::generic::i32x4<T>;
+    let half = L::<T>::splat_t(token, 0x8000);
+    let mask = L::<T>::splat_t(token, 0xffff);
+    let dif = (d1 - d0) * L::<T>::splat_t(token, rk) + half;
+    let res = (dif.shr_logical::<16>() + d0) & mask;
+    let ra = res.to_array();
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = ra[oc] as u16;
+    }
+    out
+}
+
+/// `eval1_input_float` over `magetypes::f32x4`.
+#[inline(always)]
+pub(crate) fn eval1_f32x4<T: magetypes::simd::backends::F32x4Backend>(
+    token: T,
+    input: f32,
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [f32; 4] {
+    let lut_table = p.table_f32();
+    let n = p.n_outputs as usize;
+    let mut out = [0f32; 4];
+    let val2 = fclamp(input);
+    if val2 == 1.0 || p.domain[0] == 0 {
+        let start = (p.domain[0] * p.opta[0]) as usize;
+        let last = lut_table.len() - 1;
+        let lanes = corner_f32x4(lut_table, start.min(last), last);
+        for oc in 0..n.min(4) {
+            out[oc] = lanes[oc];
+        }
+        return out;
+    }
+    let val2 = val2 * p.domain[0] as f32;
+    let cell0 = val2.floor() as i32;
+    let cell1 = val2.ceil() as i32;
+    let rest = val2 - cell0 as f32;
+    let cell0 = cell0 * p.opta[0] as i32;
+    let cell1 = cell1 * p.opta[0] as i32;
+    let m = lut_table.len() - n;
+    let last = lut_table.len() - 1;
+    let d0 = magetypes::simd::generic::f32x4::<T>::from_array_t(
+        token,
+        corner_f32x4(lut_table, (cell0 as usize).min(m), last),
+    );
+    let d1 = magetypes::simd::generic::f32x4::<T>::from_array_t(
+        token,
+        corner_f32x4(lut_table, (cell1 as usize).min(m), last),
+    );
+    let res = (d1 - d0) * magetypes::simd::generic::f32x4::<T>::splat_t(token, rest) + d0;
+    let ra = res.to_array();
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = ra[oc];
+    }
+    out
+}
+
+/// `#[arcane]` wrappers for the eval1 arms.
+#[archmage::arcane]
+pub(crate) fn eval16_eval1_v3(
+    token: archmage::X64V3Token,
+    input: &[u16],
+    output: &mut [u16],
+    p: &InterpParams,
+) {
+    let n_out = p.n_outputs as usize;
+    let v = eval1_i32x4(token, input[0], n_out, p);
+    output[..n_out].copy_from_slice(&v[..n_out]);
+}
+
+#[archmage::arcane]
+pub(crate) fn evalflt_eval1_v3(
+    token: archmage::X64V3Token,
+    input: &[f32],
+    output: &mut [f32],
+    n_outputs: usize,
+    p: &InterpParams,
+) {
+    let v = eval1_f32x4(token, input[0], n_outputs, p);
+    output[..n_outputs].copy_from_slice(&v[..n_outputs]);
+}
+
 /// `bilinear_interp16` over `magetypes::i32x4` — the ≤4 output
 /// channels as vector lanes (same wrapping-lerp semantics as the
 /// scalar; intermediate `as u16` = `& 0xffff`).
@@ -2725,6 +2861,63 @@ mod tests {
             let b2 = bilinear_f32x4(tok, &f2, 3, &p2);
             for c in 0..3 {
                 if b1[c].to_bits() != b2[c].to_bits() {
+                    diffs += 1;
+                }
+            }
+        }
+        assert_eq!(diffs, 0);
+    }
+
+    /// `eval1_i32x4`/`eval1_f32x4` vs their scalar kernels — 1-in/3-out.
+    #[test]
+    fn eval1_x4_parity() {
+        let n = 4096u32;
+        let mut tab16 = Vec::new();
+        let mut tabf = Vec::new();
+        for i in 0..n {
+            for c in 0..3u32 {
+                tab16.push(((i * 7 + c * 1000) & 0xffff) as u16);
+                tabf.push(((i * 7 + c * 1000) % 4096) as f32 / 4096.0);
+            }
+        }
+        let p16 = InterpParams {
+            dw_flags: 0,
+            n_inputs: 1,
+            n_outputs: 3,
+            n_samples: [n; 15],
+            domain: [n - 1; 15],
+            opta: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            table: InterpTable::U16(&tab16),
+            interpolation: Interpolation::Lerp16(eval1_input as InterpFn16),
+            foreign: None,
+        };
+        let pf = InterpParams {
+            table: InterpTable::F32(&tabf),
+            interpolation: Interpolation::LerpFloat(
+                eval1_input_float as InterpFnFloat,
+            ),
+            ..p16.clone()
+        };
+        let Some(tok) = x64v3_cached() else {
+            return;
+        };
+        let mut diffs = 0u64;
+        for i in 0..65536u32 {
+            let v = i as u16;
+            let mut o1 = [0u16; 4];
+            eval1_input(&[v], &mut o1, &p16);
+            let o2 = eval1_i32x4(tok, v, 3, &p16);
+            for c in 0..3 {
+                if o1[c] != o2[c] {
+                    diffs += 1;
+                }
+            }
+            let f = i as f32 / 65535.0;
+            let mut f1 = [0f32; 4];
+            eval1_input_float(&[f], &mut f1, &pf);
+            let f2 = eval1_f32x4(tok, f, 3, &pf);
+            for c in 0..3 {
+                if f1[c].to_bits() != f2[c].to_bits() {
                     diffs += 1;
                 }
             }
