@@ -939,6 +939,93 @@ impl Transform {
                     }
                 }
             }
+            const RGBA16: u32 = 4 << 16 | 1 << 7 | 3 << 3 | 2;
+            if self.input_format == RGBA16 && self.output_format == RGBA16 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
+                        // `unroll3_words_skip1`→Curves16→`pack3_words_and_skip1`
+                        if c.curves.len() == 3
+                            && c.curves.iter().all(|t| t.len() == 0x10000)
+                        {
+                            let t0: &[u16; 0x10000] =
+                                c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 0x10000] =
+                                c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 0x10000] =
+                                c.curves[2].as_slice().try_into().unwrap();
+                            let ppl8 = ppl as usize * 8;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl8];
+                                let oline = &mut output[o_off..o_off + ppl8];
+                                for i in 0..ppl as usize {
+                                    let px = i * 8;
+                                    let r = t0[u16::from_le_bytes(
+                                        iline[px..px + 2].try_into().unwrap(),
+                                    )
+                                        as usize];
+                                    let g = t1[u16::from_le_bytes(
+                                        iline[px + 2..px + 4].try_into().unwrap(),
+                                    )
+                                        as usize];
+                                    let b = t2[u16::from_le_bytes(
+                                        iline[px + 4..px + 6].try_into().unwrap(),
+                                    )
+                                        as usize];
+                                    let px64 = (r as u64)
+                                        | ((g as u64) << 16)
+                                        | ((b as u64) << 32);
+                                    oline[px..px + 6]
+                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            if self.input_format == RGB8 && self.output_format == RGB8 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
+                        // `unroll3_bytes`→Curves8 (256-pt)→`pack3_bytes`
+                        if c.curves.len() == 3
+                            && c.curves.iter().all(|t| t.len() == 256)
+                        {
+                            let t0: &[u16; 256] =
+                                c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 256] =
+                                c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 256] =
+                                c.curves[2].as_slice().try_into().unwrap();
+                            let ppl3 = ppl as usize * 3;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl3];
+                                let oline = &mut output[o_off..o_off + ppl3];
+                                for i in 0..ppl as usize {
+                                    let px = i * 3;
+                                    oline[px] = crate::pack::f16to8(
+                                        t0[iline[px] as usize],
+                                    );
+                                    oline[px + 1] = crate::pack::f16to8(
+                                        t1[iline[px + 1] as usize],
+                                    );
+                                    oline[px + 2] = crate::pack::f16to8(
+                                        t2[iline[px + 2] as usize],
+                                    );
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
             const GRAY8: u32 = 3 << 16 | 1 << 3 | 1;
             const GRAY16: u32 = 3 << 16 | 1 << 3 | 2;
             // Fused `unroll1_byte`→eval→`pack1_byte`…N bytes — 8-bit
