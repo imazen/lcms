@@ -292,16 +292,60 @@ pub fn stage_alloc_identity_curves(ctx: Option<&Context>, n_channels: u32) -> Op
 /// `EvaluateMatrix` — uses a f64 accumulator, as C does.
 fn evaluate_matrix(input: &[f32], output: &mut [f32], mpe: &Stage) {
     if let StageData::Matrix { double, offset } = &mpe.data {
-        for i in 0..mpe.output_channels as usize {
+        let n_in = mpe.input_channels as usize;
+        let n_out = mpe.output_channels as usize;
+        // f64x4: the n_out lanes multiply-accumulate columns in the same
+        // j-order as the scalar — each product rounds then adds, so the
+        // per-lane result is bit-identical. (No FMA.)
+        if n_in <= 4 && n_out <= 4 && n_out >= 1 {
+            if let Some(t) = crate::intrp::x64v3_cached() {
+                return evaluate_matrix_v3(t, input, output, n_in, n_out, double, offset.as_ref());
+            }
+        }
+        for i in 0..n_out {
             let mut tmp = 0.0f64;
-            for j in 0..mpe.input_channels as usize {
-                tmp += input[j] as f64 * double[i * mpe.input_channels as usize + j];
+            for j in 0..n_in {
+                tmp += input[j] as f64 * double[i * n_in + j];
             }
             if let Some(off) = offset {
                 tmp += off[i];
             }
             output[i] = tmp as f32;
         }
+    }
+}
+
+/// `#[arcane]` 3×3/≤4×4 matrix eval — `out = Σ_j splat(in[j]) * col_j + off`.
+#[archmage::arcane]
+fn evaluate_matrix_v3(
+    token: archmage::X64V3Token,
+    input: &[f32],
+    output: &mut [f32],
+    n_in: usize,
+    n_out: usize,
+    double: &[f64],
+    offset: Option<&Vec<f64>>,
+) {
+    type V = magetypes::simd::generic::f64x4<archmage::X64V3Token>;
+    let mut acc = V::zero_t(token);
+    for j in 0..n_in {
+        let mut col = [0f64; 4];
+        for i in 0..n_out {
+            col[i] = double[i * n_in + j];
+        }
+        acc = acc
+            + V::splat_t(token, input[j] as f64) * V::from_array_t(token, col);
+    }
+    if let Some(off) = offset {
+        let mut a = [0f64; 4];
+        for i in 0..n_out {
+            a[i] = off[i];
+        }
+        acc = acc + V::from_array_t(token, a);
+    }
+    let r = acc.to_array();
+    for i in 0..n_out {
+        output[i] = r[i] as f32;
     }
 }
 

@@ -86,7 +86,7 @@ pub(crate) fn foreign_hooks() -> Option<ForeignHooks> {
 /// `X64V3Token::summon()` behind a `OnceLock` — the cpuid check runs
 /// once per process, so per-pixel kernel dispatch costs a load.
 #[inline]
-fn x64v3_cached() -> Option<archmage::X64V3Token> {
+pub(crate) fn x64v3_cached() -> Option<archmage::X64V3Token> {
     use archmage::SimdToken;
     static TOK: std::sync::OnceLock<Option<archmage::X64V3Token>> =
         std::sync::OnceLock::new();
