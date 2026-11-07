@@ -2416,6 +2416,26 @@ fn pack_fd_from_float(
         }
         return (n_chan + extra) * 4;
     }
+    // u8/u16 float output — same `qs16`/`f16to8` op chain, no decode.
+    if esz == 1 && !do_swap && !reverse && !planar && !swap_first
+        && maximum == 1.0
+    {
+        for c in 0..n_chan {
+            out[c + start] = f16to8(qs16(w[c] as f64 * 65535.0));
+        }
+        return n_chan + extra;
+    }
+    if esz == 2 && !do_swap && !reverse && !planar && !swap_first
+        && maximum == 1.0
+    {
+        for c in 0..n_chan {
+            let v = qs16(w[c] as f64 * 65535.0);
+            let o = (c + start) * 2;
+            out[o] = (v & 0xff) as u8;
+            out[o + 1] = (v >> 8) as u8;
+        }
+        return (n_chan + extra) * 2;
+    }
     let mut last_v: f64 = 0.0;
     for c in 0..n_chan {
         let index = if do_swap { n_chan - c - 1 } else { c };
