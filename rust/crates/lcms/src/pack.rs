@@ -1023,6 +1023,20 @@ fn unroll_fd_to_float(
         }
         return (n_chan + extra) * 4;
     }
+    // Interleaved u8/u16 → f64 div then f32 truncate — same op chain as
+    // the generic loop, minus the per-channel matches.
+    if esz == 1 && !do_swap && !reverse && !planar && !swap_first && !premul {
+        for c in 0..n_chan {
+            w[c] = (a[c + start] as f64 / 255.0) as f32;
+        }
+        return n_chan + extra;
+    }
+    if esz == 2 && !do_swap && !reverse && !planar && !swap_first && !premul {
+        for c in 0..n_chan {
+            w[c] = (rd16(a, (c + start) * 2) as f64 / 65535.0) as f32;
+        }
+        return (n_chan + extra) * 2;
+    }
     let mut alpha_factor = 1.0f64;
     if premul && extra > 0 {
         let o = if planar {
