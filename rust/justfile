@@ -1,4 +1,12 @@
 # lcms port — common recipes
+#
+# Gates:      test / gate / verify / testbed
+# Benches:    bench / bench-one / c-oracle
+# Coverage:   coverage / coverage-all / coverage-testbed
+# API docs:   api-doc / api-doc-check
+# Misc:       regen / fmt / check
+
+## Gates ---------------------------------------------------------------------
 
 # Run all gates (unit + C-parity tests)
 test:
@@ -8,16 +16,17 @@ test:
 gate name:
     cargo test -p lcms --test c_parity_{{name}}
 
-# Regenerate tables/signatures after a submodule rebase
-regen:
-    python3 tools/gen_signatures.py > crates/lcms/src/signatures.rs
-    python3 tools/gen_half_tables.py > crates/lcms/src/half_tables.rs
+# Full gate: cargo tests + upstream testbed + api-doc check + bench
+# differentials — the whole port-conformance sweep.
+verify: test testbed api-doc-check
+    bench/bench.sh 2>&1 | grep -A10 "differentials"
 
-fmt:
-    cargo fmt -p lcms -p lcms-cref
+# Build + run the upstream testbed (testcms2) against both libs in a scratch
+# dir; reports the C and Rust pass counts.
+testbed:
+    bench/testbed.sh
 
-check:
-    cargo check --workspace
+## Benches --------------------------------------------------------------------
 
 # Reproducible C-vs-Rust benchmarks — builds the C oracle (reference/lcms2,
 # cc -O2 -fno-strict-aliasing) and liblcms2_ffi.so, links each bench/*.c
@@ -40,10 +49,37 @@ c-oracle:
     done
     ar rcs bench/out/liblcms2_c.a bench/out/*.o
 
-# Build + run the upstream testbed (testcms2) against both libs in a scratch
-# dir; reports the C and Rust pass counts.
-testbed:
-    bench/testbed.sh
+## Coverage -------------------------------------------------------------------
+#
+# Two axes, because the numbers answer different questions:
+#
+#   `cargo test` coverage (`just coverage`) — the c_parity_* oracle gates.
+#   Deeper on the pure-function/kernels (intrp ~91%) but reaches nothing that
+#   only the testbed drives (formatters, profile builders).
+#
+#   testbed coverage (`just coverage-testbed`) — testcms2 against each lib,
+#   instrumented. The honest port-comparison number: it covers the
+#   formatter/transform-matrix/profile-builder surface the cargo suite can't
+#   (it runs against liblcms2_ffi.so, not the rlib). Reports C oracle AND
+#   Rust side by side — ~74%/83% vs ~67%/68% (lines/fns).
+
+# Source-based coverage of the c_parity_* oracle suite (lcms crate).
+coverage:
+    cargo llvm-cov -p lcms --summary-only
+
+# Full workspace incl. lcms2-ffi (0% under cargo test — it links via the .so
+# through testcms2, not the rlib). Use coverage-testbed for the real number.
+coverage-all:
+    cargo llvm-cov --workspace --summary-only
+
+# Testbed-driven coverage on BOTH sides — builds the C oracle + testcms2 and
+# liblcms2_ffi.so each instrumented, runs testcms2 against both, and reports
+# the llvm-cov line coverage each reaches. The honest port-coverage
+# comparison (needs clang + llvm-cov-14 for the C side).
+coverage-testbed:
+    bench/coverage.sh
+
+## API docs --------------------------------------------------------------------
 
 # Regenerate the public-API surface snapshots (docs/public-api/).
 api-doc:
@@ -53,16 +89,15 @@ api-doc:
 api-doc-check:
     ZEN_API_DOC=check cargo test --manifest-path apidoc/Cargo.toml
 
-# Source-based coverage of the c_parity_* oracle suite (lcms crate).
-coverage:
-    cargo llvm-cov -p lcms --summary-only
+## Misc ------------------------------------------------------------------------
 
-# Full workspace incl. lcms2-ffi (0% — exercised via testcms2, not cargo test).
-coverage-all:
-    cargo llvm-cov --workspace --summary-only
+# Regenerate tables/signatures after a submodule rebase
+regen:
+    python3 tools/gen_signatures.py > crates/lcms/src/signatures.rs
+    python3 tools/gen_half_tables.py > crates/lcms/src/half_tables.rs
 
-# Testbed-driven coverage on BOTH sides — C oracle + Rust lib through
-# testcms2, the honest port-coverage comparison (cargo test alone underweights
-# the formatter/profile-builder paths the testbed reaches).
-coverage-testbed:
-    bench/coverage.sh
+fmt:
+    cargo fmt -p lcms -p lcms-cref
+
+check:
+    cargo check --workspace
