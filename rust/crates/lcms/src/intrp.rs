@@ -1030,27 +1030,49 @@ pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
     let last = cell.len() - 1;
     let mut out = [0u16; 3];
 
-    // Per-arm: pick the 3 corner offsets, run the arm's diff chain on the
-    // four u16 lanes of each corner block, finish with the shared lerp.
+    // Per-arm: pick the 3 corner offsets, run the arm's diff chain on
+    // [i32; 4] lane arrays (LLVM lowers element-wise array ops to a
+    // single i32x4 op), finish with the shared lerp per lane.
+    #[inline(always)]
+    fn lanes(v: u64) -> [i32; 4] {
+        [
+            (v & 0xffff) as i32,
+            ((v >> 16) & 0xffff) as i32,
+            ((v >> 32) & 0xffff) as i32,
+            (v >> 48) as i32,
+        ]
+    }
+    #[inline(always)]
+    fn sub(a: [i32; 4], b: [i32; 4]) -> [i32; 4] {
+        [
+            a[0].wrapping_sub(b[0]),
+            a[1].wrapping_sub(b[1]),
+            a[2].wrapping_sub(b[2]),
+            a[3].wrapping_sub(b[3]),
+        ]
+    }
+    #[inline(always)]
+    fn mul_add(a: [i32; 4], k: i32, acc: [i32; 4]) -> [i32; 4] {
+        [
+            acc[0].wrapping_add(a[0].wrapping_mul(k)),
+            acc[1].wrapping_add(a[1].wrapping_mul(k)),
+            acc[2].wrapping_add(a[2].wrapping_mul(k)),
+            acc[3].wrapping_add(a[3].wrapping_mul(k)),
+        ]
+    }
+
     macro_rules! arm {
         (|$c1:ident, $c2:ident, $c3:ident, $c0:ident| $chain:expr) => {{
-            let c0v = corner_u64(cell, 0, last);
-            let c1v = corner_u64(cell, x1 as usize, last);
-            let c2v = corner_u64(cell, y1 as usize, last);
-            let c3v = corner_u64(cell, z1 as usize, last);
+            let $c0 = lanes(corner_u64(cell, 0, last));
+            let $c1 = lanes(corner_u64(cell, x1 as usize, last));
+            let $c2 = lanes(corner_u64(cell, y1 as usize, last));
+            let $c3 = lanes(corner_u64(cell, z1 as usize, last));
+            let ($c1, $c2, $c3) = $chain;
+            let rest = mul_add($c3, rz, mul_add($c2, ry, mul_add($c1, rx, [0x8001; 4])));
             for oi in 0..3 {
-                let $c0 = ((c0v >> (oi * 16)) & 0xffff) as i32;
-                let $c1 = ((c1v >> (oi * 16)) & 0xffff) as i32;
-                let $c2 = ((c2v >> (oi * 16)) & 0xffff) as i32;
-                let $c3 = ((c3v >> (oi * 16)) & 0xffff) as i32;
-                let ($c1, $c2, $c3) = $chain;
-                let rest = $c1
-                    .wrapping_mul(rx)
-                    .wrapping_add($c2.wrapping_mul(ry))
-                    .wrapping_add($c3.wrapping_mul(rz))
-                    .wrapping_add(0x8001);
+                let r = rest[oi];
                 out[oi] =
-                    ($c0 as u16).wrapping_add((rest.wrapping_add(rest >> 16) >> 16) as u16);
+                    ($c0[oi] as u16).wrapping_add((r.wrapping_add(r >> 16) >> 16) as u16);
             }
         }};
     }
@@ -1059,29 +1081,29 @@ pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
         if ry >= rz {
             y1 += x1;
             z1 += y1;
-            arm!(|c1, c2, c3, c0| (c1 - c0, c2 - c1, c3 - c2));
+            arm!(|c1, c2, c3, c0| (sub(c1, c0), sub(c2, c1), sub(c3, c2)));
         } else if rz >= rx {
             x1 += z1;
             y1 += x1;
-            arm!(|c1, c2, c3, c0| (c1 - c3, c2 - c1, c3 - c0));
+            arm!(|c1, c2, c3, c0| (sub(c1, c3), sub(c2, c1), sub(c3, c0)));
         } else {
             z1 += x1;
             y1 += z1;
-            arm!(|c1, c2, c3, c0| (c1 - c0, c2 - c3, c3 - c1));
+            arm!(|c1, c2, c3, c0| (sub(c1, c0), sub(c2, c3), sub(c3, c1)));
         }
     } else {
         if rx >= rz {
             x1 += y1;
             z1 += x1;
-            arm!(|c1, c2, c3, c0| (c1 - c2, c2 - c0, c3 - c1));
+            arm!(|c1, c2, c3, c0| (sub(c1, c2), sub(c2, c0), sub(c3, c1)));
         } else if ry >= rz {
             z1 += y1;
             x1 += z1;
-            arm!(|c1, c2, c3, c0| (c1 - c3, c2 - c0, c3 - c2));
+            arm!(|c1, c2, c3, c0| (sub(c1, c3), sub(c2, c0), sub(c3, c2)));
         } else {
             y1 += z1;
             x1 += y1;
-            arm!(|c1, c2, c3, c0| (c1 - c2, c2 - c3, c3 - c0));
+            arm!(|c1, c2, c3, c0| (sub(c1, c2), sub(c2, c3), sub(c3, c0)));
         }
     }
     out
