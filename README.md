@@ -35,8 +35,7 @@ bit-exact output. Results from `just bench` (best of 10, `release` build):
 | 16-bit curves | ~1.6 kMPix/s | ~250 MPix/s | ~6× |
 | 32-bit float CLUT | ~6.7 MPix/s | ~6.4 MPix/s | ~1.05× |
 
-The remaining sub-1.1× paths (32-bit float) share C's per-pixel pipeline walk
-and libm calls — the residual is structural, not a regression.
+The 32-bit float paths sit at ~0.94–1.05× of C — roughly parity.
 
 `rust/bench/*.c` are the benchmark sources, linked once against
 `liblcms2_ffi.so` (the Rust build) and once against `liblcms2_c.a` (the oracle
