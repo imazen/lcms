@@ -198,6 +198,46 @@ fn clutflt_tetra_loop_v3(
     }
 }
 
+/// Fused `unroll4_words`→`eval4_i32x4`→`pack4_words` for CMYK16→CMYK16
+/// ClutOnly transforms (4-in/4-out — i32x4 lanes = all channels).
+#[archmage::arcane]
+#[allow(clippy::too_many_arguments)]
+fn clut16_eval4_loop_v3(
+    token: archmage::X64V3Token,
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    let ppl8 = ppl as usize * 8;
+    let n_out = p.n_outputs as usize;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppl8];
+        let oline = &mut output[o_off..o_off + ppl8];
+        for i in 0..ppl as usize {
+            let px = i * 8;
+            let vin = [
+                u16::from_le_bytes(iline[px..px + 2].try_into().unwrap()),
+                u16::from_le_bytes(iline[px + 2..px + 4].try_into().unwrap()),
+                u16::from_le_bytes(iline[px + 4..px + 6].try_into().unwrap()),
+                u16::from_le_bytes(iline[px + 6..px + 8].try_into().unwrap()),
+            ];
+            let outv = crate::intrp::eval4_i32x4(token, vin, n_out, p);
+            let px64 = (outv[0] as u64)
+                | ((outv[1] as u64) << 16)
+                | ((outv[2] as u64) << 32)
+                | ((outv[3] as u64) << 48);
+            oline[px..px + 8].copy_from_slice(&px64.to_le_bytes());
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// `clut16_tetra_loop_v3` for `TYPE_RGB_8` — f8to16 the three bytes,
 /// tetra3_i32x4 on the u16 table, f16to8 back.
 #[archmage::arcane]
@@ -1119,6 +1159,68 @@ impl Transform {
                                         | ((b as u64) << 32);
                                     oline[px..px + 6]
                                         .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            const CMYK16: u32 = 6 << 16 | 4 << 3 | 2;
+            if self.input_format == CMYK16 && self.output_format == CMYK16 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                        // `unroll4_words`→eval4→`pack4_words`
+                        if c.params16.n_outputs == 4
+                            && matches!(
+                                c.params16.interpolation,
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::eval4_inputs
+                                            as crate::intrp::InterpFn16,
+                                    )
+                            )
+                        {
+                            if let Some(token) = archmage::X64V3Token::summon()
+                            {
+                                return clut16_eval4_loop_v3(
+                                    token, &c.params16, input, output, ppl,
+                                    lines, stride,
+                                );
+                            }
+                            let p = &c.params16;
+                            let n_out = p.n_outputs as usize;
+                            let ppl8 = ppl as usize * 8;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl8];
+                                let oline = &mut output[o_off..o_off + ppl8];
+                                let mut w_in = [0u16; 4];
+                                let mut w_out = [0u16; 4];
+                                for i in 0..ppl as usize {
+                                    let px = i * 8;
+                                    for cch in 0..4 {
+                                        w_in[cch] = u16::from_le_bytes(
+                                            iline[px + cch * 2..px + cch * 2 + 2]
+                                                .try_into()
+                                                .unwrap(),
+                                        );
+                                    }
+                                    crate::intrp::eval4_inputs(
+                                        &w_in,
+                                        &mut w_out[..n_out],
+                                        p,
+                                    );
+                                    for cch in 0..n_out {
+                                        oline[px + cch * 2..px + cch * 2 + 2]
+                                            .copy_from_slice(
+                                                &w_out[cch].to_le_bytes(),
+                                            );
+                                    }
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
                                 o_off += stride.bytes_per_line_out as usize;

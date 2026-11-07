@@ -1222,6 +1222,139 @@ fn lanes_u64(v: u64) -> [i32; 4] {
     ]
 }
 
+/// `eval4_inputs` over `magetypes::i32x4` — the two K-cell tetra evals
+/// vectorized across the (≤4) output channels, rk blend on the arrays.
+/// For `n_outputs < 4` lanes beyond the count are don't-care (corner
+/// loads stay in-table; only the first n_outputs lanes are stored).
+#[inline(always)]
+pub(crate) fn eval4_i32x4<T: magetypes::simd::backends::I32x4Backend>(
+    token: T,
+    vin: [u16; 4],
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [u16; 4] {
+    let lut_table = p.table_u16();
+
+    let fk = to_fixed_domain((vin[0] as i32).wrapping_mul(p.domain[0] as i32));
+    let fx = to_fixed_domain((vin[1] as i32).wrapping_mul(p.domain[1] as i32));
+    let fy = to_fixed_domain((vin[2] as i32).wrapping_mul(p.domain[2] as i32));
+    let fz = to_fixed_domain((vin[3] as i32).wrapping_mul(p.domain[3] as i32));
+
+    let k0 = fixed_to_int(fk);
+    let x0 = fixed_to_int(fx);
+    let y0 = fixed_to_int(fy);
+    let z0 = fixed_to_int(fz);
+
+    let rk = fixed_rest_to_int(fk);
+    let rx = fixed_rest_to_int(fx);
+    let ry = fixed_rest_to_int(fy);
+    let rz = fixed_rest_to_int(fz);
+
+    let k0i = (p.opta[3] as i32).wrapping_mul(k0);
+    let k1 =
+        k0i + if vin[0] == 0xFFFF { 0 } else { p.opta[3] as i32 };
+    let x0i = (p.opta[2] as i32).wrapping_mul(x0);
+    let x1 =
+        x0i + if vin[1] == 0xFFFF { 0 } else { p.opta[2] as i32 };
+    let y0i = (p.opta[1] as i32).wrapping_mul(y0);
+    let y1 =
+        y0i + if vin[2] == 0xFFFF { 0 } else { p.opta[1] as i32 };
+    let z0i = (p.opta[0] as i32).wrapping_mul(z0);
+    let z1 =
+        z0i + if vin[3] == 0xFFFF { 0 } else { p.opta[0] as i32 };
+
+    let rxv = magetypes::simd::generic::i32x4::<T>::splat_t(token, rx);
+    let ryv = magetypes::simd::generic::i32x4::<T>::splat_t(token, ry);
+    let rzv = magetypes::simd::generic::i32x4::<T>::splat_t(token, rz);
+    let rk4 = magetypes::simd::generic::i32x4::<T>::splat_t(token, 0x8001);
+
+    // One K-cell tetra eval → the pre-round lanes for all 4 outputs.
+    macro_rules! tetra_cell {
+        ($base:expr) => {{
+            let d_x = x1 - x0i;
+            let d_y = y1 - y0i;
+            let d_z = z1 - z0i;
+            let max_off = d_x + d_y + d_z;
+            let start = ($base + x0i + y0i + z0i) as usize;
+            let cell = &lut_table[start..];
+            let last = cell.len() - 1;
+            let mo = max_off as usize;
+
+            macro_rules! arm {
+                ($o1:expr, $o2:expr, $o3:expr, |$t1:ident, $t2:ident, $t3:ident, $c0:ident| $chain:expr) => {{
+                    let $c0 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                        token,
+                        lanes_u64(corner_u64(cell, 0, last)),
+                    );
+                    let $t1 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                        token,
+                        lanes_u64(corner_u64(cell, ($o1).min(max_off) as usize, last)),
+                    );
+                    let $t2 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                        token,
+                        lanes_u64(corner_u64(cell, ($o2).min(max_off) as usize, last)),
+                    );
+                    let $t3 = magetypes::simd::generic::i32x4::<T>::from_array_t(
+                        token,
+                        lanes_u64(corner_u64(cell, ($o3).min(max_off) as usize, last)),
+                    );
+                    let (c1, c2, c3) = $chain;
+                    let rest = c1 * rxv + c2 * ryv + c3 * rzv + rk4;
+                    let rest = (rest + rest.shr_arithmetic::<16>())
+                        .shr_arithmetic::<16>();
+                    let ra = rest.to_array();
+                    let ca = $c0.to_array();
+                    [
+                        (ca[0] as u16).wrapping_add(ra[0] as u16),
+                        (ca[1] as u16).wrapping_add(ra[1] as u16),
+                        (ca[2] as u16).wrapping_add(ra[2] as u16),
+                        (ca[3] as u16).wrapping_add(ra[3] as u16),
+                    ]
+                }};
+            }
+
+            if rx >= ry {
+                if ry >= rz {
+                    arm!(d_x, d_x + d_y, max_off, |t1, t2, t3, c0| {
+                        (t1 - c0, t2 - t1, t3 - t2)
+                    })
+                } else if rz >= rx {
+                    arm!(d_x + d_z, max_off, d_z, |t1, t2, t3, c0| {
+                        (t1 - t3, t2 - t1, t3 - c0)
+                    })
+                } else {
+                    arm!(d_x, max_off, d_x + d_z, |t1, t2, t3, c0| {
+                        (t1 - c0, t2 - t3, t3 - t1)
+                    })
+                }
+            } else {
+                if rx >= rz {
+                    arm!(d_x + d_y, d_y, max_off, |t1, t2, t3, c0| {
+                        (t1 - t2, t2 - c0, t3 - t1)
+                    })
+                } else if ry >= rz {
+                    arm!(max_off, d_y, d_y + d_z, |t1, t2, t3, c0| {
+                        (t1 - t3, t2 - c0, t3 - t2)
+                    })
+                } else {
+                    arm!(max_off, d_y + d_z, d_z, |t1, t2, t3, c0| {
+                        (t1 - t2, t2 - t3, t3 - c0)
+                    })
+                }
+            }
+        }};
+    }
+
+    let v0 = tetra_cell!(k0i);
+    let v1 = tetra_cell!(k1);
+
+    let mut out = [0u16; 4];
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = linear_interp(rk, v0[oc] as i32, v1[oc] as i32);
+    }
+    out
+}
+
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
 #[inline]
 #[inline]
