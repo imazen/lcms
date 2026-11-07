@@ -198,6 +198,12 @@ impl<'a> InterpParams<'a> {
         match self.interpolation {
             Interpolation::LerpFloat(f) => {
                 if std::ptr::fn_addr_eq(f, eval4_inputs_float as InterpFnFloat) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return evalflt_eval4_v3(t, input, output, n_out, self);
+                        }
+                    }
                     eval4_inputs_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, tetrahedral_interp_float as InterpFnFloat) {
                     let n_out = self.n_outputs as usize;
@@ -1399,6 +1405,78 @@ fn corner_f32x4(tab: &[f32], off: usize, last: usize) -> [f32; 4] {
     }
 }
 
+/// `eval4_inputs_float` over `magetypes::f32x4` — two shifted tetra
+/// evals + the rk blend, all lanes. Same bit-exactness argument as
+/// `tetra3_f32x4`; `y0 + (y1-y0)*rest` stays `mul` then `add` (no FMA).
+#[inline(always)]
+pub(crate) fn eval4_f32x4<T: magetypes::simd::backends::F32x4Backend>(
+    token: T,
+    input: &[f32; 4],
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [f32; 4] {
+    let lut_table = p.table_f32();
+
+    let pk = fclamp(input[0]) * p.domain[0] as f32;
+    let k0 = pk.floor() as i32;
+    let rest = pk - k0 as f32;
+
+    let k0i = (p.opta[3] as i32).wrapping_mul(k0);
+    let k1 = k0i
+        + if fclamp(input[0]) >= 1.0 {
+            0
+        } else {
+            p.opta[3] as i32
+        };
+
+    let mut p1 = InterpParams {
+        dw_flags: p.dw_flags,
+        n_inputs: p.n_inputs,
+        n_outputs: p.n_outputs,
+        n_samples: p.n_samples,
+        domain: p.domain,
+        opta: p.opta,
+        table: InterpTable::F32(&lut_table[k0i as usize..]),
+        interpolation: p.interpolation,
+        foreign: None,
+    };
+    p1.domain[..3].copy_from_slice(&p.domain[1..4]);
+
+    let vin: [f32; 3] = [input[1], input[2], input[3]];
+    let v0 = tetra3_f32x4(token, &vin, n_outputs, &p1);
+    p1.table = InterpTable::F32(&lut_table[k1 as usize..]);
+    let v1 = tetra3_f32x4(token, &vin, n_outputs, &p1);
+
+    let v0v = magetypes::simd::generic::f32x4::<T>::from_array_t(token, v0);
+    let v1v = magetypes::simd::generic::f32x4::<T>::from_array_t(token, v1);
+    let restv = magetypes::simd::generic::f32x4::<T>::splat_t(token, rest);
+    let res = (v1v - v0v) * restv + v0v;
+    let ra = res.to_array();
+    let mut out = [0f32; 4];
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = ra[oc];
+    }
+    out
+}
+
+/// `#[arcane]` wrapper for `eval_float`'s eval4 arm.
+#[archmage::arcane]
+pub(crate) fn evalflt_eval4_v3(
+    token: archmage::X64V3Token,
+    input: &[f32],
+    output: &mut [f32],
+    n_outputs: usize,
+    p: &InterpParams,
+) {
+    let v = eval4_f32x4(
+        token,
+        &[input[0], input[1], input[2], input[3]],
+        n_outputs,
+        p,
+    );
+    output[..n_outputs].copy_from_slice(&v[..n_outputs]);
+}
+
 /// `#[arcane]` wrapper for `eval_float`'s tetra arm.
 #[archmage::arcane]
 pub(crate) fn evalflt_tetra3_v3(
@@ -2067,6 +2145,62 @@ mod tests {
             tetrahedral_interp_float(&f, &mut o1, &p);
             let o2 = tetra3_f32x4(tok, &f, 3, &p);
             for c in 0..3 {
+                if o1[c].to_bits() != o2[c].to_bits() {
+                    diffs += 1;
+                }
+            }
+        }
+        assert_eq!(diffs, 0);
+    }
+
+    /// `eval4_f32x4` must be bit-exact vs `eval4_inputs_float` — two
+    /// shifted tetra evals + the rk blend, lane order preserved.
+    #[test]
+    fn eval4_f32x4_parity() {
+        let n = 17u32; // 17^4 grid, 4 outputs
+        let mut tab = Vec::new();
+        for k in 0..n {
+            for z in 0..n {
+                for y in 0..n {
+                    for x in 0..n {
+                        for c in 0..4u32 {
+                            tab.push(
+                                ((x * 3 + y * 5 + z * 7 + k * 11 + c * 13) as f32)
+                                    / 8192.0,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let p = InterpParams {
+            dw_flags: 0,
+            n_inputs: 4,
+            n_outputs: 4,
+            n_samples: [n; 15],
+            domain: [n - 1; 15],
+            opta: [4, 4 * n, 4 * n * n, 4 * n * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            table: InterpTable::F32(&tab),
+            interpolation: Interpolation::LerpFloat(
+                eval4_inputs_float as InterpFnFloat,
+            ),
+            foreign: None,
+        };
+        let Some(tok) = x64v3_cached() else {
+            return;
+        };
+        let mut diffs = 0u64;
+        for i in 0..200000u32 {
+            let f = [
+                ((i * 37) % 65536) as f32 / 65535.0,
+                ((i * 71 + 13) % 65536) as f32 / 65535.0,
+                ((i * 113 + 29) % 65536) as f32 / 65535.0,
+                ((i * 151 + 41) % 65536) as f32 / 65535.0,
+            ];
+            let mut o1 = [0f32; 4];
+            eval4_inputs_float(&f, &mut o1, &p);
+            let o2 = eval4_f32x4(tok, &f, 4, &p);
+            for c in 0..4 {
                 if o1[c].to_bits() != o2[c].to_bits() {
                     diffs += 1;
                 }
