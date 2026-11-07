@@ -3937,6 +3937,15 @@ fn foreign_kernel_float(input: &[f32], output: &mut [f32], p: &lcms::intrp::CmsI
         unsafe { std::mem::transmute(p.interpolation) };
     unsafe { f(input.as_ptr(), output.as_mut_ptr(), p) };
 }
+
+/// `cmsParametricCurveEvaluator` C signature —
+/// `f64 (*)(cmsInt32Number Type, const cmsFloat64Number Params[10],
+/// cmsFloat64Number R)`.
+fn parametric_eval_hook(ep: usize, ty: i32, params: &[f64; 10], r: f64) -> f64 {
+    let f: unsafe extern "C" fn(i32, *const f64, f64) -> f64 =
+        unsafe { std::mem::transmute(ep) };
+    unsafe { f(ty, params.as_ptr(), r) }
+}
 fn ensure_foreign_hooks() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -3945,6 +3954,7 @@ fn ensure_foreign_hooks() {
             kernel16: foreign_kernel16,
             kernel_float: foreign_kernel_float,
         });
+        lcms::gamma::set_parametric_eval_hook(parametric_eval_hook);
         lcms::pack::set_foreign_fmt_hooks(lcms::pack::ForeignFmtHooks {
             factory: fmt_factory_hook,
             kernel16: fmt_kernel16,

@@ -75,6 +75,9 @@ pub struct ToneCurve {
     /// `Evals` — resolved evaluator per segment (`None` where C leaves the
     /// calloc'ed pointer NULL because no collection knew the type).
     pub evals: Vec<Option<ParametricCurveEvaluator>>,
+    /// C-registered `cmsPluginParametricCurves` evaluator ptrs, parallel
+    /// to `evals` — `Some(ptr)` when the segment's type matched a C set.
+    pub(crate) c_evals: Vec<Option<usize>>,
     /// `SegInterp` — the resolved 1in/1out float kernel per type-0 segment.
     /// `None` mirrors C leaving the slot NULL for non-sampled segments.
     seg_interp: Vec<Option<InterpFnFloat>>,
@@ -201,6 +204,11 @@ fn eval_segmented_fn(g: &ToneCurve, r: f64) -> f64 {
                 }
             } else if let Some(eval) = g.evals[i as usize] {
                 eval(seg.r#type, &seg.params, r)
+            } else if let Some(ep) = g.c_evals.get(i as usize).copied().flatten() {
+                match PARAMETRIC_EVAL_HOOK.get() {
+                    Some(h) => h(ep, seg.r#type, &seg.params, r),
+                    None => 0.0,
+                }
             } else {
                 0.0
             };
@@ -258,6 +266,32 @@ fn default_curves() -> &'static ParametricCurves {
 
 /// `_cmsRegisterParametricCurvesPlugin` — push a collection (head = index 0).
 /// `n_functions` is clamped to `MAX_TYPES_IN_LCMS_PLUGIN` like C.
+/// Foreign parametric-curve evaluator hook — the lcms crate forbids
+/// `unsafe`, so calling a `cmsPluginParametricCurves`-registered C
+/// evaluator fn ptr goes through a bridge installed by lcms2-ffi.
+/// Signature: `(evaluator_ptr, type, params, r) -> f64`.
+pub type ForeignParametricEval = fn(usize, i32, &[f64; 10], f64) -> f64;
+static PARAMETRIC_EVAL_HOOK: std::sync::OnceLock<ForeignParametricEval> =
+    std::sync::OnceLock::new();
+pub fn set_parametric_eval_hook(h: ForeignParametricEval) {
+    let _ = PARAMETRIC_EVAL_HOOK.set(h);
+}
+
+/// Walk the ctx's C-registered `cmsPluginParametricCurves` collections —
+/// the `abs(Type)` match C applies in `_cmsGetParametricCurveByType`.
+pub(crate) fn parametric_curve_in_c_sets<'a>(
+    ctx: Option<&'a Context>,
+    r#type: i32,
+) -> Option<(usize, &'a crate::context::CParametricSet)> {
+    let c = or_global(ctx);
+    for (i, set) in c.c_parametric_curves.iter().enumerate() {
+        if set.function_types.iter().any(|&t| t == r#type.abs()) {
+            return Some((i, set));
+        }
+    }
+    None
+}
+
 pub fn register_parametric_curves(ctx: &mut Context, collection: Option<ParametricCurves>) -> bool {
     match collection {
         None => {
@@ -601,6 +635,7 @@ fn allocate_tone_curve_struct(
 
     let mut segs: Vec<CurveSegment> = Vec::new();
     let mut evals: Vec<Option<ParametricCurveEvaluator>> = Vec::new();
+    let mut c_evals: Vec<Option<usize>> = Vec::new();
     let mut seg_interp: Vec<Option<InterpFnFloat>> = Vec::new();
 
     if let Some(segments) = segments {
@@ -632,6 +667,12 @@ fn allocate_tone_curve_struct(
 
                 let evaluator = get_parametric_curve_by_type(ctx, st).map(|(_, c)| c.evaluator);
                 evals.push(evaluator);
+                // C-evaluator arm — only when no native collection matched.
+                c_evals.push(if evaluator.is_none() {
+                    parametric_curve_in_c_sets(ctx, st).map(|(_, s)| s.evaluator)
+                } else {
+                    None
+                });
             }
         }
     }
@@ -655,6 +696,7 @@ fn allocate_tone_curve_struct(
         table16,
         segments: segs,
         evals,
+        c_evals,
         seg_interp,
         interp16,
         domain0,
@@ -773,16 +815,20 @@ pub fn build_parametric_tone_curve(
     r#type: i32,
     params: &[f64],
 ) -> Option<ToneCurve> {
-    let (pos, c) = match get_parametric_curve_by_type(ctx, r#type) {
-        Some(x) => x,
-        None => {
-            err::signal_error(
-                ctx,
-                ERROR_UNKNOWN_EXTENSION,
-                "Invalid parametric curve type",
-            );
-            return None;
-        }
+    let (pos, n_params) = match get_parametric_curve_by_type(ctx, r#type) {
+        Some((pos, c)) => (pos, c.parameter_count[pos] as usize),
+        // C-registered `cmsPluginParametricCurves` collection arm.
+        None => match parametric_curve_in_c_sets(ctx, r#type) {
+            Some((pos, s)) => (pos, s.parameter_count[pos] as usize),
+            None => {
+                err::signal_error(
+                    ctx,
+                    ERROR_UNKNOWN_EXTENSION,
+                    "Invalid parametric curve type",
+                );
+                return None;
+            }
+        },
     };
 
     let mut seg0 = CurveSegment {
@@ -793,8 +839,7 @@ pub fn build_parametric_tone_curve(
         ..Default::default()
     };
 
-    let size = c.parameter_count[pos] as usize;
-    seg0.params[..size].copy_from_slice(&params[..size]);
+    seg0.params[..n_params].copy_from_slice(&params[..n_params]);
 
     build_segmented_tone_curve(ctx, &[seg0])
 }
@@ -895,7 +940,8 @@ pub fn reverse_tone_curve_ex(n_result_samples: u32, in_curve: &ToneCurve) -> Opt
     // Try to reverse it analytically whatever possible
     if in_curve.segments.len() == 1
         && in_curve.segments[0].r#type > 0
-        && get_parametric_curve_by_type(ctx, in_curve.segments[0].r#type).is_some()
+        && (get_parametric_curve_by_type(ctx, in_curve.segments[0].r#type).is_some()
+            || parametric_curve_in_c_sets(ctx, in_curve.segments[0].r#type).is_some())
     {
         return build_parametric_tone_curve(
             ctx,
