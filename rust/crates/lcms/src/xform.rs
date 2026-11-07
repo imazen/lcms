@@ -156,6 +156,48 @@ fn clut16_tetra_loop_v3(
     }
 }
 
+/// `clut16_tetra_loop_v3` for `TYPE_RGBA_FLT` — quick-saturate three
+/// f32s to u16, tetra3_i32x4 on the u16 table, back to f32; extra slot
+/// writes 0.0f like the generic path's zeroed `f_out`.
+#[archmage::arcane]
+#[allow(clippy::too_many_arguments)]
+fn clutflt_tetra_loop_v3(
+    token: archmage::X64V3Token,
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    let ppl16 = ppl as usize * 16;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppl16];
+        let oline = &mut output[o_off..o_off + ppl16];
+        for i in 0..ppl as usize {
+            let px = i * 16;
+            let rd = |o: usize| {
+                f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap())
+            };
+            let vin = [
+                crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
+                crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
+                crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
+            ];
+            let [r, g, b] = crate::intrp::tetra3_i32x4(token, vin, p);
+            let outv = [r as f32 / 65535.0, g as f32 / 65535.0, b as f32 / 65535.0, 0.0];
+            for (cch, v) in outv.iter().enumerate() {
+                oline[px + cch * 4..px + cch * 4 + 4]
+                    .copy_from_slice(&v.to_le_bytes());
+            }
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// Scalar fallback for `clut16_tetra_loop_v3` (non-AVX2 hosts).
 #[allow(clippy::too_many_arguments)]
 fn clut16_tetra_loop_scalar(
@@ -1710,6 +1752,13 @@ impl Transform {
                                     )
                             )
                         {
+                            if let Some(token) = archmage::X64V3Token::summon()
+                            {
+                                return clutflt_tetra_loop_v3(
+                                    token, &c.params16, input, output, ppl,
+                                    lines, stride,
+                                );
+                            }
                             let p = &c.params16;
                             let ppl16 = ppl as usize * 16;
                             let mut i_off = 0usize;
