@@ -61,7 +61,17 @@ just bench      # C-vs-Rust MPix/s table + differential-dump counts
 just testbed    # build+run upstream testcms2 against both; pass/fail counts
 just c-oracle   # just the oracle static lib (bench/out/liblcms2_c.a)
 just test       # the workspace cargo tests (the c_parity_* oracle gates)
+just coverage   # source-based coverage of the lcms crate (cargo-llvm-cov)
+just api-doc    # regenerate docs/public-api/*.txt snapshots
 ```
+
+Coverage on the `cargo test` parity suite (llvm source-based):
+`intrp` 91%, `pcs` 95%, `wtpnt`/`mtrx`/`half`/`cam02` ~100%, `gamma` 82%,
+`lut`/`cnvrt`/`profile`/`ps2` ~72–79%. The formatters/transform matrix
+(`pack` 34%, `xform` 30%) and profile builders (`virt` 27%, `sm` 21%,
+`alpha` 4%) are covered mainly by the upstream testbed and the bench
+differentials, which run against the `liblcms2_ffi.so` build rather than
+the `cargo test` harness.
 
 ## License
 
