@@ -234,6 +234,61 @@ fn clut8_tetra_loop_v3(
     }
 }
 
+/// Cached variant of `clut16_tetra_loop_v3` — C's `CachedXFORM` u64
+/// compare (w_in[3..16] is always zero), misses eval tetra3_i32x4.
+/// Cache starts zeroed (`_cmsMallocZero`), `cv = co = 0` mirrors it.
+#[archmage::arcane]
+#[allow(clippy::too_many_arguments)]
+fn clut16_tetra_cached_v3(
+    token: archmage::X64V3Token,
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    ipx: usize,
+    opx: usize,
+) {
+    let ppli = ppl as usize * ipx;
+    let pplo = ppl as usize * opx;
+    let mut cv = 0u64;
+    let mut co = 0u64;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppli];
+        let oline = &mut output[o_off..o_off + pplo];
+        for i in 0..ppl as usize {
+            let px = i * ipx;
+            let v64 = (u16::from_le_bytes(iline[px..px + 2].try_into().unwrap())
+                as u64)
+                | ((u16::from_le_bytes(
+                    iline[px + 2..px + 4].try_into().unwrap(),
+                ) as u64)
+                    << 16)
+                | ((u16::from_le_bytes(
+                    iline[px + 4..px + 6].try_into().unwrap(),
+                ) as u64)
+                    << 32);
+            let px64 = if v64 == cv {
+                co
+            } else {
+                let vin = [v64 as u16, (v64 >> 16) as u16, (v64 >> 32) as u16];
+                let [r, g, b] = crate::intrp::tetra3_i32x4(token, vin, p);
+                let o64 = (r as u64) | ((g as u64) << 16) | ((b as u64) << 32);
+                cv = v64;
+                co = o64;
+                o64
+            };
+            let po = i * opx;
+            oline[po..po + 6].copy_from_slice(&px64.to_le_bytes()[..6]);
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// Scalar fallback for `clut16_tetra_loop_v3` (non-AVX2 hosts).
 #[allow(clippy::too_many_arguments)]
 fn clut16_tetra_loop_scalar(
@@ -1529,6 +1584,13 @@ impl Transform {
                                     )
                             )
                         {
+                            if let Some(token) = archmage::X64V3Token::summon()
+                            {
+                                return clut16_tetra_cached_v3(
+                                    token, &c.params16, input, output, ppl,
+                                    lines, stride, ipx, opx,
+                                );
+                            }
                             let p = &c.params16;
                             let ppli = ppl as usize * ipx;
                             let pplo = ppl as usize * opx;

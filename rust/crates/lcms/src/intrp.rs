@@ -1113,7 +1113,7 @@ pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
 /// vector lanes. Identical index math and per-arm diff chains; wrapping
 /// i32 SIMD ops match the scalar `.wrapping_*` arithmetic exactly.
 /// Called once per pixel inside `#[rite]`/`#[arcane]` loop fns.
-#[inline]
+#[inline(always)]
 pub(crate) fn tetra3_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     token: T,
     vin: [u16; 3],
