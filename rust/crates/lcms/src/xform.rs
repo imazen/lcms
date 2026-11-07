@@ -1301,6 +1301,63 @@ impl Transform {
             };
             if ipx != 0 && opx != 0 {
                 if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
+                        if c.curves.len() == 3
+                            && c.curves.iter().all(|t| t.len() == 0x10000)
+                        {
+                            let t0: &[u16; 0x10000] =
+                                c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 0x10000] =
+                                c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 0x10000] =
+                                c.curves[2].as_slice().try_into().unwrap();
+                            let ppli = ppl as usize * ipx;
+                            let pplo = ppl as usize * opx;
+                            let mut cv = 0u64;
+                            let mut co = 0u64;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppli];
+                                let oline = &mut output[o_off..o_off + pplo];
+                                for i in 0..ppl as usize {
+                                    let px = i * ipx;
+                                    let v64 = (u16::from_le_bytes(
+                                        iline[px..px + 2].try_into().unwrap(),
+                                    )
+                                        as u64)
+                                        | ((u16::from_le_bytes(
+                                            iline[px + 2..px + 4].try_into().unwrap(),
+                                        )
+                                            as u64)
+                                            << 16)
+                                        | ((u16::from_le_bytes(
+                                            iline[px + 4..px + 6].try_into().unwrap(),
+                                        )
+                                            as u64)
+                                            << 32);
+                                    let px64 = if v64 == cv {
+                                        co
+                                    } else {
+                                        let o64 = (t0[v64 as u16 as usize] as u64)
+                                            | ((t1[(v64 >> 16) as u16 as usize] as u64)
+                                                << 16)
+                                            | ((t2[(v64 >> 32) as u16 as usize] as u64)
+                                                << 32);
+                                        cv = v64;
+                                        co = o64;
+                                        o64
+                                    };
+                                    let po = i * opx;
+                                    oline[po..po + 6]
+                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         if c.params16.n_outputs == 3
                             && matches!(
