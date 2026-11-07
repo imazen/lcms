@@ -238,6 +238,79 @@ fn clut16_eval4_loop_v3(
     }
 }
 
+/// Scalar fallback for `clut8_eval4_loop_v3` (non-AVX2 hosts).
+#[allow(clippy::too_many_arguments)]
+fn clut8_eval4_loop_scalar(
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    let ppl4 = ppl as usize * 4;
+    let n_out = p.n_outputs as usize;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppl4];
+        let oline = &mut output[o_off..o_off + ppl4];
+        let mut w_in = [0u16; 4];
+        let mut w_out = [0u16; 4];
+        for i in 0..ppl as usize {
+            let px = i * 4;
+            for cch in 0..4 {
+                w_in[cch] = crate::pack::f8to16(iline[px + cch]);
+            }
+            crate::intrp::eval4_inputs(&w_in, &mut w_out[..n_out], p);
+            for cch in 0..n_out {
+                oline[px + cch] = crate::pack::f16to8(w_out[cch]);
+            }
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
+/// `clut16_eval4_loop_v3` for `TYPE_CMYK_8` — f8to16 the four bytes,
+/// eval4_i32x4, f16to8 back.
+#[archmage::arcane]
+#[allow(clippy::too_many_arguments)]
+fn clut8_eval4_loop_v3(
+    token: archmage::X64V3Token,
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    let ppl4 = ppl as usize * 4;
+    let n_out = p.n_outputs as usize;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppl4];
+        let oline = &mut output[o_off..o_off + ppl4];
+        for i in 0..ppl as usize {
+            let px = i * 4;
+            let vin = [
+                crate::pack::f8to16(iline[px]),
+                crate::pack::f8to16(iline[px + 1]),
+                crate::pack::f8to16(iline[px + 2]),
+                crate::pack::f8to16(iline[px + 3]),
+            ];
+            let outv = crate::intrp::eval4_i32x4(token, vin, n_out, p);
+            oline[px] = crate::pack::f16to8(outv[0]);
+            oline[px + 1] = crate::pack::f16to8(outv[1]);
+            oline[px + 2] = crate::pack::f16to8(outv[2]);
+            oline[px + 3] = crate::pack::f16to8(outv[3]);
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// `clut16_tetra_loop_v3` for `TYPE_RGB_8` — f8to16 the three bytes,
 /// tetra3_i32x4 on the u16 table, f16to8 back.
 #[archmage::arcane]
@@ -1164,6 +1237,35 @@ impl Transform {
                                 o_off += stride.bytes_per_line_out as usize;
                             }
                             return;
+                        }
+                    }
+                }
+            }
+            const CMYK8: u32 = 6 << 16 | 4 << 3 | 1;
+            if self.input_format == CMYK8 && self.output_format == CMYK8 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                        if c.params16.n_outputs == 4
+                            && matches!(
+                                c.params16.interpolation,
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::eval4_inputs
+                                            as crate::intrp::InterpFn16,
+                                    )
+                            )
+                        {
+                            if let Some(token) = archmage::X64V3Token::summon()
+                            {
+                                return clut8_eval4_loop_v3(
+                                    token, &c.params16, input, output, ppl,
+                                    lines, stride,
+                                );
+                            }
+                            return clut8_eval4_loop_scalar(
+                                &c.params16, input, output, ppl, lines, stride,
+                            );
                         }
                     }
                 }
