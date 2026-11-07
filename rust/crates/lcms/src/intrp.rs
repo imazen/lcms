@@ -357,6 +357,7 @@ pub fn set_interpolation_routine(ctx: Option<&Context>, p: &mut InterpParams) ->
     match interp {
         Some(i) => {
             p.interpolation = i;
+            p.kernel = kernel_kind(i);
             true
         }
         None => false,
@@ -2668,6 +2669,7 @@ mod tests {
                 tetrahedral_interp_float as InterpFnFloat,
             ),
             foreign: None,
+            kernel: KernelKind::Tetra3F,
         };
         let Some(tok) = x64v3_cached() else {
             return; // non-AVX2 host — nothing to compare against
@@ -2723,6 +2725,7 @@ mod tests {
                 eval4_inputs_float as InterpFnFloat,
             ),
             foreign: None,
+            kernel: KernelKind::Eval4F,
         };
         let Some(tok) = x64v3_cached() else {
             return;
@@ -2776,6 +2779,7 @@ mod tests {
                 trilinear_interp16 as InterpFn16,
             ),
             foreign: None,
+            kernel: KernelKind::Trilinear,
         };
         let Some(tok) = x64v3_cached() else {
             return;
@@ -2824,6 +2828,7 @@ mod tests {
                 bilinear_interp16 as InterpFn16,
             ),
             foreign: None,
+            kernel: KernelKind::Bilinear,
         };
         let Some(tok) = x64v3_cached() else {
             return;
@@ -2873,6 +2878,7 @@ mod tests {
                 trilinear_interp_float as InterpFnFloat,
             ),
             foreign: None,
+            kernel: KernelKind::TrilinearF,
         };
         // 2-D table over the same data (y-major stride n)
         let p2 = InterpParams {
@@ -2881,6 +2887,7 @@ mod tests {
             interpolation: Interpolation::LerpFloat(
                 bilinear_interp_float as InterpFnFloat,
             ),
+            kernel: KernelKind::BilinearF,
             ..p3.clone()
         };
         let Some(tok) = x64v3_cached() else {

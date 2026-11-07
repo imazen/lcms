@@ -44,3 +44,19 @@ c-oracle:
 # dir; reports the C and Rust pass counts.
 testbed:
     bench/testbed.sh
+
+# Regenerate the public-API surface snapshots (docs/public-api/).
+api-doc:
+    cargo test --manifest-path apidoc/Cargo.toml
+
+# Verify the committed snapshots are current
+api-doc-check:
+    ZEN_API_DOC=check cargo test --manifest-path apidoc/Cargo.toml
+
+# Source-based coverage of the c_parity_* oracle suite (lcms crate).
+coverage:
+    cargo llvm-cov -p lcms --summary-only
+
+# Full workspace incl. lcms2-ffi (0% — exercised via testcms2, not cargo test).
+coverage-all:
+    cargo llvm-cov --workspace --summary-only

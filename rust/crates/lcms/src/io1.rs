@@ -400,6 +400,7 @@ fn change_interpolation_to_trilinear(lut: &mut Pipeline) {
                 {
                     p.dw_flags = c.dw_flags;
                     p.interpolation = c.interpolation;
+                    p.kernel = crate::intrp::kernel_kind(c.interpolation);
                 }
             }
         }

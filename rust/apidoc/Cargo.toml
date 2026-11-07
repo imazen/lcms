@@ -1,0 +1,14 @@
+# CI-free public-API snapshot runner — the only package depending on
+# zenutils-apidoc. The empty [workspace] table detaches it from the parent
+# workspace, so `cargo test` on the real workspace never compiles the apidoc
+# tree or runs rustdoc. Regenerate via `just api-doc`.
+[package]
+name = "lcms-apidoc"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+zenutils-apidoc = "0.1.1"

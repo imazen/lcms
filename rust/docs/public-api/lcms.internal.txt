@@ -1,0 +1,83 @@
+# lcms public API — doc(hidden) items and excluded-feature surface
+# excluded features: (none)
+# (regenerated on every `cargo test` by zenutils-apidoc; ZEN_API_DOC=check verifies, =off skips).
+# Encodings: crate-name prefix stripped; auto traits collapse to a
+# count + exceptions; trait impls collapse to one roster line per
+# type (method signatures live at the trait definition); blanket
+# impls omitted; re-export duplicates annotated `[also: path]`.
+# DO NOT EDIT BY HAND — commit regenerated changes with the code.
+
+## summary
+#
+#   pub consts/statics                          1
+#   free functions                              4
+#   inherent methods                            6
+#   trait roster entries (type × trait)        40
+#
+# per-module pub lines:
+#   cgats                             2
+#   cnvrt                             2
+#   context                           1
+#   err                               1
+#   gamma                             1
+#   gbd                               1
+#   intrp                             1
+#   lut                               1
+#   xform                             1
+
+## items (11 lines)
+
+pub fn cgats::Symbol::assert_fields_are_eq(&self)
+pub fn cgats::WriteMode::assert_fields_are_eq(&self)
+pub fn cnvrt::dbg_default_icc_intents(core::option::Option<&context::Context>, &mut [alloc::boxed::Box<profile::IccProfile>], &[u32], &mut [bool], &[f64], u32) -> core::option::Option<lut::Pipeline>
+pub fn cnvrt::dbg_detect_tac(&mut profile::IccProfile) -> f64
+pub fn context::PluginType::assert_fields_are_eq(&self)
+pub fn gamma::dbg_allocate_tone_curve_struct(core::option::Option<&context::Context>, u32, u32, core::option::Option<&[gamma::CurveSegment]>, core::option::Option<&[u16]>) -> core::option::Option<gamma::ToneCurve>
+pub fn gbd::GdbPointType::assert_fields_are_eq(&self)
+pub fn intrp::KernelKind::assert_fields_are_eq(&self)
+pub fn lut::StageLoc::assert_fields_are_eq(&self)
+pub fn xform::dbg_detect_rgb_profile_gamma(&mut profile::IccProfile, f64) -> f64
+pub static err::GLOBAL_LOG_HOOK: std::sync::poison::mutex::Mutex<core::option::Option<context::LogErrorHandler>>
+
+## trait impls (40 types)
+
+cgats::Keyword: TrivialClone
+cgats::Symbol: TrivialClone
+cgats::WriteMode: TrivialClone
+context::CHeaderSet: TrivialClone
+context::CIntentSet: TrivialClone
+context::PluginType: TrivialClone
+context::StageHooks: TrivialClone
+context::TagTypeHooks: TrivialClone
+gbd::GdbPoint: TrivialClone
+gbd::GdbPointType: TrivialClone
+gbd::Spherical: TrivialClone
+intrp::ForeignHooks: TrivialClone
+intrp::Interpolation: TrivialClone
+intrp::KernelKind: TrivialClone
+lut::StageLoc: TrivialClone
+named::MluEntry: TrivialClone
+pack::Formatter: TrivialClone
+pack::FormatterDir: TrivialClone
+tagtypes::MpeElemHandler: TrivialClone
+tagtypes::ScreeningChannel: TrivialClone
+tagtypes::TagDescriptor: TrivialClone
+tagtypes::TagTypeHandler: TrivialClone
+tagtypes::Tm: TrivialClone
+tagtypes::VideoSignal: TrivialClone
+types::CieLCh: TrivialClone
+types::CieLab: TrivialClone
+types::CieXyz: TrivialClone
+types::CiexyY: TrivialClone
+types::CiexyYTriple: TrivialClone
+types::DateTimeNumber: TrivialClone
+types::EncodedXyzNumber: TrivialClone
+types::IccMeasurementConditions: TrivialClone
+types::JCh: TrivialClone
+types::Mat3: TrivialClone
+types::ProfileId: TrivialClone
+types::Vec3: TrivialClone
+types::ViewingConditions: TrivialClone
+xform::ForeignXform: TrivialClone
+xform::Stride: TrivialClone
+xform::Worker: TrivialClone
