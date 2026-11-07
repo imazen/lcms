@@ -942,6 +942,53 @@ impl Transform {
             const RGBA16: u32 = 4 << 16 | 1 << 7 | 3 << 3 | 2;
             if self.input_format == RGBA16 && self.output_format == RGBA16 {
                 if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                        // `unroll3_words_skip1`→tetra3→`pack3_words_and_skip1`
+                        if c.params16.n_outputs == 3
+                            && matches!(
+                                c.params16.interpolation,
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::tetrahedral_interp16
+                                            as crate::intrp::InterpFn16,
+                                    )
+                            )
+                        {
+                            let p = &c.params16;
+                            let ppl8 = ppl as usize * 8;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppl8];
+                                let oline = &mut output[o_off..o_off + ppl8];
+                                for i in 0..ppl as usize {
+                                    let px = i * 8;
+                                    let vin = [
+                                        u16::from_le_bytes(
+                                            iline[px..px + 2].try_into().unwrap(),
+                                        ),
+                                        u16::from_le_bytes(
+                                            iline[px + 2..px + 4].try_into().unwrap(),
+                                        ),
+                                        u16::from_le_bytes(
+                                            iline[px + 4..px + 6].try_into().unwrap(),
+                                        ),
+                                    ];
+                                    let [r, g, b] =
+                                        crate::intrp::tetra3_interp16(vin, p);
+                                    let px64 = (r as u64)
+                                        | ((g as u64) << 16)
+                                        | ((b as u64) << 32);
+                                    oline[px..px + 6]
+                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
                         // `unroll3_words_skip1`→Curves16→`pack3_words_and_skip1`
                         if c.curves.len() == 3
@@ -1221,6 +1268,97 @@ impl Transform {
                                     )
                                         as usize];
                                     oline[px..px + 2].copy_from_slice(&v.to_le_bytes());
+                                }
+                                i_off += stride.bytes_per_line_in as usize;
+                                o_off += stride.bytes_per_line_out as usize;
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        // Cached fused path — C's `CachedXFORM` memcmp's `wIn` against
+        // `CacheIn` (32B); w_in[3..16] is always zero so the 6 channel
+        // bytes as one u64 are an equivalent compare. The cache arrays
+        // start zeroed (C `_cmsMallocZero`), mirrored by `cv = 0, co = 0`.
+        if cache && !gamut {
+            const RGB16: u32 = 4 << 16 | 3 << 3 | 2;
+            const RGBA16: u32 = 4 << 16 | 1 << 7 | 3 << 3 | 2;
+            let ipx = if self.input_format == RGB16 {
+                6
+            } else if self.input_format == RGBA16 {
+                8
+            } else {
+                0
+            };
+            let opx = if self.output_format == RGB16 {
+                6
+            } else if self.output_format == RGBA16 {
+                8
+            } else {
+                0
+            };
+            if ipx != 0 && opx != 0 {
+                if let Some(l) = self.lut.as_mut() {
+                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
+                        if c.params16.n_outputs == 3
+                            && matches!(
+                                c.params16.interpolation,
+                                crate::intrp::Interpolation::Lerp16(f)
+                                    if std::ptr::fn_addr_eq(
+                                        f,
+                                        crate::intrp::tetrahedral_interp16
+                                            as crate::intrp::InterpFn16,
+                                    )
+                            )
+                        {
+                            let p = &c.params16;
+                            let ppli = ppl as usize * ipx;
+                            let pplo = ppl as usize * opx;
+                            let mut cv = 0u64;
+                            let mut co = 0u64;
+                            let mut i_off = 0usize;
+                            let mut o_off = 0usize;
+                            for _ in 0..lines {
+                                let iline = &input[i_off..i_off + ppli];
+                                let oline = &mut output[o_off..o_off + pplo];
+                                for i in 0..ppl as usize {
+                                    let px = i * ipx;
+                                    let v64 = (u16::from_le_bytes(
+                                        iline[px..px + 2].try_into().unwrap(),
+                                    )
+                                        as u64)
+                                        | ((u16::from_le_bytes(
+                                            iline[px + 2..px + 4].try_into().unwrap(),
+                                        )
+                                            as u64)
+                                            << 16)
+                                        | ((u16::from_le_bytes(
+                                            iline[px + 4..px + 6].try_into().unwrap(),
+                                        )
+                                            as u64)
+                                            << 32);
+                                    let px64 = if v64 == cv {
+                                        co
+                                    } else {
+                                        let vin = [
+                                            v64 as u16,
+                                            (v64 >> 16) as u16,
+                                            (v64 >> 32) as u16,
+                                        ];
+                                        let [r, g, b] =
+                                            crate::intrp::tetra3_interp16(vin, p);
+                                        let o64 = (r as u64)
+                                            | ((g as u64) << 16)
+                                            | ((b as u64) << 32);
+                                        cv = v64;
+                                        co = o64;
+                                        o64
+                                    };
+                                    let po = i * opx;
+                                    oline[po..po + 6]
+                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
                                 o_off += stride.bytes_per_line_out as usize;
