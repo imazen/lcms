@@ -226,8 +226,20 @@ impl<'a> InterpParams<'a> {
                     }
                     tetrahedral_interp_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, trilinear_interp_float as InterpFnFloat) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return evalflt_trilinear_v3(t, input, output, n_out, self);
+                        }
+                    }
                     trilinear_interp_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, bilinear_interp_float as InterpFnFloat) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return evalflt_bilinear_v3(t, input, output, n_out, self);
+                        }
+                    }
                     bilinear_interp_float(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, eval1_input_float as InterpFnFloat) {
                     eval1_input_float(input, output, self)
@@ -1783,6 +1795,153 @@ pub(crate) fn bilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     out
 }
 
+/// `trilinear_interp_float` over `magetypes::f32x4` — ≤4 output
+/// channels as lanes; `l + (h-l)*a` per lane is IEEE-identical.
+#[inline(always)]
+pub(crate) fn trilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
+    token: T,
+    input: &[f32; 3],
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [f32; 4] {
+    let lut_table = p.table_f32();
+
+    let px = fclamp(input[0]) * p.domain[0] as f32;
+    let py = fclamp(input[1]) * p.domain[1] as f32;
+    let pz = fclamp(input[2]) * p.domain[2] as f32;
+    let x0 = px.floor() as i32;
+    let fx = px - x0 as f32;
+    let y0 = py.floor() as i32;
+    let fy = py - y0 as f32;
+    let z0 = pz.floor() as i32;
+    let fz = pz - z0 as f32;
+
+    let x0i = (p.opta[2] as i32).wrapping_mul(x0);
+    let x1 = x0i
+        + if fclamp(input[0]) >= 1.0 { 0 } else { p.opta[2] as i32 };
+    let y0i = (p.opta[1] as i32).wrapping_mul(y0);
+    let y1 = y0i
+        + if fclamp(input[1]) >= 1.0 { 0 } else { p.opta[1] as i32 };
+    let z0i = (p.opta[0] as i32).wrapping_mul(z0);
+    let z1 = z0i
+        + if fclamp(input[2]) >= 1.0 { 0 } else { p.opta[0] as i32 };
+
+    let n = p.n_outputs as usize;
+    let m = lut_table.len() - n;
+    let last = lut_table.len() - 1;
+    let w = |off: i32| {
+        magetypes::simd::generic::f32x4::<T>::from_array_t(
+            token,
+            corner_f32x4(lut_table, (off as usize).min(m), last),
+        )
+    };
+
+    let d000 = w(x0i + y0i + z0i);
+    let d001 = w(x0i + y0i + z1);
+    let d010 = w(x0i + y1 + z0i);
+    let d011 = w(x0i + y1 + z1);
+    let d100 = w(x1 + y0i + z0i);
+    let d101 = w(x1 + y0i + z1);
+    let d110 = w(x1 + y1 + z0i);
+    let d111 = w(x1 + y1 + z1);
+
+    type V<T> = magetypes::simd::generic::f32x4<T>;
+    let lerp = |a: V<T>, l: V<T>, h: V<T>| l + (h - l) * a;
+    let dx00 = lerp(V::<T>::splat_t(token, fx), d000, d100);
+    let dx01 = lerp(V::<T>::splat_t(token, fx), d001, d101);
+    let dx10 = lerp(V::<T>::splat_t(token, fx), d010, d110);
+    let dx11 = lerp(V::<T>::splat_t(token, fx), d011, d111);
+    let dxy0 = lerp(V::<T>::splat_t(token, fy), dx00, dx10);
+    let dxy1 = lerp(V::<T>::splat_t(token, fy), dx01, dx11);
+    let res = lerp(V::<T>::splat_t(token, fz), dxy0, dxy1).to_array();
+    let mut out = [0f32; 4];
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = res[oc];
+    }
+    out
+}
+
+/// `bilinear_interp_float` over `magetypes::f32x4`.
+#[inline(always)]
+pub(crate) fn bilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
+    token: T,
+    input: &[f32; 2],
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [f32; 4] {
+    let lut_table = p.table_f32();
+
+    let px = fclamp(input[0]) * p.domain[0] as f32;
+    let py = fclamp(input[1]) * p.domain[1] as f32;
+    let x0 = px.floor() as i32;
+    let fx = px - x0 as f32;
+    let y0 = py.floor() as i32;
+    let fy = py - y0 as f32;
+
+    let x0i = (p.opta[1] as i32).wrapping_mul(x0);
+    let x1 = x0i
+        + if fclamp(input[0]) >= 1.0 { 0 } else { p.opta[1] as i32 };
+    let y0i = (p.opta[0] as i32).wrapping_mul(y0);
+    let y1 = y0i
+        + if fclamp(input[1]) >= 1.0 { 0 } else { p.opta[0] as i32 };
+
+    let n = p.n_outputs as usize;
+    let m = lut_table.len() - n;
+    let last = lut_table.len() - 1;
+    let w = |off: i32| {
+        magetypes::simd::generic::f32x4::<T>::from_array_t(
+            token,
+            corner_f32x4(lut_table, (off as usize).min(m), last),
+        )
+    };
+
+    let d00 = w(x0i + y0i);
+    let d01 = w(x0i + y1);
+    let d10 = w(x1 + y0i);
+    let d11 = w(x1 + y1);
+
+    type V<T> = magetypes::simd::generic::f32x4<T>;
+    let lerp = |a: V<T>, l: V<T>, h: V<T>| l + (h - l) * a;
+    let dx0 = lerp(V::<T>::splat_t(token, fx), d00, d10);
+    let dx1 = lerp(V::<T>::splat_t(token, fx), d01, d11);
+    let res = lerp(V::<T>::splat_t(token, fy), dx0, dx1).to_array();
+    let mut out = [0f32; 4];
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = res[oc];
+    }
+    out
+}
+
+/// `#[arcane]` wrappers for `eval_float`'s trilinear/bilinear arms.
+#[archmage::arcane]
+pub(crate) fn evalflt_trilinear_v3(
+    token: archmage::X64V3Token,
+    input: &[f32],
+    output: &mut [f32],
+    n_outputs: usize,
+    p: &InterpParams,
+) {
+    let v = trilinear_f32x4(
+        token,
+        &[input[0], input[1], input[2]],
+        n_outputs,
+        p,
+    );
+    output[..n_outputs].copy_from_slice(&v[..n_outputs]);
+}
+
+#[archmage::arcane]
+pub(crate) fn evalflt_bilinear_v3(
+    token: archmage::X64V3Token,
+    input: &[f32],
+    output: &mut [f32],
+    n_outputs: usize,
+    p: &InterpParams,
+) {
+    let v = bilinear_f32x4(token, &[input[0], input[1]], n_outputs, p);
+    output[..n_outputs].copy_from_slice(&v[..n_outputs]);
+}
+
 /// `#[arcane]` wrapper for `eval16`'s bilinear arm.
 #[archmage::arcane]
 pub(crate) fn eval16_bilinear_v3(
@@ -2481,6 +2640,74 @@ mod tests {
             let o2 = bilinear_i32x4(tok, f, 3, &p);
             for c in 0..3 {
                 if o1[c] != o2[c] {
+                    diffs += 1;
+                }
+            }
+        }
+        assert_eq!(diffs, 0);
+    }
+
+    /// `trilinear_f32x4`/`bilinear_f32x4` vs their scalar kernels —
+    /// lane-exact f32 lerp chains.
+    #[test]
+    fn lin_f32x4_parity() {
+        let n = 33u32;
+        let mut tab = Vec::new();
+        for z in 0..n {
+            for y in 0..n {
+                for x in 0..n {
+                    for c in 0..3u32 {
+                        tab.push(((x * 3 + y * 5 + z * 7 + c * 11) as f32) / 4096.0);
+                    }
+                }
+            }
+        }
+        let p3 = InterpParams {
+            dw_flags: 0,
+            n_inputs: 3,
+            n_outputs: 3,
+            n_samples: [n; 15],
+            domain: [n - 1; 15],
+            opta: [3, 3 * n, 3 * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            table: InterpTable::F32(&tab),
+            interpolation: Interpolation::LerpFloat(
+                trilinear_interp_float as InterpFnFloat,
+            ),
+            foreign: None,
+        };
+        // 2-D table over the same data (y-major stride n)
+        let p2 = InterpParams {
+            n_inputs: 2,
+            opta: [3, 3 * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            interpolation: Interpolation::LerpFloat(
+                bilinear_interp_float as InterpFnFloat,
+            ),
+            ..p3.clone()
+        };
+        let Some(tok) = x64v3_cached() else {
+            return;
+        };
+        let mut diffs = 0u64;
+        for i in 0..200000u32 {
+            let f3 = [
+                ((i * 37) % 65536) as f32 / 65535.0,
+                ((i * 71 + 13) % 65536) as f32 / 65535.0,
+                ((i * 113 + 29) % 65536) as f32 / 65535.0,
+            ];
+            let mut o1 = [0f32; 4];
+            trilinear_interp_float(&f3, &mut o1, &p3);
+            let o2 = trilinear_f32x4(tok, &f3, 3, &p3);
+            for c in 0..3 {
+                if o1[c].to_bits() != o2[c].to_bits() {
+                    diffs += 1;
+                }
+            }
+            let f2 = [f3[0], f3[1]];
+            let mut b1 = [0f32; 4];
+            bilinear_interp_float(&f2, &mut b1, &p2);
+            let b2 = bilinear_f32x4(tok, &f2, 3, &p2);
+            for c in 0..3 {
+                if b1[c].to_bits() != b2[c].to_bits() {
                     diffs += 1;
                 }
             }
