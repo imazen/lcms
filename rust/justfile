@@ -18,3 +18,29 @@ fmt:
 
 check:
     cargo check --workspace
+
+# Reproducible C-vs-Rust benchmarks — builds the C oracle (reference/lcms2,
+# cc -O2 -fno-strict-aliasing) and liblcms2_ffi.so, links each bench/*.c
+# against both, runs in the upstream testbed dir, prints MPix/s side by side.
+bench:
+    bench/bench.sh
+
+# A subset: `just bench-one b32 diff_c8`
+bench-one +names:
+    bench/bench.sh {{names}}
+
+# Build just the C oracle static lib (bench/out/liblcms2_c.a)
+c-oracle:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p bench/out
+    for f in ../reference/lcms2/src/*.c; do \
+        cc -O2 -fno-strict-aliasing -I../reference/lcms2/include -c "$f" \
+            -o "bench/out/$(basename "$f" .c).o"; \
+    done
+    ar rcs bench/out/liblcms2_c.a bench/out/*.o
+
+# Build + run the upstream testbed (testcms2) against both libs in a scratch
+# dir; reports the C and Rust pass counts.
+testbed:
+    bench/testbed.sh

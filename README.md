@@ -11,25 +11,39 @@ same-source shim for `static`/`cmsINLINE` code) over dense and edge-case sweeps.
 
 ## Status
 
-Early port. Ported and byte-gated today:
+All lcms2 C modules are ported and byte-gated: `cmsio0` (profile I/O),
+`cmstypes` (tag handlers), `cmslut`/`cmsintrp`/`cmsgamma` (pipelines,
+interpolation, tone curves), `cmsopt`/`cmsxform`/`cmspack`/`cmsalpha`
+(transforms + optimizer), `cmscnvrt`/`cmssm`/`cmsgmt` (linking, gamut, black
+point), `cmsnamed`/`cmscgats`/`cmsio1`/`cmsmd5`/`cmsps2`/`cmssamp`/`cmscam02`/
+`cmsvirt`/`cmsmtrx`/`cmspcs`/`cmswtpnt`/`cmshalf`/`cmsplugin` helpers.
+`Transform` is `Send`. The upstream `testcms2` suite passes **144 checks, 0
+failures**; differential sweeps against the C oracle report **0 diffs** on
+every tested transform path. See `PORTING.md` for the module↔gate map.
 
-| C file | Rust module | gate |
-|---|---|---|
-| `cmsmtrx.c` | `lcms::mtrx` | `tests/c_parity_mtrx.rs` |
-| `cmspcs.c` | `lcms::pcs` | `tests/c_parity_pcs.rs` |
-| `cmswtpnt.c` | `lcms::wtpnt` | `tests/c_parity_wtpnt.rs` |
-| `cmshalf.c` | `lcms::half` | `tests/c_parity_half.rs` (exhaustive) |
-| `lcms2_internal.h` + `cmsplugin.c` fixed-point helpers | `lcms::fixed` | `tests/c_parity_fixed.rs` |
-| signature enums (`lcms2.h`) | `lcms::signatures` | generated, `tools/gen_signatures.py` |
+## Performance
 
-All lcms2 C modules are ported: `cmsio0` (profile I/O), `cmstypes` (tag
-handlers), `cmslut`/`cmsintrp`/`cmsgamma` (pipelines, interpolation, tone
-curves), `cmsopt`/`cmsxform`/`cmspack`/`cmsalpha` (transforms + optimizer),
-`cmscnvrt`/`cmssm`/`cmsgmt` (linking, gamut, black point),
-`cmsnamed`/`cmscgats`/`cmsio1`/`cmsmd5`/`cmsps2`/`cmssamp`/`cmscam02`/`cmsvirt`.
-`Transform` is `Send`. Differential coverage vs the C oracle spans profile
-I/O, tag serialization, pipelines, transforms, plugins, optimizer variants,
-and numeric edge cases — see `PORTING.md` for the mapping and per-module gate.
+The common transform paths are faster than the C implementation at the same
+bit-exact output. Results from `just bench` (best of 10, `release` build):
+
+| path | Rust | C oracle | rust/c |
+|---|---|---|---|
+| 16-bit CLUT | ~100 MPix/s | ~67 MPix/s | ~1.5× |
+| 8-bit CMYK | ~45 MPix/s | ~35 MPix/s | ~1.3× |
+| 8-bit SAME MatShaper | ~980 MPix/s | ~260 MPix/s | ~3.8× |
+| 8-bit curves | ~950 MPix/s | ~230 MPix/s | ~4× |
+| 16-bit curves | ~1.6 kMPix/s | ~250 MPix/s | ~6× |
+| 32-bit float CLUT | ~6.7 MPix/s | ~6.4 MPix/s | ~1.05× |
+
+The remaining sub-1.1× paths (32-bit float) share C's per-pixel pipeline walk
+and libm calls — the residual is structural, not a regression.
+
+`rust/bench/*.c` are the benchmark sources, linked once against
+`liblcms2_ffi.so` (the Rust build) and once against `liblcms2_c.a` (the oracle
+built from `reference/lcms2/src/*.c` with `cc -O2 -fno-strict-aliasing` — the
+same flags the `lcms-cref` differential oracle uses). `just bench` builds
+both, runs each benchmark in the upstream testbed dir, and prints the
+side-by-side table plus the differential-dump counts.
 
 ## Testing on a fresh box
 
@@ -40,6 +54,15 @@ cd rust && cargo test --workspace
 
 The C oracle is built by cargo (`lcms-cref/build.rs` runs `cc` over
 `reference/lcms2/src/*.c`) — needs a C compiler, nothing else.
+
+The `just` recipes cover the rest:
+
+```bash
+just bench      # C-vs-Rust MPix/s table + differential-dump counts
+just testbed    # build+run upstream testcms2 against both; pass/fail counts
+just c-oracle   # just the oracle static lib (bench/out/liblcms2_c.a)
+just test       # the workspace cargo tests (the c_parity_* oracle gates)
+```
 
 ## License
 
