@@ -65,13 +65,21 @@ just coverage   # source-based coverage of the lcms crate (cargo-llvm-cov)
 just api-doc    # regenerate docs/public-api/*.txt snapshots
 ```
 
-Coverage on the `cargo test` parity suite (llvm source-based):
-`intrp` 91%, `pcs` 95%, `wtpnt`/`mtrx`/`half`/`cam02` ~100%, `gamma` 82%,
-`lut`/`cnvrt`/`profile`/`ps2` ~72–79%. The formatters/transform matrix
-(`pack` 34%, `xform` 30%) and profile builders (`virt` 27%, `sm` 21%,
-`alpha` 4%) are covered mainly by the upstream testbed and the bench
-differentials, which run against the `liblcms2_ffi.so` build rather than
-the `cargo test` harness.
+Coverage is measured on **both** sides through the upstream testbed
+(`just coverage-testbed` builds each lib instrumented and runs `testcms2`
+against it):
+
+| | lines | functions |
+|---|---|---|
+| C oracle (`liblcms2_c`) | ~74% | ~83% |
+| Rust (`liblcms2_ffi`) | ~67% | ~68% |
+
+The gap is the foreign-plugin checks `testplugin.c` exercises (the C
+testbed runs 161 checks, the Rust build runs the 144 it supports). Neither
+side approaches 100% — lcms2 carries error paths and uncommon formats the
+suite doesn't reach. `just coverage` (`cargo llvm-cov` on the `cargo test`
+parity gates) is the deeper kernel-level number: `intrp` 91%, `pcs` 95%,
+`mtrx`/`half`/`cam02` ~100%.
 
 ## License
 

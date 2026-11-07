@@ -60,3 +60,9 @@ coverage:
 # Full workspace incl. lcms2-ffi (0% — exercised via testcms2, not cargo test).
 coverage-all:
     cargo llvm-cov --workspace --summary-only
+
+# Testbed-driven coverage on BOTH sides — C oracle + Rust lib through
+# testcms2, the honest port-coverage comparison (cargo test alone underweights
+# the formatter/profile-builder paths the testbed reaches).
+coverage-testbed:
+    bench/coverage.sh
