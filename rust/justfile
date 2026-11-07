@@ -79,6 +79,14 @@ coverage-all:
 coverage-testbed:
     bench/coverage.sh
 
+# C-oracle coverage through the PARITY SUITE — rebuilds lcms-cref with clang
+# coverage instrumentation, runs every c_parity_* binary, unions the reports.
+# Answers "which C paths have a gate" — complementary to coverage-testbed's
+# "which C paths testcms2 reaches". Measurement only; the gcc oracle remains
+# the parity contract (a few gates report ulp diffs under clang).
+coverage-cref:
+    bench/coverage-cref.sh
+
 ## API docs --------------------------------------------------------------------
 
 # Regenerate the public-API surface snapshots (docs/public-api/).

@@ -40,8 +40,12 @@ cc $CFLAGS -I"$LCMS2/src" "$LCMS2"/testbed/{testcms2.c,testplugin.c,zoo_icc.c} \
     -o "$OUT/testcms2_covrust"
 cd "$OUT"
 LLVM_PROFILE_FILE=rust.profraw ./testcms2_covrust >/dev/null 2>&1 || true
-PD=$(find ~/.rustup/toolchains -name llvm-profdata | head -1)
-CV=$(find ~/.rustup/toolchains -name llvm-cov | head -1)
+# The profile format is rustc-version-specific: use the ACTIVE toolchain's
+# llvm tools, not the first find(1) hit (a stale toolchain errors with
+# "raw profile version mismatch").
+RLB="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin"
+PD="$RLB/llvm-profdata"
+CV="$RLB/llvm-cov"
 "$PD" merge rust.profraw -o rust.profdata
 echo
 echo "=== Rust lcms coverage through testcms2 (lcms lines) ==="

@@ -51,8 +51,9 @@ fn copy16(d: &mut [u8], s: &[u8]) {
     d[..2].copy_from_slice(&s[..2]);
 }
 fn from16to16(d: &mut [u8], s: &[u8]) {
-    let v = u16::from_le_bytes(s[..2].try_into().unwrap());
-    d[..2].copy_from_slice(&v.to_le_bytes());
+    // C: n = *(u16*)src; *(u16*)dst = CHANGE_ENDIAN(n) — a byte swap,
+    // used for both 16→16SE and 16SE→16 (and it is the swap either way).
+    d[..2].copy_from_slice(&[s[1], s[0]]);
 }
 fn from16toflt(d: &mut [u8], s: &[u8]) {
     let v = u16::from_le_bytes(s[..2].try_into().unwrap());
@@ -80,15 +81,20 @@ fn from16setohlf(d: &mut [u8], s: &[u8]) {
 }
 fn fromfltto8(d: &mut [u8], s: &[u8]) {
     let n = f32::from_le_bytes(s[..4].try_into().unwrap());
-    d[0] = crate::fixed::quick_saturate_byte(n as f64 * 255.0);
+    // C: n * 255.0F — f32 product, then widened to f64 for the saturate
+    d[0] = crate::fixed::quick_saturate_byte((n * 255.0f32) as f64);
 }
 fn fromfltto16(d: &mut [u8], s: &[u8]) {
     let n = f32::from_le_bytes(s[..4].try_into().unwrap());
-    d[..2].copy_from_slice(&crate::fixed::quick_saturate_word(n as f64 * 65535.0).to_le_bytes());
+    d[..2].copy_from_slice(
+        &crate::fixed::quick_saturate_word((n * 65535.0f32) as f64).to_le_bytes(),
+    );
 }
 fn fromfltto16se(d: &mut [u8], s: &[u8]) {
     let n = f32::from_le_bytes(s[..4].try_into().unwrap());
-    d[..2].copy_from_slice(&crate::fixed::quick_saturate_word(n as f64 * 65535.0).to_be_bytes());
+    d[..2].copy_from_slice(
+        &crate::fixed::quick_saturate_word((n * 65535.0f32) as f64).to_be_bytes(),
+    );
 }
 fn fromflttohlf(d: &mut [u8], s: &[u8]) {
     let n = f32::from_le_bytes(s[..4].try_into().unwrap());
