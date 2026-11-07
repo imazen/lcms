@@ -353,6 +353,107 @@ fn clut8_eval4_loop_v3(
     }
 }
 
+/// `Prelin8` tetrahedral eval fused for `TYPE_RGB_8` — the input bytes are
+/// the grid indices directly (f8to16 >> 8 round-trips to the same byte),
+/// corners read as u64 windows → i32x4 lanes over the outputs.
+#[archmage::arcane]
+fn prelin8_rgb8_loop_v3(
+    token: archmage::X64V3Token,
+    p8: &crate::opt::Prelin8Data,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    type V = magetypes::simd::generic::i32x4<archmage::X64V3Token>;
+    let tab = p8.clut.tab16.as_deref().unwrap_or(&[]);
+    let n_out = p8.clut.n_outputs as usize;
+    let last = n_out - 1;
+    let (o0, o1, o2) = (
+        p8.clut.opta[0] as i32,
+        p8.clut.opta[1] as i32,
+        p8.clut.opta[2] as i32,
+    );
+    let ppl3 = ppl as usize * 3;
+    let mut i_off = 0usize;
+    let mut o_off = 0usize;
+    for _ in 0..lines {
+        let iline = &input[i_off..i_off + ppl3];
+        let oline = &mut output[o_off..o_off + ppl3];
+        for i in 0..ppl as usize {
+            let px = i * 3;
+            let r = iline[px] as usize;
+            let g = iline[px + 1] as usize;
+            let b = iline[px + 2] as usize;
+            let x0 = p8.x0[r] as i32;
+            let y0 = p8.y0[g] as i32;
+            let z0 = p8.z0[b] as i32;
+            let rx = p8.rx[r] as i32;
+            let ry = p8.ry[g] as i32;
+            let rz = p8.rz[b] as i32;
+            let x1 = x0.wrapping_add(if rx == 0 { 0 } else { o2 });
+            let y1 = y0.wrapping_add(if ry == 0 { 0 } else { o1 });
+            let z1 = z0.wrapping_add(if rz == 0 { 0 } else { o0 });
+            // Corner base offsets for the 8 tetra nodes.
+            let c000 = (x0 + y0 + z0) as usize;
+            let c100 = (x1 + y0 + z0) as usize;
+            let c010 = (x0 + y1 + z0) as usize;
+            let c001 = (x0 + y0 + z1) as usize;
+            let c110 = (x1 + y1 + z0) as usize;
+            let c101 = (x1 + y0 + z1) as usize;
+            let c011 = (x0 + y1 + z1) as usize;
+            let c111 = (x1 + y1 + z1) as usize;
+            let lanes = |off: usize| {
+                V::from_array_t(
+                    token,
+                    crate::intrp::lanes_u64(crate::intrp::corner_u64(tab, off, last)),
+                )
+            };
+            let c0 = lanes(c000);
+            let (c1, c2, c3) = if rx >= ry && ry >= rz {
+                let a = lanes(c100);
+                let b = lanes(c110);
+                (a - c0, b - a, lanes(c111) - b)
+            } else if rx >= rz && rz >= ry {
+                let a = lanes(c100);
+                let b = lanes(c101);
+                (a - c0, lanes(c111) - b, b - a)
+            } else if rz >= rx && rx >= ry {
+                let a = lanes(c001);
+                let b = lanes(c101);
+                (b - a, lanes(c111) - b, a - c0)
+            } else if ry >= rx && rx >= rz {
+                let a = lanes(c010);
+                let b = lanes(c110);
+                (b - a, a - c0, lanes(c111) - b)
+            } else if ry >= rz && rz >= rx {
+                let a = lanes(c010);
+                let b = lanes(c011);
+                (lanes(c111) - b, a - c0, b - a)
+            } else if rz >= ry && ry >= rx {
+                let a = lanes(c001);
+                let b = lanes(c011);
+                (lanes(c111) - b, b - a, a - c0)
+            } else {
+                (V::zero_t(token), V::zero_t(token), V::zero_t(token))
+            };
+            // rest = c1*rx + c2*ry + c3*rz + 0x8001 — i32 wrapping (C math)
+            let rest = (c1 * V::splat_t(token, rx) + c2 * V::splat_t(token, ry)
+                + c3 * V::splat_t(token, rz))
+                + V::splat_t(token, 0x8001);
+            let out = c0
+                + ((rest + rest.shr_arithmetic::<16>()).shr_arithmetic::<16>());
+            let a = (out & V::splat_t(token, 0xffff)).to_array();
+            for oc in 0..n_out {
+                oline[px + oc] = crate::pack::f16to8(a[oc] as u16);
+            }
+        }
+        i_off += stride.bytes_per_line_in as usize;
+        o_off += stride.bytes_per_line_out as usize;
+    }
+}
+
 /// `clut16_tetra_loop_v3` for `TYPE_RGB_8` — f8to16 the three bytes,
 /// tetra3_i32x4 on the u16 table, f16to8 back.
 #[archmage::arcane]
@@ -1146,6 +1247,17 @@ impl Transform {
                             o_off += stride.bytes_per_line_out as usize;
                         }
                         return;
+                    }
+                    if let Some(crate::opt::OptData::Prelin8(p8)) = l.opt_data.as_ref() {
+                        if p8.clut.n_outputs >= 1 && p8.clut.n_outputs <= 4
+                            && p8.clut.tab16.is_some()
+                        {
+                            if let Some(token) = archmage::X64V3Token::summon() {
+                                return prelin8_rgb8_loop_v3(
+                                    token, p8, input, output, ppl, lines, stride,
+                                );
+                            }
+                        }
                     }
                 }
             }

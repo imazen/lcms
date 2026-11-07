@@ -1058,7 +1058,7 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
 /// Offsets beyond `cell.len()` clamp to the last element — matching the
 /// scalar `.min(last)` reads; in-range blocks take the single-load path.
 #[inline(always)]
-fn corner_u64(cell: &[u16], off: usize, last: usize) -> u64 {
+pub(crate) fn corner_u64(cell: &[u16], off: usize, last: usize) -> u64 {
     match cell.get(off..off + 4) {
         Some(s) => {
             (s[0] as u64) | ((s[1] as u64) << 16) | ((s[2] as u64) << 32) | ((s[3] as u64) << 48)
@@ -1528,7 +1528,7 @@ pub(crate) fn evalflt_tetra3_v3(
 
 /// u64 corner block → four i32 lanes (u16 zero-extend).
 #[inline(always)]
-fn lanes_u64(v: u64) -> [i32; 4] {
+pub(crate) fn lanes_u64(v: u64) -> [i32; 4] {
     [
         (v & 0xffff) as i32,
         ((v >> 16) & 0xffff) as i32,
