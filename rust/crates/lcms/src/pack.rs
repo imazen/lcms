@@ -2444,9 +2444,11 @@ fn pack_fd_from_float(
     }
     if extra == 0 && swap_first {
         // C: memmove(swap1+esz, swap1, (nChan-1)*esz); *swap1 = v
-        let mut buf = vec![0u8; (n_chan - 1) * esz];
-        buf.copy_from_slice(&out[0..(n_chan - 1) * esz]);
-        out[esz..esz + (n_chan - 1) * esz].copy_from_slice(&buf);
+        // (n_chan-1)*esz <= 14*8 — stack buffer, no per-pixel alloc.
+        let mut buf = [0u8; 14 * 8];
+        let n = (n_chan - 1) * esz;
+        buf[..n].copy_from_slice(&out[0..n]);
+        out[esz..esz + n].copy_from_slice(&buf[..n]);
         match esz {
             1 => out[0] = last_v as u8,
             2 => {
