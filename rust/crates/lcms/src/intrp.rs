@@ -180,6 +180,12 @@ impl<'a> InterpParams<'a> {
                     }
                     trilinear_interp16(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, bilinear_interp16 as InterpFn16) {
+                    let n_out = self.n_outputs as usize;
+                    if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                        if let Some(t) = x64v3_cached() {
+                            return eval16_bilinear_v3(t, input, output, self);
+                        }
+                    }
                     bilinear_interp16(input, output, self)
                 } else if std::ptr::fn_addr_eq(f, eval1_input as InterpFn16) {
                     eval1_input(input, output, self)
@@ -1719,6 +1725,77 @@ pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     out
 }
 
+/// `bilinear_interp16` over `magetypes::i32x4` — the ≤4 output
+/// channels as vector lanes (same wrapping-lerp semantics as the
+/// scalar; intermediate `as u16` = `& 0xffff`).
+#[inline(always)]
+pub(crate) fn bilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
+    token: T,
+    vin: [u16; 2],
+    n_outputs: usize,
+    p: &InterpParams,
+) -> [u16; 4] {
+    let lut_table = p.table_u16();
+
+    let fx = to_fixed_domain((vin[0] as i32).wrapping_mul(p.domain[0] as i32));
+    let x0 = fixed_to_int(fx);
+    let rx = fixed_rest_to_int(fx);
+    let fy = to_fixed_domain((vin[1] as i32).wrapping_mul(p.domain[1] as i32));
+    let y0 = fixed_to_int(fy);
+    let ry = fixed_rest_to_int(fy);
+
+    let x0i = (p.opta[1] as i32).wrapping_mul(x0);
+    let x1 = x0i
+        + if vin[0] == 0xFFFF { 0 } else { p.opta[1] as i32 };
+    let y0i = (p.opta[0] as i32).wrapping_mul(y0);
+    let y1 = y0i
+        + if vin[1] == 0xFFFF { 0 } else { p.opta[0] as i32 };
+
+    let cell = lut_table;
+    let n = p.n_outputs as usize;
+    let m = cell.len() - n;
+    let last = cell.len() - 1;
+    let w = |off: i32| {
+        magetypes::simd::generic::i32x4::<T>::from_array_t(
+            token,
+            lanes_u64(corner_u64(cell, (off as usize).min(m), last)),
+        )
+    };
+
+    let d00 = w(x0i + y0i);
+    let d01 = w(x0i + y1);
+    let d10 = w(x1 + y0i);
+    let d11 = w(x1 + y1);
+
+    type L<T> = magetypes::simd::generic::i32x4<T>;
+    let half = L::<T>::splat_t(token, 0x8000);
+    let mask = L::<T>::splat_t(token, 0xffff);
+    let lerp =
+        |a: L<T>, l: L<T>, h: L<T>| (l + ((h - l) * a + half).shr_arithmetic::<16>()) & mask;
+
+    let dx0 = lerp(L::<T>::splat_t(token, rx), d00, d10);
+    let dx1 = lerp(L::<T>::splat_t(token, rx), d01, d11);
+    let res = lerp(L::<T>::splat_t(token, ry), dx0, dx1).to_array();
+    let mut out = [0u16; 4];
+    for oc in 0..n_outputs.min(4) {
+        out[oc] = res[oc] as u16;
+    }
+    out
+}
+
+/// `#[arcane]` wrapper for `eval16`'s bilinear arm.
+#[archmage::arcane]
+pub(crate) fn eval16_bilinear_v3(
+    token: archmage::X64V3Token,
+    input: &[u16],
+    output: &mut [u16],
+    p: &InterpParams,
+) {
+    let n_out = p.n_outputs as usize;
+    let v = bilinear_i32x4(token, [input[0], input[1]], n_out, p);
+    output[..n_out].copy_from_slice(&v[..n_out]);
+}
+
 /// `#[arcane]` wrapper for `eval16`'s trilinear arm.
 #[archmage::arcane]
 pub(crate) fn eval16_trilinear_v3(
@@ -2355,6 +2432,53 @@ mod tests {
             let mut o1 = [0u16; 4];
             trilinear_interp16(&f, &mut o1, &p);
             let o2 = trilinear_i32x4(tok, f, 3, &p);
+            for c in 0..3 {
+                if o1[c] != o2[c] {
+                    diffs += 1;
+                }
+            }
+        }
+        assert_eq!(diffs, 0);
+    }
+
+    /// `bilinear_i32x4` vs `bilinear_interp16` — lane-exact 2-D lerp.
+    #[test]
+    fn bilinear_i32x4_parity() {
+        let n = 64u32;
+        let mut tab = Vec::new();
+        for y in 0..n {
+            for x in 0..n {
+                for c in 0..3u32 {
+                    tab.push((((x * 5 + y * 7 + c * 11) * 23) as u16)
+                        .wrapping_add(c as u16));
+                }
+            }
+        }
+        let p = InterpParams {
+            dw_flags: 0,
+            n_inputs: 2,
+            n_outputs: 3,
+            n_samples: [n; 15],
+            domain: [n - 1; 15],
+            opta: [3, 3 * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            table: InterpTable::U16(&tab),
+            interpolation: Interpolation::Lerp16(
+                bilinear_interp16 as InterpFn16,
+            ),
+            foreign: None,
+        };
+        let Some(tok) = x64v3_cached() else {
+            return;
+        };
+        let mut diffs = 0u64;
+        for i in 0..200000u32 {
+            let f = [
+                ((i * 37) % 65536) as u16,
+                ((i * 71 + 13) % 65536) as u16,
+            ];
+            let mut o1 = [0u16; 4];
+            bilinear_interp16(&f, &mut o1, &p);
+            let o2 = bilinear_i32x4(tok, f, 3, &p);
             for c in 0..3 {
                 if o1[c] != o2[c] {
                     diffs += 1;
