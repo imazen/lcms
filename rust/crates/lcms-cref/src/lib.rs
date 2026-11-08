@@ -500,6 +500,12 @@ unsafe extern "C" {
         sampler: unsafe extern "C" fn(*const U16, *mut U16, *mut c_void) -> i32,
         cargo: *mut c_void,
     ) -> i32;
+    pub fn cmsSliceSpaceFloat(
+        n_inputs: U32,
+        clut_points: *const U32,
+        sampler: unsafe extern "C" fn(*const F32, *mut F32, *mut c_void) -> i32,
+        cargo: *mut c_void,
+    ) -> i32;
     pub fn _cmsStageAllocLab2XYZ(context_id: Context) -> Handle;
     pub fn _cmsStageAllocXYZ2Lab(context_id: Context) -> Handle;
     pub fn _cmsStageAllocLabV2ToV4(context_id: Context) -> Handle;

@@ -724,3 +724,39 @@ fn mpe_mixed_stages() {
         c::cmsPipelineFree(cp);
     }
 }
+
+/// cmsSliceSpaceFloat — N-dim float grid sampling.
+#[test]
+fn slice_space_float() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static NC: AtomicU32 = AtomicU32::new(0);
+    static NR: AtomicU32 = AtomicU32::new(0);
+    unsafe extern "C" fn c_samp(
+        _inp: *const c::F32,
+        _out: *mut c::F32,
+        _cargo: *mut c_void,
+    ) -> i32 {
+        NC.fetch_add(1, Ordering::Relaxed);
+        1
+    }
+    unsafe {
+        // 3d 4x4x4 grid = 64 calls
+        let dims = [4u32; 3];
+        let c_ok = c::cmsSliceSpaceFloat(3, dims.as_ptr(), c_samp,
+            std::ptr::null_mut());
+        eprintln!("c_ok={c_ok} c_bad-wait"); assert_eq!(c_ok, 1, "C slice float");
+        assert_eq!(NC.load(Ordering::Relaxed), 64, "C ncalls");
+        let mut r_samp = |_inp: &[f32], _out: &mut [f32]| -> i32 {
+            NR.fetch_add(1, Ordering::Relaxed);
+            1
+        };
+        let r_ok = lut::slice_space_float(3, &dims, &mut r_samp);
+        assert!(r_ok, "rust slice float");
+        assert_eq!(NR.load(Ordering::Relaxed), 64, "rust ncalls");
+        // edge: 0 inputs fails both sides
+        let c_bad = c::cmsSliceSpaceFloat(0, dims.as_ptr(), c_samp,
+            std::ptr::null_mut());
+        let r_bad = lut::slice_space_float(0, &dims, &mut r_samp);
+        assert_eq!(c_bad != 0, r_bad, "0-input parity c={c_bad} r={r_bad}");
+    }
+}
