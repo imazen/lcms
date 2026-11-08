@@ -2113,3 +2113,33 @@ fn flags_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Attributes-field bounds — mutate the attributes field
+/// then open (the attributes validation machinery).
+#[test]
+fn attributes_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // attributes is a u64be at offset 56
+        for (name, lo, hi) in [
+            ("a0", 0u32, 0u32), ("a1", 0, 1),
+            ("trans", 0, 1 << 2), ("neg", 0xffffffff,
+             0xffffffff), ("junk", 0x12345678, 0x9abcdef0)] {
+            let mut b = buf.clone();
+            b[56..60].copy_from_slice(&lo.to_be_bytes());
+            b[60..64].copy_from_slice(&hi.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} a={lo:#x},{hi:#x} h={}",
+                !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
