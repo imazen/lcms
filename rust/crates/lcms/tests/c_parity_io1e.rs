@@ -2505,3 +2505,28 @@ fn more_tag_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Remaining MLU/desc sigs — 'dscm'/'dmdd'/'dmnd'/'tech'/
+/// 'vued'/'vuet'/'cicp'/'scrd'.
+#[test]
+fn mlu_desc_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"x\0".as_ptr() as *const u8);
+        for (sig, name) in [
+            (0x6473636Du32, "dscm"), (0x646D6464u32, "dmdd"),
+            (0x646D6E64u32, "dmnd"), (0x74656368u32, "tech"),
+            (0x76756564u32, "vued"), (0x76756574u32, "vuet"),
+            (0x63696370u32, "cicp"), (0x73637264u32, "scrd")] {
+            let ok = c::cmsWriteTag(h, sig,
+                mlu as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
