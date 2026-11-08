@@ -92,3 +92,48 @@ fn edge_payloads() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// v2 vs v4 stored-type variants — the same logical tag serializes
+/// as 'desc'/'text'/'curv' in v2 vs 'mluc'/'para' in v4,
+/// exercising both Type_* paths.
+#[test]
+fn v2_v4_type_variants() {
+    unsafe {
+        for ver in [2.2f64, 4.3] {
+            let h = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(h, ver);
+            // 'cprt' takes a cmsMLU — build one
+            let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            c::cmsMLUsetASCII(mlu,
+                b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                b"v2v4test\0".as_ptr() as *const _);
+            let ok = c::cmsWriteTag(h, 0x63707274,
+                mlu as *mut c_void); // 'cprt'
+            eprintln!("v{ver} cprt write={ok}");
+            // resave → the stored type should differ
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+                &mut cn);
+            // find the cprt tag's stored type in the directory
+            let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _,
+                cn);
+            let n2 = c::cmsGetTagCount(h2);
+            for i in 0..n2 {
+                let s2 = c::cmsGetTagSignature(h2, i as u32);
+                if s2 == 0x63707274 {
+                    // read raw to see the type prefix
+                    let mut tb = [0u8; 4];
+                    c::cmsReadRawTag(h2, 0x63707274,
+                        tb.as_mut_ptr() as *mut _, 4);
+                    eprintln!("v{ver} cprt type={:#010x}",
+                        u32::from_be_bytes(tb));
+                }
+            }
+            c::cmsCloseProfile(h2);
+            c::cmsCloseProfile(h);
+        }
+    }
+}
