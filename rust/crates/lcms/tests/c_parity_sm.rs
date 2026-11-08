@@ -263,3 +263,35 @@ fn blackpoint_dispatch() {
         }
     }
 }
+
+/// GBD sweep — alloc/addpoints/compute/checkpoint/free covers the
+/// gamut-boundary-descriptor machinery (ComputeGPoint, sphere pack,
+/// convex hull arms).
+#[test]
+fn gbd_sweep() {
+    unsafe {
+        #[repr(C)] struct Lab { l: f64, a: f64, b: f64 }
+        let g = c::cmsGBDAlloc(std::ptr::null_mut());
+        assert!(!g.is_null());
+        // add a spread of Lab points + an outlier
+        for (l, a, b) in [
+            (50.0f64, 0.0, 0.0), (60.0, 40.0, -30.0), (30.0, -50.0, 20.0),
+            (80.0, 10.0, 90.0), (20.0, -20.0, -60.0), (90.0, 80.0, 80.0),
+            (10.0, -80.0, -80.0),
+        ] {
+            let p = Lab { l, a, b };
+            let r = c::cmsGDBAddPoint(g, &p as *const _ as *const _);
+            assert_ne!(r, 0);
+        }
+        let c1 = c::cmsGDBCompute(g, 0);
+        eprintln!("compute={c1}");
+        // check points inside vs outside
+        for (l, a, b) in [(50.0f64, 0.0, 0.0), (10.0, 0.0, 0.0),
+                          (95.0, 100.0, 100.0)] {
+            let p = Lab { l, a, b };
+            let r = c::cmsGDBCheckPoint(g, &p as *const _ as *const _);
+            eprintln!("check({l},{a},{b})={r}");
+        }
+        c::cmsGBDFree(g);
+    }
+}
