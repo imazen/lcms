@@ -3059,3 +3059,37 @@ fn packer_bodies() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// EXTRA-channel packer arms — RGBA/CMYKA format words with
+/// alpha-channel unroll/pack bodies.
+#[test]
+fn extra_channel_packers() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // RGB + 1-2 extra channels, u8/u16/float
+        for (fmt, name) in [
+            ((4u32 << 16) | (4 << 3) | 1, "rgba-8"),
+            ((4u32 << 16) | (4 << 3) | 2, "rgba-16"),
+            ((4u32 << 16) | (4 << 3) | 4, "rgba-f32"),
+            ((4u32 << 16) | (5 << 3) | 1, "rgb5-8"),
+            ((4u32 << 16) | (4 << 3) | 1 | 0x0400, "rgba-swap"),
+            ((4u32 << 16) | (4 << 3) | 1 | 0x0200, "rgba-doswap"),
+            ((4u32 << 16) | (4 << 3) | 1 | 0x8000, "rgba-flavor"),
+            ((4u32 << 16) | (4 << 3) | 1 | 0x4000, "rgba-planar"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt, lab, l16, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x40u8; 8];
+                let mut ob = [0u16; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
