@@ -722,3 +722,64 @@ fn parametric_arms2() {
         }
     }
 }
+
+/// DefaultEvalParametricFn — per-type piecewise boundary arms +
+/// inverse/negative types + AllocateToneCurveStruct edges.
+#[test]
+fn parametric_eval_arms2() {
+    unsafe {
+        // type 1-8 + 108/109 + inverse (negative) + invalid
+        let params7: [f64; 10] = [1.5, 0.2, 0.1, 0.3, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0];
+        // eval points straddling the d boundary (Params[3]=0.3)
+        let xs = [0.0f32, 0.001, 0.05, 0.1, 0.2, 0.29, 0.3,
+            0.31, 0.5, 0.7, 0.9, 0.999, 1.0];
+        for ty in [1i32, 2, 3, 4, 5, 6, 7, 8, 108, 109,
+            -1, -2, -3, -4, -5, -6, -7, -8, 0, 9, 99, -99] {
+            let g = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ty, params7.as_ptr());
+            eprintln!("ty={ty} build={}", !g.is_null());
+            if g.is_null() { continue; }
+            for x in xs {
+                let v16 = c::cmsEvalToneCurve16(g,
+                    (x * 65535.0) as u16);
+                let vf = c::cmsEvalToneCurveFloat(g, x);
+                if ty == 5 && (x * 1000.0) as u32 % 4 == 0 {
+                    eprintln!("ty={ty} x={x} v16={v16} vf={vf:.4}");
+                }
+            }
+            // reverse → inverse eval path
+            let rg = c::cmsReverseToneCurve(g);
+            if !rg.is_null() {
+                for x in [0.1f32, 0.5, 0.9] {
+                    c::cmsEvalToneCurveFloat(rg, x);
+                }
+                c::cmsFreeToneCurve(rg);
+            }
+            c::cmsFreeToneCurve(g);
+        }
+        // AllocateToneCurveStruct edges
+        let z = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 0, std::ptr::null());
+        eprintln!("entries0={}", !z.is_null());
+        let huge = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 70000, std::ptr::null());
+        eprintln!("huge={}", !huge.is_null());
+        if !huge.is_null() { c::cmsFreeToneCurve(huge); }
+        if !z.is_null() { c::cmsFreeToneCurve(z); }
+        // dup + monotonic/descending checks on each type
+        for ty in [1i32, 5, 8] {
+            let g = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ty, params7.as_ptr());
+            let d = c::cmsDupToneCurve(g);
+            let mono = c::cmsIsToneCurveMonotonic(g);
+            let desc = c::cmsIsToneCurveDescending(g);
+            let lin = c::cmsIsToneCurveLinear(g);
+            let ms = c::cmsIsToneCurveMultisegment(g);
+            eprintln!("ty={ty} mono={mono} desc={desc} lin={lin} \
+                ms={ms} dup={}", !d.is_null());
+            if !d.is_null() { c::cmsFreeToneCurve(d); }
+            c::cmsFreeToneCurve(g);
+        }
+    }
+}
