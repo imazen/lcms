@@ -5219,3 +5219,137 @@ fn pack_unroll_arms() {
         }
     }
 }
+
+/// cmsio1 residual — _cmsReadFloatInputTag/OutputTag/
+///   DevicelinkTag + BuildGray*/BuildRGB* matrix-shaper
+///   pipelines via float transforms on real LUT profiles.
+#[test]
+fn float_lut_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let path = format!(
+                "{}/{}", env!("CARGO_MANIFEST_DIR")
+                    .replace("crates/lcms", ""), n);
+            let cs = std::ffi::CString::new(path).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let profiles = [
+            ("srgb", open("sRGBlcms2.icc")),
+            ("argb", open("aRGBlcms2.icc")),
+            ("labv2", open("labv2lcms2.icc")),
+            ("labv4", open("labv4lcms2.icc")),
+            ("cmyk", open("lcms2cmyk.icc")),
+            ("link", open("lcms2link.icc")),
+            ("link2", open("lcms2link2.icc")),
+            ("limit", open("limitlcms2.icc")),
+            ("lin", open("linlcms2.icc")),
+            ("nullg", open("nullcms2.icc")),
+            ("gray3", open("gray3lcms2.icc")),
+            ("gray", open("graylcms2.icc")),
+            ("glab", open("glablcms2.icc")),
+            ("xyz", open("xyzlcms2.icc")),
+            ("bchs", open("bchslcms2.icc")),
+            ("bright", open("brightness.icc")),
+        ];
+        for (nm, p) in &profiles {
+            eprintln!("{nm}: null={}", p.is_null()); }
+        // format words: FLOAT|space|ch|bytes4
+        let f_flt = |pt: u32, ch: u32| -> u32 {
+            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let f_16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        // transform pairs — float+16 per intent
+        let pairs: Vec<(&str, *mut c_void, u32,
+                        &str, *mut c_void, u32)> = vec![
+            ("srgb", profiles[0].1, f_flt(4, 3),
+             "srgb", profiles[0].1, f_flt(4, 3)),
+            ("srgb", profiles[0].1, f_flt(4, 3),
+             "lab4", profiles[3].1, f_flt(10, 3)),
+            ("lab4", profiles[3].1, f_flt(10, 3),
+             "srgb", profiles[0].1, f_flt(4, 3)),
+            ("lab2", profiles[2].1, f_16(10, 3),
+             "srgb", profiles[0].1, f_16(4, 3)),
+            ("cmyk", profiles[4].1, f_flt(6, 4),
+             "lab4", profiles[3].1, f_flt(10, 3)),
+            ("lab4", profiles[3].1, f_flt(10, 3),
+             "cmyk", profiles[4].1, f_flt(6, 4)),
+            ("cmyk", profiles[4].1, f_16(6, 4),
+             "lab4", profiles[3].1, f_16(10, 3)),
+            ("link", profiles[5].1, f_flt(6, 4),
+             "link", profiles[5].1, f_flt(6, 4)),
+            ("limit", profiles[7].1, f_16(6, 4),
+             "limit", profiles[7].1, f_16(6, 4)),
+            ("gray3", profiles[10].1, f_flt(3, 1),
+             "xyz", profiles[13].1, f_flt(9, 3)),
+            ("xyz", profiles[13].1, f_flt(9, 3),
+             "gray3", profiles[10].1, f_flt(3, 1)),
+            ("nullg", profiles[9].1, f_flt(3, 1),
+             "lab4", profiles[3].1, f_flt(10, 3)),
+            ("gray", profiles[11].1, f_flt(3, 1),
+             "gray", profiles[11].1, f_flt(3, 1)),
+            ("glab", profiles[12].1, f_16(3, 1),
+             "lab4", profiles[3].1, f_16(10, 3)),
+            ("xyz", profiles[13].1, f_flt(9, 3),
+             "xyz", profiles[13].1, f_flt(9, 3)),
+            ("bchs", profiles[14].1, f_16(4, 3),
+             "srgb", profiles[0].1, f_16(4, 3)),
+            ("bright", profiles[15].1, f_16(4, 3),
+             "srgb", profiles[0].1, f_16(4, 3)),
+        ];
+        for (inm, ip, fi, onm, op, fo) in &pairs {
+            if ip.is_null() || op.is_null() {
+                eprintln!("{inm}->{onm}: null prof");
+                continue; }
+            for intent in 0u32..4 {
+                let t = c::cmsCreateTransform(
+                    *ip, *fi, *op, *fo, intent, 0);
+                if t.is_null() {
+                    eprintln!("{inm}->{onm} i{intent}: REJ");
+                    continue; }
+                let ib = [0.5f32; 64];
+                let mut ob = [0f32; 64];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 2);
+                c::cmsDeleteTransform(t);
+                eprintln!("{inm}->{onm} i{intent}: ok"); }
+        }
+        // multiprofile chains — float LUT readers on middle
+        for combo in [
+            ["srgb", "lab4", "cmyk"],
+            ["cmyk", "lab4", "srgb"],
+            ["gray3", "srgb", "cmyk"],
+        ] {
+            let mut chain: Vec<*mut c_void> = combo.iter()
+                .map(|n| profiles.iter()
+                    .find(|t| t.0 == *n)
+                    .map(|t| t.1)
+                    .unwrap_or(std::ptr::null_mut()))
+                .collect();
+            if chain.iter().any(|p| p.is_null()) {
+                continue; }
+            let f_in = if combo[0] == "cmyk" {
+                f_flt(6, 4) } else if combo[0] == "gray3" {
+                f_flt(3, 1) } else { f_flt(4, 3) };
+            let f_out = if combo[2] == "cmyk" {
+                f_flt(6, 4) } else if combo[2] == "lab4" {
+                f_flt(10, 3) } else { f_flt(4, 3) };
+            let t = c::cmsCreateMultiprofileTransform(
+                chain.as_mut_ptr(), 3, f_in, f_out, 0, 0);
+            eprintln!("chain {}->{}->{}: {}",
+                combo[0], combo[1], combo[2],
+                !t.is_null());
+            if !t.is_null() {
+                let ib = [0.5f32; 64];
+                let mut ob = [0f32; 64];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 2);
+                c::cmsDeleteTransform(t); }
+        }
+        for (_, p) in &profiles {
+            if !p.is_null() {
+                c::cmsCloseProfile(*p); } }
+    }
+}
