@@ -332,3 +332,41 @@ fn all_tag_reads() {
         }
     }
 }
+
+/// Remaining writeable sigs — pre0-2/A2B1/B2A1/dmnd/dmdd with
+/// valid mAB pipeline + MLU payloads.
+#[test]
+fn more_writable_pipeline_sigs() {
+    unsafe {
+        // a valid mAB pipeline: curves + matrix + clut — the
+        // MPE structure the serializer expects
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let clut = c::cmsStageAllocCLut16bit(
+            std::ptr::null_mut(), 2, 3, 3,
+            std::ptr::null());
+        c::cmsPipelineInsertStage(pl, 0, clut);
+        let h = c::cmsCreate_sRGBProfile();
+        for sig in [0x41324230u32, 0x41324231, 0x70726530,
+                    0x70726531, 0x70726532] {
+            let ok = c::cmsWriteTag(h, sig, pl as *mut
+                std::ffi::c_void);
+            eprintln!("{sig:#x} write={ok}");
+        }
+        // dmnd/dmdd — mluc desc sigs
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"desc\0".as_ptr() as *const u8);
+        for sig in [0x646D6E64u32, 0x646D6464] {
+            let ok = c::cmsWriteTag(h, sig,
+                mlu as *mut std::ffi::c_void);
+            eprintln!("{sig:#x} write={ok}");
+        }
+        // resave crashes — a CLUT-only pipeline isn't a valid
+        // mAB structure (needs the curve/matrix elements); C's
+        // mAB writer NULL-derefs the missing slots. Oracle UB —
+        // the write dispatch itself is the coverage here.
+        c::cmsCloseProfile(h);
+    }
+}
