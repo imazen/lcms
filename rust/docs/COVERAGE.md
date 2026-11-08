@@ -580,3 +580,43 @@ cms_write_tag skipping the cmsDictDup reversal.
 | cmslut.c | 81.36% | 98.68% |
 | cmspcs.c | 83.55% | 100% |
 | TOTAL | **71.96%** | **90.78%** |
+
+## Round 14 — exported internals + float-LUT/gamut/named-color (through 0a6b5460)
+
+**73.61% lines / 93.34% functions / 82.07% regions / 65.07% branches**
+(up from round-13's 71.96/90.78). cmsxform 73.57->85.00%,
+cmsio1 67.20->75.20%, cmsvirt 67.00->69.97%,
+cmstypes 58.47->61.70%, cmsgmt 80.07->83.76%,
+cmsgamma 71.39->71.97%. New gates: mpet_element_writes
+(Type_MPE{curve,matrix,clut}_Write + GenericMPE), lut8_dup_write
+(Type_LUT8_Dup), crdinfo_write (Type_CrdInfo_Dup),
+cooked_reads_mhc2_dict (Type_MHC2_Read + ReadDoublesAt +
+dict ReadOneMLUC attempt), sigmoid_curves (type +-109),
+temp_whitepoint_roundtrip (CHAD2Temp/Temp2CHAD),
+gamutcheck_workers (Cached+Precalculated gamut-check xforms,
+CTX_LOCK race fix + alarm restore), named_color_devicelink
+(CreateNamedColorDevicelink), float_lut_reads
+(_cmsReadFloat{Input,Output,Devicelink}Tag),
+blackpoint_quadratic (RootOfLeastSquaresFitQuadraticCurve),
+xform_internals (exported _cmsGetTransform*/UserData/
+ReadProfileSequence/SetHeaderCMM/DefaultICCintents,
+NullFloatXFORM, UnrollNothing/PackNothing).
+
+| file | lines | fns |
+|---|---|---|
+| cmstypes.c | 61.70% | 92.99% |
+| cmscnvrt.c | 68.13% | 91.30% |
+| cmssamp.c | 68.22% | 85.71% |
+| cmsvirt.c | 69.97% | 100% |
+| cmspack.c | 69.90% | 94.93% |
+| cmsgamma.c | 71.97% | 100% |
+| cmscgats.c | 72.58% | 95.96% |
+| cmsplugin.c | 73.61% | 100% |
+| cmsio1.c | 75.20% | 100% |
+| cmsnamed.c | 76.54% | 100% |
+| cmsps2.c | 77.34% | 93.75% |
+| cmsio0.c | 80.02% | 98.91% |
+| cmsopt.c | 80.59% | 90.91% |
+| cmslut.c | 81.36% | 98.68% |
+| cmsxform.c | 85.00% | 98.21% |
+| TOTAL | **73.61%** | **93.34%** |
