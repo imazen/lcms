@@ -1053,3 +1053,52 @@ fn lut_stored_type_writes() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write-then-overwrite with a different type — the
+/// replace+type-change machinery.
+#[test]
+fn overwrite_type_change() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // write 'desc' as mluc then overwrite as 'desc'-type
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"mluc-form\0".as_ptr() as *const u8);
+        let o1 = c::cmsWriteTag(h, 0x64657363,
+            mlu as *mut std::ffi::c_void);
+        // 'desc' accepts desc-type too — a TextDesc payload
+        // would need a different structure; try overwriting
+        // 'rTRC' with a different curve
+        let g1 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let o2 = c::cmsWriteTag(h, 0x72545243,
+            g1 as *mut std::ffi::c_void);
+        let o3 = c::cmsWriteTag(h, 0x72545243,
+            g2 as *mut std::ffi::c_void);
+        // wtpt with a different XYZ
+        let x1 = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let x2 = c::CieXyz { X: 0.9, Y: 0.8, Z: 0.7 };
+        let o4 = c::cmsWriteTag(h, 0x77747074,
+            &x1 as *const _ as *mut std::ffi::c_void);
+        let o5 = c::cmsWriteTag(h, 0x77747074,
+            &x2 as *const _ as *mut std::ffi::c_void);
+        eprintln!("desc={o1} trc={o2}/{o3} wtpt={o4}/{o5}");
+        // resave + read — the overwritten tags
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x64657363u32, 0x72545243, 0x77747074] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
