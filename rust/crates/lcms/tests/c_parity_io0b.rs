@@ -467,3 +467,112 @@ fn internal_pseq_desc_arms() {
         }
     }
 }
+
+/// cmsio1 residual — pseq+psid combined reads on
+///   display/output/link classes + psid-only profiles.
+#[test]
+fn internal_pseq_mix2_arms() {
+    unsafe {
+        // pseq + psid on each profile class
+        for (cls, name) in [
+            (0x6D6E7472u32, "mntr"),
+            (0x70727472, "prtr"),
+            (0x6C696E6B, "link"),
+            (0x73706163, "spac"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            // pseq with 2 filled entries
+            let pseq = c::cmsAllocProfileSequenceDescription(
+                std::ptr::null_mut(), 2);
+            if !pseq.is_null() {
+                #[repr(C)]
+                struct Desc {
+                    dev_mfg: u32, dev_model: u32,
+                    attrs: u64, tech: u32,
+                    pid: [u8; 16],
+                    mfr: *mut std::ffi::c_void,
+                    model: *mut std::ffi::c_void,
+                    desc: *mut std::ffi::c_void,
+                }
+                #[repr(C)]
+                struct Seq { n: u32,
+                    ctx: *mut std::ffi::c_void,
+                    seq: *mut Desc }
+                let sp = pseq as *mut Seq;
+                for i in 0..2isize {
+                    let d = (*sp).seq.offset(i);
+                    (*d).dev_mfg = 0x494D47;
+                    (*d).dev_model = 0x3132 + i as u32;
+                    (*d).attrs = 0x11;
+                    (*d).tech = 0x52474420;
+                    for fld in 0..3 {
+                        let mlu = c::cmsMLUalloc(
+                            std::ptr::null_mut(), 1);
+                        c::cmsMLUsetASCII(mlu,
+                            b"en\0".as_ptr() as *const _,
+                            b"US\0".as_ptr() as *const _,
+                            b"e\0".as_ptr() as *const _);
+                        match fld {
+                            0 => (*d).mfr = mlu,
+                            1 => (*d).model = mlu,
+                            _ => (*d).desc = mlu,
+                        }
+                    }
+                    // ProfileID
+                    for k in 0..16 {
+                        (*d).pid[k] =
+                            (i * 16 + k as isize) as u8;
+                    }
+                }
+            }
+            c::cmsWriteTag(p, 0x70736571,
+                pseq as *const _);
+            // psid matching count
+            let psid = c::cmsAllocProfileSequenceDescription(
+                std::ptr::null_mut(), 2);
+            c::cmsWriteTag(p, 0x70736964,
+                psid as *const _);
+            // a real LUT tag too so the profile loads
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let tcs = [g, g, g];
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            c::cmsWriteTag(p, 0x41324230,
+                pipe as *const _);
+            let mut buf = [0u8; 1 << 18];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} sv={sv} prof={}",
+                !pr.is_null());
+            if !pr.is_null() {
+                let rd = c::cmsReadTag(pr, 0x70736571);
+                eprintln!("  pseq rd={}", !rd.is_null());
+                let rd2 = c::cmsReadTag(pr, 0x70736964);
+                eprintln!("  psid rd={}", !rd2.is_null());
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+            if !pseq.is_null() {
+                c::cmsFreeProfileSequenceDescription(pseq); }
+            if !psid.is_null() {
+                c::cmsFreeProfileSequenceDescription(psid); }
+            c::cmsPipelineFree(pipe);
+            c::cmsFreeToneCurve(g);
+        }
+    }
+}
