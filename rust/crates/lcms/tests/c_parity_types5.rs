@@ -1636,3 +1636,76 @@ fn mpe_element_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// LUT-reader channel dispatch — crafted lut8/lut16 tags with
+/// different in/out channel counts.
+#[test]
+fn lut_channel_dispatch() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (name, ty, inch, outch) in [
+            ("lut8-3x3", b"lut8" as &[u8], 3u8, 3u8),
+            ("lut8-1x1", b"lut8", 1, 1),
+            ("lut8-4x4", b"lut8", 4, 4),
+            ("lut8-2x3", b"lut8", 2, 3),
+            ("lut16-3x3", b"lut16", 3, 3),
+            ("lut16-1x1", b"lut16", 1, 1),
+        ] {
+            let mut b = Vec::new();
+            b.extend_from_slice(ty);
+            b.extend_from_slice(&[0; 4]);
+            // lut8: inch, outch, clutpoints, e00-e20 (9 s15f16),
+            // input-tables (256*inch u8), clut, output-tables
+            b.push(inch);
+            b.push(outch);
+            b.push(2); // clut grid points
+            b.push(0); // pad
+            // e00-e20 — s15f16 identity
+            for i in 0..9 {
+                let v: i32 = if i % 4 == 0 { 0x10000 } else { 0 };
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            let n_in = 256 * (inch as usize);
+            let n_clut = (2usize).pow(inch as u32)
+                * (outch as usize);
+            let n_out = 256 * (outch as usize);
+            if ty == b"lut8" {
+                for i in 0..n_in {
+                    b.push((i % 256) as u8);
+                }
+                for i in 0..n_clut {
+                    b.push((i % 256) as u8);
+                }
+                for i in 0..n_out {
+                    b.push((i % 256) as u8);
+                }
+            } else {
+                // lut16: ntab-entries u16 at offset
+                for _ in 0..n_in {
+                    b.extend_from_slice(&0x5555u16.to_be_bytes());
+                }
+                for _ in 0..n_clut {
+                    b.extend_from_slice(&0x5555u16.to_be_bytes());
+                }
+                for _ in 0..n_out {
+                    b.extend_from_slice(&0x5555u16.to_be_bytes());
+                }
+            }
+            let ok = c::cmsWriteRawTag(h, 0x41324230,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x41324230);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
