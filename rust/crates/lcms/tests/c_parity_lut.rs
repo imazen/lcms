@@ -1945,3 +1945,97 @@ fn mpe_structured_writes() {
         }
     }
 }
+
+/// mpet element writers — segmented curves + matrix + FLOAT clut
+/// written to D2B0/B2D0 ('mpet' type) — hits Type_MPEcurve_Write,
+/// Type_MPEmatrix_Write, Type_MPEclut_Write (float CLUT only) and
+/// the GenericMPE* dispatch mAB never reaches. Save->reopen->read
+/// exercises the cooked element readers too.
+#[test]
+fn mpet_element_writes() {
+    unsafe {
+        let mat: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        let mut ftab = [0f32; 8 * 3];
+        for (i, v) in ftab.iter_mut().enumerate() {
+            *v = i as f32 / 24.0;
+        }
+        let mut samp = [0f32; 256];
+        for (i, v) in samp.iter_mut().enumerate() {
+            *v = i as f32 / 255.0;
+        }
+        let cseg = c::CurveSegment {
+            x0: 0.0, x1: 1.0, r#type: 0,
+            params: [0.0; 10],
+            n_grid_points: 256,
+            sampled_points: samp.as_ptr(),
+        };
+        let rseg = lcms::gamma::CurveSegment {
+            x0: 0.0, x1: 1.0, r#type: 0,
+            params: [0.0; 10],
+            n_grid_points: 256,
+            sampled_points: Some(samp.to_vec()),
+        };
+        for sig in [0x44324230u32, 0x42324430] { // 'D2B0','B2D0'
+            let ch = c::cmsCreate_sRGBProfile();
+            let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+            let cpipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            let cc = [
+                c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &cseg),
+                c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &cseg),
+                c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &cseg)];
+            c::cmsPipelineInsertStage(cpipe, 1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3, cc.as_ptr()));
+            c::cmsPipelineInsertStage(cpipe, 1,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                    3, 3, mat.as_ptr(), std::ptr::null()));
+            c::cmsPipelineInsertStage(cpipe, 1,
+                c::cmsStageAllocCLutFloat(
+                    std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()));
+            let rc: Vec<_> = (0..3).map(|_|
+                lcms::gamma::build_segmented_tone_curve(
+                    None, &[rseg.clone()]).unwrap()).collect();
+            let mut rpipe = lut::pipeline_alloc(None, 3, 3).unwrap();
+            rpipe.insert_stage(lut::StageLoc::AtEnd,
+                lut::stage_alloc_tone_curves(None, 3,
+                    Some(&[&rc[0], &rc[1], &rc[2]])).unwrap());
+            rpipe.insert_stage(lut::StageLoc::AtEnd,
+                lut::stage_alloc_matrix(None, 3, 3, &mat, None)
+                    .unwrap());
+            rpipe.insert_stage(lut::StageLoc::AtEnd,
+                lut::stage_alloc_clut_float(None, 2, 3, 3,
+                    Some(&ftab)).unwrap());
+            let c_ok = c::cmsWriteTag(ch, sig, cpipe as *const _);
+            let r_ok = lcms::profile::cms_write_tag(&mut rp, sig,
+                Some(lcms::tagtypes::TagObject::Mpe(rpipe)));
+            assert_eq!(c_ok != 0, r_ok, "{sig:#x} write");
+            let mut c_out = vec![0u8; 1 << 20];
+            let mut n = c_out.len() as u32;
+            let s_ok = c::cmsSaveProfileToMem(ch,
+                c_out.as_mut_ptr() as *mut _, &mut n);
+            let r_out = lcms::profile::save_profile_to_mem(&mut rp);
+            assert_eq!(s_ok != 0, r_out.is_some(), "{sig:#x} save");
+            if s_ok != 0 {
+                c_out.truncate(n as usize);
+                let mut r_out = r_out.unwrap();
+                for i in 0..12 {
+                    c_out.get_mut(24 + i).map(|b| *b = 0);
+                    r_out.get_mut(24 + i).map(|b| *b = 0);
+                }
+                c_out.resize(r_out.len().max(c_out.len()), 0);
+                r_out.resize(c_out.len(), 0);
+                assert_eq!(c_out, r_out, "{sig:#x} resave");
+                let h2 = c::cmsOpenProfileFromMem(
+                    c_out.as_ptr() as *const _, c_out.len() as u32);
+                assert!(!h2.is_null(), "{sig:#x} reopen");
+                let t = c::cmsReadTag(h2, sig);
+                assert!(!t.is_null(), "{sig:#x} cooked read");
+                c::cmsCloseProfile(h2);
+            }
+            c::cmsCloseProfile(ch);
+        }
+    }
+}
