@@ -1661,3 +1661,40 @@ fn pipeline_channels_walk() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Reverse-eval machinery — cmsPipelineEvalReverseFloat on
+/// more shapes.
+#[test]
+fn pipeline_eval_reverse() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c3 = [g, g, g];
+        for (name, build) in [
+            ("curves", 0u32), ("identity", 1), ("clut", 2)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            match build {
+                0 => { c::cmsPipelineInsertStage(pl, 1,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3, c3.as_ptr())); }
+                1 => { c::cmsPipelineInsertStage(pl, 1,
+                    c::cmsStageAllocIdentity(
+                        std::ptr::null_mut(), 3)); }
+                2 => { c::cmsPipelineInsertStage(pl, 1,
+                    c::cmsStageAllocCLut16bit(
+                        std::ptr::null_mut(), 2, 3, 3,
+                        std::ptr::null())); }
+                _ => {}
+            }
+            let inp = [0.5f32; 3];
+            let mut out = [0.0f32; 3];
+            let mut hint = [0.0f32; 3];
+            let r = c::cmsPipelineEvalReverseFloat(
+                inp.as_ptr() as *mut f32, out.as_mut_ptr(),
+                hint.as_mut_ptr(), pl);
+            eprintln!("{name} rev={r} out0={:.3}", out[0]);
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
