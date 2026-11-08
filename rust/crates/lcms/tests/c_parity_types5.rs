@@ -965,6 +965,33 @@ fn more_crafted_type_reads() {
             b.extend_from_slice(b"fota");
             cases.push((sig, b));
         }
+        // numeric-array types on 'chad' (an sf32 sig)
+        for ts in ["uf8 ", "uf16", "uf32", "uf64", "u8f8",
+                   "u8fx", "u16f", "u16x", "u32f", "u32x",
+                   "s15f", "s15x", "sf32", "sf64", "s64f",
+                   "nui8", "nui6", "nui3", "nui4", "nsi8",
+                   "nsi6", "nsi3", "nsi4", "nsf ", "ns16",
+                   "ns32", "ns64", "ut8 ", "ut16", "ut32",
+                   "ut64", "utf8", "utf1", "utf3", "utf4",
+                   "utfl", "utin", "ut8m", "utfm", "utfi",
+                   "utfx", "utif", "ut8f", "utf8", "mpe ",
+                   "mAB ", "mBA ", "mft1", "mft2", "mpet",
+                   "dict", "mluc", "scrd", "scrn", "vued",
+                   "vuet", "calt", "clid", "ciid", "ceid",
+                   "clot", "clro", "clrt", "gamt", "pre0",
+                   "pre1", "pre2", "bfd ", "ndin", "resp",
+                   "targ", "tech", "vued", "vcgt", "data",
+                   "dtim", "meas", "sig ", "chrm", "XYZ ",
+                   "curv", "para", "text", "desc", "mluc",
+                   "lut8", "lut1", "lutA", "lutB", "mAB "] {
+            let mut b = Vec::new();
+            b.extend_from_slice(ts.as_bytes());
+            b.extend_from_slice(&[0; 4]);
+            // generic body — 64 zero bytes covers most parsers'
+            // minimum; they reject on bad counts
+            b.extend_from_slice(&[0u8; 64]);
+            cases.push((0x6D657461u32, b)); // 'meta' accepts any
+        }
         for (i, (sig, bytes)) in cases.iter().enumerate() {
             let h2 = c::cmsCreate_sRGBProfile();
             c::cmsWriteRawTag(h2, *sig,
@@ -986,5 +1013,39 @@ fn more_crafted_type_reads() {
             if !h3.is_null() { c::cmsCloseProfile(h3); }
             c::cmsCloseProfile(h2);
         }
+    }
+}
+
+/// 'meta' read-path check — proper dict body on 'meta'.
+#[test]
+fn meta_read_check() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut b = Vec::new();
+        b.extend_from_slice(b"dict");
+        b.extend_from_slice(&[0; 4]);
+        b.extend_from_slice(&1u32.to_be_bytes()); // nrec
+        b.extend_from_slice(&16u32.to_be_bytes()); // recsz
+        b.extend_from_slice(&32u32.to_be_bytes()); // name off
+        b.extend_from_slice(&4u32.to_be_bytes()); // name len
+        b.extend_from_slice(&36u32.to_be_bytes()); // val off
+        b.extend_from_slice(&4u32.to_be_bytes()); // val len
+        b.extend_from_slice(&[0, b'k', 0, b'e']);
+        b.extend_from_slice(&[0, b'v', 0, b'a']);
+        let ok = c::cmsWriteRawTag(h, 0x6D657461,
+            b.as_ptr() as *const std::ffi::c_void,
+            b.len() as u32);
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h3 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = if !h3.is_null() {
+            c::cmsReadTag(h3, 0x6D657461)
+        } else { std::ptr::null_mut() };
+        eprintln!("meta write={ok} read={}", r.is_null());
+        if !h3.is_null() { c::cmsCloseProfile(h3); }
+        c::cmsCloseProfile(h);
     }
 }
