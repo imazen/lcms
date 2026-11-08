@@ -1286,3 +1286,24 @@ fn last_writeable_sigs() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Type_MPE internals — read a corpus profile's stored-mpe
+/// tag (the real MPE read machinery, not just the dispatch).
+#[test]
+fn real_mpe_read() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            // every tag — exercise whichever Type_*_Read the
+            // stored type dispatches to (mpe/lut8/lut16/mAB...)
+            let n = c::cmsGetTagCount(h);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                let r = c::cmsReadTag(h, sig);
+                let _ = r;
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
