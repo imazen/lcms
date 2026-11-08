@@ -443,3 +443,38 @@ fn it8_table_enum() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// IT8 writer on a populated doc — the write machinery on a
+/// doc with real data.
+#[test]
+fn it8_writer_populated() {
+    unsafe {
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(it8, b"TESTDOC\0".as_ptr() as _);
+        // populate via the table-by-label machinery
+        for (fmt_i, name) in [
+            (0, b"SAMPLE_ID\0" as &[u8]), (1, b"LAB_L\0"),
+            (2, b"LAB_A\0"), (3, b"LAB_B\0")] {
+            let _ = c::cmsIT8SetDataFormat(it8, fmt_i,
+                name.as_ptr() as _);
+        }
+        // add rows via SetData (the row machinery)
+        for row in 0..3 {
+            let patch = format!("P{row}\0");
+            c::cmsIT8SetDataDbl(it8, patch.as_ptr() as _,
+                b"LAB_L\0".as_ptr() as _, 50.0 + row as f64);
+            c::cmsIT8SetDataDbl(it8, patch.as_ptr() as _,
+                b"LAB_A\0".as_ptr() as _, row as f64);
+            c::cmsIT8SetDataDbl(it8, patch.as_ptr() as _,
+                b"LAB_B\0".as_ptr() as _, -row as f64);
+        }
+        // save — the writer machinery on a populated doc
+        let mut n = 0u32;
+        c::cmsIT8SaveToMem(it8, std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        let ok = c::cmsIT8SaveToMem(it8,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("populated save={ok} bytes={n}");
+        c::cmsIT8Free(it8);
+    }
+}
