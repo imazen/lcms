@@ -291,3 +291,85 @@ fn internal_pseq_mix_lab_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — header getters, GetProfileInfo
+///   variants (desc/cprt/manuf/model), PCS+cs get/set
+///   round-trips, GetHeader* introspection sweeps.
+#[test]
+fn internal_hdr_get_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut info = [0u8; 256];
+        for (which, name) in [
+            (0u32, "desc"), (1, "manu"), (2, "model"),
+            (3, "cprt"), (9, "info"),
+        ] {
+            let n = c::cmsGetProfileInfoASCII(srgb,
+                which, b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                info.as_mut_ptr() as *mut _,
+                info.len() as u32);
+            let s = std::ffi::CStr::from_ptr(
+                info.as_ptr() as *const i8)
+                .to_string_lossy();
+            eprintln!("{name} n={n} '{s}'");
+        }
+        // bad lang/country + missing fields
+        for which in [4u32, 5, 10, 99, 0xFFFFFFFF] {
+            let n = c::cmsGetProfileInfoASCII(srgb,
+                which, b"xx\0".as_ptr() as *const _,
+                b"YY\0".as_ptr() as *const _,
+                info.as_mut_ptr() as *mut _,
+                info.len() as u32);
+            eprintln!("bad{which} n={n}");
+        }
+        // header getters
+        let mut flags = 0u32;
+        c::cmsGetHeaderFlags(srgb, &mut flags);
+        eprintln!("dev={:#x} cs={:#x} pcs={:#x} \
+            ver={} intent={} flags={flags:#x} \
+            clut={}",
+            c::cmsGetDeviceClass(srgb),
+            c::cmsGetColorSpace(srgb),
+            c::cmsGetPCS(srgb),
+            c::cmsGetProfileVersion(srgb),
+            c::cmsGetHeaderRenderingIntent(srgb),
+            c::cmsIsCLUT(srgb, 0, 0));
+        // intent support probe
+        for i in 0..5u32 {
+            let sup = c::cmsIsIntentSupported(srgb, i, 0);
+            let sup2 = c::cmsIsIntentSupported(srgb, i, 1);
+            let sup3 = c::cmsIsIntentSupported(srgb, i, 2);
+            eprintln!("intent{i}: {sup}/{sup2}/{sup3}");
+        }
+        // round-trip set/get on a placeholder
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (cls, cs, pcs, ver, name) in [
+            (0x6D6E7472u32, 0x52474220, 0x58595A20,
+                4.4, "mntr-rgb-xyz-44"),
+            (0x70727472, 0x434D594B, 0x4C616220,
+                2.1, "prtr-cmyk-lab-21"),
+            (0x6C696E6B, 0x434D594B, 0x4C616220,
+                4.3, "link-cmyk-lab-43"),
+            (0x7363616E, 0x47524159, 0x4C616220,
+                3.0, "scnr-gray-lab-30"),
+            (0x6D6E7472, 0x47524159, 0x58595A20,
+                0.0, "mntr-gray-v0"),
+        ] {
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, cs);
+            c::cmsSetPCS(p, pcs);
+            c::cmsSetProfileVersion(p, ver);
+            let rcls = c::cmsGetDeviceClass(p);
+            let rcs = c::cmsGetColorSpace(p);
+            let rpcs = c::cmsGetPCS(p);
+            let rv = c::cmsGetProfileVersion(p);
+            let enc = c::cmsGetEncodedICCversion(p);
+            eprintln!("{name}: {rcls:#x}/{rcs:#x}\
+                /{rpcs:#x}/v{rv}/enc{enc:#x}");
+        }
+        c::cmsCloseProfile(p);
+        c::cmsCloseProfile(srgb);
+    }
+}
