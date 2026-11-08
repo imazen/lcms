@@ -1334,3 +1334,30 @@ fn four_channel_modifier_matrix() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// 1/2-channel formats on a gray profile — the channel-
+/// matching machinery.
+#[test]
+fn gray_channel_formats() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        for (name, fmt) in [
+            ("1ch-u8", (0 << 16) | (1 << 3) | 1u32),
+            ("1ch-u16", (0 << 16) | (1 << 3) | 2),
+            ("1ch-flt", (1 << 22) | (0 << 16) | (1 << 3) | 4),
+            ("1ch-dbl", (1 << 22) | (0 << 16) | (1 << 3) | 0),
+            ("1ch-hlf", (1 << 22) | (0 << 16) | (1 << 3) | 2),
+            ("2ch-u8", (0 << 16) | (2 << 3) | 1),
+            ("2ch-x1", (0 << 16) | (1 << 7) | (1 << 3) | 1),
+            ("1ch-planar", (0 << 16) | (1 << 12) | (1 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(gray, fmt, gray,
+                fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(gray);
+    }
+}
