@@ -1207,3 +1207,107 @@ fn internal_mba_intent_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — _cmsReadColorantTable + _cmsReadCHAD
+///   tails: prtr profiles with clrt/chad on RGB/CMYK/
+///   Lab colorspaces.
+#[test]
+fn internal_clrt_chad2_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // chad: Brad-ford / odd matrices on output class
+        for (m, name) in [
+            ([1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+              0.0, 0.0, 1.0], "ident"),
+            ([0.8951, 0.2664, -0.1614,
+              -0.7502, 1.7135, 0.0367,
+              0.0389, -0.0685, 1.0296], "bradford"),
+            ([2.0, 0.0, 0.0, 0.0, 2.0, 0.0,
+              0.0, 0.0, 2.0], "scale2"),
+            ([0.0, 0.0, 1.0, 0.0, 1.0, 0.0,
+              1.0, 0.0, 0.0], "swap"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x70727472);
+            c::cmsSetColorSpace(p, 0x434D594B);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 2.4);
+            let mut b = vec![
+                0x63u8, 0x68, 0x61, 0x64,
+                0, 0, 0, 0];
+            for v in m {
+                b.extend_from_slice(
+                    &((v * 65536.0) as i32)
+                        .to_be_bytes());
+            }
+            c::cmsWriteRawTag(p, 0x63686164,
+                b.as_ptr() as *const _, b.len() as u32);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("chad {name} prof={}",
+                !pr.is_null());
+            if !pr.is_null() {
+                let rd = c::cmsReadTag(pr, 0x63686164);
+                eprintln!("  chad rd={}", !rd.is_null());
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        // clrt on each colorspace
+        for (cs, nclr, name) in [
+            (0x52474220u32, 3u32, "rgb3"),
+            (0x434D594B, 4, "cmyk4"),
+            (0x4D434832, 2, "mch2"),
+            (0x4D434836, 6, "mch6"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x70727472);
+            c::cmsSetColorSpace(p, cs);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 2.4);
+            let mut b = vec![
+                0x63u8, 0x6C, 0x72, 0x74,
+                0, 0, 0, 0];
+            b.extend_from_slice(&nclr.to_be_bytes());
+            for i in 0..nclr {
+                let nm = format!("c{i}\0");
+                b.extend_from_slice(nm.as_bytes());
+                let pad = 32usize.saturating_sub(nm.len());
+                b.extend_from_slice(&vec![0u8; pad]);
+                b.extend_from_slice(&[0x80u8; 12]);
+            }
+            c::cmsWriteRawTag(p, 0x636C726F,
+                b.as_ptr() as *const _, b.len() as u32);
+            let mut buf = [0u8; 1 << 18];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("clrt {name} prof={}",
+                !pr.is_null());
+            if !pr.is_null() {
+                let rd = c::cmsReadTag(pr, 0x636C726F);
+                eprintln!("  clrt rd={}", !rd.is_null());
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
