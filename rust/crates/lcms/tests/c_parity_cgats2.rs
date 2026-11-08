@@ -3585,3 +3585,72 @@ fn cgats_header_seq_arms() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// cmscgats residual — ParseCube: domain bounds,
+///   LUT sizes 2/17/33/65/bad, comments/blank lines,
+///   truncated data, title/metadata.
+#[test]
+fn cgats_cube2_arms() {
+    unsafe {
+        let mk = |size: usize, extra: &[&str]| {
+            let mut s = String::from(
+                "TITLE \"t\"\n\
+                 DOMAIN_MIN 0 0 0\n\
+                 DOMAIN_MAX 1 1 1\n");
+            for e in extra { s.push_str(e); s.push('\n'); }
+            s.push_str(&format!("LUT_3D_SIZE {}\n", size));
+            let n = size * size * size;
+            for _ in 0..n {
+                s.push_str("0.1 0.2 0.3\n"); }
+            s.push('\0');
+            s
+        };
+        for (doc, name) in [
+            (mk(2, &[]), "s2"),
+            (mk(17, &[]), "s17"),
+            (mk(33, &[]), "s33"),
+            (mk(2, &["# comment line"]),
+                "comment"),
+            (mk(2, &["LUT_3D_SIZE 3",
+                     "LUT_1D_SIZE 16",
+                     "0.1 0.2 0.3",
+                     "0.4 0.5 0.6",
+                     "0.7 0.8 0.9"]),
+                "dup-size"),
+            (mk(2, &["LUT_3D_INPUT_RANGE 0.0 1.0"]),
+                "range"),
+            (mk(3, &["LUT_3D_SIZE 2"]), "conflict"),
+            (String::from(
+                "TITLE \"t\"\nLUT_3D_SIZE 9\n\
+                 0.1 0.2 0.3\n\0"), "trunc-data"),
+            (String::from(
+                "LUT_2D_SIZE 4\n\
+                 0.1 0.2 0.3\n\0"), "lut2d"),
+            (String::from(
+                "LUT_3D_SIZE\n\0"), "no-size"),
+            (String::from(
+                "GARBAGE_TOKEN 1 2 3\n\
+                 LUT_3D_SIZE 2\n\
+                 0.1 0.2 0.3 0.1 0.2 0.3\n\
+                 0.1 0.2 0.3 0.1 0.2 0.3\n\
+                 0.1 0.2 0.3 0.1 0.2 0.3\n\
+                 0.1 0.2 0.3 0.1 0.2 0.3\n\0"),
+                "garbage"),
+        ] {
+            let path = format!(
+                "/tmp/lcms_cube_{}.cube", name);
+            std::fs::write(&path,
+                doc.trim_end_matches('\0')).unwrap();
+            let cpath = std::ffi::CString::new(
+                path.as_str()).unwrap();
+            let prof = c::cmsCreateDeviceLinkFromCubeFileTHR(
+                std::ptr::null_mut(),
+                cpath.as_ptr());
+            eprintln!("{name} prof={}",
+                !prof.is_null());
+            if !prof.is_null() {
+                c::cmsCloseProfile(prof); }
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
