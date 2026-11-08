@@ -910,3 +910,31 @@ fn tag_bounds() {
         }
     }
 }
+
+/// Profile-class machinery — unusual class sigs.
+#[test]
+fn profile_class_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the device-class field (offset 12)
+        for (name, v) in [
+            ("mntr", 0x6D6E7472u32), ("prtr", 0x70727472),
+            ("scnr", 0x73636E72), ("link", 0x6C696E6B),
+            ("abst", 0x61627374), ("spac", 0x73706163),
+            ("nmcl", 0x6E6D636C), ("0", 0u32),
+            ("huge", 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[12..16].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
