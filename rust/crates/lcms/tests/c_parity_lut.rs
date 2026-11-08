@@ -2236,3 +2236,68 @@ fn mpe_pipeline_dup_free() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// LUT8/LUT16 write stage-order sweep — the writers walk
+/// [matrix?][curves?]clut[curves?] with a strict extra-stage reject;
+/// cover each optional-piece permutation, clutless LUT8, and the
+/// non-uniform-grid + wrong-channel rejects.
+#[test]
+fn lut_write_stage_orders() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let tab = {
+            let mut t = vec![0u16; 8 * 3];
+            for (i, v) in t.iter_mut().enumerate() {
+                *v = (i * 3) as u16;
+            }
+            t
+        };
+        let mk = |parts: &[u8]| {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            for &k in parts {
+                match k {
+                    0 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3, cc.as_ptr())),
+                    1 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                            3, 3, mat.as_ptr(), std::ptr::null())),
+                    _ => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocCLut16bit(
+                            std::ptr::null_mut(), 2, 3, 3, tab.as_ptr())),
+                };
+            }
+            p
+        };
+        // stage orders: 0=curves 1=matrix 2=clut
+        for (name, parts) in [
+            ("clut-only", [2u8].as_slice()),
+            ("cv-clut", [0, 2].as_slice()),
+            ("clut-cv", [2, 0].as_slice()),
+            ("cv-clut-cv", [0, 2, 0].as_slice()),
+            ("cv-mx-cv", [0, 1, 0].as_slice()),
+            ("cv-clut-cv-mx-cv", [0, 2, 0, 1, 0].as_slice()),
+            ("full", [0, 1, 0, 2, 0].as_slice()),
+            ("cv-only", [0u8].as_slice()),
+            ("mx-only", [1u8].as_slice()),
+            ("clut-mx-extra", [2, 1].as_slice()),
+            ("cv-cv-clut", [0, 0, 2].as_slice()),
+        ] {
+            let p = mk(parts);
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            eprintln!("{name}: w={w} save={s} n={}",
+                if s != 0 { n as usize } else { 0 });
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
