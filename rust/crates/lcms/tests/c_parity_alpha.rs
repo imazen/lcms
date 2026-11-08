@@ -664,3 +664,67 @@ fn alpha_se_planar_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsalpha residual — remaining SE/planar/extra
+///   alpha-format combos on u8/u16/float transforms,
+///   alpha channel positions and widths.
+#[test]
+fn alpha_tail_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // alpha formats: EXTRA<<7 on each base+swap
+        for (fmt, nch, name) in [
+            ((4u32 << 16) | (1 << 7) | (4 << 3) | 1,
+                4, "rgbx8"),
+            ((4u32 << 16) | (2 << 7) | (5 << 3) | 1,
+                5, "rgbxx8"),
+            ((4u32 << 16) | (1 << 7) | (1 << 10)
+                | (4 << 3) | 1, 4, "rgbx8-ds"),
+            ((4u32 << 16) | (1 << 7) | (1 << 14)
+                | (4 << 3) | 1, 4, "rgbx8-sf"),
+            ((4u32 << 16) | (1 << 7) | (4 << 3) | 2,
+                4, "rgbx16"),
+            ((4u32 << 16) | (1 << 7) | (1 << 11)
+                | (4 << 3) | 2, 4, "rgbx16-e16"),
+            ((4u32 << 16) | (1 << 7) | (1 << 12)
+                | (4 << 3) | 2, 4, "rgbx16-plan"),
+            ((1u32 << 22) | (4 << 16) | (1 << 7)
+                | (4 << 3) | 4, 4, "rgbx-flt"),
+            ((1u32 << 22) | (4 << 16) | (1 << 7)
+                | (1 << 10) | (4 << 3) | 4, 4, "rgbx-flt-ds"),
+            ((4u32 << 16) | (1 << 7) | (1 << 10)
+                | (1 << 14) | (4 << 3) | 2, 4, "rgbx16-both"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt,
+                lab4, flab, 0, 0);
+            if t.is_null() {
+                let t2 = c::cmsCreateTransform(lab4, flab,
+                    srgb, fmt, 0, 0);
+                eprintln!("{name} rev={}", !t2.is_null());
+                if !t2.is_null() {
+                    let src = [0x8000u16; 4];
+                    let mut dst = [0u8; 16];
+                    c::cmsDoTransform(t2,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    eprintln!("  {dst:?}");
+                    c::cmsDeleteTransform(t2);
+                }
+                continue;
+            }
+            let src = [128u8, 64, 200, 255, 99, 42];
+            let mut dst = [0u16; 4];
+            c::cmsDoTransform(t,
+                src.as_ptr() as *const _,
+                dst.as_mut_ptr() as *mut _, 1);
+            eprintln!("{name} {dst:?}");
+            c::cmsDeleteTransform(t);
+            let _ = nch;
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
