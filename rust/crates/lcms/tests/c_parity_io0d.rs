@@ -23261,3 +23261,150 @@ fn internal_final61_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsopt residual — DupPluginOptimizationList +
+///   CurvesAlloc + user-optimizer dispatch via registered
+///   cmsPluginOptimization on contexts.
+#[test]
+fn internal_final62_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct OptPlugin {
+            base: PluginBase,
+            opt: *const std::ffi::c_void,
+        }
+        // _cmsOPToptimizeFn:
+        //   (cmsPipeline**, Intent, *In, *Out, *Flags)
+        unsafe extern "C" fn my_opt(
+            lut: *mut *mut std::ffi::c_void,
+            _intent: u32,
+            _fin: *mut u32,
+            _fout: *mut u32,
+            flags: *mut u32) -> i32 {
+            // force flags mutation + inspect pipeline —
+            //   returns FALSE → falls through to next
+            *flags = *flags | 0x200;
+            eprintln!("  myopt lut={}", !(*lut).is_null());
+            0
+        }
+        unsafe extern "C" fn my_opt2(
+            _lut: *mut *mut std::ffi::c_void,
+            _intent: u32,
+            _fin: *mut u32,
+            _fout: *mut u32,
+            _flags: *mut u32) -> i32 {
+            eprintln!("  myopt2 returns TRUE");
+            1
+        }
+        for (which, name) in [
+            (0u32, "opt0"), (1, "opt1"), (2, "both"),
+        ] {
+            let ctx = c::cmsCreateContext(
+                std::ptr::null_mut(), std::ptr::null_mut());
+            let mut p1 = OptPlugin {
+                base: PluginBase {
+                    magic: 0x61637070,
+                    ver: 2200,
+                    typ: 0x6F707448,
+                    next: std::ptr::null_mut(),
+                },
+                opt: my_opt as *const std::ffi::c_void,
+            };
+            let mut p2 = OptPlugin {
+                base: PluginBase {
+                    magic: 0x61637070,
+                    ver: 2200,
+                    typ: 0x6F707448,
+                    next: std::ptr::null_mut(),
+                },
+                opt: my_opt2 as *const std::ffi::c_void,
+            };
+            match which {
+                0 => { c::cmsPluginTHR(ctx,
+                    &mut p1 as *mut _ as *mut _); },
+                1 => { c::cmsPluginTHR(ctx,
+                    &mut p2 as *mut _ as *mut _); },
+                _ => {
+                    c::cmsPluginTHR(ctx,
+                        &mut p1 as *mut _ as *mut _);
+                    c::cmsPluginTHR(ctx,
+                        &mut p2 as *mut _ as *mut _);
+                },
+            }
+            // transforms on the plugin ctx — optimizer chain
+            for (st, sname) in [
+                (0u32, "cv"), (1, "clut"), (2, "cvclut"),
+            ] {
+                let prof = c::cmsCreateProfilePlaceholder(ctx);
+                c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                c::cmsSetColorSpace(prof, 0x52474220);
+                c::cmsSetPCS(prof, 0x58595A20);
+                c::cmsSetProfileVersion(prof, 4.4);
+                let p = c::cmsPipelineAlloc(ctx, 3, 3);
+                let trcs = [g, g, g];
+                let dims = [3u32; 3];
+                let grid = vec![0x4000u16; 81];
+                match st {
+                    0 => { c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocToneCurves(ctx, 3,
+                            trcs.as_ptr() as *mut _)); },
+                    1 => { c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocCLut16bitGranular(
+                            ctx, dims.as_ptr(), 3, 3,
+                            grid.as_ptr())); },
+                    _ => {
+                        c::cmsPipelineInsertStage(p, 0,
+                            c::cmsStageAllocToneCurves(ctx,
+                                3, trcs.as_ptr()
+                                    as *mut _));
+                        c::cmsPipelineInsertStage(p, 1,
+                            c::cmsStageAllocCLut16bitGranular(
+                                ctx, dims.as_ptr(), 3, 3,
+                                grid.as_ptr()));
+                    },
+                }
+                c::cmsWriteTag(prof, 0x41324230,
+                    p as *const _);
+                c::cmsWriteTag(prof, 0x42324130,
+                    p as *const _);
+                let fin = (4u32 << 16) | (3 << 3) | 2;
+                let t = c::cmsCreateTransformTHR(ctx,
+                    prof, fin, srgb, fin, 0, 0);
+                eprintln!("{name} {sname} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = [0x4000u16; 3];
+                    let mut dst = [0u16; 3];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+            // dup ctx → DupPluginOptimizationList
+            let d = c::cmsDupContext(ctx,
+                std::ptr::null_mut());
+            eprintln!("{name} dup={}", !d.is_null());
+            if !d.is_null() {
+                let fin = (4u32 << 16) | (3 << 3) | 2;
+                let t = c::cmsCreateTransformTHR(d,
+                    srgb, fin, srgb, fin, 0, 0);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+                c::cmsDeleteContext(d);
+            }
+            c::cmsDeleteContext(ctx);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
