@@ -32,3 +32,24 @@ fn intent_support_matrix() {
         }
     }
 }
+
+/// cmsReadTag on every present tag of every corpus profile — the
+/// read-side dispatch across the real corpus.
+#[test]
+fn corpus_tag_reads() {
+    for data in corpus() {
+        let mut rp = profile::open_profile_from_mem(None, &data).unwrap();
+        unsafe {
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
+            for i in 0..40u32 {
+                let sig = c::cmsGetTagSignature(h, i);
+                if sig == 0 { break }
+                let ct = c::cmsReadTag(h, sig);
+                let rt = profile::cms_read_tag(&mut rp, sig);
+                assert_eq!(ct.is_null(), rt.is_none(),
+                    "read tag {sig:#x}");
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
