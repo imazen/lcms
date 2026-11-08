@@ -6595,12 +6595,17 @@ fn formatter_matrix() {
         ] {
             if prof.is_null() {
                 eprintln!("{nm}: null"); continue; }
-            for bytes in [1u32, 2, 4] {
+            // bytes: 1=u8 2=u16 4=f32 0=f64 2f=half
+            for bytes in [1u32, 2, 4, 0, 0x100] {
                 for (fl, fnm) in &combos {
-                    // bytes=4 -> float bit (bare 4 rejects)
-                    let fb = if bytes == 4 {
-                        bytes | fl | (1 << 22)
-                    } else { bytes | fl };
+                    // f32 = float|4, f64 = float|0,
+                    //   half = float|2 (via 0x100 marker)
+                    let fb = match bytes {
+                        4 => bytes | fl | (1 << 22),
+                        0 => fl | (1 << 22),
+                        0x100 => 2 | fl | (1 << 22),
+                        _ => bytes | fl,
+                    };
                     // input side: PT-fmt -> srgb u16
                     let fi = (pt << 16) | (ch << 3) | fb;
                     let ri = ok(prof, fi,
