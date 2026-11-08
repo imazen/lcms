@@ -581,3 +581,33 @@ fn gamut_preview_lut_readers() {
         c::cmsPipelineFree(gp);
     }
 }
+
+/// cmsCreateLinearizationDeviceLink — per-channel curve devicelink
+/// on RGB/CMYK/Gray spaces + transform through it.
+#[test]
+fn linearization_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (cs, name, ch) in [
+            (0x52474220u32, "rgb", 3),   // 'RGB '
+            (0x434D594B, "cmyk", 4),      // 'CMYK'
+            (0x47524159, "gray", 1),      // 'GRAY'
+        ] {
+            let dl = c::cmsCreateLinearizationDeviceLink(
+                cs, [g; 4].as_ptr() as *mut _);
+            eprintln!("{name} dl={}", !dl.is_null());
+            if !dl.is_null() {
+                // transform through the devicelink (link IS the xform)
+                let f = ((cs & 0xff) as u32) | (((ch) << 3) | 1);
+                let fmt = ((cs == 0x434D594B) as u32 * 6
+                    | (cs == 0x52474220) as u32 * 4
+                    | (cs == 0x47524159) as u32 * 3) << 16
+                    | (ch << 3) | 1;
+                let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
+                eprintln!("  t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                c::cmsCloseProfile(dl);
+            }
+        }
+    }
+}
