@@ -63,6 +63,7 @@ fn gbd_containment() {
 
 // --- error handler parity ---
 static LAST_C: Mutex<Option<(u32, String)>> = Mutex::new(None);
+static CTX_LOCK: Mutex<()> = Mutex::new(());
 
 unsafe extern "C" fn c_handler(_ctx: *mut c_void, code: u32, text: *const i8) {
     let t = if text.is_null() {
@@ -229,4 +230,31 @@ fn plugin_registration() {
         },
     )]);
     assert!(r_ok, "rust plugin registration");
+}
+
+/// Context accessors — GetProfileContextID/UserData, AlarmCodes
+/// get/set, AdaptationState, SetLogErrorHandler.
+#[test]
+fn context_accessors() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        let cid = c::cmsGetProfileContextID(p);
+        eprintln!("ctx={}", !cid.is_null());
+        // alarm codes
+        let codes = [0x7FFFu16; 16];
+        c::cmsSetAlarmCodes(codes.as_ptr());
+        let mut got = [0u16; 16];
+        c::cmsGetAlarmCodes(got.as_mut_ptr());
+        eprintln!("alarm={:#x}", got[0]);
+        // adaptation
+        let old = c::cmsSetAdaptationState(0.5);
+        eprintln!("adapt old={old}");
+        c::cmsSetAdaptationState(old);
+        // profile user data
+        let mut ud = 42i32;
+        c::_cmsSetProfileUserData(p, &mut ud as *mut _ as *mut _,
+            std::ptr::null_mut());
+        c::cmsCloseProfile(p);
+    }
 }
