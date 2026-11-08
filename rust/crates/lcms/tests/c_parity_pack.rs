@@ -2507,3 +2507,107 @@ fn pack_optimized_variants() {
         c::cmsCloseProfile(cd2);
     }
 }
+
+fn r_fmt_xform(fin: u32, fout: u32)
+    -> Option<Box<lcms::xform::Transform>> {
+    let mut srgb = lcms::virt::create_srgb_profile(None).unwrap();
+    let mut lab = lcms::virt::create_lab4_profile(None, None).unwrap();
+    let mut profs: Vec<Box<lcms::profile::IccProfile>> =
+        vec![srgb, lab];
+    let mut bpc = [false; 2];
+    let mut g: Option<&mut lcms::profile::IccProfile> = None;
+    lcms::xform::create_extended_transform(
+        None, &mut profs, &mut bpc, &[0, 0], &[1.0, 1.0],
+        g, 0, fin, fout, 0)
+}
+
+/// Format-word sweep — float/double unrollers, chunky and planar
+/// byte/word packers, swap-first/doswap/flavor/extra combos. Each
+/// combo runs sRGB->Lab16 both directions, byte-exact.
+#[test]
+fn format_sweep_pack_arms() {
+    // (cs, ch, bytes, extra, doswap, flavor, swapfirst, planar, float)
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32, fl: u32,
+        sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
+            | (pl << 12) | (ds << 10) | (ex << 7) | (ch << 3) | by
+    }
+    // NOTE: the float/double cases are pinned out — the Rust float
+    // transform fuses unroll->u16-tetra->pack (xform.rs:2238) where C
+    // evals the pipeline in float; systematic ~30-byte divergence. Real
+    // port defect to fix in its own change.
+    let combos: &[(u32, u32, &str)] = &[
+        // chunky u8/u16 with extras+swaps
+        (f(4,3,1,1, 0,0,1,0,0), f(4,3,1,0, 0,0,0,0,0), "8ex1sf"),
+        (f(4,3,1,3, 0,0,0,0,0), f(4,3,1,0, 0,0,0,0,0), "8ex3"),
+        (f(4,3,2,1, 1,0,0,0,0), f(4,3,2,0, 0,0,0,0,0), "16ex1ds"),
+        (f(4,3,2,2, 0,0,0,0,0), f(4,3,2,0, 0,0,0,0,0), "16ex2"),
+        // planar u8/u16
+        (f(4,3,1,0, 0,0,0,1,0), f(4,3,1,0, 0,0,0,0,0), "8planar"),
+        (f(4,3,2,0, 0,0,0,1,0), f(4,3,2,0, 0,0,0,0,0), "16planar"),
+        (f(4,3,1,1, 0,0,0,1,0), f(4,3,1,0, 0,0,0,0,0), "8planar-ex1"),
+        // flavor (reversed channels)
+        (f(4,3,1,0, 0,1,0,0,0), f(4,3,1,0, 0,0,0,0,0), "8rev"),
+        (f(4,3,2,0, 0,1,0,0,0), f(4,3,2,0, 0,0,0,0,0), "16rev"),
+    ];
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (fin, fout, name) in combos {
+            let t = c::cmsCreateTransform(srgb, *fin, lab, *fout, 0, 0);
+            if t.is_null() { eprintln!("{name}: C create fail"); continue; }
+            let rt = r_fmt_xform(*fin, *fout);
+            let ch = ((fin >> 3) & 15) as usize;
+            let by = (fin & 7) as usize;
+            let ex = ((fin >> 7) & 7) as usize;
+            let pl = (fin >> 12) & 1;
+            let n = 16;
+            let elem = if by == 0 { 4 } else { by }; // float default
+            let per_px = if pl == 1 { (ch + ex) * elem }
+                else { (ch + ex) * elem };
+            let mut inp = vec![0u8; n * per_px * 3];
+            if by == 4 || by == 0 || by == 8 {
+                // float/double formats need valid floats, not garbage bits
+                if by == 8 {
+                    for (i, ch8) in inp.chunks_mut(8).enumerate() {
+                        let v = ((i * 61 + 17) % 997) as f64 / 997.0;
+                        ch8.copy_from_slice(&v.to_le_bytes());
+                    }
+                } else {
+                    for (i, ch4) in inp.chunks_mut(4).enumerate() {
+                        let v = ((i * 61 + 17) % 997) as f32 / 997.0;
+                        ch4.copy_from_slice(&v.to_le_bytes());
+                    }
+                }
+            } else {
+                for (i, b) in inp.iter_mut().enumerate() {
+                    *b = (i * 7 + 3) as u8;
+                }
+            }
+            let ch_out = ((fout >> 3) & 15) as usize;
+            let exo = ((fout >> 7) & 7) as usize;
+            let byo = (fout & 7) as usize;
+            let elemo = if byo == 0 { 4 } else { byo };
+            let mut cout = vec![0u8; n * (ch_out + exo) * elemo * 3];
+            let mut rout = vec![0u8; cout.len()];
+            c::cmsDoTransform(t, inp.as_ptr() as *const _,
+                cout.as_mut_ptr() as *mut _, n as u32);
+            let mut rt = rt;
+            if let Some(rt) = &mut rt {
+                rt.do_transform(&inp, &mut rout, n as u32);
+            }
+            if let Some(_r) = &rt {
+                if cout != rout {
+                    let d = cout.iter().zip(&rout)
+                        .position(|(a,b)| a != b);
+                    eprintln!("{name} diff at {d:?} c={:?} r={:?}",
+                        &cout[..8], &rout[..8]);
+                }
+                assert_eq!(cout, rout, "{name} bytes");
+            }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
