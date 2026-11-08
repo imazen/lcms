@@ -530,3 +530,67 @@ fn opt_float_eval_internals() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsopt deep internals — PatchLUT/OptimizeByJoiningCurves/
+///   OptimizeMatrixShaper via every optimizer flag on matrix-
+///   shaper + CLUT profiles at every format.
+#[test]
+fn opt_deep_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        // every format x every optimizer-relevant flag on
+        //   matrix-shaper (srgb) profile
+        for fmt in [
+            (4u32 << 16) | (3 << 3) | 1,
+            (4 << 16) | (3 << 3) | 2,
+            (4 << 16) | (3 << 3) | 4,
+            (4 << 16) | (3 << 3) | 8,
+            (4 << 16) | (4 << 3) | 1,
+            (10 << 16) | (3 << 3) | 1,
+            (10 << 16) | (3 << 3) | 4,
+            (6 << 16) | (4 << 3) | 1,
+        ] {
+            for flags in [0u32, 0x0100 /*PRELIN*/,
+                0x0200 /*NOCACHE*/, 0x0400 /*NOOPTIM*/,
+                0x0001, 0x0002, 0x0004,
+                0x0100 | 0x0001, 0x0100 | 0x0002] {
+                let t = c::cmsCreateTransform(srgb, fmt,
+                    lab, fmt, 0, flags);
+                let t2 = c::cmsCreateTransform(lab, fmt,
+                    srgb, fmt, 0, flags);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+                if !t2.is_null() {
+                    c::cmsDeleteTransform(t2); }
+                if !cmyk.is_null() {
+                    let t3 = c::cmsCreateTransform(cmyk, fmt,
+                        lab, fmt, 0, flags);
+                    let t4 = c::cmsCreateTransform(lab, fmt,
+                        cmyk, fmt, 0, flags);
+                    let t5 = c::cmsCreateTransform(cmyk, k8,
+                        cmyk, k8, 0, flags);
+                    if !t3.is_null() {
+                        c::cmsDeleteTransform(t3); }
+                    if !t4.is_null() {
+                        c::cmsDeleteTransform(t4); }
+                    if !t5.is_null() {
+                        c::cmsDeleteTransform(t5); }
+                }
+            }
+            eprintln!("fmt {fmt:#x} done");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
