@@ -6899,3 +6899,48 @@ fn mft_reader_internals() {
         }
     }
 }
+
+/// io0 tag-iteration internals — GetTagCount/GetTagSignature/
+/// IsTag on profiles with different tag sets.
+#[test]
+fn io0_tag_iteration() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for (p, name) in [(srgb, "srgb"), (lab, "lab"), (xyz, "xyz")] {
+            let n = c::cmsGetTagCount(p);
+            eprintln!("{name} tags={n}");
+            for i in 0..n.max(0) as u32 {
+                let sig = c::cmsGetTagSignature(p, i);
+                let ist = c::cmsIsTag(p, sig);
+                let _ = (sig, ist);
+            }
+            // IsTag on sigs that aren't present
+            for sig in [0x6e636c32u32, 0x76636774, 0x6d657461,
+                        0x6368726D, 0x636C7274] {
+                let ist = c::cmsIsTag(p, sig);
+                let _ = ist;
+            }
+        }
+        for f in ["lcms2cmyk.icc", "labv4lcms2.icc", "aRGBlcms2.icc",
+                  "brightness.icc", "lcms2link.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let n = c::cmsGetTagCount(p);
+            for i in 0..n.max(0) as u32 {
+                let sig = c::cmsGetTagSignature(p, i);
+                let _ = sig;
+            }
+            eprintln!("{f} tags={n}");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+    }
+}
