@@ -4470,3 +4470,82 @@ fn pack_planar_opt_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmspack residual — remaining formatter arms:
+///   DOSWAP + SWAPFIRST + EXTRA + PLANAR variants
+///   on float/double Lab/XYZ, PackPlanarBytes,
+///   skip1 swap combos.
+#[test]
+fn pack_swap_extra_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let frgb = (4u32 << 16) | (3 << 3) | 1;
+        // float/double Lab/XYZ formats as profile OUTPUT
+        for (out_prof, fmt, name) in [
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
+                | (3 << 3) | 4, "labf-doswap"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 14)
+                | (3 << 3) | 4, "labf-sf"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
+                | (1 << 14) | (3 << 3) | 4, "labf-both"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 7)
+                | (3 << 3) | 4, "labf-ex1"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
+                | (1 << 7) | (3 << 3) | 8, "labd-ex1-ds"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 10)
+                | (3 << 3) | 4, "xyzf-doswap"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 14)
+                | (3 << 3) | 8, "xyzd-sf"),
+            (xyz, (1u32 << 22) | (9 << 16) | (2 << 7)
+                | (3 << 3) | 4, "xyzf-ex2"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, frgb,
+                out_prof, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [128u8, 64, 200];
+                let mut dst = vec![0u8; 32];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // u8/u16 packer variants as srgb INPUT
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        for (fmt, name) in [
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 1,
+                "rgb8-planar"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
+                "rgb16-planar"),
+            ((4u32 << 16) | (1 << 7) | (1 << 10)
+                | (1 << 14) | (3 << 3) | 1, "rgbx-ds-sf"),
+            ((4u32 << 16) | (1 << 7) | (1 << 10)
+                | (3 << 3) | 1, "rgbx-ds"),
+            ((4u32 << 16) | (1 << 7) | (1 << 14)
+                | (3 << 3) | 1, "rgbx-sf"),
+            ((4u32 << 16) | (1 << 14) | (3 << 3) | 1,
+                "rgb8-sf"),
+            ((4u32 << 16) | (1 << 10) | (3 << 3) | 1,
+                "rgb8-ds"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt,
+                lab, flab, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [128u8, 64, 200, 255];
+                let mut dst = [0u16; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+    }
+}
