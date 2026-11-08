@@ -480,3 +480,33 @@ fn float_tag_readers() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadFloatOutputTag — BToD mpet tag on an output-position
+/// profile -> the float output reader + FromLab normalization.
+#[test]
+fn float_output_tag() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        // output profile (Lab PCS in, RGB device out) with BToD tag
+        let outp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(outp, 0x6d6e7472);
+        c::cmsSetColorSpace(outp, 0x52474220);
+        c::cmsSetPCS(outp, 0x4C616220);
+        c::cmsSetProfileVersion(outp, 4.4);
+        c::cmsWriteTag(outp, 0x42324430, p as *const _); // 'B2D0'
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let t = c::cmsCreateTransform(lab, l16, outp, r16, 0, 0);
+        eprintln!("b2d-out t={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(outp);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
