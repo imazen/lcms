@@ -2934,3 +2934,24 @@ fn raw_reads_stored() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Raw-write overwrite machinery — raw write over an
+/// existing stored tag then read back.
+#[test]
+fn raw_write_overwrite() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [
+            (0x64657363u32, "desc"), (0x63707274, "cprt"),
+            (0x77747074, "wtpt"), (0x72545243, "rTRC"),
+            (0x7258595a, "rXYZ"), (0x63686164, "chad")] {
+            let payload = [0x41u8, 0x42, 0x43, 0x44, 0x45, 0x46];
+            let w = c::cmsWriteRawTag(h, sig,
+                payload.as_ptr() as *mut _, 6);
+            let n = c::cmsReadRawTag(h, sig,
+                std::ptr::null_mut(), 0);
+            eprintln!("{name} w={w} n={n}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
