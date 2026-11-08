@@ -700,3 +700,42 @@ fn ps2_named_crd_internals() {
         c::cmsMLUfree(ml);
     }
 }
+
+/// ExtractGray2Y — gray profile with an A2B0 CLUT routes
+/// through WriteInputLUT case-1 (not the matrix-shaper path).
+#[test]
+fn ps2_gray_lut_emitters() {
+    let _g = PS_LOCK.lock().unwrap();
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        // write an A2B0 CLUT so the LUT path fires
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 1,
+                [g].as_ptr() as *mut _));
+        let mut grid = vec![0u16; 17 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 17) * 3855) as u16;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 1, 3,
+                grid.as_ptr()));
+        let w = c::cmsWriteTag(gray, 0x41324230, p as *const _);
+        eprintln!("a2b0 w={w}");
+        let mut buf = vec![0u8; 1 << 18];
+        for (intent, name) in [(0u32, "i0"), (1, "i1"), (3, "i3")] {
+            let mut n = buf.len() as u32;
+            let csa = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
+                gray, intent, 0, buf.as_mut_ptr() as *mut _, n);
+            eprintln!("{name} csa={csa}");
+            let mut n2 = buf.len() as u32;
+            let crd = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
+                gray, intent, 0, buf.as_mut_ptr() as *mut _, n2);
+            eprintln!("{name} crd={crd}");
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
