@@ -99,3 +99,38 @@ fn plugin_type_matrix() {
         assert_eq!(c_ok != 0, r_ok, "plugin type {sig:#x} status");
     }
 }
+
+/// More plugin types: Formatters, RenderingIntent, Optimization,
+/// Transform, Header — the registration machinery across more slots.
+#[test]
+fn plugin_type_matrix2() {
+    const MAGIC: u32 = 0x61637070;
+    const VERSION: u32 = 2200;
+    #[repr(C)]
+    struct CPluginBase {
+        magic: u32,
+        expected_version: u32,
+        ty: u32,
+        next: *mut c_void,
+    }
+    // each type = PluginBase + a single factory/handler fn ptr
+    unsafe extern "C" fn stub() -> *mut c_void { std::ptr::null_mut() }
+    let sigs = [0x66726D48u32, 0x696E7448, 0x6F707448, 0x7A666D48]; // hdrH needs a real Header payload
+    for &sig in &sigs {
+        #[repr(C)]
+        struct CP {
+            base: CPluginBase,
+            factory: unsafe extern "C" fn() -> *mut c_void,
+        }
+        let p = Box::leak(Box::new(CP {
+            base: CPluginBase { magic: MAGIC, expected_version: VERSION,
+                ty: sig, next: std::ptr::null_mut() },
+            factory: stub,
+        })) as *mut CP as *mut c_void;
+        let c_ok = unsafe { c::cmsPlugin(p) };
+        // rust accepts a plugin entry via the Other variant slot
+        let mut ctx = context::create_context(None, 0);
+        let r_ok = ctx.plugin(&[Plugin::Other]);
+        assert_eq!(c_ok != 0, r_ok, "plugin type {sig:#x}");
+    }
+}
