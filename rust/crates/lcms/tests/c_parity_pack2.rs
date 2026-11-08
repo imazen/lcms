@@ -488,3 +488,52 @@ fn change_buffers_format() {
         c::cmsDeleteTransform(ct);
     }
 }
+
+/// PLANAR evals — planar-buffer transforms (3 separate channel
+/// planes) across BYTES_SH(1/2/4).
+#[test]
+fn planar_evals() {
+    unsafe {
+        for (bname, bytes) in [("u8", 1u32), ("u16", 2), ("f32", 4)] {
+            // RGB planar -> Lab chunky
+            let in_fmt: u32 = (4 << 16) | (3 << 3) | bytes
+                | (1 << 9); // PLANAR_SH
+            let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let hi = c::cmsCreate_sRGBProfile();
+            let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
+                out_fmt, 0, 0);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            if ct.is_null() { continue; }
+            // planar input: 3 channel planes
+            let mut planes: [Vec<u8>; 3] = match bytes {
+                1 => [vec![120u8], vec![160], vec![200]],
+                2 => [
+                    vec![120u16].into_iter()
+                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                    vec![160u16].into_iter()
+                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                    vec![200u16].into_iter()
+                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                ],
+                _ => [
+                    vec![0.5f32].into_iter()
+                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                    vec![0.6f32].into_iter()
+                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                    vec![0.7f32].into_iter()
+                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                ],
+            };
+            let ptrs = [planes[0].as_ptr(),
+                        planes[1].as_ptr(),
+                        planes[2].as_ptr()];
+            let mut co = [0u16; 3];
+            c::cmsDoTransform(ct, ptrs.as_ptr() as _,
+                co.as_mut_ptr() as *mut _, 1);
+            let _ = &mut planes;
+            c::cmsDeleteTransform(ct);
+        }
+    }
+}
