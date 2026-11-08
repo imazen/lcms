@@ -313,3 +313,51 @@ fn pack_rejects() {
     }
     unsafe { c::cmsCloseProfile(cp) };
 }
+
+/// Packed-format internals — TYPE_*_DBL/FLOAT16/HALF combos
+/// through the formatter dispatch.
+#[test]
+fn packed_format_variants() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        // packed float/dbl/half formats — the Unroll*/Pack*
+        // dispatch on the non-u16 widths
+        // FLOAT_SH(1)|COLORSPACE_SH|CHANNELS_SH|BYTES_SH —
+        // dbl is FLOAT=1 + BYTES=0 (packed 8-byte doubles).
+        // The format's colorspace must match the profile.
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            c::cmsD50_xyY() as *const std::ffi::c_void, gg);
+        let rgb_fmt = |b: u32| (1 << 22) | (4 << 16)
+            | (3 << 3) | b;
+        let lab_fmt = |b: u32| (1 << 22) | (10 << 16)
+            | (3 << 3) | b;
+        for (name, in_fmt, out_fmt, p1, p2) in [
+            ("rgb-dbl", rgb_fmt(0), rgb_fmt(0), hi, ho),
+            ("rgb-flt", rgb_fmt(4), rgb_fmt(4), hi, ho),
+            ("rgb-hlf", rgb_fmt(2), rgb_fmt(2), hi, ho),
+            ("rgb-8", (4 << 16) | (3 << 3) | 1,
+             (4 << 16) | (3 << 3) | 1, hi, ho),
+            ("lab-dbl", rgb_fmt(0), lab_fmt(0), hi, lab4),
+            ("lab-flt", rgb_fmt(4), lab_fmt(4), hi, lab4),
+            ("lab-hlf", rgb_fmt(2), lab_fmt(2), hi, lab4),
+        ] {
+            let ct = c::cmsCreateTransform(p1, in_fmt, p2,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0.5f64, 0.4, 0.3];
+                let mut out = [0.0f64; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(gray);
+    }
+}
