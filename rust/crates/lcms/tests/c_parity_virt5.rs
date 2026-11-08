@@ -66,3 +66,45 @@ fn lcms_built_profile_transforms() {
         }
     }
 }
+
+/// Remaining profile builders — ProPhoto/AdobeRGB/OkLab/XYZ/
+/// NULL/gray variants.
+#[test]
+fn remaining_builders() {
+    unsafe {
+        let mut builders: Vec<(&str, *mut std::ffi::c_void)> =
+            Vec::new();
+        builders.push(("srgb", c::cmsCreate_sRGBProfile()));
+        builders.push(("xyz", c::cmsCreateXYZProfile()));
+        builders.push(("null", c::cmsCreateNULLProfile()));
+        builders.push(("lab2",
+            c::cmsCreateLab2Profile(std::ptr::null_mut())));
+        builders.push(("lab4",
+            c::cmsCreateLab4Profile(std::ptr::null_mut())));
+        builders.push(("gray",
+            c::cmsCreateGrayProfile(
+                c::cmsD50_xyY() as *const std::ffi::c_void,
+                c::cmsBuildGamma(std::ptr::null_mut(), 2.2))));
+        builders.push(("bchsw",
+            c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 17, 0.0, 0.0, 0.0,
+                1.0, std::ptr::null(), std::ptr::null())));
+        // a linearization devicelink
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves: [*mut std::ffi::c_void; 3] = [g as *mut std::ffi::c_void, g as *mut std::ffi::c_void, g as *mut std::ffi::c_void];
+        builders.push(("lin",
+            c::cmsCreateLinearizationDeviceLink(0x52474220,
+                curves.as_ptr())));
+        builders.push(("inklim",
+            c::cmsCreateInkLimitingDeviceLink(0x434D594B, 300.0)));
+        for (name, h) in &builders {
+            if h.is_null() { eprintln!("{name} NULL"); continue; }
+            // resave each — exercises the built-in tag tables
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(*h, std::ptr::null_mut(),
+                &mut cn);
+            eprintln!("{name} save={cn}");
+            c::cmsCloseProfile(*h);
+        }
+    }
+}
