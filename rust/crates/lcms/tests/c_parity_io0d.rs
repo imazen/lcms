@@ -2871,3 +2871,17 @@ fn distincttype_read() {
         }
     }
 }
+
+/// NULLRead — cmsOpenProfileFromIOhandler on the NULL IOhandler:
+/// every read goes to the NULL stubs (returns 0), open fails.
+#[test]
+fn null_iohandler_read() {
+    unsafe {
+        let io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+        assert!(!io.is_null());
+        let h = c::cmsOpenProfileFromIOhandlerTHR(
+            std::ptr::null_mut(), io);
+        eprintln!("null-io open={}", !h.is_null());
+        assert!(h.is_null(), "profile from NULL io must fail");
+    }
+}
