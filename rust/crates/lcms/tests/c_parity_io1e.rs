@@ -430,3 +430,41 @@ fn linked_tag_reads() {
         c::cmsCloseProfile(h2);
     }
 }
+
+/// Tag-table lifecycle — write/delete/link/count/signature
+/// machinery across many tags.
+#[test]
+fn tag_table_lifecycle() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let n0 = c::cmsGetTagCount(h);
+        eprintln!("initial tags={n0}");
+        // write a few more
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        c::cmsWriteTag(h, 0x626B7074,
+            &xyz as *const _ as *mut std::ffi::c_void); // bkpt
+        c::cmsWriteTag(h, 0x6C756D69,
+            &xyz as *const _ as *mut std::ffi::c_void); // lumi
+        let n1 = c::cmsGetTagCount(h);
+        eprintln!("after 2 writes={n1}");
+        // enumerate signatures
+        for i in 0..n1 {
+            let s = c::cmsGetTagSignature(h, i as u32);
+            let _ = s;
+        }
+        // delete one
+        let ok = c::cmsWriteTag(h, 0x6C756D69,
+            std::ptr::null_mut()); // NULL payload = delete
+        eprintln!("delete lumi={ok}");
+        let n2 = c::cmsGetTagCount(h);
+        eprintln!("after delete={n2}");
+        // link machinery
+        let lk = c::cmsLinkTag(h, 0x63686164, 0x77747074);
+        let lt = c::cmsTagLinkedTo(h, 0x63686164);
+        eprintln!("link={lk} to={lt:#x}");
+        // IsTag on the remaining
+        let it = c::cmsIsTag(h, 0x626B7074);
+        eprintln!("bkpt IsTag={it}");
+        c::cmsCloseProfile(h);
+    }
+}
