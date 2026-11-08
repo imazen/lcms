@@ -5288,3 +5288,40 @@ fn per_sig_dispatch2() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Type_MHC2_Read/Write — the Microsoft HDR colorimetric tag
+/// (curve arrays + luminance + XYZ2XYZ matrix).
+#[test]
+fn mhc2_tag() {
+    unsafe {
+        #[repr(C)] struct Mhc2 { n: u32, r: *mut f64,
+            g: *mut f64, b: *mut f64, minl: f64, peakl: f64,
+            m: [[f64; 4]; 3] }
+        let mut rc = [0.0f64, 0.5, 1.0, 2.0];
+        let mut gc = [0.0f64, 0.5, 1.0, 2.0];
+        let mut bc = [0.0f64, 0.5, 1.0, 2.0];
+        let mut mhc = Mhc2 { n: 4,
+            r: rc.as_mut_ptr(), g: gc.as_mut_ptr(), b: bc.as_mut_ptr(),
+            minl: 0.0001, peakl: 1000.0,
+            m: [[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0]] };
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        let w = c::cmsWriteTag(prof, 0x4D484332,
+            &mut mhc as *mut _ as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x4D484332)
+        } else { std::ptr::null_mut() };
+        eprintln!("mhc2 w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
