@@ -1307,3 +1307,39 @@ fn real_mpe_read() {
         }
     }
 }
+
+/// Raw-read/write internals — cmsReadRawTag/cmsWriteRawTag on
+/// more sigs (the raw machinery bypassing the type dispatch).
+#[test]
+fn raw_tag_machinery() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // write raw bodies to a spread of sigs — the raw-write
+        // path (no type validation)
+        for sig in [0x77747074u32, 0x64657363, 0x63707274,
+                    0x72545243, 0x63686164, 0x6C756D69] {
+            let body = [0xAAu8; 32];
+            let ok = c::cmsWriteRawTag(h, sig,
+                body.as_ptr() as *const std::ffi::c_void, 32);
+            eprintln!("{sig:#x} rawwrite={ok}");
+        }
+        // resave + raw-read back
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x77747074u32, 0x64657363, 0x63707274,
+                    0x72545243, 0x63686164, 0x6C756D69] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let mut tb = [0u8; 48];
+                let n = c::cmsReadRawTag(h2, sig,
+                    tb.as_mut_ptr() as *mut _, 48);
+                eprintln!("{sig:#x} rawread={n}");
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
