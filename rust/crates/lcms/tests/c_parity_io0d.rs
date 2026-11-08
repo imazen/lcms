@@ -13266,3 +13266,78 @@ fn ucrbg_write_arms() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Type_ProfileSequenceDesc_Read/Write + Type_Text_Description_
+/// Write + cmsDetectTAC (BlackPointAsDarkerColorant).
+#[test]
+fn pseq_desc_tac_arms() {
+    unsafe {
+        // pseq via API write + reopen + read
+        let ps = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 2);
+        for sig in [0x70736571u32, 0x70736964] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, sig, ps as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{sig:#x} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsFreeProfileSequenceDescription(ps);
+        // v2 desc struct — the desc-type write path
+        let srgb = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(srgb, 2.1);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"v2 description\0".as_ptr());
+        let w = c::cmsWriteTag(srgb, 0x64657363,
+            mlu as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(srgb,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let rd = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x64657363)
+        } else { std::ptr::null_mut() };
+        eprintln!("v2-desc w={w} s={s} rd={}", !rd.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(srgb);
+        c::cmsMLUfree(mlu);
+        // cmsDetectTAC — BlackPointAsDarkerColorant path
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let srgb2 = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (p, name) in [(srgb2, "srgb"), (lab, "lab"),
+            (cmyk, "cmyk")] {
+            if p.is_null() { continue; }
+            let tac = c::cmsDetectTAC(p);
+            eprintln!("tac {name}={tac}");
+        }
+        c::cmsCloseProfile(srgb2);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
