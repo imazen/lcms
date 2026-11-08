@@ -275,3 +275,54 @@ fn sigmoid_curves() {
         }
     }
 }
+
+/// Parametric-type sweep — cmsBuildParametricToneCurve for every
+/// built-in type {1..8, 108, 109} and the negative (inverse) forms,
+/// eval'd across the domain — covers DefaultEvalParametricFn arms.
+#[test]
+fn parametric_sweep_all() {
+    unsafe {
+        // params per type counts: DefaultCurves {1,3,4,5,7,4,5,5,1,1}
+        let params: [&[f64]; 10] = [
+            &[1.0],                       // 1: g^1
+            &[2.2, 0.055, 0.5],           // 2
+            &[2.2, 0.055, 0.5, 0.3],      // 3
+            &[2.2, 0.04, 0.5, 0.3, 0.2],  // 4
+            &[2.0, 1.0, 0.5, 0.3, 0.2, 0.1, 0.4], // 5
+            &[2.2, 0.04, 0.5, 0.3],       // 6
+            &[2.2, 0.055, 0.5, 0.3, 0.2], // 7
+            &[2.2, 0.055, 0.5, 0.3, 0.4], // 8
+            &[0.5],                       // 108
+            &[0.7],                       // 109
+        ];
+        let tys = [1i32, 2, 3, 4, 5, 6, 7, 8, 108, 109];
+        for (k, ty) in tys.iter().enumerate() {
+            for inv in [1i32, -1] {
+                let t2 = ty * inv;
+                let tc = c::cmsBuildParametricToneCurve(
+                    std::ptr::null_mut(), t2,
+                    params[k].as_ptr());
+                eprintln!("type {t2} build={}", !tc.is_null());
+                if tc.is_null() { continue; }
+                let mut outs = Vec::new();
+                for s in 0..64u16 {
+                    let x = (s as f32) / 63.0;
+                    outs.push(c::cmsEvalToneCurveFloat(
+                        tc as *const _, x));
+                }
+                let rc = lcms::gamma::build_parametric_tone_curve(
+                    None, t2, params[k]);
+                if let Some(rc) = rc {
+                    let mut diffs = 0;
+                    for (i, x) in (0..64).map(|s| s as f32 / 63.0)
+                        .enumerate() {
+                        let r = rc.eval_float(x);
+                        if (r - outs[i]).abs() > 1e-6 { diffs += 1; }
+                    }
+                    assert_eq!(diffs, 0, "type {t2} eval");
+                }
+                c::cmsFreeToneCurve(tc);
+            }
+        }
+    }
+}
