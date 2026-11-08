@@ -1181,3 +1181,33 @@ fn file_size_fields() {
         }
     }
 }
+
+/// Profile-ID machinery — unusual ID fields.
+#[test]
+fn profile_id_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the profile-ID (offset 84+12=96? actually
+        // 128-16 — try offset 84)
+        for (name, off, v) in [
+            ("id-0", 84, 0u32),
+            ("id-huge", 84, 0xFFFFFFFFu32),
+            ("id-88", 88, 0x12345678u32),
+            ("id-92", 92, 0xFFFFFFFFu32),
+            ("id-96", 96, 0x12345678u32),
+            ("id-100", 100, 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
