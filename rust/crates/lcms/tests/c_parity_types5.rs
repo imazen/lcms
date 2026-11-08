@@ -3230,3 +3230,24 @@ fn write_dispatch_seq() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a dict-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_dict() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        c::cmsDictAddEntry(dict,
+            b"k\0".as_ptr() as _, b"v\0".as_ptr() as _,
+            std::ptr::null_mut(), std::ptr::null_mut());
+        for (sig, name) in [
+            (0x6D657461u32, "meta"), (0x64696374u32, "dict")] {
+            let ok = c::cmsWriteTag(h, sig,
+                dict as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsDictFree(dict);
+        c::cmsCloseProfile(h);
+    }
+}
