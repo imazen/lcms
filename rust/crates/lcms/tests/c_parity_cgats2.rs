@@ -2265,3 +2265,56 @@ fn it8_parsefloat_arms() {
         }
     }
 }
+
+/// InSymbol — lexer edge tokens: comments, both string quotes,
+/// Ctrl-Z, CR/LF variants, include forms, undefined keywords,
+/// embedded numbers, keyword-merge cases.
+#[test]
+fn insymbol_edge_arms() {
+    unsafe {
+        let base = |body: &str| format!(
+            "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n{body}\nEND_DATA\n");
+        let docs: Vec<(String, &str)> = vec![
+            (base("5 # comment"), "hash-comment"),
+            (base("'sq str'"), "sq-string"),
+            (base("\"dq str\""), "dq-string"),
+            (base("'unclosed"), "sq-unclosed"),
+            (base("\"unclosed"), "dq-unclosed"),
+            (base("5\x1a"), "ctrl-z"),
+            (base("5\r6"), "cr-mid"),
+            (base("5\r\n6"), "crlf-mid"),
+            (base("5\n6"), "lf-mid"),
+            (base("5 # c\n6"), "comment-eol"),
+            (base("0x1f"), "hex"),
+            (base("0XAB"), "hex-cap"),
+            (base("0b101"), "bin"),
+            (base("0B11"), "bin-cap"),
+            (base("-42"), "neg-int"),
+            (base("+42"), "pos-int"),
+            (base("42abc"), "num-ident"),
+            (base("abc42"), "ident-num"),
+            (base("1.5e3x"), "sci-trail"),
+            (base("unknownkey"), "unknown-ident"),
+            (base("$INCLUDE"), "include-bare"),
+            (base("$INCLUDE \"nofile\""), "include-dq"),
+            (base("$INCLUDE 'nofile'"), "include-sq"),
+            (base(".INCLUDE \"nofile\""), "include-dot"),
+            (base("$INCLUDE nofile"), "include-unquoted"),
+            (base("5 # \t tab"), "comment-tab"),
+            (base("'\u{00e9}utf8'"), "utf8-string"),
+            (base("5 \u{00a0}nbsp"), "nbsp"),
+            (base("5\x00\x00"), "nul-bytes"),
+            (base("5\x7f\x01"), "high-bytes"),
+            (base("5\t6"), "tab-sep"),
+            (base("5\r6\r7"), "multi-cr"),
+        ];
+        for (doc, name) in &docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} ok={}", !p.is_null());
+            if !p.is_null() { c::cmsIT8Free(p); }
+        }
+    }
+}
