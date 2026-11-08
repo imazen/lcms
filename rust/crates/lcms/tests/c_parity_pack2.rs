@@ -366,3 +366,80 @@ fn modifier_matrix() {
         }
     }
 }
+
+/// eval matrix — cmsDoTransform byte-exact evals across
+/// BYTES_SH(1/2/4) x channel counts x modifiers. C gets native
+/// u16/u8/f32 memory; Rust gets the same bytes.
+#[test]
+fn eval_matrix() {
+    unsafe {
+        for (bname, bytes) in [("u8", 1u32), ("u16", 2), ("f32", 4)] {
+            for nch in [1u32, 3, 4, 6, 8] {
+                for (mname, bits) in [
+                    ("plain", 0u32),
+                    ("extra", 1 << 17),
+                    ("doswap", 1 << 10),
+                    ("flavor", 1 << 19),
+                ] {
+                    let in_fmt = (4 << 16) | (nch << 3) | bytes | bits;
+                    let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+                    let hi = c::cmsCreate_sRGBProfile();
+                    let ho = c::cmsCreateLab4Profile(
+                        std::ptr::null_mut());
+                    let ct = c::cmsCreateTransform(hi, in_fmt, ho,
+                        out_fmt, 0, 0);
+                    let _ = c::cmsCloseProfile(hi);
+                    let _ = c::cmsCloseProfile(ho);
+                    let mut rp1 = virt::create_srgb_profile(None)
+                        .unwrap();
+                    let mut rp2 = virt::create_lab4_profile(None,
+                        None).unwrap();
+                    let mut profs = vec![rp1.clone(), rp2.clone()];
+                    let mut bpc = [false; 2];
+                    let intents = [0u32; 2];
+                    let adapt = [1.0f64; 2];
+                    let rt = xform::create_extended_transform(
+                        None, &mut profs, &mut bpc, &intents,
+                        &adapt, None, 0, in_fmt, out_fmt, 0);
+                    if ct.is_null() != rt.is_none() {
+                        eprintln!("{bname} {nch}ch {mname} status \
+                            c_null={} r_none={}",
+                            ct.is_null(), rt.is_none());
+                        if !ct.is_null() {
+                            c::cmsDeleteTransform(ct);
+                        }
+                        continue;
+                    }
+                    if ct.is_null() { continue; }
+                    let mut rt = rt.unwrap();
+                    // build a native input buffer + a byte view
+                    let nvals = (nch + if bits & (1 << 17) != 0 { 1 }
+                        else { 0 }) as usize;
+                    let inp: Vec<u8> = match bytes {
+                        1 => (0..nvals).map(|i|
+                            (i * 40) as u8).collect(),
+                        2 => (0..nvals).flat_map(|i|
+                            ((i * 8192) as u16).to_ne_bytes())
+                            .collect(),
+                        _ => (0..nvals).flat_map(|i|
+                            (i as f32 * 0.25).to_ne_bytes())
+                            .collect(),
+                    };
+                    let mut co = [0u16; 8];
+                    let mut ro = vec![0u8; 6];
+                    c::cmsDoTransform(ct, inp.as_ptr() as _,
+                        co.as_mut_ptr() as *mut _, 1);
+                    rt.do_transform(&inp, &mut ro, 1);
+                    let ro16: Vec<u16> = ro.chunks_exact(2)
+                        .map(|b| u16::from_ne_bytes([b[0], b[1]]))
+                        .collect();
+                    if co[..3] != ro16[..3] {
+                        eprintln!("DIVERGE {bname} {nch}ch {mname} \
+                            c={:?} r={:?}", &co[..3], &ro16[..3]);
+                    }
+                    c::cmsDeleteTransform(ct);
+                }
+            }
+        }
+    }
+}
