@@ -6457,3 +6457,51 @@ fn xform_chain_mid_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmscnvrt/cmspack residual — IsProperColorSpace +
+///   format-validation on malformed format words:
+///   bogus colorspaces, channel mismatches, bad bits.
+#[test]
+fn xform_fmtcheck_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        // bogus colorspace codes + channel mismatches +
+        //   bit-width edges
+        for (fin, fout, name) in [
+            ((0u32 << 16) | (3 << 3) | 2,
+             (10u32 << 16) | (3 << 3) | 2, "cs0"),
+            ((20u32 << 16) | (3 << 3) | 2,
+             (10u32 << 16) | (3 << 3) | 2, "cs20"),
+            ((4u32 << 16) | (3 << 3) | 2,
+             (20u32 << 16) | (3 << 3) | 2, "outcs20"),
+            ((4u32 << 16) | (9 << 3) | 2,
+             (10u32 << 16) | (3 << 3) | 2, "9ch"),
+            ((4u32 << 16) | (0 << 3) | 2,
+             (10u32 << 16) | (3 << 3) | 2, "0ch"),
+            ((4u32 << 16) | (3 << 3) | 0,
+             (10u32 << 16) | (3 << 3) | 2, "0bit"),
+            ((4u32 << 16) | (3 << 3) | 3,
+             (10u32 << 16) | (3 << 3) | 2, "3bit"),
+            ((4u32 << 16) | (3 << 3) | 5,
+             (10u32 << 16) | (3 << 3) | 2, "5bit"),
+            ((4u32 << 16) | (17 << 3) | 2,
+             (10u32 << 16) | (3 << 3) | 2, "17ch"),
+            ((0xFFu32 << 16) | (3 << 3) | 2,
+             (10u32 << 16) | (3 << 3) | 2, "cs-ff"),
+            ((4u32 << 16) | (3 << 3) | 2 | 0x8000,
+             (10u32 << 16) | (3 << 3) | 2, "hi-bit"),
+            (0xFFFFFFFFu32, 0xFFFFFFFF, "all-ff"),
+            (0, 0, "all-0"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fin,
+                lab4, fout, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
