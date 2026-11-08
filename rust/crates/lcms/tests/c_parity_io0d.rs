@@ -9620,3 +9620,60 @@ fn lut16_write_arms4() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// Type_LUT8/16_Read remaining internals — corpus profile mft
+/// reads + save+reopen + read-twice + error paths.
+#[test]
+fn lut_read_arms5() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // every corpus profile — read all tags twice
+        for f in [
+            "lcms2cmyk.icc", "nullcms2.icc", "limitlcms2.icc",
+            "linlcms2.icc", "bchslcms2.icc", "labv4lcms2.icc",
+            "sRGBlcms2.icc", "xyzlcms2.icc", "graylcms2.icc",
+            "lcms2link.icc", "lcms2link2.icc", "brightness.icc",
+            "itufax.icc", "lcms2abst.icc", "lcms2plug.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let nt = c::cmsGetTagCount(p);
+            for i in 0..nt as u32 {
+                let sig = c::cmsGetTagSignature(p, i);
+                let t1 = c::cmsReadTag(p, sig);
+                if !t1.is_null() {
+                    let _t2 = c::cmsReadTag(p, sig);
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+        // v2 profile with all standard tag types — read twice
+        for ver in [2.1f64, 2.4, 4.0, 4.4] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            if s != 0 {
+                let rp = c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n);
+                if !rp.is_null() {
+                    let nt = c::cmsGetTagCount(rp);
+                    for i in 0..nt as u32 {
+                        let sig = c::cmsGetTagSignature(rp, i);
+                        let t = c::cmsReadTag(rp, sig);
+                        if !t.is_null() {
+                            let _t2 = c::cmsReadTag(rp, sig);
+                        }
+                    }
+                    c::cmsCloseProfile(rp);
+                }
+            }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
