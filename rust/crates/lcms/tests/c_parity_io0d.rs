@@ -5436,3 +5436,68 @@ fn chrm_clrt_tags() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Type_Text_Description_Read arms — raw 'desc' tags with
+/// ASCII-only, +Unicode, +ScriptCode, and malformed shapes.
+#[test]
+fn desc_reader_arms() {
+    unsafe {
+        let mk = |ascii: &[u8], uni: Option<&[u16]>, sc: Option<(u16,u8,&[u8])>| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x64657363u32.to_be_bytes()); // 'desc'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&(ascii.len() as u32).to_be_bytes());
+            t.extend_from_slice(ascii);
+            if let Some(u) = uni {
+                t.extend_from_slice(&1u32.to_be_bytes()); // unicode code
+                t.extend_from_slice(&(u.len() as u32).to_be_bytes());
+                for &c in u { t.extend_from_slice(&c.to_be_bytes()); }
+            }
+            if let Some((code, cnt, dat)) = sc {
+                t.extend_from_slice(&code.to_be_bytes());
+                t.push(cnt);
+                t.extend_from_slice(dat);
+                // pad to 67
+                while t.len() % 4 != 0 { t.push(0); }
+            }
+            t
+        };
+        for (i, payload) in [
+            mk(b"Hello\0", None, None),                     // ascii only
+            mk(b"Hi\0", Some(&[0x0048, 0x0069]), None),     // + unicode
+            mk(b"H\0", Some(&[0x0048]), Some((0x6173, 2, b"ab"))), // + scriptcode
+            mk(b"", Some(&[]), None),                       // 0-len unicode
+            {
+                // AsciiCount > tag size -> reject
+                let mut t = Vec::new();
+                t.extend_from_slice(&0x64657363u32.to_be_bytes());
+                t.extend_from_slice(&[0; 4]);
+                t.extend_from_slice(&0xfffffu32.to_be_bytes());
+                t.extend_from_slice(b"ab");
+                t
+            },
+        ].iter().enumerate() {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x64657363,
+                payload.as_ptr() as *const _, payload.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x64657363)
+            } else { std::ptr::null_mut() };
+            let ok = if !tag.is_null() {
+                let mut wb = [0i32; 32];
+                c::cmsMLUgetWide(tag, std::ptr::null_mut(),
+                    std::ptr::null_mut(), wb.as_mut_ptr(), 32) != 0
+            } else { false };
+            eprintln!("desc{i} s={s} read={} ok={ok}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
