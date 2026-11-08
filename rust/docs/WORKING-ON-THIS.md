@@ -175,3 +175,8 @@ the corpus adds no new flag-path coverage.
   [0x4000,0x8000,0x2000]. The MPE/float-LUT reader produces wrong
   values on the BCHSW profile's mAB/mpet pipeline. Pinned in
   c_parity_virt4; the create parity still exercises the readers.
+
+- [finding] EXTRA_SH(1) input transform eval diverges — C
+  [23321,32940,21682] vs Rust [21116,23420,38229] on RGBA16
+  input; neither channel order matches. Rust's extra-channel
+  formatter maps the alpha into the transform differently.
