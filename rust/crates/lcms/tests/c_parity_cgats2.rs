@@ -502,3 +502,24 @@ fn it8_enum_rowcol() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// IT8 data row/col machinery on more table setups.
+#[test]
+fn it8_rowcol() {
+    unsafe {
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        // set a data format then a data row
+        c::cmsIT8SetDataFormat(it8, 0, b"SAMPLE_ID\0".as_ptr() as _);
+        c::cmsIT8SetDataFormat(it8, 1, b"RGB_R\0".as_ptr() as _);
+        // get a data row/col — check the machinery
+        let v = c::cmsIT8GetDataRowCol(it8, 0, 1);
+        eprintln!("rowcol={}", v.is_null());
+        // set/get a property
+        c::cmsIT8SetPropertyStr(it8, b"ORIGINATOR\0".as_ptr() as _,
+            b"test\0".as_ptr() as _);
+        let p = c::cmsIT8GetProperty(it8,
+            b"ORIGINATOR\0".as_ptr() as _);
+        eprintln!("prop={}", p.is_null());
+        c::cmsIT8Free(it8);
+    }
+}
