@@ -3017,3 +3017,37 @@ fn array_type_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Final Type_*_Read sweep — the remaining type sigs on a
+/// generic sig.
+#[test]
+fn final_type_sweep2() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [
+            (0x4D4C5520u32, "mlu "), (0x74657874u32, "text"),
+            (0x64617461u32, "data"), (0x6474696Du32, "dtim"),
+            (0x73696720u32, "sig "), (0x6368726Du32, "chrm"),
+            (0x6E636C32u32, "ncl2"), (0x6C757420u32, "lut "),
+            (0x6D706574u32, "mpet"), (0x70736571u32, "pseq"),
+            (0x70736964u32, "psid"), (0x75637262u32, "ucrb"),
+            (0x62672020u32, "bg  "), (0x72657370u32, "resp"),
+            (0x72637332u32, "rcs2"), (0x70617261u32, "para"),
+            (0x75743136u32, "ut16"), (0x75743332u32, "ut32"),
+            (0x75696638u32, "uif8"), (0x75696631u32, "uif16"),
+            (0x75696633u32, "uif32"), (0x75696636u32, "uif64"),
+            (0x73313566u32, "s15f"), (0x75663136u32, "uf16"),
+            (0x75663332u32, "uf32"), (0x75663634u32, "uf64"),
+            (0x6E756938u32, "nui8"), (0x6E756931u32, "nui16"),
+            (0x6E756933u32, "nui32"), (0x6E756936u32, "nui64"),
+            (0x75663820u32, "uf8 "), (0x75663136u32, "uf16"),
+            (0x58595A20u32, "XYZ "), (0x64657363u32, "desc"),
+            (0x63757276u32, "curv"), (0x7363726Eu32, "scrn"),
+            (0x736F7560u32, "soup"), (0x76697577u32, "viw "),
+            (0x6D656173u32, "meas"), (0x64696374u32, "dict")] {
+            let r = c::cmsReadTag(h, sig);
+            eprintln!("{name} read={}", r.is_null());
+        }
+        c::cmsCloseProfile(h);
+    }
+}
