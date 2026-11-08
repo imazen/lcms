@@ -884,3 +884,37 @@ cmsio1 134, cmssamp 122, cmsvirt 118, cmsgamma 106. Only 3
 targets fail under the instrumented build now (cam02/pcs/xform2
 — the documented clang-codegen last-ulp class; ps2 recovered
 after the lock fix).
+
+### round 21 — tag-reader deep arms (vcgt/mhc2/ucrbg/chrm/clrt/mft/mAB/mBA)
+
+76.40% lines / 95.03% fns / 84.68% regions / 68.63% branches.
+
+~30 gates landed since round 20: mba_element_offset_arms (mBA
+element offsets like the mAB gate), mft_reader_internals (raw
+mft1/mft2 with matrix/grid variants), vcgt_read_arms (table-u8/
+u16/formula + rejects), mhc2_read_arms (correct s15f16 layout
+after fixing wrong first guess), ucrbg_read_arms, chrm_clrt_read_
+arms, dict_wchar_deep (CJK/emoji wchar arrays), io0_edge_internals
+(IOhandler round-trips), io0_tag_iteration, profile_info_
+internals2, cnvt_named_color + cnvt_gamut_preview + cnvt_named_
+abstract (conversion chains), io1_float_devicelink + io1_lab_
+version_norm + io1_named_abstract_readers, gamma_internals2,
+opt_eval_internals + opt_float_eval_internals, it8_deep_arms
+(mixed value forms), virt_builders2 + virt_text_tags_internals,
+black_point_internals2 + dest_bp_tac_internals + sm_internals2,
+tac_real_profiles.
+
+cmstypes gained the most (83.87% regions, was 83.23): the tag-
+reader arms for vcgt/MHC2/ucrbg/chrm/clrt/mft1/mft2/mAB/mBA are
+now covered with correct binary layouts. cmspack and cmscnvrt
+didn't move — their uncovered lines are per-branch detail inside
+covered packer/conversion bodies that need exact flag/profile
+combos not constructible through the public API, plus genuinely
+unreachable reserved paths.
+
+Remaining mass (uncovered lines): cmspack 574, cmstypes 552,
+cmscgats 317, cmsopt 169, cmsio0 154, cmscnvrt 148, cmsio1 134,
+cmssamp 122, cmsvirt 118, cmsgamma 109. Function coverage holds
+at 95.03% — the ~62 uncovered functions are unreachable-by-API
+internals (plugin shims, reserved paths, dead branches) and the
+line mass is branch detail inside covered functions.
