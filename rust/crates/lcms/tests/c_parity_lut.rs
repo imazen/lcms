@@ -2771,3 +2771,44 @@ fn stage_dup_insert_positions() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Granular CLUT + channel accessors — CLut16bitGranular with
+/// non-uniform dims, StageInputChannels/OutputChannels,
+/// PipelineInputChannels/OutputChannels.
+#[test]
+fn granular_clut_accessors() {
+    unsafe {
+        // non-uniform grid dims -> the granular alloc path
+        let dims = [2u32, 3, 4];
+        let n_cells = (2*3*4) as usize * 3;
+        let tab: Vec<u16> = (0..n_cells).map(|i| (i * 13) as u16).collect();
+        let st = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 3, 3, tab.as_ptr());
+        eprintln!("granular st={}", !st.is_null());
+        if !st.is_null() {
+            eprintln!("  in={} out={}",
+                c::cmsStageInputChannels(st),
+                c::cmsStageOutputChannels(st));
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, st);
+            eprintln!("  pin={} pout={}",
+                c::cmsPipelineInputChannels(p),
+                c::cmsPipelineOutputChannels(p));
+            let fi = [0.5f32, 0.3, 0.7];
+            let mut fo = [0f32; 3];
+            c::cmsPipelineEvalFloat(fi.as_ptr(), fo.as_mut_ptr(), p);
+            eprintln!("  eval={fo:?}");
+            c::cmsPipelineFree(p);
+        }
+        // multi-channel counts — a 4-in-3-out matrix
+        let m4: [f64; 12] = [0.4,0.3,0.3,0.0, 0.2,0.6,0.2,0.0,
+                             0.1,0.1,0.8,0.0];
+        let st4 = c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 4,
+            m4.as_ptr(), std::ptr::null());
+        if !st4.is_null() {
+            eprintln!("m4 in={} out={}",
+                c::cmsStageInputChannels(st4),
+                c::cmsStageOutputChannels(st4));
+        }
+    }
+}
