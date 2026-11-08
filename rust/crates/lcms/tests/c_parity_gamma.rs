@@ -1431,3 +1431,106 @@ fn gamma_reverse_degen_arms() {
         }
     }
 }
+
+/// cmsgamma/cmsnamed residual — cmsJoinToneCurve,
+///   cmsIsToneCurve* probes, GetToneCurveSegment/
+///   EstimatedTable, dict/pseq/named-list dups.
+#[test]
+fn gamma_join_probe_arms() {
+    unsafe {
+        let g1 = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 4.0);
+        // join: g1 then g2 -> composite
+        for (a, b, name) in [
+            (g1, g2, "lin+22"),
+            (g2, g1, "22+lin"),
+            (g2, g3, "22+40"),
+            (g1, g1, "lin+lin"),
+        ] {
+            let j = c::cmsJoinToneCurve(
+                std::ptr::null_mut(), a, b, 256);
+            eprintln!("join {name} j={}", !j.is_null());
+            if !j.is_null() {
+                let lin = c::cmsIsToneCurveLinear(j);
+                let mono = c::cmsIsToneCurveMonotonic(j);
+                let desc = c::cmsIsToneCurveDescending(j);
+                let mseg = c::cmsIsToneCurveMultisegment(j);
+                let pt = c::cmsGetToneCurveParametricType(j);
+                let ne = c::cmsGetToneCurveEstimatedTableEntries(j);
+                let seg = c::cmsGetToneCurveSegment(0, j);
+                eprintln!("  lin={lin} mono={mono} \
+                    desc={desc} mseg={mseg} pt={pt} \
+                    ne={ne} seg={}", !seg.is_null());
+                c::cmsFreeToneCurve(j);
+            }
+        }
+        // probes on each curve type
+        for (tc, name) in [
+            (g1, "lin"), (g2, "22"), (g3, "40"),
+        ] {
+            let lin = c::cmsIsToneCurveLinear(tc);
+            let mono = c::cmsIsToneCurveMonotonic(tc);
+            let desc = c::cmsIsToneCurveDescending(tc);
+            let mseg = c::cmsIsToneCurveMultisegment(tc);
+            let pt = c::cmsGetToneCurveParametricType(tc);
+            eprintln!("probe {name} lin={lin} \
+                mono={mono} desc={desc} mseg={mseg} \
+                pt={pt}");
+        }
+        // reversed/monotone variants
+        let mut tab = [0u16; 256];
+        for (i, v) in tab.iter_mut().enumerate() {
+            *v = (255 - i.min(255)) as u16 * 257; }
+        let tdesc = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 256, tab.as_ptr());
+        eprintln!("desc-curve desc={}",
+            c::cmsIsToneCurveDescending(tdesc));
+        if !tdesc.is_null() {
+            c::cmsFreeToneCurve(tdesc); }
+        // dup machinery: named-color list, dict, pseq
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 3, 3,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let pcs = [0x1000u16; 16];
+        let dev = [0x2000u16; 16];
+        for i in 0..3 {
+            let nm = format!("nc{i}\0");
+            c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        let nl2 = c::cmsDupNamedColorList(nl);
+        eprintln!("nl-dup={}", !nl2.is_null());
+        if !nl2.is_null() {
+            c::cmsFreeNamedColorList(nl2); }
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        c::cmsDictAddEntry(dict,
+            b"k1\0".as_ptr() as *const _,
+            b"v1\0".as_ptr() as *const _,
+            std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let dict2 = c::cmsDictDup(dict);
+        eprintln!("dict-dup={}", !dict2.is_null());
+        if !dict2.is_null() {
+            c::cmsDictFree(dict2); }
+        let pseq = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 2);
+        eprintln!("pseq={}", !pseq.is_null());
+        if !pseq.is_null() {
+            let pseq2 = c::cmsDupProfileSequenceDescription(
+                pseq);
+            eprintln!("pseq-dup={}", !pseq2.is_null());
+            if !pseq2.is_null() {
+                c::cmsFreeProfileSequenceDescription(
+                    pseq2); }
+            c::cmsFreeProfileSequenceDescription(pseq);
+        }
+        c::cmsFreeNamedColorList(nl);
+        c::cmsDictFree(dict);
+        c::cmsFreeToneCurve(g1);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
