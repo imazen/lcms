@@ -3327,3 +3327,31 @@ fn header_setters_getters() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// IO-handler internals — GetProfileIOhandler + open-for-write
+/// IOhandler2 + close arms.
+#[test]
+fn iohandler_internals() {
+    unsafe {
+        let data = vec![0xAAu8; 512];
+        let io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+            data.as_ptr() as *mut _, data.len() as u32,
+            b"r\0".as_ptr());
+        if !io.is_null() {
+            let p = c::cmsOpenProfileFromIOhandlerTHR(
+                std::ptr::null_mut(), io);
+            eprintln!("io-open={}", !p.is_null());
+            if !p.is_null() {
+                let gio = c::cmsGetProfileIOhandler(p);
+                eprintln!("getio={}", !gio.is_null());
+                c::cmsCloseProfile(p); // frees io
+            }
+        }
+        // write-mode IOhandler2
+        let io2 = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+        let p2 = c::cmsOpenProfileFromIOhandler2THR(
+            std::ptr::null_mut(), io2, 1);
+        eprintln!("io2-open={}", !p2.is_null());
+        if !p2.is_null() { c::cmsCloseProfile(p2); }
+    }
+}
