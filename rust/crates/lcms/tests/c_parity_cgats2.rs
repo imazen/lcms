@@ -1743,3 +1743,37 @@ fn it8_deep_arms14() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection arms — every
+/// remaining token-form + table-structure variant.
+#[test]
+fn it8_deep_arms15() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // number forms that hit the lexer number-read arms
+            (b"IT8FILE\nNUMBER_OF_FIELDS 10\nNUMBER_OF_SETS 5\nBEGIN_DATA_FORMAT\nA B C D E F G H I J\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2.5 -3 +4 .5 6. 7e2 -8e-1 0x1 -0xF\n1e-3 1E3 -1e3 +1E-3 .5e-1 1.5e+0 0 00 0.0 -0\n-1 -2.5 -3. -4.5 -.5 -.5e-1 -1e-3 -1e3 -0xF -0.0\n+1 +2.5 +3. +4.5 +.5 +.5e-1 +1e-3 +1e3 +0xF +0.0\n0 0.0 0e0 0.0e0 0x0 0X0 -0 -0.0 -0e0 -0.0e0\nEND_DATA\n".to_vec(), "all-numforms"),
+            // every property type in the header
+            (b"IT8FILE\nORIGINATOR \"o\"\nDESCRIPTOR \"d\"\nCREATED \"c\"\nMANUFACTURER \"m\"\nPROD_DATE \"p\"\nSERIAL \"s\"\nMATERIAL \"mat\"\nINSTRUMENTATION \"i\"\nMEASUREMENT_SOURCE \"ms\"\nPRINT_CONDITIONS \"pc\"\nSAMPLE_BACKING \"sb\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "all-props"),
+            // duplicate property (last wins)
+            (b"IT8FILE\nP1 \"v1\"\nP1 \"v2\"\nP1 \"v3\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "dup-prop"),
+            // property before/after all sections
+            (b"IT8FILE\nBEFORE \"b1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nMID \"m1\"\nBEGIN_DATA\n1\nEND_DATA\nAFTER \"a1\"\n".to_vec(), "prop-sections"),
+            // deeply nested quotes
+            (b"IT8FILE\nP1 \"a\"b\"c\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "mixed-quotes"),
+            // DATA_IDENTIFIER on some sheets only
+            (b"IT8FILE\nDATA_IDENTIFIER \"s1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"s3\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n3\nEND_DATA\n".to_vec(), "partial-ids"),
+            // NUMBER_OF_FIELDS with huge count (rejected)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 65535\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "huge-fields"),
+            // all field-name forms in data format
+            (b"IT8FILE\nNUMBER_OF_FIELDS 5\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nF1 F_2 F-3 F.4 F:5\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3 4 5\nEND_DATA\n".to_vec(), "field-names"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
