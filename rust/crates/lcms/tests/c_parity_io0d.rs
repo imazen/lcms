@@ -16040,3 +16040,71 @@ fn error_handler_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — MemoryRead/MemoryWrite/FileRead/FileWrite/
+/// Seek/Tell/Close + header read/save internals + profile IO
+/// edge paths.
+#[test]
+fn io_internal_arms() {
+    unsafe {
+        // MemoryRead/Seek/Tell — profile-from-mem boundary
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("save={s} n={n}");
+        for off in [0u32, 100, n.saturating_sub(1), n, n + 1000,
+            u32::MAX] {
+            let p = c::cmsOpenProfileFromMem(
+                buf.as_ptr().add(off as usize) as *const _,
+                (n as usize).saturating_sub(off as usize) as u32);
+            eprintln!("off={off} p={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        for size in [0u32, 4, 100, 127, 128, 129, n - 1, n,
+            n + 1, u32::MAX] {
+            let p = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, size);
+            eprintln!("size={size} p={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        // corrupted magic at various offsets
+        for corrupt_off in [0usize, 4, 36, 40, 64, 128, 132] {
+            if corrupt_off >= n as usize { continue; }
+            let mut b2 = buf[..n as usize].to_vec();
+            b2[corrupt_off] ^= 0xff;
+            let p = c::cmsOpenProfileFromMem(
+                b2.as_ptr() as *const _, n);
+            eprintln!("corrupt@{corrupt_off} p={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        // FileIO — write to tmpfs file + reopen
+        let tmpp = std::env::var("HOME").unwrap() + "/tmp/lcms_io_test.icc";
+        std::fs::create_dir_all(std::env::var("HOME").unwrap() + "/tmp").ok();
+        let wf = c::cmsOpenProfileFromFile(
+            tmpp.as_ptr() as *const i8, b"wb\0".as_ptr());
+        eprintln!("wf={}", !wf.is_null());
+        if !wf.is_null() { c::cmsCloseProfile(wf); }
+        // copy srgb to file via SaveProfileToIOhandler-ish
+        let mut fbuf = vec![0u8; 1 << 20];
+        let mut fn_ = fbuf.len() as u32;
+        let s2 = c::cmsSaveProfileToMem(srgb,
+            fbuf.as_mut_ptr() as *mut _, &mut fn_);
+        std::fs::write(&tmpp, &fbuf[..fn_ as usize]).ok();
+        let rf = c::cmsOpenProfileFromFile(
+            tmpp.as_ptr() as *const i8, b"rb\0".as_ptr());
+        eprintln!("s2={s2} rf={}", !rf.is_null());
+        if !rf.is_null() { c::cmsCloseProfile(rf); }
+        std::fs::remove_file(&tmpp).ok();
+        // bad path + bad mode
+        let bad = c::cmsOpenProfileFromFile(
+            b"/nonexistent/path/x.icc\0".as_ptr()
+                as *const i8, b"rb\0".as_ptr());
+        let bad2 = c::cmsOpenProfileFromFile(
+            tmpp.as_ptr() as *const i8, b"xx\0".as_ptr());
+        eprintln!("badpath={} badmode={}", !bad.is_null(),
+            !bad2.is_null());
+        c::cmsCloseProfile(srgb);
+    }
+}
