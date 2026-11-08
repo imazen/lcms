@@ -1443,3 +1443,43 @@ fn stored_lut_eval_machinery() {
         }
     }
 }
+
+/// Serialize+reload on unusual profile shapes — named/
+/// abstract/devicelink profiles through the full machinery.
+#[test]
+fn unusual_profile_serialize() {
+    unsafe {
+        // a spread of unusual profile shapes — the serialize
+        // + reload machinery on each
+        let srgb = c::cmsCreate_sRGBProfile();
+        let xyz = c::cmsCreateXYZProfile();
+        let nul = c::cmsCreateNULLProfile();
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let d50 = [0.9642f64, 1.0, 0.8249];
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let gray = c::cmsCreateGrayProfile(
+            d50.as_ptr() as *const std::ffi::c_void, g);
+        let ab = c::cmsCreateBCHSWabstractProfileTHR(
+            std::ptr::null_mut(), 17, 1.5, 30.0, 0.8,
+            4.3, std::ptr::null(), std::ptr::null());
+        for (name, h) in [
+            ("srgb", srgb), ("xyz", xyz), ("null", nul),
+            ("lab2", lab2), ("lab4", lab4), ("gray", gray),
+            ("abst", ab),
+        ] {
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h2 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            eprintln!("{name} save={cn} reload={}",
+                !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
