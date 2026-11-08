@@ -2741,3 +2741,46 @@ fn parametric_edge_cases() {
         }
     }
 }
+
+/// Type_XYZ internals — 'XYZ ' bodies on the XYZ-accepting
+/// sigs (1 + N-element variants).
+#[test]
+fn xyz_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [(0x77747074u32, "wtpt"),
+                            (0x626B7074u32, "bkpt"),
+                            (0x6C756D69u32, "lumi"),
+                            (0x7258595Au32, "rXYZ"),
+                            (0x6758595Au32, "gXYZ"),
+                            (0x6258595Au32, "bXYZ"),
+                            (0x63686164u32, "chad")] {
+            // 3-element XYZ body — the Type_XYZ_Read machinery
+            let mut b = Vec::new();
+            b.extend_from_slice(b"XYZ ");
+            b.extend_from_slice(&[0; 4]);
+            for i in 0..3u32 {
+                b.extend_from_slice(
+                    &(0x00010000i32 + (i as i32) * 0x10000)
+                        .to_be_bytes());
+                b.extend_from_slice(&0x00010000i32.to_be_bytes());
+                b.extend_from_slice(&0x00010000i32.to_be_bytes());
+            }
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
