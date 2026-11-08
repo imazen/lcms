@@ -1437,3 +1437,43 @@ libm-heavy paths (coverage instrumentation changes float codegen);
 the binaries still exit normally and emit profraw, so those files'
 coverage IS counted. The ps2 shared-static race (_cmsPSActualColumn)
 that lost a whole profraw in run14 is fixed via PS_LOCK.
+
+## run16 (2026-11-08)
+
+TOTAL: **82.45% lines / 95.59% functions / 89.31% regions / 76.65% branches**
+(+0.07/+0/+0.03/+0.12 over run15)
+
+| file | lines | fns | regions | branches |
+|---|---|---|---|---|
+| cmsalpha.c | 86.61% | 85.37% | 86.85% | 77.68% |
+| cmscam02.c | 91.26% | 100.00% | 98.05% | 84.00% |
+| cmscgats.c | 88.29% | 98.99% | 91.39% | 82.13% |
+| cmscnvrt.c | 82.84% | 100.00% | 91.47% | 75.94% |
+| cmserr.c | 88.28% | 100.00% | 93.99% | 75.00% |
+| cmsgamma.c | 91.04% | 100.00% | 95.10% | 84.10% |
+| cmsgmt.c | 86.35% | 100.00% | 89.94% | 68.49% |
+| cmshalf.c | 100.00% | 100.00% | 100.00% | - |
+| cmsintrp.c | 98.66% | 100.00% | 98.97% | 97.24% |
+| cmsio0.c | 85.55% | 100.00% | 91.83% | 80.08% |
+| cmsio1.c | 82.00% | 100.00% | 80.70% | 70.71% |
+| cmslut.c | 84.95% | 100.00% | 93.33% | 76.62% |
+| cmsmd5.c | 94.59% | 100.00% | 97.06% | 63.64% |
+| cmsmtrx.c | 100.00% | 100.00% | 100.00% | 100.00% |
+| cmsnamed.c | 83.03% | 100.00% | 95.53% | 76.60% |
+| cmsopt.c | 85.46% | 95.45% | 88.80% | 77.89% |
+| cmspack.c | 72.46% | 95.65% | 76.07% | 72.71% |
+| cmspcs.c | 97.43% | 100.00% | 98.67% | 95.11% |
+| cmsplugin.c | 85.59% | 100.00% | 93.19% | 77.88% |
+| cmsps2.c | 89.41% | 100.00% | 92.69% | 79.13% |
+| cmssamp.c | 86.01% | 100.00% | 87.89% | 67.12% |
+| cmssm.c | 90.70% | 100.00% | 96.05% | 87.76% |
+| cmstypes.c | 74.35% | 99.07% | 87.55% | 71.58% |
+| cmsvirt.c | 73.43% | 100.00% | 85.43% | 57.25% |
+| cmswtpnt.c | 93.55% | 100.00% | 99.33% | 83.33% |
+| cmsxform.c | 88.75% | 100.00% | 92.08% | 81.47% |
+
+(~12 gates since run15: internal_pseq_mix_lab, internal_lab_mft_in,
+pack_swap_extra, lut_nchan_eval, lut_md5_named_tail,
+lut_opt_matshaper, internal_hdr_get, internal_final82-83,
+cgats_cube2, gamma_join_probe, gamma_negseg_write,
+sm_cam02_tail, mhc2/dict/mpet/lut8 type arms)
