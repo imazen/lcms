@@ -1529,3 +1529,52 @@ fn mpe_type() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_ResponseCurveSet16 — 'rcs2'/'resp' takes a
+/// cmsResponseCurveSet16 payload (offsets + values).
+#[test]
+fn response_curve_set() {
+    unsafe {
+        // cmsResponseCurveSet16 = {nChannels, nMeasurements,
+        // offsets[], values[]}
+        #[repr(C)]
+        struct Rcs {
+            n_channels: u32,
+            n_measurements: u32,
+            offsets: [u32; 16],
+            values: [u16; 32],
+        }
+        let mut r = Rcs {
+            n_channels: 3, n_measurements: 2,
+            offsets: [0; 16],
+            values: [0; 32],
+        };
+        // 3 channels x 2 measurements — offsets into values
+        r.offsets[0] = 0;
+        r.offsets[1] = 2;
+        r.offsets[2] = 4;
+        for i in 0..6 {
+            r.values[i] = (i as u16) * 0x1000;
+        }
+        let h = c::cmsCreate_sRGBProfile();
+        let ok1 = c::cmsWriteTag(h, 0x72637332,
+            &r as *const _ as *mut std::ffi::c_void); // 'rcs2'
+        let ok2 = c::cmsWriteTag(h, 0x72657370,
+            &r as *const _ as *mut std::ffi::c_void); // 'resp'
+        eprintln!("rcs2={ok1} resp={ok2}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x72637332u32, 0x72657370] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let rr = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", rr.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
