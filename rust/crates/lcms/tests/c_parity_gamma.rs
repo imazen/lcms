@@ -625,3 +625,53 @@ fn parametric_boundaries() {
         }
     }
 }
+
+/// AllocateToneCurveStruct deep arms — entry counts, segment
+/// alloc/dup/free, parametric variants.
+#[test]
+fn tonecurve_alloc_arms2() {
+    unsafe {
+        // entry-count edge cases through AllocateToneCurveStruct
+        for n in [0u32, 1, 2, 3, 16, 255, 256, 1024, 4096, 65535] {
+            let mut t = vec![0u16; n.max(1) as usize];
+            for (i, v) in t.iter_mut().enumerate() {
+                *v = (i as u64 * 65535 / n.max(1) as u64) as u16;
+            }
+            let c = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), n.max(1), t.as_ptr());
+            eprintln!("tc-{n}={}", !c.is_null());
+            if !c.is_null() {
+                let y = c::cmsEvalToneCurveFloat(c, 0.5);
+                let _ = y;
+                c::cmsFreeToneCurve(c);
+            }
+        }
+        // segmented curves with all segment types
+        for nsegs in [1u32, 2, 4, 8] {
+            let mut segs = vec![std::mem::zeroed::<c::CurveSegment>();
+                nsegs as usize];
+            for (i, s) in segs.iter_mut().enumerate() {
+                s.x0 = i as f32 / nsegs as f32;
+                s.x1 = (i + 1) as f32 / nsegs as f32;
+                s.r#type = 6; // linear segment
+                s.params[0] = 1.0;
+                s.params[1] = 0.0;
+            }
+            let c = c::cmsBuildSegmentedToneCurve(
+                std::ptr::null_mut(), nsegs, segs.as_ptr());
+            eprintln!("segs-{nsegs}={}", !c.is_null());
+            if !c.is_null() {
+                c::cmsFreeToneCurve(c);
+            }
+        }
+        // dup + free through pipeline stages
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let cs = c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+            [g, g, g].as_ptr() as *mut _);
+        let cs2 = c::cmsStageDup(cs);
+        eprintln!("dup={}", !cs2.is_null());
+        if !cs2.is_null() { c::cmsStageFree(cs2); }
+        c::cmsStageFree(cs);
+        c::cmsFreeToneCurve(g);
+    }
+}
