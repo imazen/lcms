@@ -2709,3 +2709,32 @@ fn raw_tag_machinery() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Tag-table enumeration on more profile shapes — the
+/// enumeration internals.
+#[test]
+fn tag_enumeration2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let ph = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (name, h) in [
+            ("devlink", dl), ("lab4", lab),
+            ("srgb", srgb), ("placeholder", ph)] {
+            let n = c::cmsGetTagCount(h);
+            eprint!("{name} count={n} sigs:");
+            for i in 0..n.min(20) {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                eprint!(" {:08x}", sig);
+            }
+            eprintln!();
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+    }
+}
