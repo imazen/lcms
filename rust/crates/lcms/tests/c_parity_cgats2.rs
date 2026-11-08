@@ -525,3 +525,40 @@ fn it8_api_bodies() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 parser internals — documents with hex data, quoted strings,
+/// scientific floats, comments, multiple data formats -> the
+/// remaining InSymbol/ParseFloatNumber/DataSection arms.
+#[test]
+fn it8_parse_arms() {
+    unsafe {
+        let docs = [
+            // hex data cells
+            "IT8\nNUMBER_OF_SETS 1\nNUMBER_OF_FIELDS 2\n\
+             BEGIN_DATA_FORMAT\nSAMPLE_ID V1\nEND_DATA_FORMAT\n\
+             BEGIN_DATA\na1 0x1F\nEND_DATA\n",
+            // quoted string cells
+            "IT8\nNUMBER_OF_SETS 1\nNUMBER_OF_FIELDS 2\n\
+             BEGIN_DATA_FORMAT\nSAMPLE_ID NAME\nEND_DATA_FORMAT\n\
+             BEGIN_DATA\na1 \"quoted name\"\nEND_DATA\n",
+            // scientific + negative floats
+            "IT8\nNUMBER_OF_SETS 2\nNUMBER_OF_FIELDS 3\n\
+             BEGIN_DATA_FORMAT\nSAMPLE_ID L A\nEND_DATA_FORMAT\n\
+             BEGIN_DATA\na1 -1.5e2 3.4E-1\na2 0 1e3\nEND_DATA\n",
+            // comment line mid-header
+            "IT8\n# a comment\nNUMBER_OF_SETS 1\nNUMBER_OF_FIELDS 2\n\
+             BEGIN_DATA_FORMAT\nSAMPLE_ID V1\nEND_DATA_FORMAT\n\
+             BEGIN_DATA\na1 5\nEND_DATA\n",
+        ];
+        for (i, doc) in docs.iter().enumerate() {
+            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("doc{i} load={}", !h.is_null());
+            if !h.is_null() {
+                let v = c::cmsIT8GetDataRowColDbl(h, 0, 1);
+                eprintln!("  cell={v}");
+                c::cmsIT8Free(h);
+            }
+        }
+    }
+}
