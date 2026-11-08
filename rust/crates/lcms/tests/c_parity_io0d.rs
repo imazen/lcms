@@ -968,3 +968,32 @@ fn colorspace_pcs_sigs() {
         }
     }
 }
+
+/// Intent/illuminant machinery — unusual header fields.
+#[test]
+fn intent_illuminant_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate intent (offset 64) + illuminant (offset 68-80)
+        for (name, off, v) in [
+            ("intent-0", 64, 0u32),
+            ("intent-1", 64, 1u32),
+            ("intent-3", 64, 3u32),
+            ("intent-huge", 64, 0xFFFFFFFFu32),
+            ("illum-0", 68, 0u32),
+            ("illum-huge", 68, 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
