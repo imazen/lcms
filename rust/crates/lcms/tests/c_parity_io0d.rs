@@ -14890,3 +14890,62 @@ fn writematrix_matshaper_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Stream IOhandler + SaveProfileToIOhandler + file-THR arms.
+#[test]
+fn stream_io_arms() {
+    unsafe extern "C" {
+        fn fopen(p: *const i8, m: *const i8)
+            -> *mut std::ffi::c_void;
+        fn fclose(f: *mut std::ffi::c_void) -> i32;
+    }
+    unsafe {
+        // write a real profile to a temp file, open via stream
+        let dir = std::env::temp_dir();
+        let f = dir.join("lcms_stream_test.icc");
+        let srgb = c::cmsCreate_sRGBProfile();
+        let path = f.to_string_lossy().into_owned() + "\0";
+        let s = c::cmsSaveProfileToFile(srgb,
+            path.as_ptr() as *const i8);
+        eprintln!("save-file={s}");
+        // open via stream (FILE*) — profile close consumes fh
+        let fh = fopen(path.as_ptr() as *const i8,
+            b"rb\0".as_ptr() as *const i8);
+        let p = if !fh.is_null() {
+            c::cmsOpenProfileFromStream(
+                fh as *mut _, b"r\0".as_ptr() as *const i8)
+        } else { std::ptr::null_mut() };
+        let fh2 = fopen(path.as_ptr() as *const i8,
+            b"rb\0".as_ptr() as *const i8);
+        let p2 = if !fh2.is_null() {
+            c::cmsOpenProfileFromStreamTHR(
+                std::ptr::null_mut(), fh2 as *mut _,
+                b"r\0".as_ptr() as *const i8)
+        } else { std::ptr::null_mut() };
+        eprintln!("stream={} thr={}", !p.is_null(),
+            !p2.is_null());
+        if !p.is_null() { c::cmsCloseProfile(p); }
+        else if !fh.is_null() { fclose(fh); }
+        if !p2.is_null() { c::cmsCloseProfile(p2); }
+        else if !fh2.is_null() { fclose(fh2); }
+        // stream on a garbage file
+        let fh = fopen(b"/etc/hostname\0".as_ptr()
+            as *const i8, b"rb\0".as_ptr() as *const i8);
+        if !fh.is_null() {
+            let p = c::cmsOpenProfileFromStream(
+                fh as *mut _, b"r\0".as_ptr() as *const i8);
+            eprintln!("garbage-stream={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+            // upstream frees fh itself on failure
+        }
+        // SaveProfileToIOhandler on a memory handler
+        let ioh = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            std::ptr::null_mut(), 0, b"w\0".as_ptr());
+        let s2 = c::cmsSaveProfileToIOhandler(srgb, ioh);
+        eprintln!("save-ioh={s2}");
+        if !ioh.is_null() { c::cmsCloseIOhandler(ioh); }
+        std::fs::remove_file(&f).ok();
+        c::cmsCloseProfile(srgb);
+    }
+}
