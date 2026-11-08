@@ -11524,3 +11524,343 @@ fn read_fail_arms() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// ReadSegmentedCurve — cvst element reads through valid
+/// segmented-curve MPE pipelines (formula types 6-8 + sampled).
+#[test]
+fn seg_cvst_arms() {
+    unsafe {
+        // formula type 6 (file type 0, 4 params), 7 (file 1, 5),
+        // 8 (file 2, 5) + sampled type 0
+        let sample_pts = [0.0f32, 0.3, 0.7, 1.0];
+        let seg_sets: Vec<(Vec<c::CurveSegment>, &str)> = vec![
+            (vec![c::CurveSegment { x0: 0.0, x1: 0.5, r#type: 6,
+                params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() },
+             c::CurveSegment { x0: 0.5, x1: 1.0, r#type: 0,
+                params: [0.0; 10], n_grid_points: 4,
+                sampled_points: sample_pts.as_ptr() }],
+             "f6+smp"),
+            (vec![c::CurveSegment { x0: 0.0, x1: 1.0, r#type: 7,
+                params: [2.0, 0.5, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() }],
+             "f7-1seg"),
+            (vec![c::CurveSegment { x0: 0.0, x1: 1.0, r#type: 8,
+                params: [1.5, 0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() }],
+             "f8-1seg"),
+            (vec![c::CurveSegment { x0: 0.0, x1: 1.0, r#type: 0,
+                params: [0.0; 10], n_grid_points: 4,
+                sampled_points: sample_pts.as_ptr() }],
+             "smp-1seg"),
+            (vec![c::CurveSegment { x0: 0.0, x1: 0.25, r#type: 6,
+                params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() },
+             c::CurveSegment { x0: 0.25, x1: 0.5, r#type: 7,
+                params: [2.0, 0.5, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() },
+             c::CurveSegment { x0: 0.5, x1: 0.75, r#type: 8,
+                params: [1.5, 0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() },
+             c::CurveSegment { x0: 0.75, x1: 1.0, r#type: 0,
+                params: [0.0; 10], n_grid_points: 4,
+                sampled_points: sample_pts.as_ptr() }],
+             "all4"),
+        ];
+        let mut grid = vec![0u16; 3 * 3 * 3 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 9) * 7281) as u16;
+        }
+        for (segs, name) in &seg_sets {
+            let seg = c::cmsBuildSegmentedToneCurve(
+                std::ptr::null_mut(), segs.len() as u32,
+                segs.as_ptr());
+            eprintln!("{name} segbuild={}", !seg.is_null());
+            if seg.is_null() {
+                continue;
+            }
+            for sig in [0x41324230u32, 0x42324130] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 4.4);
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+                let st1 = c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [seg, seg, seg].as_ptr() as *mut _);
+                eprintln!("{name} st1={}", !st1.is_null());
+                c::cmsPipelineInsertStage(p, 1, st1);
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                        3, 3, 3, grid.as_ptr()));
+                let st2 = c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [seg, seg, seg].as_ptr() as *mut _);
+                eprintln!("{name} st2={}", !st2.is_null());
+                c::cmsPipelineInsertStage(p, 1, st2);
+                let nst = c::cmsPipelineStageCount(p);
+                eprintln!("{name} stages={nst}");
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                let tag = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name}/{sig:#x} w={w} s={s} rd={}",
+                    !tag.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+            c::cmsFreeToneCurve(seg);
+        }
+    }
+}
+
+/// seg-curve cv-only pipeline → isolate WriteSegmentedCurve.
+#[test]
+fn seg_cvst_isolate() {
+    unsafe {
+        let pts = [0.0f32, 0.3, 0.7, 1.0];
+        let segs = [
+            c::CurveSegment { x0: 0.0, x1: 0.5, r#type: 6,
+                params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() },
+            c::CurveSegment { x0: 0.5, x1: 1.0, r#type: 0,
+                params: [0.0; 10], n_grid_points: 4,
+                sampled_points: pts.as_ptr() },
+        ];
+        let seg = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 2, segs.as_ptr());
+        eprintln!("seg={}", !seg.is_null());
+        // cv-only → mAB {B} single element
+        for sig in [0x41324230u32, 0x42324130] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                    3, [seg, seg, seg].as_ptr() as *mut _));
+            let w = c::cmsWriteTag(prof, sig, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            eprintln!("cv-only/{sig:#x} w={w} s={s} n={n}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeToneCurve(seg);
+    }
+}
+
+/// ReadSegmentedCurve — raw `mpet` tags (d2b0/b2d0) carrying
+/// cvst curve-set elements: formula types 0-2, sampled,
+/// multi-seg, malformed.
+#[test]
+fn cvst_read_arms() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    fn f32b(v: f32) -> [u8; 4] { v.to_be_bytes() }
+    fn curve(segs: &[(u32, Vec<u8>)], nseg: u16,
+        breaks: &[f32], sig_override: u32) -> Vec<u8> {
+        let mut c = Vec::new();
+        let sig = if sig_override == 0 { 0x63757266 }
+            else { sig_override };
+        c.extend_from_slice(&be32(sig));        // 'curf'
+        c.extend_from_slice(&be32(0));
+        c.extend_from_slice(&be16(nseg));
+        c.extend_from_slice(&be16(0));
+        for b in breaks { c.extend_from_slice(&f32b(*b)); }
+        for (ssig, data) in segs {
+            c.extend_from_slice(&be32(*ssig));
+            c.extend_from_slice(&be32(0));
+            c.extend_from_slice(data);
+        }
+        c
+    }
+    fn formula(ty: u16, params: &[f32]) -> Vec<u8> {
+        let mut d = Vec::new();
+        d.extend_from_slice(&be16(ty));
+        d.extend_from_slice(&be16(0));
+        for p in params { d.extend_from_slice(&f32b(*p)); }
+        d
+    }
+    fn sampled(pts: &[f32]) -> Vec<u8> {
+        let mut d = Vec::new();
+        d.extend_from_slice(&be32(pts.len() as u32));
+        for p in pts { d.extend_from_slice(&f32b(*p)); }
+        d
+    }
+    // one mpet element: {sig, payload-bytes}
+    fn elem(sig: u32, data: &[u8]) -> (u32, Vec<u8>) {
+        let mut e = Vec::new();
+        e.extend_from_slice(&be32(sig));
+        e.extend_from_slice(&be32(0));
+        e.extend_from_slice(data);
+        (sig, e)
+    }
+    // raw element bytes (sig+rsv already inside)
+    fn relem(e: Vec<u8>) -> (u32, Vec<u8>) { (0, e) }
+    // mpet tag: in u16, out u16, count u32, pos table, elements
+    fn mpet(nin: u16, nout: u16, elements: &[(u32, Vec<u8>)])
+        -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x6D706574));  // 'mpet'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be16(nin));
+        t.extend_from_slice(&be16(nout));
+        t.extend_from_slice(&be32(elements.len() as u32));
+        let pos_start = t.len();
+        for _ in elements {
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be32(0));
+        }
+        let mut offs = Vec::new();
+        for (_, e) in elements {
+            offs.push(t.len() as u32);
+            t.extend_from_slice(e);
+        }
+        for (i, o) in offs.iter().enumerate() {
+            let at = pos_start + i * 8;
+            t[at..at + 4].copy_from_slice(&be32(*o));
+            let end = if i + 1 < offs.len() { offs[i + 1] }
+                else { t.len() as u32 };
+            t[at + 4..at + 8].copy_from_slice(&be32(end - o));
+        }
+        t
+    }
+    // cvst element: sig+rsv+nIn+nOut+pos table+curves
+    // pos-table offsets are relative to element start (the sig)
+    fn cvst(nch: u16, channels: Vec<Vec<u8>>) -> Vec<u8> {
+        let mut e = Vec::new();
+        e.extend_from_slice(&be32(0x63767374)); // 'cvst'
+        e.extend_from_slice(&be32(0));
+        e.extend_from_slice(&be16(nch));
+        e.extend_from_slice(&be16(nch));
+        let pos_start = e.len();
+        for _ in 0..nch {
+            e.extend_from_slice(&be32(0));
+            e.extend_from_slice(&be32(0));
+        }
+        let mut offs = Vec::new();
+        for cv in &channels {
+            offs.push(e.len() as u32);
+            e.extend_from_slice(cv);
+        }
+        for (i, o) in offs.iter().enumerate() {
+            let at = pos_start + i * 8;
+            e[at..at + 4].copy_from_slice(&be32(*o));
+            let end = if i + 1 < offs.len() { offs[i + 1] }
+                else { e.len() as u32 };
+            e[at + 4..at + 8].copy_from_slice(&be32(end - o));
+        }
+        e
+    }
+    unsafe {
+        let f0 = formula(0, &[1.0, 0.0, 0.0, 0.0]);
+        let f1 = formula(1, &[2.0, 0.5, 0.1, 0.0, 0.0]);
+        let f2 = formula(2, &[1.5, 0.3, 0.2, 0.1, 0.0]);
+        let s1 = sampled(&[0.0, 0.3, 0.7, 1.0]);
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            // 1 cvst element, 3 channels, formula-0 curves
+            (mpet(3, 3, &[relem(cvst(3, vec![
+                curve(&[(0x70617266, f0.clone())], 1, &[], 0),
+                curve(&[(0x70617266, f0.clone())], 1, &[], 0),
+                curve(&[(0x70617266, f0.clone())], 1, &[], 0)]))]),
+                "f0x3"),
+            // formula + sampled 2-seg curves
+            (mpet(3, 3, &[relem(cvst(3, vec![
+                curve(&[(0x70617266, f1.clone()),
+                        (0x73616D66, s1.clone())], 2, &[0.5], 0),
+                curve(&[(0x70617266, f1.clone()),
+                        (0x73616D66, s1.clone())], 2, &[0.5], 0),
+                curve(&[(0x70617266, f1.clone()),
+                        (0x73616D66, s1.clone())], 2, &[0.5], 0)]))]),
+                "f1+smp"),
+            // 1ch 4-seg curve — all seg types
+            (mpet(1, 1, &[relem(cvst(1, vec![
+                curve(&[(0x73616D66, s1.clone()),
+                        (0x70617266, f0.clone()),
+                        (0x70617266, f1.clone()),
+                        (0x70617266, f2.clone())], 4,
+                    &[0.25, 0.5, 0.75], 0)]))]),
+                "1ch-4seg"),
+            // 5-seg 1ch
+            (mpet(1, 1, &[relem(cvst(1, vec![
+                curve(&[(0x73616D66, s1.clone()),
+                        (0x70617266, f0.clone()),
+                        (0x70617266, f1.clone()),
+                        (0x70617266, f2.clone()),
+                        (0x73616D66, s1.clone())], 5,
+                    &[0.2, 0.4, 0.6, 0.8], 0)]))]),
+                "1ch-5seg"),
+            // malformed: nSegments=0
+            (mpet(1, 1, &[relem(cvst(1, vec![
+                curve(&[], 0, &[], 0)]))]), "nseg0"),
+            // malformed: wrong curve sig
+            (mpet(1, 1, &[relem(cvst(1, vec![
+                curve(&[(0x70617266, f0.clone())], 1, &[],
+                    0x62616420)]))]), "badsig"),
+            // malformed: formula type > 2
+            (mpet(1, 1, &[relem(cvst(1, vec![
+                curve(&[(0x70617266,
+                    formula(3, &[1.0, 0.0, 0.0, 0.0, 0.0]))],
+                    1, &[], 0)]))]), "ftype3"),
+            // malformed: unknown seg sig
+            (mpet(1, 1, &[relem(cvst(1, vec![
+                curve(&[(0x62616420, f0.clone())], 1, &[], 0)]))]),
+                "badseg"),
+            // cvst + matrix element pair
+            (mpet(3, 3, &[
+                relem(cvst(3, vec![
+                    curve(&[(0x70617266, f0.clone())], 1, &[], 0),
+                    curve(&[(0x70617266, f0.clone())], 1, &[], 0),
+                    curve(&[(0x70617266, f0.clone())], 1, &[], 0)])),
+                { let mut m = Vec::new();
+                    m.extend_from_slice(&be16(3));
+                    m.extend_from_slice(&be16(3));
+                    for _ in 0..9 {
+                        m.extend_from_slice(&be32(0x00010000));
+                    }
+                    for _ in 0..3 {
+                        m.extend_from_slice(&be32(0));
+                    }
+                    elem(0x6D617466, &m) },
+            ]), "cvst+mat"),
+        ];
+        for (blob, name) in &variants {
+            for sig in [0x44324230u32, 0x42324430] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 4.4);
+                let w = c::cmsWriteRawTag(prof, sig,
+                    blob.as_ptr() as *const _, blob.len() as u32);
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                let tag = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name}/{sig:#x} w={w} s={s} rd={}",
+                    !tag.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+            }
+        }
+    }
+}
