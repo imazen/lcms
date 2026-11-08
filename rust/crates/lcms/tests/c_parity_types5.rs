@@ -3434,3 +3434,32 @@ fn write_dispatch_view() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a screening payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_scrn() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct Scrn {
+            flag: u32, n: u32,
+            ch: [ScrnCh; 16],
+        }
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct ScrnCh {
+            freq: f64, angle: f64, shape: u32,
+        }
+        let s = Scrn { flag: 0, n: 1,
+            ch: [ScrnCh { freq: 60.0, angle: 45.0,
+                shape: 0 }; 16] };
+        for (sig, name) in [
+            (0x7363726Eu32, "scrn"), (0x73637264u32, "scrd")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &s as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
