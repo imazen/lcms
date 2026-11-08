@@ -693,3 +693,38 @@ fn it8_populated_save() {
         c::cmsIT8Free(h);
     }
 }
+
+/// Include-path machinery + parse-error sanitization —
+/// an IT8 with `.INCLUDE` routes through BuildAbsolutePath /
+/// isabsolutepath (include fails open, but the path build runs);
+/// a malformed doc reaches SynError -> NoMeta.
+#[test]
+fn include_path_and_synerror() {
+    unsafe {
+        // include directive — the path build runs before fopen fails
+        let it8 = b"CGATS.17\nORIGINATOR \"x\"\n.INCLUDE \"sub.txt\"\n\
+            NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n1\nEND_DATA\n";
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            it8.as_ptr() as _, it8.len() as u32);
+        eprintln!("include-load={}", !h.is_null());
+        if !h.is_null() { c::cmsIT8Free(h); }
+        // absolute-path include — isabsolutepath's early branch
+        let it8b = b"CGATS.17\nORIGINATOR \"x\"\n\
+            .INCLUDE \"/tmp/nonexistent-it8.txt\"\n\
+            NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n1\nEND_DATA\n";
+        let h2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            it8b.as_ptr() as _, it8b.len() as u32);
+        eprintln!("abs-include-load={}", !h2.is_null());
+        if !h2.is_null() { c::cmsIT8Free(h2); }
+        // malformed doc — unterminated string -> SynError -> NoMeta
+        let bad = b"CGATS.17\nORIGINATOR \"unterminated\n\
+            NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n1\nEND_DATA\n";
+        let h3 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            bad.as_ptr() as _, bad.len() as u32);
+        eprintln!("bad-load={}", !h3.is_null());
+        if !h3.is_null() { c::cmsIT8Free(h3); }
+    }
+}
