@@ -103,8 +103,11 @@ fn check(label: &str, cp: *mut c_void, rp: &lcms::profile::IccProfile, fi: u32, 
     let in_sz = pixel_size(fi) * n;
     let out_sz = pixel_size(fo) * n;
     let inp = rng_bytes(in_sz, 0x9E3779B97F4A7C15 ^ (fi as u64) ^ (fo as u64) << 32);
-    let mut co = vec![0u8; out_sz];
-    let mut ro = vec![0u8; out_sz];
+    // output pre-filled with a pattern: premul packers read the alpha
+    // slot out of the output buffer, and unwritten extra-channel slots
+    // stay as-is — identical pre-fill keeps the compare honest.
+    let mut co = vec![0xA5u8; out_sz];
+    let mut ro = vec![0xA5u8; out_sz];
     unsafe { c::cmsDoTransform(ct, inp.as_ptr() as *const c_void, co.as_mut_ptr() as *mut c_void, n as u32) };
     rt.unwrap().do_transform(&inp, &mut ro, n as u32);
     let flt_out = fo & (1 << 22) != 0;
@@ -2318,5 +2321,151 @@ fn pack_chgbuf_sweep() {
     unsafe {
         c::cmsCloseProfile(cs); c::cmsCloseProfile(cl);
         c::cmsCloseProfile(cx); c::cmsCloseProfile(cg);
+    }
+}
+
+/// Lab V2-encoded formats — TYPE_LabV2_8/ALabV2_8/LabV2_16 in+out on
+/// Lab->Lab, both the 16-bit path (UnrollLabV2_*/PackLabV2_* +
+/// FomLabV2ToLabV4/FomLabV4ToLabV2) and the float path
+/// (UnrollLabV2_*ToFloat/lab4toFloat + PackEncoded*LabV2FromFloat).
+#[test]
+fn pack_labv2() {
+    let cp = unsafe { c::cmsCreateLab4Profile(std::ptr::null_mut()) };
+    let rp = virt::create_lab4_profile(None, None).unwrap();
+    const LABV2_8: u32 = 30 << 16 | 3 << 3 | 1;
+    const ALABV2_8: u32 = 30 << 16 | 1 << 7 | 3 << 3 | 1 | 1 << 14;
+    const LABV2_16: u32 = 30 << 16 | 3 << 3 | 2;
+    let lab_16 = f(PT_LAB, 3, 0, 2);
+    let lab_flt = fl(f(PT_LAB, 3, 0, 4));
+    // 16-bit path: LabV2 <-> u16 Lab
+    for (name, fi, fo) in [
+        ("v2_8>16", LABV2_8, lab_16),
+        ("av2_8>16", ALABV2_8, lab_16),
+        ("v2_16>16", LABV2_16, lab_16),
+        ("16>v2_8", lab_16, LABV2_8),
+        ("16>av2_8", lab_16, ALABV2_8),
+        ("16>v2_16", lab_16, LABV2_16),
+        ("v2_8>v2_8", LABV2_8, LABV2_8),
+        // float path: LabV2 on one side + FLOAT other side
+        ("v2_8>flt", LABV2_8, lab_flt),
+        ("av2_8>flt", ALABV2_8, lab_flt),
+        ("v2_16>flt", LABV2_16, lab_flt),
+        ("flt>v2_8", lab_flt, LABV2_8),
+        ("flt>v2_16", lab_flt, LABV2_16),
+    ] {
+        check(name, cp, &rp, fi, fo);
+    }
+    unsafe { c::cmsCloseProfile(cp) };
+}
+
+/// Remaining 16-table bodies — 4ch swap-first combos on CMYK
+/// (Unroll/Pack4BytesSwapFirst, *SwapSwapFirst, Unroll4WordsSwapSwapFirst),
+/// MCH2 (Unroll2Bytes), 1ch+ex3 (Unroll1WordSkip3), u16 planar+premul
+/// (Unroll/PackPlanarWordsPremul).
+#[test]
+fn pack_misc16() {
+    unsafe {
+        // CMYK linearization devicelink — 4 channels
+        let g4 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cur4 = [g4; 4];
+        let cd4 = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B, cur4.as_mut_ptr());
+        let tg4 = gamma::build_gamma(None, 2.2).unwrap();
+        let rd4 = virt::create_linearization_device_link(
+            None, 0x434D594B,
+            &[&tg4, &tg4, &tg4, &tg4]).unwrap();
+        // MCH2 devicelink — 2 channels (PT_MCH2 = 11)
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cur2 = [g2; 2];
+        let cd2 = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x4D434832, cur2.as_mut_ptr());
+        let tg2 = gamma::build_gamma(None, 2.2).unwrap();
+        let rd2 = virt::create_linearization_device_link(
+            None, 0x4D434832,
+            &[&tg2, &tg2]).unwrap();
+        // gray — 1 channel
+        let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let cg = c::cmsCreateGrayProfile(std::ptr::null_mut(), gg);
+        let tg = gamma::build_gamma(None, 2.2).unwrap();
+        let rg = virt::create_gray_profile(None, None, Some(&tg)).unwrap();
+
+        let cmyk8 = f(PT_CMYK, 4, 0, 1);
+        let cmyk16 = f(PT_CMYK, 4, 0, 2);
+        for (name, cp, rp, fi, fo) in [
+            ("4c8sf", cd4, &rd4, sf(cmyk8), sf(cmyk8)),
+            ("4c8dwsf", cd4, &rd4, dw(sf(cmyk8)), dw(sf(cmyk8))),
+            ("4c16dwsf", cd4, &rd4, dw(sf(cmyk16)), dw(sf(cmyk16))),
+            ("4c8pm16", cd4, &rd4, pm(pl(f(PT_CMYK, 4, 1, 2))), pm(pl(f(PT_CMYK, 4, 1, 2)))),
+            ("2c8", cd2, &rd2, f(11, 2, 0, 1), f(11, 2, 0, 1)),
+            ("1c16x3", cg, &rg, f(PT_GRAY, 1, 3, 2), f(PT_GRAY, 1, 0, 2)),
+        ] {
+            check(name, cp, rp, fi, fo);
+        }
+        c::cmsCloseProfile(cd4); c::cmsCloseProfile(cd2);
+        c::cmsCloseProfile(cg);
+    }
+}
+
+/// Optimized u8 packers — matrix-shaper optimization sets
+/// OPTIMIZED_SH on 8-bit output (sRGB->aRGB u8->u8 matrix).
+#[test]
+fn pack_optimized_u8() {
+    unsafe {
+        let c1 = c::cmsCreate_sRGBProfile();
+        let pb = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../aRGBlcms2.icc");
+        let pth = std::ffi::CString::new(pb.to_str().unwrap()).unwrap();
+        let c2 = c::cmsOpenProfileFromFile(pth.as_ptr(), b"r\0".as_ptr());
+        let data = std::fs::read(&pb).unwrap();
+        let r1 = virt::create_srgb_profile(None).unwrap();
+        let r2 = lcms::profile::open_profile_from_mem(None, &data).unwrap();
+        // u8 in + u8 out variants — matrix-shaper opt fires on both
+        // sides; the optimizer's OPTIMIZED_SH picks Pack3Bytes*Optimized
+        let rgb8 = f(PT_RGB, 3, 0, 1);
+        for (name, fi, fo) in [
+            ("o_plain", rgb8, rgb8),
+            ("o_dw", rgb8, dw(rgb8)),
+            ("o_ex1", rgb8, f(PT_RGB, 3, 1, 1)),
+            ("o_ex1sf", rgb8, sf(f(PT_RGB, 3, 1, 1))),
+            ("o_ex1dw", rgb8, dw(f(PT_RGB, 3, 1, 1))),
+            ("o_ex1dwsf", rgb8, dw(sf(f(PT_RGB, 3, 1, 1)))),
+            // same on sRGB->sRGB in case the pair optimizes differently
+            ("s_plain", rgb8, rgb8),
+        ] {
+            if name.starts_with('s') {
+                check(name, c1, &r1, fi, fo);
+            } else {
+                // pair transform
+                let ct = c::cmsCreateTransform(c1, fi, c2, fo, 0, 0);
+                let mut v: Vec<Box<lcms::profile::IccProfile>> =
+                    vec![r1.clone(), r2.clone()];
+                let mut bpc = [false; 2];
+                let intents = [0u32; 2];
+                let adapt = [1.0f64; 2];
+                let rt = xform::create_extended_transform(
+                    None, &mut v, &mut bpc, &intents, &adapt,
+                    None, 0, fi, fo, 0);
+                if ct.is_null() || rt.is_none() {
+                    assert!(ct.is_null() && rt.is_none(),
+                        "{name}: reject parity");
+                    continue;
+                }
+                let n = 16usize;
+                let inp = rng_bytes(pixel_size(fi) * n,
+                    0xBEEF ^ fi as u64);
+                let mut co = vec![0u8; pixel_size(fo) * n];
+                let mut ro = vec![0u8; pixel_size(fo) * n];
+                c::cmsDoTransform(ct, inp.as_ptr() as *const c_void,
+                    co.as_mut_ptr() as *mut c_void, n as u32);
+                rt.unwrap().do_transform(&inp, &mut ro, n as u32);
+                if co != ro {
+                    eprintln!("{name} C={:?}", &co[..24]);
+                    eprintln!("{name} R={:?}", &ro[..24]);
+                }
+                assert_eq!(co, ro, "{name}");
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        c::cmsCloseProfile(c1); c::cmsCloseProfile(c2);
     }
 }

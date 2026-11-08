@@ -58,9 +58,10 @@ pub(crate) fn f8to16(v: u8) -> u16 {
 pub(crate) fn f16to8(v: u16) -> u8 {
     (((v as u32) * 65281 + 8388608) >> 24 & 0xff) as u8
 }
-/// `_cmsToFixedDomain`
+/// `_cmsToFixedDomain` — `a + (a + 0x7fff)/0xffff` (lcms2_internal.h:151)
 fn to_fixed_domain(v: u16) -> u32 {
-    (v as u32) + if v as u32 & 0xffff == 0xffff { 1 } else { 0 }
+    let a = v as u32;
+    a + (a + 0x7fff) / 0xffff
 }
 /// `REVERSE_FLAVOR_16/8/Float`
 
@@ -1382,15 +1383,31 @@ pub fn pack_planar_bytes(
     let reverse = t_flavor(i.output_format) != 0;
     let extra = t_extra(i.output_format) as usize;
     let swap_first = t_swapfirst(i.output_format) != 0;
+    let premul = t_premul(i.output_format) != 0;
     let extra_first = do_swap ^ swap_first;
     let stride = stride as usize;
     let init = if extra_first { extra * stride } else { 0 };
+    // C PackPlanarBytes — premul alpha comes from the output buffer's
+    // u8 alpha plane (extra-first: plane 0; else the plane after the
+    // color planes), widened via FROM_8_TO_16.
+    let mut alpha_factor = 0u32;
+    if premul && extra > 0 {
+        let a8 = if extra_first {
+            out[0]
+        } else {
+            out[n_chan * stride]
+        };
+        alpha_factor = to_fixed_domain(f8to16(a8));
+    }
     let mut last_v = 0u16;
     for c in 0..n_chan {
         let index = if do_swap { n_chan - c - 1 } else { c };
         let mut v = w[index];
         if reverse {
             v = 0xffff - v;
+        }
+        if premul {
+            v = (((v as u32) * alpha_factor + 0x8000) >> 16) as u16;
         }
         out[init + c * stride] = f16to8(v);
         last_v = v;
@@ -1418,9 +1435,21 @@ pub fn pack_planar_words(
     let reverse = t_flavor(i.output_format) != 0;
     let extra = t_extra(i.output_format) as usize;
     let swap_first = t_swapfirst(i.output_format) != 0;
+    let premul = t_premul(i.output_format) != 0;
     let extra_first = do_swap ^ swap_first;
     let stride = stride as usize;
     let init = if extra_first { extra * stride } else { 0 };
+    // C cmspack.c PackPlanarWords — the premul alpha comes out of the
+    // output buffer's alpha plane (extra-first: plane 0; otherwise the
+    // plane right after the color planes).
+    let mut alpha_factor = 0u32;
+    if premul && extra > 0 {
+        alpha_factor = if extra_first {
+            to_fixed_domain(rd16(out, 0))
+        } else {
+            to_fixed_domain(rd16(out, n_chan * stride))
+        };
+    }
     let mut last_v = 0u16;
     for c in 0..n_chan {
         let index = if do_swap { n_chan - c - 1 } else { c };
@@ -1430,6 +1459,9 @@ pub fn pack_planar_words(
         }
         if reverse {
             v = 0xffff - v;
+        }
+        if premul {
+            v = (((v as u32) * alpha_factor + 0x8000) >> 16) as u16;
         }
         let o = init + c * stride;
         out[o] = (v & 0xff) as u8;
@@ -2628,40 +2660,56 @@ pub fn pack_xyz_double_from_float(
 
 /// `PackEncodedBytesLabV2FromFloat` — f32 Lab → v2 encoded bytes
 pub fn pack_encoded_bytes_lab_v2_from_float(
-    _i: &PackInfo,
+    i: &PackInfo,
     w: &[f32; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
-    _s: u32,
+    stride: u32,
 ) -> usize {
-    // w in 0..1 float lab: L/100, (a+128)/255 → encode v4 then v4→v2
-    let v4 = crate::pcs::float2lab_encoded(&crate::types::CieLab {
+    // C cmspack.c:3224 — v4-encode then TRUNCATE to the high byte
+    // (no v4→v2 conversion, no rounding).
+    let wlab = crate::pcs::float2lab_encoded(&crate::types::CieLab {
         L: w[0] as f64 * 100.0,
         a: w[1] as f64 * 255.0 - 128.0,
         b: w[2] as f64 * 255.0 - 128.0,
     });
-    out[0] = f16to8(fom_lab_v4_to_v2(v4[0]));
-    out[1] = f16to8(fom_lab_v4_to_v2(v4[1]));
-    out[2] = f16to8(fom_lab_v4_to_v2(v4[2]));
-    3
+    if t_planar(i.output_format) != 0 {
+        let s = (stride / pixel_size(i.output_format)) as usize;
+        out[0] = (wlab[0] >> 8) as u8;
+        out[s] = (wlab[1] >> 8) as u8;
+        out[2 * s] = (wlab[2] >> 8) as u8;
+        1
+    } else {
+        out[0] = (wlab[0] >> 8) as u8;
+        out[1] = (wlab[1] >> 8) as u8;
+        out[2] = (wlab[2] >> 8) as u8;
+        3 + t_extra(i.output_format) as usize
+    }
 }
 /// `PackEncodedWordsLabV2FromFloat`
 pub fn pack_encoded_words_lab_v2_from_float(
-    _i: &PackInfo,
+    i: &PackInfo,
     w: &[f32; crate::xform::MAX_CHANNELS],
     out: &mut [u8],
-    _s: u32,
+    stride: u32,
 ) -> usize {
-    let v4 = crate::pcs::float2lab_encoded(&crate::types::CieLab {
+    // C cmspack.c:3259 — direct v2 encoding (not v4→v2), LE words.
+    let wlab = crate::pcs::float2lab_encoded_v2(&crate::types::CieLab {
         L: w[0] as f64 * 100.0,
         a: w[1] as f64 * 255.0 - 128.0,
         b: w[2] as f64 * 255.0 - 128.0,
     });
-    for c in 0..3 {
-        let x = fom_lab_v4_to_v2(v4[c]);
-        out[c * 2] = (x & 0xff) as u8;
-        out[c * 2 + 1] = (x >> 8) as u8;
+    if t_planar(i.output_format) != 0 {
+        let s = (stride / pixel_size(i.output_format)) as usize;
+        out[0..2].copy_from_slice(&wlab[0].to_le_bytes());
+        out[s * 2..s * 2 + 2].copy_from_slice(&wlab[1].to_le_bytes());
+        out[s * 4..s * 4 + 2].copy_from_slice(&wlab[2].to_le_bytes());
+        2
+    } else {
+        for c in 0..3 {
+            out[c * 2..c * 2 + 2].copy_from_slice(&wlab[c].to_le_bytes());
+        }
+        (3 + t_extra(i.output_format) as usize) * 2
     }
-    6
 }
 
 // ---------------------------------------------------------------------------
