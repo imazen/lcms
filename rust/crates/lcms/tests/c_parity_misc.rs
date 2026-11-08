@@ -278,3 +278,119 @@ fn corpus() -> Vec<Vec<u8>> {
     files.sort();
     files.into_iter().map(|p| std::fs::read(p).unwrap()).collect()
 }
+
+/// cmsFormatterForColorspaceOfProfile + cmsFormatterForPCSOfProfile
+/// — the formatter-lookup machinery.
+#[test]
+fn formatter_for_profile() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _,
+                data.len() as u32);
+            for nb in [1u32, 2, 4] {
+                for fl in [0i32, 1] {
+                    let cf = c::cmsFormatterForColorspaceOfProfile(
+                        h, nb, fl);
+                    let cp = c::cmsFormatterForPCSOfProfile(h, nb,
+                        fl);
+                    assert_ne!(cf, 0, "csfmt nb={nb} fl={fl}");
+                    assert_ne!(cp, 0, "pcsfmt nb={nb} fl={fl}");
+                }
+            }
+            c::cmsCloseProfile(h);
+            break;
+        }
+    }
+}
+
+/// cmsFreeToneCurveTriple — free the triple array.
+#[test]
+fn free_tone_curve_triple() {
+    unsafe {
+        let g1 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let triple = [g1, g2, g3];
+        c::cmsFreeToneCurveTriple(triple.as_ptr() as *const _);
+        // rust side — drop a triple array
+        let _rt = [
+            gamma::build_gamma(None, 2.2).unwrap(),
+            gamma::build_gamma(None, 2.2).unwrap(),
+            gamma::build_gamma(None, 2.2).unwrap(),
+        ];
+    }
+}
+
+/// cmsGetTransformGamutCheckPipeline — the gamut-check LUT getter.
+#[test]
+fn transform_gamut_pipeline() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let proof = c::cmsCreate_sRGBProfile();
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateProofingTransform(hi, in_fmt, ho,
+            out_fmt, proof, 0, 0, 0x1000 /*GAMUTCHECK*/);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let _ = c::cmsCloseProfile(proof);
+        if !ct.is_null() {
+            let g = c::cmsGetTransformGamutCheckPipeline(ct);
+            eprintln!("gamut pipe null={}", g.is_null());
+            c::cmsDeleteTransform(ct);
+        }
+    }
+}
+
+/// cmsPipelineCheckAndRetreiveStages — variadic stage-type check.
+#[test]
+fn pipeline_check_retrieve() {
+    unsafe {
+        let cp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let s1 = c::cmsStageAllocIdentity(std::ptr::null_mut(), 3);
+        let s2 = c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0].as_ptr(),
+            std::ptr::null());
+        c::cmsPipelineInsertStage(cp, 0, s1);
+        c::cmsPipelineInsertStage(cp, 1, s2);
+        // matching types: 'idn '(0x69646e20) + 'matf'(0x6d617466)
+        let ok = c::cmsPipelineCheckAndRetreiveStages(cp, 2,
+            0x69646e20u32, 0x6d617466u32);
+        assert_ne!(ok, 0, "matching stages");
+        let bad = c::cmsPipelineCheckAndRetreiveStages(cp, 2,
+            0x69646e20u32, 0x69646e20u32);
+        assert_eq!(bad, 0, "mismatched stages");
+        // rust side — pipeline_check_and_retrieve_stages
+        let mut rp = lut::pipeline_alloc(None, 3, 3).unwrap();
+        assert!(rp.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_identity(None, 3)));
+        assert!(rp.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_matrix(None, 3, 3,
+                &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                None).unwrap()));
+        let r = lut::pipeline_check_and_retrieve_stages(&rp,
+            &[0x69646e20, 0x6d617466]);
+        assert!(r.is_some(), "rust matching stages");
+        let r2 = lut::pipeline_check_and_retrieve_stages(&rp,
+            &[0x69646e20, 0x69646e20]);
+        assert!(r2.is_none(), "rust mismatched stages");
+        c::cmsPipelineFree(cp);
+    }
+}
+
+/// cmsUnregisterPlugins + cmsUnregisterPluginsTHR — global +
+/// per-context plugin teardown.
+#[test]
+fn unregister_plugins() {
+    unsafe {
+        c::cmsUnregisterPlugins();
+        let ctx = c::cmsDupContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        c::cmsUnregisterPluginsTHR(ctx);
+        c::cmsDeleteContext(ctx);
+        // rust side — the context teardown path
+        let rctx = lcms::context::create_context(None, 0);
+        drop(rctx);
+    }
+}
