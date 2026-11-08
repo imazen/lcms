@@ -762,3 +762,62 @@ fn it8_data_arms2() {
         c::cmsIT8Free(h);
     }
 }
+
+/// ParseCube arms — .cube files through cmsCreateDeviceLinkFrom-
+/// CubeFile: TITLE/DOMAIN/LUT_1D/LUT_3D/ranges/malformed.
+#[test]
+fn cube_parse_arms() {
+    unsafe {
+        let dir = std::env::temp_dir();
+        let rows = |n: usize| -> String {
+            (0..n).map(|i| {
+                let v = i as f64 / (n - 1) as f64;
+                format!("{v:.6} {v:.6} {v:.6}\n")
+            }).collect()
+        };
+        let clut = |n: usize| -> String {
+            let mut s = String::new();
+            for i in 0..n * n * n {
+                let v = (i % n) as f64 / (n - 1) as f64;
+                s += &format!("{v:.4} {v:.4} {v:.4}\n");
+            }
+            s
+        };
+        let cases = [
+            // full: title + domain + shaper + clut
+            format!("TITLE \"full\"\nDOMAIN_MIN 0 0 0\n\
+                     DOMAIN_MAX 1 1 1\nLUT_1D_SIZE 4\n\
+                     LUT_3D_SIZE 2\n{}{}", rows(4), clut(2)),
+            // shaper only
+            format!("LUT_1D_SIZE 3\n{}", rows(3)),
+            // clut only
+            format!("LUT_3D_SIZE 2\n{}", clut(2)),
+            // input ranges (valid 0..1)
+            format!("LUT_1D_INPUT_RANGE 0 1\nLUT_3D_INPUT_RANGE 0 1\n\
+                     LUT_3D_SIZE 2\n{}", clut(2)),
+            // video-range keywords reject
+            "LUT_IN_VIDEO_RANGE\nLUT_3D_SIZE 2\n".to_string(),
+            "LUT_OUT_VIDEO_RANGE\nLUT_3D_SIZE 2\n".to_string(),
+            // out-of-bounds ranges
+            "LUT_1D_INPUT_RANGE 0.1 0.9\nLUT_3D_SIZE 2\n".to_string(),
+            // malformed sizes
+            "LUT_1D_SIZE 1\n".to_string(),
+            "LUT_1D_SIZE 70000\n".to_string(),
+            "LUT_3D_SIZE 1\n".to_string(),
+            "LUT_3D_SIZE 66\n".to_string(),
+            // comments + title forms
+            format!("# comment\nTITLE no-quotes\n\
+                     LUT_3D_SIZE 2\n{}", clut(2)),
+        ];
+        for (i, doc) in cases.iter().enumerate() {
+            let path = dir.join(format!("cube_arm_{i}.cube"));
+            std::fs::write(&path, doc).unwrap();
+            let cpath = std::ffi::CString::new(
+                path.to_str().unwrap()).unwrap();
+            let p = c::cmsCreateDeviceLinkFromCubeFile(cpath.as_ptr());
+            eprintln!("cube{i} dl={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
