@@ -8309,3 +8309,96 @@ fn mpet_save_ararms() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// Type_LUT8/16_Write deep arms — clutPoints=0, identity matrix,
+/// mismatched nSamples, extra-stage reject.
+#[test]
+fn lut_write_deep() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let mat = [1.0f64, 0.5, 0.0, 0.0, 0.9, 0.0, 0.1, 0.0, 0.8];
+        let mk_cv = |n: u32| {
+            let curves = match n {
+                1 => [g].as_ptr(),
+                _ => [g, g2, g, g2].as_ptr(),
+            };
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), n,
+                curves as *mut _)
+        };
+        let mk_clut = |npts: &[u32], ni: u32, no: u32| {
+            let mut tot = 1usize;
+            for &n in npts { tot *= n as usize; }
+            let mut grid = vec![0u16; tot * no as usize];
+            for (i, v) in grid.iter_mut().enumerate() {
+                *v = ((i % 17) * 3855) as u16;
+            }
+            c::cmsStageAllocCLut16bitGranular(std::ptr::null_mut(),
+                npts.as_ptr(), ni, no, grid.as_ptr())
+        };
+        for (stages, ni, no, name) in [
+            // no clut (clutPoints=0) + matrix
+            (vec![mk_cv(3),
+                  c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                      mat.as_ptr(), std::ptr::null()),
+                  mk_cv(3)], 3, 3, "cv-mat-cv-noclut"),
+            // no clut, no matrix (identity written)
+            (vec![mk_cv(3), mk_cv(3)], 3, 3, "cv-cv-noclut"),
+            // clut only
+            (vec![mk_clut(&[17, 17, 17], 3, 3)], 3, 3, "clut-only"),
+            // mismatched nSamples per dim -> reject
+            (vec![mk_cv(3),
+                  mk_clut(&[17, 9, 17], 3, 3),
+                  mk_cv(3)], 3, 3, "mismatch-rej"),
+            // extra stage after post -> reject
+            (vec![mk_cv(3),
+                  mk_clut(&[17, 17, 17], 3, 3),
+                  mk_cv(3),
+                  mk_clut(&[5, 5, 5], 3, 3)], 3, 3, "extra-rej"),
+            // 1ch pipeline
+            (vec![mk_cv(1),
+                  mk_clut(&[33], 1, 1),
+                  mk_cv(1)], 1, 1, "1ch"),
+            // 4ch cmyk
+            (vec![mk_cv(4),
+                  mk_clut(&[17, 17, 17, 17], 4, 4),
+                  mk_cv(4)], 4, 4, "4ch"),
+            // mat + clut no post-curves
+            (vec![c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                      mat.as_ptr(), std::ptr::null()),
+                  mk_clut(&[17, 17, 17], 3, 3)], 3, 3, "mat-clut"),
+            // 3in-1out
+            (vec![mk_cv(3),
+                  mk_clut(&[17, 17, 17], 3, 1),
+                  mk_cv(1)], 3, 1, "3to1"),
+        ] {
+            for (sig, save8, name2) in [
+                (0x41324230u32, false, "a2b0"),
+                (0x41324230u32, true, "a2b0-8"),
+                (0x42324130u32, false, "b2a0"),
+            ] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 2.1);
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), ni, no);
+                for st in &stages {
+                    let d = c::cmsStageDup(*st);
+                    c::cmsPipelineInsertStage(p, 1, d);
+                }
+                if save8 { c::cmsPipelineSetSaveAs8bitsFlag(p, 1); }
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 22];
+                let mut nn = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut nn)
+                } else { 0 };
+                eprintln!("{name}/{name2} w={w} s={s}");
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+            for st in &stages { c::cmsStageFree(*st); }
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
