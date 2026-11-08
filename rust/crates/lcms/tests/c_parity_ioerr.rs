@@ -263,3 +263,58 @@ fn save_and_iohandler_roundtrip() {
 
     std::fs::remove_file(&cpath).ok();
 }
+
+/// cmsio1 LUT readers (internal _cms* API): presence parity +
+/// cmsPipelineEval16 output comparison over a deterministic grid.
+#[test]
+fn io1_lut_reader_eval() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap().filter_map(|e| e.ok()).map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
+        .collect();
+    files.sort();
+    for f in files {
+        let name = f.file_name().unwrap().to_string_lossy();
+        let data = std::fs::read(&f).unwrap();
+        let ch = unsafe { c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32) };
+        if ch.is_null() { continue; }
+        let mut rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
+        for intent in 0..4u32 {
+            for which in 0..3 {
+                let (cp, rpl) = unsafe {
+                    match which {
+                        0 => (c::_cmsReadInputLUT(ch, intent),
+                              lcms::io1::read_input_lut(&mut rp, intent)),
+                        1 => (c::_cmsReadOutputLUT(ch, intent),
+                              lcms::io1::read_output_lut(&mut rp, intent)),
+                        _ => (c::_cmsReadDevicelinkLUT(ch, intent),
+                              lcms::io1::read_devicelink_lut(&mut rp, intent)),
+                    }
+                };
+                assert_eq!(cp.is_null(), rpl.is_none(),
+                    "{name} intent {intent} lut {which} presence");
+                if cp.is_null() || rpl.is_none() { continue; }
+                let mut pipe = rpl.unwrap();
+                let n_in = unsafe { c::cmsPipelineInputChannels(cp as _) } as usize;
+                let n_out = unsafe { c::cmsPipelineOutputChannels(cp as _) } as usize;
+                assert_eq!(n_in, pipe.input_channels() as usize, "{name} in ch");
+                assert_eq!(n_out, pipe.output_channels() as usize, "{name} out ch");
+                let mut seed = 0x1234u64;
+                for _ in 0..8 {
+                    let inp: Vec<u16> = (0..n_in).map(|_| {
+                        seed = seed.wrapping_mul(0x9e3779b97f4a7c15) ^ (seed >> 33);
+                        (seed >> 48) as u16
+                    }).collect();
+                    let mut co = vec![0u16; n_out];
+                    let mut ro = vec![0u16; n_out];
+                    unsafe { c::cmsPipelineEval16(inp.as_ptr(), co.as_mut_ptr(), cp as _) };
+                    pipe.eval16(&inp, &mut ro);
+                    assert_eq!(co, ro, "{name} intent {intent} lut {which} eval16");
+                }
+                unsafe { c::cmsPipelineFree(cp as _) };
+            }
+        }
+        unsafe { c::cmsCloseProfile(ch) };
+    }
+}

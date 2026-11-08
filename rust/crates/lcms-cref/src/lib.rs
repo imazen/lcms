@@ -646,6 +646,9 @@ unsafe extern "C" {
     // --- profile info (cmsio1) ---
     pub fn cmsIsIntentSupported(prof: *mut c_void, intent: u32, direction: u32) -> i32;
     pub fn cmsGetSupportedIntents(n_max: u32, codes: *mut u32, descriptions: *mut *mut u8) -> u32;
+    pub fn _cmsReadInputLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
+    pub fn _cmsReadOutputLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
+    pub fn _cmsReadDevicelinkLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     // --- virtual profile builders (cmsvirt) ---
     pub fn cmsCreateGrayProfile(white_point: *const c_void, transfer: *mut ToneCurve) -> *mut c_void;
     pub fn cmsCreateBCHSWabstractProfile(n_lut_points: u32, bright: f64, contrast: f64, hue: f64, saturation: f64, temp_src: u32, temp_dest: u32) -> *mut c_void;
