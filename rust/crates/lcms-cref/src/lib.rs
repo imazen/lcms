@@ -506,6 +506,13 @@ unsafe extern "C" {
     pub fn cmsPipelineDup(lut: Handle) -> Handle;
     pub fn cmsPipelineEval16(in_: *const U16, out: *mut U16, lut: Handle);
     pub fn cmsPipelineEvalFloat(in_: *const F32, out: *mut F32, lut: Handle);
+    pub fn cmsStageData(mpe: Handle) -> *mut c_void;
+    pub fn cmsStageSampleCLutFloat(
+        mpe: Handle,
+        sampler: unsafe extern "C" fn(*const F32, *mut F32, *mut c_void) -> i32,
+        cargo: *mut c_void,
+        dw_flags: U32,
+    ) -> i32;
     pub fn cmsPipelineEvalReverseFloat(
         target: *mut F32,
         result: *mut F32,
