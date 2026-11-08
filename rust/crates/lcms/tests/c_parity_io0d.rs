@@ -404,3 +404,37 @@ fn save_variants() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Device-class/colorspace/PCS header validation — unusual
+/// values through the open machinery.
+#[test]
+fn cs_pcs_validation() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate colorspace @16 + PCS @20 + class @12
+        for (name, off, val) in [
+            ("cs-xyz", 16usize, 0x58595A20u32),
+            ("cs-lab", 16, 0x4C616220),
+            ("cs-bad", 16, 0xFFFFFFFF),
+            ("pcs-xyz", 20, 0x58595A20),
+            ("pcs-bad", 20, 0xFFFFFFFF),
+            ("class-abs", 12, 0x61627374), // 'abst'
+            ("class-nm", 12, 0x6E6D636C),  // 'nmcl'
+            ("class-spac", 12, 0x73706163), // 'spac'
+            ("class-link", 12, 0x6C696E6B), // 'link'
+        ] {
+            let mut dd = d.clone();
+            dd[off..off + 4].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
