@@ -4988,3 +4988,56 @@ fn all_text_sigs() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Multi-entry payload variants — dict + named-color + mpet on
+/// different sigs.
+#[test]
+fn multi_entry_sig_dispatch() {
+    unsafe {
+        let w = |s: &str| s.chars().map(|c| c as i32)
+            .chain([0]).collect::<Vec<i32>>();
+        let d = c::cmsDictAlloc(std::ptr::null_mut());
+        for i in 0..4 {
+            let k = format!("k{i}");
+            c::cmsDictAddEntry(d, w(&k).as_ptr(), w("v").as_ptr(),
+                std::ptr::null_mut(), std::ptr::null_mut());
+        }
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2,
+            3, b"p\0".as_ptr(), b"s\0".as_ptr());
+        let lab16 = [0xF000u16; 3];
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
+            lab16.as_ptr(), lab16.as_ptr());
+        let ftab: Vec<f32> = (0..8*3).map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        for (sig, payload, name) in [
+            (0x6d657461u32, d as *const _, "dict"),
+            (0x6e636c32, ncl as *const _, "ncl2"),
+            (0x44324230, p as *const _, "mpet"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let wt = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if wt != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={wt} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsDictFree(d);
+        c::cmsFreeNamedColorList(ncl);
+        c::cmsPipelineFree(p);
+    }
+}
