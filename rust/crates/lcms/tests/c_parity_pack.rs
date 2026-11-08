@@ -1531,3 +1531,36 @@ fn byte_order_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Float byte-order formats on the devicelinks — the float
+/// byte-order machinery on more channel counts.
+#[test]
+fn float_byte_order_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("4f-bgr", (1 << 22) | (0 << 16) | (1 << 10)
+             | (4 << 3) | 4u32),
+            ("4f-abgr", (1 << 22) | (0 << 16) | (1 << 14)
+             | (1 << 10) | (4 << 3) | 4),
+            ("4f-argb", (1 << 22) | (0 << 16) | (1 << 14)
+             | (4 << 3) | 4),
+            ("4f-bgra", (1 << 22) | (0 << 16) | (1 << 10)
+             | (1 << 7) | (4 << 3) | 4),
+            ("4f-rgba", (1 << 22) | (0 << 16) | (1 << 7)
+             | (4 << 3) | 4),
+            ("4f-planar", (1 << 22) | (0 << 16) | (1 << 12)
+             | (4 << 3) | 4),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
