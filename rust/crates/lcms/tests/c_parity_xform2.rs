@@ -2625,3 +2625,67 @@ fn opt_join_curves() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// OptimizeMatrixShaper deep arms — RGB->RGB between profiles
+/// with different primaries/gammas (each produces a distinct
+/// pipeline shape the optimizer must classify).
+#[test]
+fn opt_matshaper_arms() {
+    unsafe {
+        let wp = [0.3127f64, 0.3290, 1.0];
+        let g1 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 2.6);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let argb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            wp.as_ptr() as *const _,
+            [0.64f64, 0.33, 0.21, 0.30, 0.60, 0.10,
+             0.15, 0.06, 0.79].as_ptr() as *const _,
+            [g1, g1, g1].as_ptr() as *mut _);
+        let p2020 = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            wp.as_ptr() as *const _,
+            [0.708f64, 0.292, 0.170, 0.797, 0.131, 0.046,
+             0.161, 0.023].as_ptr() as *const _,
+            [g2, g2, g2].as_ptr() as *mut _);
+        let p709 = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            wp.as_ptr() as *const _,
+            [0.64f64, 0.33, 0.30, 0.60, 0.15, 0.06].as_ptr()
+                as *const _,
+            [g3, g3, g3].as_ptr() as *mut _);
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        for (inp, outp, if_, of_, intent, name) in [
+            (srgb, argb, r16, r16, 0, "srgb->argb"),
+            (argb, srgb, r16, r16, 0, "argb->srgb"),
+            (srgb, p2020, r16, r16, 0, "srgb->p2020"),
+            (p2020, srgb, r16, r16, 0, "p2020->srgb"),
+            (argb, p2020, r16, r16, 0, "argb->p2020"),
+            (p709, argb, r16, r16, 0, "p709->argb"),
+            (srgb, argb, r8, r8, 0, "srgb8->argb"),
+            (srgb, argb, r16, r16, 1, "srgb->argb rel"),
+            (srgb, argb, r16, r16, 2, "srgb->argb sat"),
+            (srgb, argb, r16, r16, 3, "srgb->argb abs"),
+            (argb, srgb, r16, r16, 3, "argb->srgb abs"),
+            (srgb, srgb, r16, r16, 0, "srgb->srgb"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 12];
+                let mut ob = [0x80u8; 12];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        for p in [argb, p2020, p709] {
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        c::cmsFreeToneCurve(g1);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
