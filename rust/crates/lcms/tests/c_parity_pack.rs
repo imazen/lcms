@@ -6461,3 +6461,76 @@ fn rgb_shaper_arms() {
             c::cmsCloseProfile(srgb); }
     }
 }
+
+/// cmsio1 residual — BuildGrayInputMatrixPipeline /
+///   BuildGrayOutputPipeline arms: missing kTRC,
+///   non-reversible TRC, Lab-vs-XYZ PCS matrix picks.
+#[test]
+fn gray_pipeline_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let srgb = {
+            let p = format!("{}/../../sRGBlcms2.icc",
+                env!("CARGO_MANIFEST_DIR"));
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let g = c::cmsBuildGamma(ctx, 2.2);
+        let wt = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let vals = [0xFFFFu16, 0x4000, 0x0000];
+        let dg = c::cmsBuildTabulatedToneCurve16(
+            ctx, 3, vals.as_ptr());
+        let try_gray = |pcs: u32, trc: *const c_void,
+                        nm: &str| {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x47524159);
+            c::cmsSetPCS(p, pcs);
+            c::cmsSetProfileVersion(p, 4.4);
+            if !trc.is_null() {
+                // kTRC = 'kTRC' 0x6B545243
+                c::cmsWriteTag(p, 0x6B545243,
+                    trc as *const _); }
+            c::cmsWriteTag(p, 0x77747074,
+                &wt as *const _ as *const _);
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                sb.as_mut_ptr() as *mut _, &mut sn);
+            let p2 = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn)
+            } else { p };
+            let ii = c::cmsIsIntentSupported(p2, 0, 0);
+            let io = c::cmsIsIntentSupported(p2, 0, 1);
+            // in: gray->srgb, out: srgb->gray
+            let ti = c::cmsCreateTransform(p2,
+                f16(3, 1), srgb, f16(4, 3), 0, 0);
+            let to = c::cmsCreateTransform(srgb,
+                f16(4, 3), p2, f16(3, 1), 0, 0);
+            eprintln!(
+                "{nm} sv={sv} int={ii}/{io} in={} out={}",
+                !ti.is_null(), !to.is_null());
+            if !ti.is_null() {
+                c::cmsDeleteTransform(ti); }
+            if !to.is_null() {
+                c::cmsDeleteTransform(to); }
+            c::cmsCloseProfile(p2);
+            c::cmsCloseProfile(p); };
+        // valid XYZ PCS
+        try_gray(0x58595A20, g as *const _, "xyz");
+        // Lab PCS -> PickLstar/LabCurves arms
+        try_gray(0x4C616220, g as *const _, "lab");
+        // missing kTRC -> NULL
+        try_gray(0x58595A20, std::ptr::null(), "no-trc");
+        // descending TRC
+        try_gray(0x58595A20, dg as *const _, "desc");
+        if !g.is_null() { c::cmsFreeToneCurve(g); }
+        if !dg.is_null() { c::cmsFreeToneCurve(dg); }
+        if !srgb.is_null() {
+            c::cmsCloseProfile(srgb); }
+    }
+}
