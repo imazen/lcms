@@ -1940,3 +1940,32 @@ fn tag_count_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Version-field bounds — mutate the profile version
+/// field then open (the version validation machinery).
+#[test]
+fn version_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // version is a u32be at offset 8
+        for (name, val) in [
+            ("v20", 0x02100000u32), ("v21", 0x02100001),
+            ("v40", 0x04000000), ("v43", 0x04300000),
+            ("v00", 0), ("v99", 0x09900000),
+            ("odd", 0x12345678), ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[8..12].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} v={val:#x} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
