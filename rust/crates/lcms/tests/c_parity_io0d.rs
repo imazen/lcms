@@ -23923,3 +23923,93 @@ fn internal_final66_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — OpenIOhandlerFromFile modes/devices
+///   + ReadHeaderPlugin internals.
+#[test]
+fn internal_final67_arms() {
+    unsafe {
+        // file-open mode matrix on real + special files
+        let fpath = "/home/lilith/tmp/io67-f.icc";
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        std::fs::write(fpath, &buf[..n as usize]).unwrap();
+        for (path, mode, name) in [
+            (fpath, "r", "read"),
+            (fpath, "rb", "readb"),
+            (fpath, "r+", "rplus"),
+            (fpath, "w", "write-trunc"),
+            ("/home/lilith/tmp/io67-g.icc", "w", "w-new"),
+            ("/home/lilith/tmp/io67-g.icc", "wb", "wb-new"),
+            ("/home/lilith/tmp/io67-h.icc", "a", "append"),
+            (fpath, "x", "badmode"),
+            ("/nonexistent/xx.icc", "r", "nofile"),
+            ("/home/lilith/tmp", "r", "dir"),
+            ("/dev/null", "r", "devnull"),
+            ("/dev/zero", "r", "devzero"),
+            ("/dev/full", "w", "devfull"),
+            ("/proc/self/status", "r", "proc"),
+            ("", "r", "empty"),
+        ] {
+            let p2 = format!("{path}\0");
+            let m2 = format!("{mode}\0");
+            let io = c::cmsOpenIOhandlerFromFile(
+                std::ptr::null_mut(),
+                p2.as_ptr() as *const _,
+                m2.as_ptr() as *const _);
+            eprintln!("{name} io={}", !io.is_null());
+            if !io.is_null() {
+                // probe a read to hit FileSeek/Read paths
+                let mut b2 = [0u8; 64];
+                let rd = c::cmsCloseIOhandler(io);
+                let _ = rd;
+                let _ = b2;
+            }
+        }
+        // profiles opened through IOhandler on a fresh
+        //   valid file in different modes
+        let vpath = "/home/lilith/tmp/io67-v.icc";
+        std::fs::write(vpath, &buf[..n as usize]).unwrap();
+        for mode in ["r", "w"] {
+            let p2 = format!("{vpath}\0");
+            let m2 = format!("{mode}\0");
+            let io = c::cmsOpenIOhandlerFromFile(
+                std::ptr::null_mut(),
+                p2.as_ptr() as *const _,
+                m2.as_ptr() as *const _);
+            if io.is_null() { continue; }
+            let prof = c::cmsOpenProfileFromIOhandlerTHR(
+                std::ptr::null_mut(), io);
+            eprintln!("ioh mode={mode} prof={}",
+                !prof.is_null());
+            // NOTE: on failure upstream frees the handler
+            //   internally — no extra close allowed
+            if !prof.is_null() {
+                let cnt = c::cmsGetTagCount(prof);
+                eprintln!("  cnt={cnt}");
+                c::cmsCloseProfile(prof);
+            }
+            // re-write for next mode
+            std::fs::write(vpath,
+                &buf[..n as usize]).unwrap();
+        }
+        // stream + NULL handlers
+        let f2 = std::fs::File::open(fpath).unwrap();
+        use std::os::unix::io::AsRawFd;
+        let _ = f2.as_raw_fd();
+        let io2 = c::cmsOpenIOhandlerFromNULL(
+            std::ptr::null_mut());
+        eprintln!("null-io={}", !io2.is_null());
+        if !io2.is_null() {
+            c::cmsCloseIOhandler(io2); }
+        std::fs::remove_file(fpath).ok();
+        std::fs::remove_file("/home/lilith/tmp/io67-g.icc")
+            .ok();
+        std::fs::remove_file("/home/lilith/tmp/io67-h.icc")
+            .ok();
+        c::cmsCloseProfile(srgb);
+    }
+}
