@@ -18035,3 +18035,76 @@ fn tagtable_arms() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// cmsio0 residual — file-IO error branches (directory,
+///   nonexistent, empty, permission) + raw-tag edge arms.
+#[test]
+fn fileio_err_arms() {
+    unsafe {
+        let tmp = std::env::temp_dir();
+        // file-open error paths
+        for (path, mode, name) in [
+            (tmp.join("nonexistent_lcms_foobar.icc"), "r",
+                "nonexistent"),
+            (tmp.clone(), "r", "directory"),
+            (tmp.join("empty_lcms_test.icc"), "r", "empty"),
+            (std::path::PathBuf::from("/proc/1/mem"), "r",
+                "proc-mem"),
+            (std::path::PathBuf::from("/dev/null"), "r",
+                "devnull"),
+            (std::path::PathBuf::from("/dev/zero"), "r",
+                "devzero"),
+            (std::path::PathBuf::from("/root/x.icc"), "r",
+                "noperm"),
+            (tmp.join("dir_lc/\0bad").join("x"), "r",
+                "badpath"),
+        ] {
+            // create the empty file
+            if name == "empty" {
+                std::fs::write(&path, b"").ok();
+            }
+            let cs = std::ffi::CString::new(
+                path.to_str().unwrap_or("/dev/null"))
+                .unwrap_or_else(|_| std::ffi::CString::new(
+                    "/dev/null").unwrap());
+            let p = c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                mode.as_ptr() as *const u8);
+            eprintln!("{name}={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        // raw-tag edge cases — size, offsets, truncated
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        if !rp.is_null() {
+            let sigs = [0x41324230u32, 0x42324130, 0x64657363,
+                0x77747074, 0x72545243, 0x6B545243,
+                0x63686164, 0x63707274, 0x00000000,
+                0xFFFFFFFF, 0x6E636C32, 0x76636774];
+            for sig in sigs {
+                let mut raw = [0u8; 1 << 16];
+                let r = c::cmsReadRawTag(rp, sig,
+                    raw.as_mut_ptr() as *mut _,
+                    raw.len() as u32);
+                let r2 = c::cmsReadRawTag(rp, sig,
+                    raw.as_mut_ptr() as *mut _, 4);
+                let r3 = c::cmsReadRawTag(rp, sig,
+                    std::ptr::null_mut(), 0);
+                eprintln!("raw {sig:#x}={r}/{r2}/{r3}");
+                // write it back
+                if r != 0 {
+                    let w = c::cmsWriteRawTag(rp, sig,
+                        raw.as_ptr() as *const _, r);
+                    eprintln!("  writeback={w}");
+                }
+            }
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
