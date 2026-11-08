@@ -2374,3 +2374,26 @@ fn lut_sig_resave2() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'view'/'scrn' — the remaining struct-sig writes.
+#[test]
+fn view_scrn_writes() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // 'view' — a viewing-conditions payload (local struct)
+        #[repr(C)]
+        struct View {
+            illuminant: c::CieXyz, surround: c::CieXyz,
+            illuminant_type: u32,
+        }
+        let view = View {
+            illuminant: c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 },
+            surround: c::CieXyz { X: 0.2, Y: 0.1, Z: 0.0 },
+            illuminant_type: 1,
+        };
+        let ok = c::cmsWriteTag(h, 0x76696577,
+            &view as *const _ as *mut std::ffi::c_void);
+        eprintln!("view write={ok}");
+        c::cmsCloseProfile(h);
+    }
+}
