@@ -2109,5 +2109,22 @@ fn float_lut_reads() {
         c::cmsCloseProfile(outp);
         c::cmsCloseProfile(inp);
         c::cmsCloseProfile(dlk);
+        // Lab-PCS mpet -> _cmsStageNormalizeToLabFloat on read
+        let labp = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        c::cmsWriteTag(labp, 0x44324230, mk_pipe(&[cseg]) as *const _);
+        let lab8: u32 = (10 << 16) | (3 << 3) | 1;
+        let s2 = c::cmsCreate_sRGBProfile();
+        let t = c::cmsCreateTransform(labp, lab8, s2, rgb8, 0, 0);
+        eprintln!("lab-D2B0 xform={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        // and the reverse direction through the same profile's B2D0
+        let labp2 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        c::cmsWriteTag(labp2, 0x42324430, mk_pipe(&[cseg]) as *const _);
+        let t2 = c::cmsCreateTransform(s2, rgb8, labp2, lab8, 0, 0);
+        eprintln!("lab-B2D0 xform={}", !t2.is_null());
+        if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        c::cmsCloseProfile(labp);
+        c::cmsCloseProfile(labp2);
+        c::cmsCloseProfile(s2);
     }
 }
