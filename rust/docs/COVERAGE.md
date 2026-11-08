@@ -506,3 +506,40 @@ eval assertion).
 | cmsmd5.c | 88.11% | 80.00% |
 | cmshalf.c | 100% | 100% |
 | cmsmtrx.c | 100% | 100% |
+
+## Round 11 — AFTER the corpus/ps2/io1e sweep (through d2868f26)
+
+C oracle re-measured after ~17 more gates: **69.08% lines /
+86.85% functions**. cmslut 69.64→80.83%, cmsopt 77.46→79.51%,
+cmspcs 76.09→79.69%, cmscgats 71.67→72.58%, cmscnvrt
+67.08→67.78%, cmsio0 78.07→78.38%. Also fixed a test-race:
+new ps2 gates were missing PS_LOCK (shared C-oracle state).
+
+| file | lines | functions |
+|---|---|---|
+| cmspack.c | 53.42% | 68.84% |
+| cmstypes.c | 55.76% | 86.45% |
+| cmsio1.c | 62.80% | 80.00% |
+| cmscnvrt.c | 67.78% | 86.96% |
+| cmscgats.c | 72.58% | 95.96% |
+| cmsvirt.c | 66.83% | 96.88% |
+| cmsio0.c | 78.38% | 95.65% |
+| cmsnamed.c | 76.21% | 100% |
+| cmsopt.c | 79.51% | 88.64% |
+| cmsps2.c | 65.27% | 84.38% |
+| cmsgamma.c | 71.10% | 89.47% |
+| cmsxform.c | 71.61% | 75.00% |
+| cmslut.c | 80.83% | 98.68% |
+| cmsalpha.c | 86.61% | 85.37% |
+| cmscam02.c | 91.26% | 100% |
+| cmsgmt.c | 80.07% | 100% |
+| cmssamp.c | 68.22% | 85.71% |
+| cmsplugin.c | 73.61% | 100% |
+| cmserr.c | 79.69% | 100% |
+| cmssm.c | 90.70% | 100% |
+| cmspcs.c | 79.69% | 100% |
+| cmswtpnt.c | 87.10% | 100% |
+| cmsintrp.c | 98.50% | 100% |
+| cmsmd5.c | 88.11% | 80.00% |
+| cmshalf.c | 100% | 100% |
+| cmsmtrx.c | 100% | 100% |

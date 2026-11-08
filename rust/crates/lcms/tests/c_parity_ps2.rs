@@ -271,6 +271,7 @@ fn ps2_all_intents() {
 /// shapes.
 #[test]
 fn postscript_shapes() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
@@ -304,6 +305,7 @@ fn postscript_shapes() {
 /// intents.
 #[test]
 fn postscript_cr() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
@@ -333,6 +335,7 @@ fn postscript_cr() {
 /// 0-3 + flags.
 #[test]
 fn postscript_intents() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -358,6 +361,7 @@ fn postscript_intents() {
 /// 0-3 + flags.
 #[test]
 fn postscript_crd_intents() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -383,6 +387,7 @@ fn postscript_crd_intents() {
 /// devicelink-4ch.
 #[test]
 fn postscript_shapes2() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let xyz = c::cmsCreateXYZProfile();
