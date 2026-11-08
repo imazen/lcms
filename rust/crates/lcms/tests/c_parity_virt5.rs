@@ -108,3 +108,30 @@ fn remaining_builders() {
         }
     }
 }
+
+/// Profile-sequence machinery — pseq/psid tag read/write +
+/// the SEQ internals.
+#[test]
+fn profile_sequence() {
+    unsafe {
+        // build a devicelink — it gets a pseq tag
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        c::cmsDeleteTransform(ct);
+        if !dl.is_null() {
+            // read the pseq/psid tags — the SEQ machinery
+            let ps = c::cmsReadTag(dl, 0x70736571); // 'pseq'
+            let pid = c::cmsReadTag(dl, 0x70736964); // 'psid'
+            eprintln!("pseq={} psid={}", ps.is_null(),
+                pid.is_null());
+            c::cmsCloseProfile(dl);
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
