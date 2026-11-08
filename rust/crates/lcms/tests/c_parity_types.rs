@@ -163,3 +163,64 @@ fn parsed_tag_resave() {
         assert_eq!(c_out.len(), r_out.len(), "{name}: resave length");
     }
 }
+
+/// MPE/exotic-tag coverage: built profiles carry mAB/mBA/clut16/curv
+/// payloads — raw-read every tag + parse+resave on both sides.
+#[test]
+fn built_profile_mpe_tags() {
+    use lcms::virt;
+    // builders that produce LUT/MPE-bearing profiles
+    let (ch_list, rp_list): (Vec<*mut c_void>, Vec<profile::IccProfile>) = {
+        let mut cs = Vec::new();
+        let mut rs = Vec::new();
+        unsafe {
+            cs.push(c::cmsCreateBCHSWabstractProfile(24, 1.1, 1.2, 10.0, 0.8, 6500, 5000));
+        }
+        // linearization devicelink (CLUT16/mft2) via same gamma on both
+        let c_g = unsafe { c::cmsBuildGamma(std::ptr::null_mut(), 1.8) };
+        let r_g = lcms::gamma::build_gamma(None, 1.8).unwrap();
+        unsafe {
+            let curves = [c_g];
+            cs.push(c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(),
+                0x47524159, // cmsSigGrayData
+                curves.as_ptr(),
+            ));
+            cs.push(c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(),
+                0x434D594B, // cmsSigCmykData
+                350.0,
+            ));
+        }
+        rs.push(*virt::create_bchsw_abstract_profile(None, 24, 1.1, 1.2, 10.0, 0.8, 6500, 5000).unwrap());
+        rs.push(*virt::create_linearization_device_link(None, 0x47524159, &[&r_g]).unwrap());
+        rs.push(*virt::create_ink_limiting_device_link(None, 0x434D594B, 350.0).unwrap());
+        (cs, rs)
+    };
+    for (idx, (&ch, rp)) in ch_list.iter().zip(rp_list.iter()).enumerate() {
+        assert!(!ch.is_null(), "C builder {idx}");
+        let n = unsafe { c::cmsGetTagCount(ch) };
+        let mut rp = rp.clone();
+        for i in 0..n {
+            let sig = unsafe { c::cmsGetTagSignature(ch, i as u32) };
+            let cb = c_read_raw(ch, sig);
+            let rb = r_read_raw(&mut rp, sig);
+            assert_eq!(cb, rb, "built {idx} raw tag {sig:#010x}");
+        }
+        // parse + resave byte-compare
+        let mut cn = 0u32;
+        let c_out = unsafe {
+            assert!(c::cmsSaveProfileToMem(ch, std::ptr::null_mut(), &mut cn) != 0);
+            let mut b = vec![0u8; cn as usize];
+            assert!(c::cmsSaveProfileToMem(ch, b.as_mut_ptr() as *mut _, &mut cn) != 0);
+            c::cmsCloseProfile(ch);
+            b
+        };
+        let r_out = profile::save_profile_to_mem(&mut rp).unwrap();
+        assert_eq!(c_out.len(), r_out.len(), "built {idx} resave length");
+        for (i, (a, b)) in c_out.iter().zip(r_out.iter()).enumerate() {
+            if (24..36).contains(&i) { continue; }
+            assert_eq!(a, b, "built {idx} resave @{i:#x}");
+        }
+    }
+}

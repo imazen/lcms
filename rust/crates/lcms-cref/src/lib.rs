@@ -651,7 +651,6 @@ unsafe extern "C" {
     pub fn cmsCreateBCHSWabstractProfile(n_lut_points: u32, bright: f64, contrast: f64, hue: f64, saturation: f64, temp_src: u32, temp_dest: u32) -> *mut c_void;
     pub fn cmsCreateLinearizationDeviceLinkTHR(ctx: *mut c_void, color_space: u32, transfer: *const *mut ToneCurve) -> *mut c_void;
     pub fn cmsCreateInkLimitingDeviceLinkTHR(ctx: *mut c_void, color_space: u32, limit: f64) -> *mut c_void;
-    pub fn cmsCreateAbstractProfile(n_lut_points: u32, bright: f64, contrast: f64, hue: f64, saturation: f64, intent: u32) -> *mut c_void;
     pub fn cmsTransform2DeviceLink(t: *mut c_void, version: f64, flags: u32) -> *mut c_void;
     // --- transforms, extended surface ---
     pub fn cmsCreateMultiprofileTransform(profs: *mut *mut c_void, n_profiles: i32, in_fmt: u32, out_fmt: u32, intent: u32, flags: u32) -> *mut c_void;
