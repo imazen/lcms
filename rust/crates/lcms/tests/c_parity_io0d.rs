@@ -15364,3 +15364,56 @@ fn ps_res_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// wtpnt internals — XYZ<->xyY + AdaptToIlluminant +
+/// _cmsEndPointsBySpace sweeps.
+#[test]
+fn wtpnt_arms() {
+    unsafe {
+        // XYZ -> xyY -> XYZ round-trips on varied points
+        for xyz in [
+            [0.0f64, 0.0, 0.0], [0.5, 0.5, 0.5],
+            [0.9642, 1.0, 0.8249], [0.9642, 1.0, 0.8249],
+            [1e-6, 0.0, 1e-6], [255.0, 255.0, 255.0],
+            [0.25, 1.0, 4.0],
+        ] {
+            let src = c::CieXyz { X: xyz[0], Y: xyz[1],
+                Z: xyz[2] };
+            let mut xyy = c::CiexyY {
+                x: 0.0, y: 0.0, Y: 0.0 };
+            c::cmsXYZ2xyY(&mut xyy, &src as *const _);
+            let mut back = c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 };
+            c::cmsxyY2XYZ(&mut back, &xyy as *const _);
+            eprintln!("xyY {:?}->{:?}->{:?}", src, xyy, back);
+        }
+        // AdaptToIlluminant — white-point adaptation
+        for (swp, dwp) in [
+            ([0.3457f64, 0.3585, 1.0], [0.3127, 0.3290, 1.0]),
+            ([0.3127, 0.3290, 1.0], [0.3457, 0.3585, 1.0]),
+            ([0.4476, 0.4075, 1.0], [0.3457, 0.3585, 1.0]),
+            ([0.3457, 0.3585, 1.0], [0.3457, 0.3585, 1.0]),
+            ([0.0, 0.0, 0.0], [0.3457, 0.3585, 1.0]),
+        ] {
+            let s_ = c::CieXyz { X: swp[0], Y: swp[1], Z: swp[2] };
+            let d_ = c::CieXyz { X: dwp[0], Y: dwp[1], Z: dwp[2] };
+            let mut out = c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 };
+            let r = c::cmsAdaptToIlluminant(&mut out,
+                &s_ as *const _, &d_ as *const _, &s_ as *const _);
+            eprintln!("adapt {swp:?}->{dwp:?} r={r} out={out:?}");
+        }
+        // _cmsEndPointsBySpace — color-space endpoint queries
+        for cs in [
+            0x52474220u32, 0x4C616220, 0x58595A20,
+            0x434D594B, 0x47524159, 0x484C5320,
+            0x48535620, 0x59436272, 0x4C757620,
+            0x3232434D, 0x42434b41, 0x62616420,
+        ] {
+            let mut white: *const u16 = std::ptr::null();
+            let mut black: *const u16 = std::ptr::null();
+            let mut n_out = 0u32;
+            let r = c::_cmsEndPointsBySpace(cs,
+                &mut white, &mut black, &mut n_out);
+            eprintln!("cs={cs:#x} r={r} n={n_out}");
+        }
+    }
+}
