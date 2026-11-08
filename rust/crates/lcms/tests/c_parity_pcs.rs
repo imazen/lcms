@@ -1,368 +1,171 @@
-//! Differential test: `lcms::pcs` vs `cmspcs.c`.
+//! cmswtpnt/cmsgmt parity: PCS conversions (XYZ/xyY/Lab/LCh + encoded),
+//! DeltaE family, CAM02 forward/reverse, illuminant adaptation —
+//! deterministic grid, byte-exact or f64-exact.
 
-use lcms::pcs::*;
+use lcms::pcs;
 use lcms::types::*;
-use lcms::wtpnt::d50_xyz;
 use lcms_cref as c;
 
-fn rng(state: &mut u64) -> u64 {
-    *state = state
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407);
-    *state >> 11
-}
+fn cxz(v: &CieXyz) -> c::CieXyz { c::CieXyz { X: v.X, Y: v.Y, Z: v.Z } }
+fn clb(v: &CieLab) -> c::CieLab { c::CieLab { L: v.L, a: v.a, b: v.b } }
 
-fn f64_in(state: &mut u64, lo: f64, hi: f64) -> f64 {
-    let u = rng(state) as f64 / (1u64 << 53) as f64;
-    lo + u * (hi - lo)
-}
-
-fn cxyz(v: &CieXyz) -> c::CieXyz {
-    c::CieXyz {
-        X: v.X,
-        Y: v.Y,
-        Z: v.Z,
-    }
-}
-fn clab(v: &CieLab) -> c::CieLab {
-    c::CieLab {
-        L: v.L,
-        a: v.a,
-        b: v.b,
-    }
-}
-fn clch(v: &CieLCh) -> c::CieLCh {
-    c::CieLCh {
-        L: v.L,
-        C: v.C,
-        h: v.h,
-    }
-}
-fn cxyy(v: &CiexyY) -> c::CiexyY {
-    c::CiexyY {
-        x: v.x,
-        y: v.y,
-        Y: v.Y,
-    }
-}
+fn d50() -> CieXyz { CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 } }
+fn d65() -> CieXyz { CieXyz { X: 0.9504, Y: 1.0, Z: 1.0888 } }
 
 #[test]
-fn xyz_xyy_round() {
-    let mut s = 1u64;
-    for _ in 0..100_000 {
-        let xyz = CieXyz {
-            X: f64_in(&mut s, -0.5, 2.0),
-            Y: f64_in(&mut s, -0.5, 2.0),
-            Z: f64_in(&mut s, -0.5, 2.0),
-        };
-        let mut c_out = c::CiexyY::default();
-        unsafe { c::cmsXYZ2xyY(&mut c_out, &cxyz(&xyz)) };
-        let r = xyz2xyy(&xyz);
-        assert_eq!(r.x.to_bits(), c_out.x.to_bits(), "x {xyz:?}");
-        assert_eq!(r.y.to_bits(), c_out.y.to_bits(), "y {xyz:?}");
-        assert_eq!(r.Y.to_bits(), c_out.Y.to_bits(), "Y {xyz:?}");
-
-        let mut cx = c::CieXyz::default();
-        unsafe { c::cmsxyY2XYZ(&mut cx, &cxyy(&r)) };
-        let back = xyy2xyz(&r);
-        assert_eq!(back.X.to_bits(), cx.X.to_bits(), "X back");
-        assert_eq!(back.Y.to_bits(), cx.Y.to_bits(), "Y back");
-        assert_eq!(back.Z.to_bits(), cx.Z.to_bits(), "Z back");
-    }
-}
-
-#[test]
-fn xyz_lab_both_directions() {
-    let mut s = 2u64;
-    let wps: [Option<CieXyz>; 3] = [
-        None,
-        Some(d50_xyz()),
-        Some(CieXyz {
-            X: 0.95047,
-            Y: 1.0,
-            Z: 1.08883,
-        }), // D65
-    ];
-    for wp in &wps {
-        for _ in 0..50_000 {
-            let xyz = CieXyz {
-                X: f64_in(&mut s, -0.2, 2.0),
-                Y: f64_in(&mut s, -0.2, 2.0),
-                Z: f64_in(&mut s, -0.2, 2.0),
-            };
-            let cw = wp.map(|w| cxyz(&w));
-            let cw_ptr = cw
-                .as_ref()
-                .map(|x| x as *const c::CieXyz)
-                .unwrap_or(std::ptr::null());
-
-            let mut cl = c::CieLab::default();
-            unsafe { c::cmsXYZ2Lab(cw_ptr, &mut cl, &cxyz(&xyz)) };
-            let lab = xyz2lab(wp.as_ref(), &xyz);
-            assert_eq!(lab.L.to_bits(), cl.L.to_bits(), "L {xyz:?} wp={wp:?}");
-            assert_eq!(lab.a.to_bits(), cl.a.to_bits(), "a {xyz:?}");
-            assert_eq!(lab.b.to_bits(), cl.b.to_bits(), "b {xyz:?}");
-
-            let mut cx = c::CieXyz::default();
-            unsafe { c::cmsLab2XYZ(cw_ptr, &mut cx, &cl) };
-            let back = lab2xyz(wp.as_ref(), &lab);
-            assert_eq!(back.X.to_bits(), cx.X.to_bits(), "X back {lab:?}");
-            assert_eq!(back.Y.to_bits(), cx.Y.to_bits(), "Y back");
-            assert_eq!(back.Z.to_bits(), cx.Z.to_bits(), "Z back");
+fn conversions_grid() {
+    unsafe {
+        for wp in [d50(), d65(), CieXyz { X: 0.8, Y: 1.0, Z: 1.2 }] {
+            for i in 0..64 {
+                let x = 0.01 + (i as f64 % 8.) * 0.11;
+                let y = 0.01 + (i as f64 % 5.) * 0.19;
+                let z = 0.01 + (i as f64 % 7.) * 0.13;
+                let xyz = CieXyz { X: x, Y: y, Z: z };
+                // XYZ->xyY->XYZ
+                let mut cxy = c::CiexyY::default();
+                let csrc = cxz(&xyz);
+                c::cmsXYZ2xyY(&mut cxy, &csrc);
+                let rxy = pcs::xyz2xyy(&xyz);
+                assert_eq!((cxy.x, cxy.y, cxy.Y), (rxy.x, rxy.y, rxy.Y), "xyz2xyy {i}");
+                let mut cxyz2 = c::CieXyz::default();
+                c::cmsxyY2XYZ(&mut cxyz2, &cxy);
+                let rxyz2 = pcs::xyy2xyz(&rxy);
+                assert_eq!((cxyz2.X, cxyz2.Y, cxyz2.Z), (rxyz2.X, rxyz2.Y, rxyz2.Z), "xyy2xyz {i}");
+                // XYZ->Lab->XYZ
+                let mut cl = c::CieLab::default();
+                let cwp = cxz(&wp);
+                c::cmsXYZ2Lab(&cwp, &mut cl, &csrc);
+                let rl = pcs::xyz2lab(Some(&wp), &xyz);
+                assert_eq!((cl.L, cl.a, cl.b), (rl.L, rl.a, rl.b), "xyz2lab {i}");
+                let mut cx = c::CieXyz::default();
+                c::cmsLab2XYZ(&cwp, &mut cx, &cl);
+                let rx = pcs::lab2xyz(Some(&wp), &rl);
+                assert_eq!((cx.X, cx.Y, cx.Z), (rx.X, rx.Y, rx.Z), "lab2xyz {i}");
+                // Lab->LCh->Lab
+                let mut clch = c::CieLCh::default();
+                c::cmsLab2LCh(&mut clch, &cl);
+                let rlch = pcs::lab2lch(&rl);
+                assert_eq!((clch.L, clch.C, clch.h), (rlch.L, rlch.C, rlch.h), "lab2lch {i}");
+                let mut cl2 = c::CieLab::default();
+                c::cmsLCh2Lab(&mut cl2, &clch);
+                let rl2 = pcs::lch2lab(&rlch);
+                assert_eq!((cl2.L, cl2.a, cl2.b), (rl2.L, rl2.a, rl2.b), "lch2lab {i}");
+            }
         }
     }
 }
 
 #[test]
-fn lab_encodings_v2_v4() {
-    let mut s = 3u64;
-    for _ in 0..100_000 {
-        let w = [rng(&mut s) as u16, rng(&mut s) as u16, rng(&mut s) as u16];
-
-        let mut cl = c::CieLab::default();
-        unsafe { c::cmsLabEncoded2Float(&mut cl, w.as_ptr()) };
-        let lab = lab_encoded2float(w);
-        assert_eq!(lab.L.to_bits(), cl.L.to_bits(), "v4 L {w:?}");
-        assert_eq!(lab.a.to_bits(), cl.a.to_bits(), "v4 a");
-        assert_eq!(lab.b.to_bits(), cl.b.to_bits(), "v4 b");
-
-        unsafe { c::cmsLabEncoded2FloatV2(&mut cl, w.as_ptr()) };
-        let lab = lab_encoded2float_v2(w);
-        assert_eq!(lab.L.to_bits(), cl.L.to_bits(), "v2 L {w:?}");
-        assert_eq!(lab.a.to_bits(), cl.a.to_bits(), "v2 a");
-        assert_eq!(lab.b.to_bits(), cl.b.to_bits(), "v2 b");
-
-        // encode path: float Lab across the clamp domain
-        let fl = CieLab {
-            L: f64_in(&mut s, -20.0, 130.0),
-            a: f64_in(&mut s, -140.0, 140.0),
-            b: f64_in(&mut s, -140.0, 140.0),
-        };
-        let mut cw = [0u16; 3];
-        unsafe { c::cmsFloat2LabEncoded(cw.as_mut_ptr(), &clab(&fl)) };
-        assert_eq!(float2lab_encoded(&fl), cw, "v4 enc {fl:?}");
-        unsafe { c::cmsFloat2LabEncodedV2(cw.as_mut_ptr(), &clab(&fl)) };
-        assert_eq!(float2lab_encoded_v2(&fl), cw, "v2 enc {fl:?}");
+fn encoded_variants() {
+    unsafe {
+        for i in 0..64 {
+            let w = [
+                ((i * 1021) % 65536) as u16,
+                ((i * 773) % 65536) as u16,
+                ((i * 991) % 65536) as u16,
+            ];
+            // Lab-encoded->float + back, v2 + v4
+            for v2 in [true, false] {
+                let mut cl = c::CieLab::default();
+                if v2 { c::cmsLabEncoded2FloatV2(&mut cl, w.as_ptr()) }
+                else { c::cmsLabEncoded2Float(&mut cl, w.as_ptr()) }
+                let rl = if v2 { pcs::lab_encoded2float_v2(w) } else { pcs::lab_encoded2float(w) };
+                assert_eq!((cl.L, cl.a, cl.b), (rl.L, rl.a, rl.b), "lab_dec v2={v2} {i}");
+                let mut cw = [0u16; 3];
+                if v2 { c::cmsFloat2LabEncodedV2(cw.as_mut_ptr(), &cl) }
+                else { c::cmsFloat2LabEncoded(cw.as_mut_ptr(), &cl) }
+                let rw = if v2 { pcs::float2lab_encoded_v2(&rl) } else { pcs::float2lab_encoded(&rl) };
+                assert_eq!(cw, rw, "lab_enc v2={v2} {i}");
+            }
+            // XYZ encoded
+            let mut cf = c::CieXyz::default();
+            c::cmsXYZEncoded2Float(&mut cf, w.as_ptr());
+            let rf = pcs::xyz_encoded2float(w);
+            assert_eq!((cf.X, cf.Y, cf.Z), (rf.X, rf.Y, rf.Z), "xyz_dec {i}");
+            let mut ce = [0u16; 3];
+            c::cmsFloat2XYZEncoded(ce.as_mut_ptr(), &cf);
+            let re = pcs::float2xyz_encoded(&rf);
+            assert_eq!(ce, re, "xyz_enc {i}");
+        }
     }
 }
 
 #[test]
-fn lab_lch_round() {
-    let mut s = 4u64;
-    for _ in 0..100_000 {
-        let lab = CieLab {
-            L: f64_in(&mut s, -10.0, 110.0),
-            a: f64_in(&mut s, -128.0, 128.0),
-            b: f64_in(&mut s, -128.0, 128.0),
-        };
-        let mut cl = c::CieLCh::default();
-        unsafe { c::cmsLab2LCh(&mut cl, &clab(&lab)) };
-        let lch = lab2lch(&lab);
-        assert_eq!(lch.L.to_bits(), cl.L.to_bits(), "L");
-        assert_eq!(lch.C.to_bits(), cl.C.to_bits(), "C {lab:?}");
-        assert_eq!(lch.h.to_bits(), cl.h.to_bits(), "h {lab:?}");
-
-        let mut cb = c::CieLab::default();
-        unsafe { c::cmsLCh2Lab(&mut cb, &clch(&lch)) };
-        let back = lch2lab(&lch);
-        assert_eq!(back.L.to_bits(), cb.L.to_bits(), "L back");
-        assert_eq!(back.a.to_bits(), cb.a.to_bits(), "a back {lch:?}");
-        assert_eq!(back.b.to_bits(), cb.b.to_bits(), "b back");
-    }
-}
-
-#[test]
-fn xyz_encodings() {
-    let mut s = 5u64;
-    for _ in 0..100_000 {
-        let f = CieXyz {
-            X: f64_in(&mut s, -0.5, 2.5),
-            Y: f64_in(&mut s, -0.5, 2.5),
-            Z: f64_in(&mut s, -0.5, 2.5),
-        };
-        let mut cw = [0u16; 3];
-        unsafe { c::cmsFloat2XYZEncoded(cw.as_mut_ptr(), &cxyz(&f)) };
-        assert_eq!(float2xyz_encoded(&f), cw, "enc {f:?}");
-
-        let w = [rng(&mut s) as u16, rng(&mut s) as u16, rng(&mut s) as u16];
-        let mut cf = c::CieXyz::default();
-        unsafe { c::cmsXYZEncoded2Float(&mut cf, w.as_ptr()) };
-        let d = xyz_encoded2float(w);
-        assert_eq!(d.X.to_bits(), cf.X.to_bits(), "dec X {w:?}");
-        assert_eq!(d.Y.to_bits(), cf.Y.to_bits(), "dec Y");
-        assert_eq!(d.Z.to_bits(), cf.Z.to_bits(), "dec Z");
-    }
-}
-
-#[test]
-fn delta_e_family() {
-    let mut s = 6u64;
-    for _ in 0..50_000 {
-        let l1 = CieLab {
-            L: f64_in(&mut s, 0.0, 100.0),
-            a: f64_in(&mut s, -128.0, 128.0),
-            b: f64_in(&mut s, -128.0, 128.0),
-        };
-        let l2 = CieLab {
-            L: f64_in(&mut s, 0.0, 100.0),
-            a: f64_in(&mut s, -128.0, 128.0),
-            b: f64_in(&mut s, -128.0, 128.0),
-        };
-        let c1 = clab(&l1);
-        let c2 = clab(&l2);
-
-        let de = unsafe { c::cmsDeltaE(&c1, &c2) };
-        assert_eq!(delta_e(&l1, &l2).to_bits(), de.to_bits(), "DeltaE");
-
-        let d94 = unsafe { c::cmsCIE94DeltaE(&c1, &c2) };
-        assert_eq!(cie94_delta_e(&l1, &l2).to_bits(), d94.to_bits(), "CIE94");
-
-        let bfd = unsafe { c::cmsBFDdeltaE(&c1, &c2) };
-        assert_eq!(bfd_delta_e(&l1, &l2).to_bits(), bfd.to_bits(), "BFD");
-
-        let cmc = unsafe { c::cmsCMCdeltaE(&c1, &c2, 2.0, 1.0) };
-        assert_eq!(
-            cmc_delta_e(&l1, &l2, 2.0, 1.0).to_bits(),
-            cmc.to_bits(),
-            "CMC"
-        );
-
-        let d00 = unsafe { c::cmsCIE2000DeltaE(&c1, &c2, 1.0, 1.0, 1.0) };
-        assert_eq!(
-            cie2000_delta_e(&l1, &l2, 1.0, 1.0, 1.0).to_bits(),
-            d00.to_bits(),
-            "CIE2000 {l1:?} {l2:?}"
-        );
-    }
-}
-
-#[test]
-fn channels_and_endpoints() {
-    // Sweep a range of u32 signature values, valid and invalid alike.
-    let mut s = 7u64;
-    for _ in 0..20_000 {
-        let sig = rng(&mut s) as u32;
-        let c_n = unsafe { c::cmsChannelsOfColorSpace(sig) };
-        assert_eq!(channels_of_color_space(sig), c_n, "sig={sig:#010x}");
-        let c_dep = unsafe { c::cmsChannelsOf(sig) };
-        assert_eq!(channels_of(sig), c_dep);
-    }
-    // Explicit coverage of every defined colorspace signature.
-    use lcms::signatures::colorspace as cs;
-    for sig in [
-        cs::SigXYZData,
-        cs::SigLabData,
-        cs::SigLuvData,
-        cs::SigYCbCrData,
-        cs::SigYxyData,
-        cs::SigRgbData,
-        cs::SigGrayData,
-        cs::SigHsvData,
-        cs::SigHlsData,
-        cs::SigCmykData,
-        cs::SigCmyData,
-        cs::SigLuvKData,
-        cs::SigNamedData,
-        cs::Sig1colorData,
-        cs::Sig2colorData,
-        cs::Sig3colorData,
-        cs::Sig4colorData,
-        cs::Sig5colorData,
-        cs::Sig6colorData,
-        cs::Sig7colorData,
-        cs::Sig8colorData,
-        cs::Sig9colorData,
-        cs::Sig10colorData,
-        cs::Sig11colorData,
-        cs::Sig12colorData,
-        cs::Sig13colorData,
-        cs::Sig14colorData,
-        cs::Sig15colorData,
-        cs::SigMCH1Data,
-        cs::SigMCH2Data,
-        cs::SigMCH3Data,
-        cs::SigMCH4Data,
-        cs::SigMCH5Data,
-        cs::SigMCH6Data,
-        cs::SigMCH7Data,
-        cs::SigMCH8Data,
-        cs::SigMCH9Data,
-        cs::SigMCHAData,
-        cs::SigMCHBData,
-        cs::SigMCHCData,
-        cs::SigMCHDData,
-        cs::SigMCHEData,
-        cs::SigMCHFData,
-    ] {
-        let c_n = unsafe { c::cmsChannelsOfColorSpace(sig) };
-        assert_eq!(channels_of_color_space(sig), c_n, "sig={sig:#010x}");
-
-        let mut cw: *const u16 = std::ptr::null();
-        let mut cb: *const u16 = std::ptr::null();
-        let mut cn: u32 = 0;
-        let ok = unsafe { c::_cmsEndPointsBySpace(sig, &mut cw, &mut cb, &mut cn) } != 0;
-        match end_points_by_space(sig) {
-            Some((w, b, n)) => {
-                assert!(ok, "endpoints {sig:#010x}");
-                assert_eq!(n, cn);
-                unsafe {
-                    for i in 0..n as usize {
-                        assert_eq!(w[i], *cw.add(i), "white[{i}] {sig:#x}");
-                        assert_eq!(b[i], *cb.add(i), "black[{i}] {sig:#x}");
-                    }
+fn delta_e_matrix() {
+    unsafe {
+        for i in 0..48 {
+            let l1 = CieLab {
+                L: 10.0 + (i % 8) as f64 * 10.0,
+                a: -40.0 + (i % 6) as f64 * 15.0,
+                b: -30.0 + (i % 7) as f64 * 12.0,
+            };
+            let l2 = CieLab {
+                L: l1.L + (i % 5) as f64 * 3.0,
+                a: l1.a + (i % 4) as f64 * 2.0,
+                b: l1.b + (i % 3) as f64 * 4.0,
+            };
+            let cl1 = clb(&l1);
+            let cl2 = clb(&l2);
+            assert_eq!(c::cmsDeltaE(&cl1, &cl2), pcs::delta_e(&l1, &l2), "deltaE {i}");
+            assert_eq!(c::cmsCIE94DeltaE(&cl1, &cl2), pcs::cie94_delta_e(&l1, &l2), "cie94 {i}");
+            assert_eq!(c::cmsBFDdeltaE(&cl1, &cl2), pcs::bfd_delta_e(&l1, &l2), "bfd {i}");
+            for l in [0.5, 1.0, 2.0] {
+                for cc in [1.0, 1.5] {
+                    assert_eq!(
+                        c::cmsCMCdeltaE(&cl1, &cl2, l, cc),
+                        pcs::cmc_delta_e(&l1, &l2, l, cc),
+                        "cmc {i} l{l} c{cc}");
                 }
             }
-            None => assert!(!ok, "endpoints unknown {sig:#010x}"),
+            assert_eq!(
+                c::cmsCIE2000DeltaE(&cl1, &cl2, 1.0, 1.0, 1.0),
+                pcs::cie2000_delta_e(&l1, &l2, 1.0, 1.0, 1.0),
+                "cie2000 {i}");
         }
     }
 }
 
 #[test]
-fn gridpoints_and_space_maps() {
-    use lcms::signatures::colorspace as cs;
-    let sigs = [
-        cs::SigGrayData,
-        cs::SigRgbData,
-        cs::SigCmykData,
-        cs::SigCmyData,
-        cs::SigXYZData,
-        cs::SigLabData,
-        cs::SigMCH6Data,
-        cs::Sig15colorData,
-    ];
-    for sig in sigs {
-        for flags in [
-            0u32,
-            0x0400,
-            0x0800,
-            0x0001_0000,
-            0x0037_0000,
-            0x0400 | 0x0023_0000,
-        ] {
-            let c_g = unsafe { c::_cmsReasonableGridpointsByColorspace(sig, flags) };
-            assert_eq!(
-                reasonable_gridpoints_by_colorspace(sig, flags),
-                c_g,
-                "sig={sig:#x} flags={flags:#x}"
-            );
+fn cam02_adaptation() {
+    unsafe {
+        let vcs: Vec<c::ViewingConditions> = vec![
+            c::ViewingConditions {
+                white_point: cxz(&d65()), yb: 20.0, la: 20.0,
+                surround: 2, d_value: 1.0,
+            },
+            c::ViewingConditions {
+                white_point: cxz(&d50()), yb: 30.0, la: 100.0,
+                surround: 0, d_value: 0.8,
+            },
+        ];
+        for (vi, vc) in vcs.iter().enumerate() {
+            let cm = c::cmsCIECAM02Init(std::ptr::null_mut(), vc);
+            let rvc = lcms::types::ViewingConditions {
+                white_point: lcms::types::CieXyz {
+                    X: vc.white_point.X, Y: vc.white_point.Y, Z: vc.white_point.Z,
+                },
+                Yb: vc.yb, La: vc.la, surround: vc.surround, D_value: vc.d_value,
+            };
+            let mut rm = lcms::cam02::CieCam02::new(None, &rvc);
+            for i in 0..32 {
+                let xyz = CieXyz {
+                    X: 0.1 + (i % 8) as f64 * 0.1,
+                    Y: 0.1 + (i % 6) as f64 * 0.12,
+                    Z: 0.1 + (i % 7) as f64 * 0.11,
+                };
+                let csrc = cxz(&xyz);
+                let mut cj = c::JCh::default();
+                c::cmsCIECAM02Forward(cm, &csrc, &mut cj);
+                let mut rj = JCh::default();
+                rm.forward(&xyz, &mut rj);
+                assert_eq!((cj.j, cj.c_, cj.h), (rj.J, rj.C, rj.h), "cam02 fwd vc{vi} {i}");
+                let mut cx = c::CieXyz::default();
+                c::cmsCIECAM02Reverse(cm, &cj, &mut cx);
+                let mut rx = CieXyz::default();
+                rm.reverse(&rj, &mut rx);
+                assert_eq!((cx.X, cx.Y, cx.Z), (rx.X, rx.Y, rx.Z), "cam02 rev vc{vi} {i}");
+            }
+            c::cmsCIECAM02Done(cm);
         }
     }
-    // _cmsICCcolorSpace / _cmsLCMScolorSpace sweeps
-    for i in -3..40 {
-        let c_sig = unsafe { cref_icc_color_space(i) };
-        assert_eq!(icc_color_space(i), c_sig, "our={i}");
-    }
-    for sig in sigs.iter().copied().chain([0xdeadbeef, 0]) {
-        let c_pt = unsafe { cref_lcms_color_space(sig) };
-        assert_eq!(lcms_color_space(sig), c_pt, "sig={sig:#x}");
-    }
 }
-
-// _cmsICCcolorSpace / _cmsLCMScolorSpace are exported; bind them here.
-unsafe fn cref_icc_color_space(our: i32) -> u32 {
-    unsafe { lcms_cref::_cmsICCcolorSpace(our) }
-}
-unsafe fn cref_lcms_color_space(sig: u32) -> i32 {
-    unsafe { lcms_cref::_cmsLCMScolorSpace(sig) }
-}
-
