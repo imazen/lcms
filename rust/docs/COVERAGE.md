@@ -796,3 +796,50 @@ cmspack 578 (per-format packer bodies — one function per
 format-word cell), cmscgats 381 (IT8 lexer arms, uncommon parse
 shapes), cmsopt 169, cmsio0 150, cmscnvrt 148, cmsio1 134,
 cmssamp 122, cmsvirt 120, cmsps2 117, cmsgamma 116.
+
+### round 19 — tag-type serializers sweep (mhc2/vcgt/ucrbg/chrm/dict/mab) + MCH packers
+
+75.59% lines / 94.55% fns / 83.69% regions / 67.69% branches.
+
+| file | lines | fns | delta vs r18 |
+|---|---|---|---|
+| cmstypes.c | 83.14% | 99.07% | +1.17 |
+| cmscgats.c | 79.78% | 96.97% | +0.95 |
+| cmsvirt.c | 84.08% | 100% | +0.27 |
+| cmsgamma.c | 88.20% | 100% | +1.12 |
+| cmsio0.c | 88.67% | 100% | -0.29 |
+| cmsps2.c | 68.28% | 84.38% | -15.6 (instr. fail) |
+| cmspack.c | 73.30% | 94.93% | flat |
+| cmsopt.c | 83.70% | 95.45% | -0.91 |
+| cmssamp.c | 62.11% | 85.71% | flat |
+
+~40 gates landed since round 18: mhc2_tag, vcgt_tag, ucrbg_tag,
+chrm_clrt_tags, colorant_order_tag, signature_tag_arms, mba_all_
+shapes, mab_mba_clut_shapes, a2b_full_shape, lut8_16_writer_shapes,
+desc_reader_arms, dict_record_arms, crdi_psid_tags, text_data_tags,
+pseq_psid_full, view_meas_calt_writes, screening_full_tags,
+malformed_tag_reads2, multi_item_array_reads, param_curve_read_arms,
+curve_text_read_arms, curve_write_arms, mpe_curve_bacs_arms,
+named_color_write_arms, mch6_packers, mch_8_9_10_packers,
+format_flag_megasweep, float_half_packers, it8_lexer_arms,
+it8_data_arms2, parametric_eval_arms, ps2_emitters, optimizer_
+internals2, virt_devicelink_internals, tac_detection_internals,
+colorspace_intent_internals, float_reader_* sweeps.
+
+cmstypes gained +1.17pts (the whole tag-serializer table is now
+exercised). cmsps2 dropped to 68.28% — the new ps2_emitters gate
+fails under the clang-instrumented oracle (PostScript text
+emission formats floats differently gcc↔clang; same documented
+instrumentation-only failure class as cam02/pcs/xform2, which now
+also includes 11 ps2 failures — the binary panics mid-sweep so its
+tail under-reports). Function coverage plateaued at ~94.6% — the
+remaining 68 uncovered fns are unreachable-by-API internals.
+
+Remaining mass (uncovered lines): cmstypes 577 (MPE element
+readers/writers deep arms, mAB/mBA readback internals, wchar
+embedded-text), cmspack 578 (per-format-cell packer bodies —
+each format word maps a dedicated unroller/packer function;
+hundreds exist but the reachable set is bounded by the public
+format-word table), cmscgats 364 (IT8 lexer value arms, uncommon
+property/data formats), cmsopt 179, cmsio0 154, cmscnvrt 149,
+cmsio1 134, cmssamp 122, cmsvirt 118, cmsgamma 106.
