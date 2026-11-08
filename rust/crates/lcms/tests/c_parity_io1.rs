@@ -718,3 +718,40 @@ fn gamut_preview_lut_readers2() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Float-tag reader internals — DToB/BToD mpet tags trigger the
+/// Lab/XYZ float-normalization stage insertion.
+#[test]
+fn float_reader_normalization() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        // input profile + DToB tag — triggers NormalizeToLabFloat
+        let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(inp, 0x6d6e7472);
+        c::cmsSetColorSpace(inp, 0x52474220);
+        c::cmsSetPCS(inp, 0x4C616220);
+        c::cmsSetProfileVersion(inp, 4.4);
+        c::cmsWriteTag(inp, 0x44324230, p as *const _);
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let t = c::cmsCreateTransform(inp, r16, lab, l16, 0, 0);
+        eprintln!("dtob-in t={}", !t.is_null());
+        if !t.is_null() {
+            let ib = [0x4000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                ob.as_mut_ptr() as *mut _, 1);
+            eprintln!("ob={ob:?}");
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(inp);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
