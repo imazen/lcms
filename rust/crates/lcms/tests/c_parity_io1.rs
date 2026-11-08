@@ -1150,3 +1150,34 @@ fn lut_reader_arms() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Float-tag reader internals — DToB/BToD on different channel
+/// counts + Lab-PCS combos.
+#[test]
+fn float_tag_channel_arms() {
+    unsafe {
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for nch in [1u32, 3, 4] {
+            let ftab: Vec<f32> = (0..(4usize.pow(nch) * 3))
+                .map(|i| i as f32 / 12.0).collect();
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 4,
+                    nch, 3, ftab.as_ptr()));
+            let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(inp, 0x6d6e7472);
+            c::cmsSetColorSpace(inp, 0x52474220);
+            c::cmsSetPCS(inp, 0x4C616220);
+            c::cmsSetProfileVersion(inp, 4.4);
+            c::cmsWriteTag(inp, 0x44324230, p as *const _);
+            let f = (4u32 << 16) | (nch << 3) | 2;
+            let t = c::cmsCreateTransform(inp, f, lab, l16, 0, 0);
+            eprintln!("nch{nch} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(inp);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
