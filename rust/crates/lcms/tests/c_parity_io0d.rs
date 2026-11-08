@@ -12180,3 +12180,134 @@ fn lut8_write_arms2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Type_UcrBg_Read — raw `ucbg` tags: valid UCR/BG tables + text,
+/// malformed count/size variants.
+#[test]
+fn ucrbg_read_arms2() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    fn ucrbg(ucr: &[u16], bg: &[u16], text: &[u8],
+        sig_override: u32) -> Vec<u8> {
+        let mut t = Vec::new();
+        let sig = if sig_override == 0 { 0x62666420 }
+            else { sig_override };
+        t.extend_from_slice(&be32(sig));        // 'ucbg'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(ucr.len() as u32));
+        for v in ucr { t.extend_from_slice(&be16(*v)); }
+        t.extend_from_slice(&be32(bg.len() as u32));
+        for v in bg { t.extend_from_slice(&be16(*v)); }
+        t.extend_from_slice(text);
+        t
+    }
+    unsafe {
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (ucrbg(&[0, 4096, 32768, 65535],
+                &[0, 8192, 32768, 65535], b"ucr/desc\0", 0),
+                "valid-4"),
+            (ucrbg(&[0, 65535], &[0, 65535], b"x\0", 0),
+                "valid-2"),
+            (ucrbg(&[0; 256], &[0; 256], b"big\0", 0), "big"),
+            (ucrbg(&[], &[0, 65535], b"y\0", 0), "ucr-empty"),
+            (ucrbg(&[0, 65535], &[], b"z\0", 0), "bg-empty"),
+            (ucrbg(&[0; 33000], &[0], b"", 0), "huge-ucr"),
+            (ucrbg(&[0, 65535], &[0, 65535], b"", 0x62616420),
+                "badsig"),
+        ];
+        for (blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, 0x62666420,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x62666420)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
+
+/// Type_Chromaticity_Read — raw `chrm` tags: valid 3ch, nch!=3,
+/// nch==0&&size32 special case, short.
+#[test]
+fn chrm_read_arms2() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    fn f15(v: f64) -> [u8; 4] {
+        ((v * 65536.0) as i32).to_be_bytes()
+    }
+    fn chrm(nch: u16, table: u16,
+        rgb: &[(f64, f64); 3], sig: u32) -> Vec<u8> {
+        let mut t = Vec::new();
+        let s = if sig == 0 { 0x6368726D } else { sig };
+        t.extend_from_slice(&be32(s));          // 'chrm'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be16(nch));
+        t.extend_from_slice(&be16(table));
+        for (x, y) in rgb {
+            t.extend_from_slice(&f15(*x));
+            t.extend_from_slice(&f15(*y));
+        }
+        t
+    }
+    unsafe {
+        let std_rgb = [(0.64, 0.33), (0.30, 0.60), (0.15, 0.06)];
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (chrm(3, 1, &std_rgb, 0), "valid"),
+            (chrm(3, 2, &std_rgb, 0), "tab2"),
+            (chrm(3, 4, &std_rgb, 0), "tab4"),
+            (chrm(2, 1, &std_rgb, 0), "nch2"),
+            (chrm(6, 1, &std_rgb, 0), "nch6"),
+            // nch==0 + SizeOfTag==32 special: reads extra u16
+            // then re-reads nChans → size math matters
+            ({ let mut t = Vec::new();
+                t.extend_from_slice(&be32(0x6368726Du32));
+                t.extend_from_slice(&be32(0));
+                t.extend_from_slice(&be16(0));
+                t.extend_from_slice(&be16(0));
+                t.extend_from_slice(&be16(3));
+                t.extend_from_slice(&be16(1));
+                for (x, y) in std_rgb.iter() {
+                    t.extend_from_slice(&f15(*x));
+                    t.extend_from_slice(&f15(*y));
+                }
+                t }, "nch0-sz32"),
+            (chrm(3, 1, &std_rgb, 0x62616420), "badsig"),
+        ];
+        for (blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, 0x6368726D,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6368726D)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
