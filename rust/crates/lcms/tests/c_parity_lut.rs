@@ -3604,3 +3604,32 @@ fn lab_prelin_v2v4_evals() {
         }
     }
 }
+
+/// LUT reader internals — mft1/mft2/mAB/mBA tags on corpus +
+/// built profiles -> the LUT readers' element-offset parsing.
+#[test]
+fn lut_readers_internals() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // corpus profiles have mft/mAB tags — reading them
+        // exercises the LUT element readers.
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "aRGBlcms2.icc",
+                  "lcms2link.icc", "labv2lcms2.icc", "graylcms2.icc",
+                  "lcms2mtsh.icc", "lcms2matrix.icc",
+                  "lcms2mft2.icc", "lcms2ab4.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            // read every tag -> the per-sig LUT readers run
+            let n = c::cmsGetTagCount(p);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(p, i as u32);
+                let _ = c::cmsReadTag(p, sig);
+            }
+            eprintln!("{f} tags={n}");
+            c::cmsCloseProfile(p);
+        }
+    }
+}
