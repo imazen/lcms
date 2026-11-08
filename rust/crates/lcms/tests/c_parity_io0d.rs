@@ -25968,3 +25968,55 @@ fn internal_memio_arms() {
         c::cmsCloseProfile(p2);
     }
 }
+
+/// cmsio0 residual — SearchTag + linked-tag internals:
+///   duplicate sigs, linked entries, raw-read chains.
+#[test]
+fn internal_searchtag_arms() {
+    unsafe {
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x58595A20);
+        c::cmsSetProfileVersion(p, 4.4);
+        let xyz = [0x0000F6D6u32, 0x00010000, 0x0000D32D];
+        // write the same sig to two tags via link
+        c::cmsWriteTag(p, 0x77747074,
+            xyz.as_ptr() as *const _);
+        c::cmsWriteTag(p, 0x626B7074,
+            xyz.as_ptr() as *const _);
+        // link bkpt -> wtpt
+        let link = c::cmsLinkTag(p, 0x626B7074, 0x77747074);
+        eprintln!("link={link}");
+        // read both back
+        let rd1 = c::cmsReadTag(p, 0x626B7074);
+        let rd2 = c::cmsReadTag(p, 0x77747074);
+        eprintln!("bkpt={} wtpt={}",
+            !rd1.is_null(), !rd2.is_null());
+        // save + reopen: linked tags resolve
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        let sv = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let pr = if sv != 0 {
+            c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        eprintln!("reopen={}", !pr.is_null());
+        if !pr.is_null() {
+            let rd3 = c::cmsReadTag(pr, 0x626B7074);
+            let rd4 = c::cmsReadTag(pr, 0x77747074);
+            eprintln!("  linked reads {}/{}",
+                !rd3.is_null(), !rd4.is_null());
+            // IsTag checks on present/missing/linked
+            for sig in [0x626B7074u32, 0x77747074,
+                        0x6B545243, 0x7A7A7A7A] {
+                let it = c::cmsIsTag(pr, sig);
+                eprintln!("  IsTag {sig:#x}={it}");
+            }
+            c::cmsCloseProfile(pr);
+        }
+        c::cmsCloseProfile(p);
+    }
+}
