@@ -180,3 +180,38 @@ fn desaturate_detect() {
         }
     }
 }
+
+/// GBD machinery on a denser sphere + more gamut ops.
+#[test]
+fn gbd_dense() {
+    unsafe {
+        let g = c::cmsGBDAlloc(std::ptr::null_mut());
+        // a dense spiral of Lab points
+        for i in 0..200 {
+            let a = (i as f64) * 0.1;
+            let lab = c::CieLab {
+                L: 50.0 + 40.0 * a.sin(),
+                a: 80.0 * a.cos(),
+                b: 80.0 * a.sin(),
+            };
+            c::cmsGDBAddPoint(g, &lab as *const _ as *const std::ffi::c_void);
+        }
+        let ok = c::cmsGDBCompute(g, 0);
+        eprintln!("GBDCompute={ok}");
+        // IsInside on in/out points
+        let inside = c::CieLab { L: 50.0, a: 0.0, b: 0.0 };
+        let outside = c::CieLab { L: 200.0, a: 0.0, b: 0.0 };
+        let i1 = c::cmsGDBCheckPoint(g, &inside as *const _ as *const std::ffi::c_void);
+        let i2 = c::cmsGDBCheckPoint(g, &outside as *const _ as *const std::ffi::c_void);
+        eprintln!("in={i1} out={i2}");
+        c::cmsGBDFree(g);
+        // desaturate on a range
+        for l in [20.0f64, 50.0, 80.0] {
+            for c in [20.0f64, 60.0, 100.0] {
+                let mut lab = c::CieLab { L: l, a: c, b: 0.0 };
+                c::cmsDesaturateLab(&mut lab as *mut _ as *mut std::ffi::c_void,
+                    0.0, 99.0, 1.0, 1.0);
+            }
+        }
+    }
+}
