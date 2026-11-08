@@ -151,3 +151,15 @@ tag handlers (~48%), cmscnvrt link-construction variants (~60%),
 cmsps2 emission variants (~72%), cmsio0 IOhandler edge cases (~68%),
 cmsxform remaining workers (~59%), unported APIs (cmsGetProfileInfo*,
 cmsGetSupportedIntents).
+
+## Blocked: cmsps2 corpus x flags matrix
+
+Sequential `cmsGetPostScript*` calls carry `_cmsPSActualColumn` (C's
+process-global static, reset only per CLUT emission) — C's output for
+the Nth call differs from an isolated call's where text wraps. Rust's
+emitter is per-call. A corpus x flags matrix therefore can't byte-
+compare: upstream's static-column behavior vs the port's per-call
+emitter are semantically equivalent but textually different on wrap
+positions. The flag paths (BPC/LOWRESPRECALC/HIGHRESPRECALC/
+NOWHITEONWHITEFIXUP) are exercised per-resource on sRGB by `srgb_crd`;
+the corpus adds no new flag-path coverage.
