@@ -1057,3 +1057,40 @@ fn model_manufacturer_fields() {
         }
     }
 }
+
+/// Datetime/version machinery — unusual header fields.
+#[test]
+fn datetime_version_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate version (offset 8) + datetime (offset 24-36
+        // is year..sec as u16x6)
+        for (name, off, v) in [
+            ("ver-2", 8, 0x02000000u32),
+            ("ver-4", 8, 0x04000000u32),
+            ("ver-5", 8, 0x05000000u32),
+            ("ver-99", 8, 0x99000000u32),
+            ("ver-0", 8, 0u32),
+            ("yr-0", 24, 0u16 as u32),
+            ("yr-9999", 24, 9999u32)] {
+            let mut d = cbuf.clone();
+            if name.starts_with("yr-") {
+                d[off..off+2].copy_from_slice(
+                    &(v as u16).to_be_bytes());
+            } else {
+                d[off..off+4].copy_from_slice(
+                    &v.to_be_bytes());
+            }
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
