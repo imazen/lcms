@@ -26235,3 +26235,71 @@ fn internal_searchtag2_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — SaveTags arms: blind-copy of
+///   unmodified tags from a file-loaded profile
+///   (Data==NULL+FileOrig), linked tags, TagSaveAsRaw,
+///   no-descriptor skips.
+#[test]
+fn savetags_arms2() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        for nm in ["sRGBlcms2.icc", "lcms2cmyk.icc",
+                   "labv4lcms2.icc", "graylcms2.icc",
+                   "lcms2link.icc", "nullcms2.icc",
+                   "xyzlcms2.icc", "nmcllcms2.icc"] {
+            let p = open(nm);
+            if p.is_null() {
+                eprintln!("{nm}: null"); continue; }
+            // blind-copy: open -> save unchanged -> each
+            //   unmodified tag copies raw via FileOrig
+            let mut buf = [0u8; 1 << 20];
+            let mut nn = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut nn);
+            eprintln!("{nm} blind: sv={sv} n={nn}");
+            // now touch one tag -> mixed copy+serialize
+            c::cmsSetProfileVersion(p, 4.4);
+            let mut nn2 = buf.len() as u32;
+            let sv2 = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut nn2);
+            eprintln!("{nm} touched: sv={sv2}");
+            c::cmsCloseProfile(p); }
+        // linked-tag arm: cmsLinkTag creates a shared tag
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        let g = c::cmsBuildGamma(ctx, 2.2);
+        c::cmsWriteTag(p, 0x72545243, g as *const _);
+        // link kTRC -> rTRC (share the same data)
+        let lk = c::cmsLinkTag(p, 0x6B545243, 0x72545243);
+        let mut buf = [0u8; 1 << 18];
+        let mut nn = buf.len() as u32;
+        let sv = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut nn);
+        eprintln!("linked kTRC->rTRC: lk={lk} sv={sv}");
+        c::cmsCloseProfile(p);
+        if !g.is_null() { c::cmsFreeToneCurve(g); }
+        // no-descriptor arm: raw tag under an unknown sig
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        let blob = [0x01u8, 0x02, 0x03, 0x04];
+        c::cmsWriteRawTag(p, 0x5A5A5A5A, // 'ZZZZ' unknown
+            blob.as_ptr() as *const _, 4);
+        let mut nn2 = buf.len() as u32;
+        let sv2 = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut nn2);
+        eprintln!("nodesc: sv={sv2}");
+        c::cmsCloseProfile(p);
+    }
+}
