@@ -180,3 +180,8 @@ the corpus adds no new flag-path coverage.
   [23321,32940,21682] vs Rust [21116,23420,38229] on RGBA16
   input; neither channel order matches. Rust's extra-channel
   formatter maps the alpha into the transform differently.
+
+- [finding] DOSWAP input format also diverges the same way as
+  EXTRA_SH — the format-bit channel mapping in do_transform is
+  incomplete; the u16 pack/unroll paths produce the same wrong
+  output class regardless of the DOSWAP/EXTRA modifiers.
