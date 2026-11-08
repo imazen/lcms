@@ -803,3 +803,72 @@ fn quadratic_bp_full() {
         c::cmsMLUfree(ml);
     }
 }
+
+/// cmssamp/cmsgmt residual — destination black point
+///   intents/flags, darker-colorant channel mismatches,
+///   DesaturateLab bound combos, TAC + gamma detect.
+#[test]
+fn sm_destbp_desat_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfileTHR(
+            std::ptr::null_mut(),
+            std::ptr::null(), g as *const std::ffi::c_void);
+        let cmyk = c::cmsCreateInkLimitingDeviceLinkTHR(
+            std::ptr::null_mut(),
+            0x434D594B, 400.0);
+        // destination black point x intents x flags
+        for (prof, pname) in [
+            (srgb, "srgb"), (gray, "gray"), (cmyk, "cmyk"),
+        ] {
+            if prof.is_null() {
+                eprintln!("{pname} prof=0");
+                continue;
+            }
+            for int_ in [0u32, 1, 2, 3] {
+                for fl in [0u32, 0x4000, 0x8000] {
+                    let mut bp = [0.0f64; 3];
+                    let r = c::cmsDetectDestinationBlackPoint(
+                        bp.as_mut_ptr() as *mut _,
+                        prof, int_, fl);
+                    if int_ == 0 && fl == 0 {
+                        eprintln!("{pname} int0 r={r} \
+                            bp={bp:?}");
+                    }
+                }
+            }
+            // source black point too
+            for int_ in [0u32, 1] {
+                let mut bp = [0.0f64; 3];
+                c::cmsDetectBlackPoint(
+                    bp.as_mut_ptr() as *mut _,
+                    prof, int_, 0);
+            }
+        }
+        // DesaturateLab bound combos
+        for (a, b, name) in [
+            (50.0f64, -50.0, "pos-neg"),
+            (0.0, 0.0, "zero"),
+            (200.0, -200.0, "wide"),
+            (10.0, 10.0, "same"),
+            (-10.0, 10.0, "inverted"),
+        ] {
+            let mut lab = [50.0f64, 20.0, -30.0];
+            let r = c::cmsDesaturateLab(
+                lab.as_mut_ptr() as *mut _, a, a, b, b);
+            eprintln!("desat {name} r={r} \
+                lab={lab:?}");
+        }
+        // TAC + gamma detect
+        for prof in [srgb, gray] {
+            let tac = c::cmsDetectTAC(prof);
+            let gm = c::cmsDetectRGBProfileGamma(prof, 0.001);
+            eprintln!("tac={tac} gamma={gm}");
+        }
+        c::cmsCloseProfile(srgb);
+        if !gray.is_null() { c::cmsCloseProfile(gray); }
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
