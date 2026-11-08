@@ -1427,7 +1427,7 @@ fn corpus_profile_transform() {
             ("gray", b"../../graylcms2.icc\0"),
             ("labv2", b"../../labv2lcms2.icc\0"),
             ("lin", b"../../linlcms2.icc\0"),
-            ("labv4", b"../../labv4lcms2.icc\0"),
+            ("labv4", b"../../lcms2cmyk.icc\0"),
             ("xyz", b"../../xyzlcms2.icc\0")] {
             let h = c::cmsOpenProfileFromFile(
                 path.as_ptr() as _, b"r\0".as_ptr() as _);
@@ -1464,7 +1464,7 @@ fn corpus_transform_dir() {
             ("gray", b"../../graylcms2.icc\0", 1),
             ("labv2", b"../../labv2lcms2.icc\0", 3),
             ("lin", b"../../linlcms2.icc\0", 4),
-            ("labv4", b"../../labv4lcms2.icc\0", 3),
+            ("labv4", b"../../lcms2cmyk.icc\0", 3),
             ("xyz", b"../../xyzlcms2.icc\0", 3)] {
             let h = c::cmsOpenProfileFromFile(
                 path.as_ptr() as _, b"r\0".as_ptr() as _);
@@ -1497,7 +1497,7 @@ fn corpus_dotransform() {
         for (name, path, nch) in [
             ("gray", b"../../graylcms2.icc\0" as &[u8], 1u32),
             ("labv2", b"../../labv2lcms2.icc\0", 3),
-            ("labv4", b"../../labv4lcms2.icc\0", 3),
+            ("labv4", b"../../lcms2cmyk.icc\0", 3),
             ("xyz", b"../../xyzlcms2.icc\0", 3)] {
             let h = c::cmsOpenProfileFromFile(
                 path.as_ptr() as _, b"r\0".as_ptr() as _);
@@ -1535,7 +1535,7 @@ fn corpus_mem_roundtrip() {
             ("lcms2link", b"../../lcms2link.icc\0" as &[u8]),
             ("gray", b"../../graylcms2.icc\0"),
             ("labv2", b"../../labv2lcms2.icc\0"),
-            ("labv4", b"../../labv4lcms2.icc\0"),
+            ("labv4", b"../../lcms2cmyk.icc\0"),
             ("xyz", b"../../xyzlcms2.icc\0"),
             ("lin", b"../../linlcms2.icc\0")] {
             let h = c::cmsOpenProfileFromFile(
@@ -1569,7 +1569,7 @@ fn corpus_tag_walk() {
             ("lcms2link", b"../../lcms2link.icc\0" as &[u8]),
             ("gray", b"../../graylcms2.icc\0"),
             ("labv2", b"../../labv2lcms2.icc\0"),
-            ("labv4", b"../../labv4lcms2.icc\0"),
+            ("labv4", b"../../lcms2cmyk.icc\0"),
             ("xyz", b"../../xyzlcms2.icc\0"),
             ("lin", b"../../linlcms2.icc\0"),
             ("bright", b"../../brightness.icc\0"),
@@ -1827,7 +1827,7 @@ fn corpus_iohandler() {
         for (name, path) in [
             ("argb", "../../aRGBlcms2.icc"),
             ("gray", "../../graylcms2.icc"),
-            ("labv4", "../../labv4lcms2.icc"),
+            ("labv4", "../../lcms2cmyk.icc"),
             ("bchs", "../../bchslcms2.icc")] {
             let data = std::fs::read(path).unwrap_or_default();
             if data.is_empty() {
@@ -2762,5 +2762,58 @@ fn luttype_dispatch() {
             if !h.is_null() { c::cmsCloseProfile(h); }
         }
         c::cmsCloseProfile(dl);
+    }
+}
+
+/// B2A-type dispatch — mutate a corpus profile's B2A0 type sig then read
+/// (mft1/mft2/mBA — the reverse-LUT accept set).
+#[test]
+fn b2atype_dispatch() {
+    unsafe {
+        // lab4 has B2A0
+        let pb = std::path::Path::new(
+            env!("CARGO_MANIFEST_DIR"))
+            .join("../../lcms2cmyk.icc");
+        let path = std::ffi::CString::new(
+            pb.to_str().unwrap()).unwrap();
+        let src = c::cmsOpenProfileFromFile(
+            path.as_ptr(), b"r\0".as_ptr());
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(src,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(src,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // B2A0 = 0x42324130
+        let mut off = 0usize;
+        let ntags = u32::from_be_bytes(
+            buf[128..132].try_into().unwrap()) as usize;
+        for i in 0..ntags {
+            let e = 132 + i * 12;
+            if u32::from_be_bytes(
+                buf[e..e+4].try_into().unwrap()) == 0x42324130 {
+                off = u32::from_be_bytes(
+                    buf[e+4..e+8].try_into().unwrap()) as usize;
+            }
+        }
+        for (name, ty) in [
+            ("real", u32::from_be_bytes(
+                buf[off..off+4].try_into().unwrap())),
+            ("mft1", 0x6d667431), ("mft2", 0x6d667432),
+            ("mAB ", 0x6d414220), ("mBA ", 0x6d424120),
+            ("curv", 0x63757276), ("XYZ ", 0x58595a20),
+            ("junk", 0xdeadbeef), ("zero", 0)] {
+            let mut b = buf.clone();
+            b[off..off+4].copy_from_slice(&ty.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            let t = if h.is_null() { std::ptr::null() }
+                else { c::cmsReadTag(h, 0x42324130) };
+            eprintln!(
+                "{name} ty={ty:#x} h={} t={}",
+                !h.is_null(), !t.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(src);
     }
 }
