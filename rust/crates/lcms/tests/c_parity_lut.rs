@@ -4473,3 +4473,81 @@ fn lut_interp_gbd_cam_md5_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmsopt residual — PatchLUT nChannelsIn==4 (CMYK) and
+///   ==1 (Gray) arms via curve+CLUT+curve pipelines
+///   through the prelinearization optimizer.
+#[test]
+fn lut_patchlut_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (nin, nout, cs, pcs, cls, fname) in [
+            // CMYK: 4-in 3-out cv+clut+cv pipeline
+            (4u32, 3u32, 0x434D594Bu32, 0x4C616220u32,
+                0x70726E74u32, "cmyk"),
+            // Gray: 1-in 3-out
+            (1, 3, 0x47524159u32, 0x4C616220u32,
+                0x70726E74u32, "gray"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), nin, nout);
+            let cin: Vec<*mut std::ffi::c_void> =
+                (0..nin).map(|_| g as *mut _).collect();
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), nin,
+                    cin.as_ptr() as *mut _));
+            let dims = [9u32; 15];
+            let n_grid = 9usize.pow(nin) * nout as usize;
+            let grid = vec![0x8000u16; n_grid];
+            c::cmsPipelineInsertStage(pipe, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    nin, nout, grid.as_ptr()));
+            let cout: Vec<*mut std::ffi::c_void> =
+                (0..nout).map(|_| g as *mut _).collect();
+            c::cmsPipelineInsertStage(pipe, 2,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), nout,
+                    cout.as_ptr() as *mut _));
+            c::cmsWriteTag(prof, 0x41324230,
+                pipe as *const _);
+            // transform through it — optimizer runs
+            let fin = (0u32 << 16) | (nin << 3) | 2;
+            let fout = (0u32 << 16) | (nout << 3) | 2;
+            let srgb = c::cmsCreate_sRGBProfile();
+            let lab = c::cmsCreateLab4Profile(
+                std::ptr::null_mut());
+            let out_prof = if pcs == 0x4C616220u32 {
+                lab } else { srgb };
+            for fl in [0u32, 0x0100, 0x0080] {
+                let t = c::cmsCreateTransform(prof, fin,
+                    out_prof, fout, 0, fl);
+                eprintln!("{fname} fl{fl:#x} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = vec![0x8000u16;
+                        nin as usize];
+                    let mut dst = vec![0u16;
+                        nout as usize];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    eprintln!("  {fname} {dst:?}");
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsCloseProfile(srgb);
+            c::cmsCloseProfile(lab);
+            c::cmsPipelineFree(pipe);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
