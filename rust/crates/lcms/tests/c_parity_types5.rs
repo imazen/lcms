@@ -353,3 +353,150 @@ fn more_writable_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Crafted binary tag types — write raw bytes with each type
+/// sig + read back, exercising Type_*_Read on the unusual
+/// stored-type variants.
+#[test]
+fn crafted_type_reads() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cases: Vec<(u32, Vec<u8>)> = Vec::new();
+        // 'desc' on 'cprt'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"desc");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&5u32.to_be_bytes());
+            b.extend_from_slice(b"text\0");
+            b.extend_from_slice(&0u32.to_be_bytes());
+            b.extend_from_slice(&0u32.to_be_bytes());
+            b.extend_from_slice(&[0; 67]);
+            cases.push((0x63707274, b));
+        }
+        // 'text' on 'cprt'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"text");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(b"hello\0");
+            cases.push((0x63707274, b));
+        }
+        // 'XYZ ' on 'wtpt'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"XYZ ");
+            b.extend_from_slice(&[0; 4]);
+            for v in [0x0000F6D6u32, 0x00010000, 0x0000D32D] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((0x77747074, b));
+        }
+        // 'curv' on 'rTRC'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"curv");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&4u32.to_be_bytes());
+            for v in [0u16, 0x4000, 0x8000, 0xFFFF] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((0x72545243, b));
+        }
+        // 'para' on 'rTRC'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"para");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u16.to_be_bytes());
+            b.extend_from_slice(&0u16.to_be_bytes());
+            for v in [0x00023333u32, 0x00010000, 0x00000000] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((0x72545243, b));
+        }
+        // 'mluc' on 'desc'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"mluc");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u32.to_be_bytes());
+            b.extend_from_slice(&12u32.to_be_bytes());
+            b.extend_from_slice(b"en");
+            b.extend_from_slice(b"US");
+            b.extend_from_slice(&8u32.to_be_bytes());
+            b.extend_from_slice(&28u32.to_be_bytes());
+            b.extend_from_slice(&[0, b't', 0, b'e', 0, b's',
+                                  0, b't']);
+            cases.push((0x64657363, b));
+        }
+        // 'sf32' on 'chad'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"sf32");
+            b.extend_from_slice(&[0; 4]);
+            for _ in 0..9 {
+                b.extend_from_slice(&0x00010000u32.to_be_bytes());
+            }
+            cases.push((0x63686164, b));
+        }
+        // 'sig ' on 'tech'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"sig ");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(b"fota");
+            cases.push((0x74656368, b));
+        }
+        // 'dtim' on 'calt'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"dtim");
+            b.extend_from_slice(&[0; 4]);
+            for v in [2026u16, 11, 9, 12, 0, 0] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((0x63616C74, b));
+        }
+        // 'meas' on 'meas'
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"meas");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u32.to_be_bytes());
+            for v in [0x00008000u32, 0x00008000, 0x00008000] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            b.extend_from_slice(&1u32.to_be_bytes());
+            b.extend_from_slice(&0u32.to_be_bytes());
+            b.extend_from_slice(&2u32.to_be_bytes());
+            cases.push((0x6D656173, b));
+        }
+        // built profiles have no IOHANDLER for the read path —
+        // write raw, save to mem, reopen, then Type_*_Read runs
+        for (i, (sig, bytes)) in cases.iter().enumerate() {
+            let h2 = c::cmsCreate_sRGBProfile();
+            let ok = c::cmsWriteRawTag(h2, *sig,
+                bytes.as_ptr() as *const c_void,
+                bytes.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h2, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h2,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = if !h3.is_null() {
+                c::cmsReadTag(h3, *sig)
+            } else {
+                std::ptr::null_mut()
+            };
+            eprintln!("case {i} sig={sig:#x} write={ok} read={}",
+                r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+            c::cmsCloseProfile(h2);
+        }
+        c::cmsCloseProfile(h);
+    }
+}
