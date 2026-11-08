@@ -803,3 +803,95 @@ fn internal_grayout_inlut_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — _cmsReadInputLUT on v4 mAB /
+///   named-color/abstract classes + float A2B/MPE
+///   variants.
+#[test]
+fn internal_inlut_v4_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        for (cls, name) in [
+            (0x6D6E7472u32, "mntr"),
+            (0x70727472, "prtr"),
+            (0x61627374, "abst"),
+            (0x73706163, "spac"),
+            (0x6E6D636C, "nmcl"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            // mAB : B curves + CLUT + A curves
+            let mut blob = vec![
+                0x6D, 0x41, 0x42, 0x20, 0, 0, 0, 0];
+            blob.extend_from_slice(&3u8.to_be_bytes());
+            blob.extend_from_slice(&3u8.to_be_bytes());
+            blob.extend_from_slice(&[0u8; 2]);
+            // B curve offset, mat, M curve, clut,
+            //   A curve offsets
+            blob.extend_from_slice(&48u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&60u32.to_be_bytes());
+            blob.extend_from_slice(&72u32.to_be_bytes());
+            // B curves: 3x 'curv' 2-pt
+            for _ in 0..3 {
+                blob.extend_from_slice(&[
+                    0x63u8, 0x75, 0x72, 0x76,
+                    0, 0, 0, 0]);
+                blob.extend_from_slice(&2u32.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x4000u16.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x8000u16.to_be_bytes());
+            }
+            // clut: 2-point u8
+            blob.extend_from_slice(&[2u8; 16]);
+            blob.extend_from_slice(&[1u8, 0, 0, 0]);
+            blob.extend_from_slice(&[0x80u8; 8 * 3]);
+            // A curves
+            for _ in 0..3 {
+                blob.extend_from_slice(&[
+                    0x63u8, 0x75, 0x72, 0x76,
+                    0, 0, 0, 0]);
+                blob.extend_from_slice(&2u32.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x4000u16.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x8000u16.to_be_bytes());
+            }
+            c::cmsWriteRawTag(p, 0x41324230,
+                blob.as_ptr() as *const _,
+                blob.len() as u32);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} v4 prof={} sv={sv}",
+                !pr.is_null());
+            if !pr.is_null() {
+                for i in [0u32, 1] {
+                    let t = c::cmsCreateTransform(pr,
+                        frgb, lab4, flab, i, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsCloseProfile(lab4);
+    }
+}
