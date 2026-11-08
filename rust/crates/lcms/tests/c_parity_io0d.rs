@@ -4312,3 +4312,37 @@ fn datetime_ucrbg_tags() {
         }
     }
 }
+
+/// Multi-MLU + text tags — different sigs through the MLU/text
+/// handlers.
+#[test]
+fn mlu_text_sig_variants() {
+    unsafe {
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        for (l, c_, t) in [("en\0","US\0","dev"),("de\0","DE\0","txt")] {
+            c::cmsMLUsetUTF8(m, l.as_ptr() as *const _,
+                c_.as_ptr() as *const _, t.as_ptr());
+        }
+        for sig in [0x646D6E64u32, 0x646D6464, 0x70747264,
+                    0x74617267, 0x70726F70] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, m as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("sig{sig:#x} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsMLUfree(m);
+    }
+}
