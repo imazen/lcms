@@ -2259,3 +2259,35 @@ fn cmm_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Creation-date bounds — mutate the creation-date field
+/// then open (the date validation machinery).
+#[test]
+fn creationdate_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // creation date is 6 u16be at offset 24 (12 bytes)
+        for (name, vals) in [
+            ("epoch", [0u16; 6] as [u16; 6]),
+            ("now", [2025, 1, 15, 12, 30, 45]),
+            ("max", [0xffff; 6]),
+            ("weird", [1, 13, 32, 25, 61, 61])] {
+            let mut b = buf.clone();
+            for (i, v) in vals.iter().enumerate() {
+                b[24 + i*2..26 + i*2]
+                    .copy_from_slice(&v.to_be_bytes());
+            }
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
