@@ -427,3 +427,44 @@ fn intent_link_internals() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Unusual class chains — abstract/devicelink/named-color in
+/// multiprofile transforms, exercising the CheckOne/AllowedLUT/
+/// ColorSpaceIsCompatible link-validation branches.
+#[test]
+fn unusual_class_chains() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let nullp = c::cmsCreateNULLProfile();
+        let bchsw = c::cmsCreateBCHSWabstractProfileTHR(
+            std::ptr::null_mut(), 17, 0.0, 0.0, 0.0, 1.0,
+            std::ptr::null(), std::ptr::null());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        // 3-profile chains with unusual class in the middle/end
+        for (name, chain) in [
+            ("srgb+null+lab4", (srgb, nullp, lab4, in_fmt, lab_fmt)),
+            ("srgb+bchsw+srgb", (srgb, bchsw, srgb, in_fmt, in_fmt)),
+            ("lab4+srgb+srgb", (lab4, srgb, srgb, lab_fmt, in_fmt)),
+            ("null+srgb+lab4", (nullp, srgb, lab4, lab_fmt, lab_fmt)),
+        ] {
+            let (p1, p2, p3, ifmt, ofmt) = chain;
+            let mut profs = [p1, p2, p3];
+            let ct = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 3, ifmt, ofmt, 0, 0);
+            eprintln!("{name} null={}", ct.is_null());
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(srgb);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(nullp);
+        let _ = c::cmsCloseProfile(bchsw);
+    }
+}
