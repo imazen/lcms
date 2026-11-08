@@ -568,3 +568,52 @@ fn ps2_emitters() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmsps2 gray/named-color internals — ExtractGray2Y +
+/// BuildColorantList via gray/mono + multi-channel profiles.
+#[test]
+fn ps2_gray_colorant() {
+    let _g = PS_LOCK.lock().unwrap();
+    unsafe {
+        let g22 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g22);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["graylcms2.icc", "gray3lcms2.icc", "lcms2cmyk.icc",
+                  "lcms2link.icc", "aRGBlcms2.icc", "limitlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in 0..4u32 {
+                let mut buf = vec![0u8; 1 << 18];
+                let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
+                    p, intent, 0, buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let n2 = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
+                    p, intent, 0, buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                if intent == 0 && n + n2 > 0 {
+                    eprintln!("{f} csa={n} crd={n2}");
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+        for p in [gray, srgb] {
+            for intent in 0..4u32 {
+                let mut buf = vec![0u8; 1 << 18];
+                let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
+                    p, intent, 0, buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let n2 = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
+                    p, intent, 0, buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                if intent == 0 { eprintln!("virt csa={n} crd={n2}"); }
+            }
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g22);
+    }
+}
