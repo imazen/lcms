@@ -1594,3 +1594,34 @@ fn corpus_tag_walk() {
         }
     }
 }
+
+/// Corpus profile classes — aRGB/bchs/glab/cmyk/limit/
+/// null/sRGB (the class machinery on real shapes).
+#[test]
+fn corpus_classes() {
+    unsafe {
+        for (name, path) in [
+            ("argb", b"../../aRGBlcms2.icc\0" as &[u8]),
+            ("bchs", b"../../bchslcms2.icc\0"),
+            ("glab", b"../../glablcms2.icc\0"),
+            ("cmyk", b"../../lcms2cmyk.icc\0"),
+            ("link2", b"../../lcms2link2.icc\0"),
+            ("limit", b"../../limitlcms2.icc\0"),
+            ("null", b"../../nullcms2.icc\0"),
+            ("srgb", b"../../sRGBlcms2.icc\0")] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let cs = c::cmsGetColorSpace(h);
+            let pcs = c::cmsGetPCS(h);
+            let cls = c::cmsGetDeviceClass(h);
+            let nt = c::cmsGetTagCount(h);
+            eprintln!(
+                "{name} cs={cs:#x} pcs={pcs:#x} cls={cls:#x} tags={nt}");
+            c::cmsCloseProfile(h);
+        }
+    }
+}
