@@ -2438,3 +2438,32 @@ fn tagoffset_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Tag-size bounds — mutate the first tag's size in the
+/// tag table then open.
+#[test]
+fn tagsize_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // first tag size at offset 140
+        for (name, val) in [
+            ("real", 0x24u32), ("zero", 0),
+            ("small", 8), ("big", 1000),
+            ("past", n), ("huge", 0x7fffffff),
+            ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[140..144].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} sz={val} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
