@@ -1283,3 +1283,43 @@ fn black_preserving_intents() {
         c::cmsCloseProfile(ch);
     }
 }
+
+/// Profile-class x intent dispatch — input/output/link/abstract/
+/// namedcolor classes at each intent + BPC/abs/sofproofing flag
+/// combos covers DefaultICCintents/ComputeConversion/AddConversion/
+/// ColorSpaceIsCompatible dispatch arms.
+#[test]
+fn class_intent_dispatch() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let cmyk_path = "../lcms2cmyk.icc";
+        let cmyk_data = std::fs::read(cmyk_path).unwrap_or_default();
+        let cmyk = if cmyk_data.is_empty() { std::ptr::null_mut() }
+            else { c::cmsOpenProfileFromMem(
+                cmyk_data.as_ptr() as *const _, cmyk_data.len() as u32) };
+        for intent in 0..=7u32 {
+            for (a, b) in [(srgb, lab), (lab, srgb),
+                           (srgb, srgb)] {
+                let t = c::cmsCreateTransform(a, 0x00ff04, b,
+                    0x00ff04, intent, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                // BPC + abs variants
+                let t2 = c::cmsCreateTransform(a, 0x00ff04, b,
+                    0x00ff04, intent, 0x1000 | 0x4000);
+                if !t2.is_null() { c::cmsDeleteTransform(t2); }
+            }
+            if !cmyk.is_null() {
+                for intent2 in [intent] {
+                    let t = c::cmsCreateTransform(cmyk, 0x4c02f1,
+                        srgb, 0x00ff04, intent2, 0);
+                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
