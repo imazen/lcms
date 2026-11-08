@@ -2784,3 +2784,38 @@ fn xyz_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_Chromaticity internals — 'chrm' with a proper
+/// cmsCIExyYTRIPLE payload.
+#[test]
+fn chromaticity_payload() {
+    unsafe {
+        #[repr(C)]
+        #[derive(Copy, Clone)]
+        struct Xy {
+            x: f64, y: f64,
+        }
+        #[repr(C)]
+        struct XyyTriple {
+            red: Xy, green: Xy, blue: Xy,
+        }
+        let trip = XyyTriple {
+            red: Xy { x: 0.64, y: 0.33 },
+            green: Xy { x: 0.30, y: 0.60 },
+            blue: Xy { x: 0.15, y: 0.06 },
+        };
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x6368726D,
+            &trip as *const _ as *mut std::ffi::c_void); // 'chrm'
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x6368726D);
+        eprintln!("chrm write={ok} read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
