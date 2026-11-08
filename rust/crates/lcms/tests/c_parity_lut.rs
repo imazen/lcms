@@ -2301,3 +2301,65 @@ fn lut_write_stage_orders() {
         }
     }
 }
+
+/// LUT16 write stage-order sweep — v2-profile routes the same
+/// pipeline shapes through Type_LUT16_Write (mft2): its
+/// [matrix?][pre-curves?]clut[post-curves?] walk, clutless forms,
+/// and the uniform-grid/3x3-matrix rejects.
+#[test]
+fn lut16_write_stage_orders() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let mat2: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let tab: Vec<u16> = (0..8*3).map(|i| (i * 3) as u16).collect();
+        let mk = |parts: &[u8], vers: f64| {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            for &k in parts {
+                match k {
+                    0 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3, cc.as_ptr())),
+                    1 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                            3, 3, mat.as_ptr(), std::ptr::null())),
+                    2 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                            3, 3, mat2.as_ptr(), std::ptr::null())),
+                    _ => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocCLut16bit(
+                            std::ptr::null_mut(), 2, 3, 3, tab.as_ptr())),
+                };
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, vers);
+            let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            eprintln!("  v{vers} w={w} save={s} n={}",
+                if s != 0 { n as usize } else { 0 });
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        };
+        // v2 profile -> mft2 route; cover the writer's shape arms
+        for (name, parts) in [
+            ("clut-only", [3u8].as_slice()),
+            ("cv-clut", [0, 3].as_slice()),
+            ("clut-cv", [3, 0].as_slice()),
+            ("cv-clut-cv", [0, 3, 0].as_slice()),
+            ("mx-cv-clut", [1, 0, 3].as_slice()),
+            ("mx-cv-clut-cv", [1, 0, 3, 0].as_slice()),
+            ("cv-only", [0u8].as_slice()),
+            ("clut-mx-bad", [3, 1].as_slice()),
+            ("mx4x4-bad", [2, 3].as_slice()),
+        ] {
+            eprintln!("{name}:");
+            mk(parts, 2.1);
+        }
+    }
+}
