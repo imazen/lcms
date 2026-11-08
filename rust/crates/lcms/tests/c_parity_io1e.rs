@@ -2888,3 +2888,23 @@ fn profile_info_shapes() {
         let _ = (dl, lab, ph);
     }
 }
+
+/// Tag-aliasing machinery — cmsLinkTag internals.
+#[test]
+fn link_tag() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // link a new sig onto an existing tag
+        for (dest, src, name) in [
+            (0x64657363u32, 0x77747074, "desc<-wtpt"),
+            (0x41324231, 0x41324230, "A2B1<-A2B0"),
+            (0x41414141, 0x64657363, "AAAA<-desc")] {
+            let r = c::cmsLinkTag(h, dest, src);
+            eprintln!("{name} r={r}");
+            // does dest now read as src's payload?
+            let v = c::cmsReadTag(h, dest);
+            eprintln!("  read={}", !v.is_null());
+        }
+        c::cmsCloseProfile(h);
+    }
+}
