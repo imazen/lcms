@@ -18239,3 +18239,111 @@ fn lindevlink_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final8_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // multiprofile chains on unusual profile mixes
+        let mut profs = [srgb, lab, srgb, lab, srgb];
+        for (n_, name) in [(2i32, "2p"), (3, "3p"), (4, "4p"),
+            (5, "5p")] {
+            for intent in 0..4u32 {
+                for flags in [0u32, 0x0100, 0x0200, 0x0400,
+                    0x0001] {
+                    let mut bpc = [0i32; 5];
+                    let mut intents = [intent; 5];
+                    let mut adapt = [0.5f64; 5];
+                    let t = c::cmsCreateExtendedTransform(
+                        std::ptr::null_mut(), n_ as u32,
+                        profs.as_mut_ptr(),
+                        bpc.as_mut_ptr(),
+                        intents.as_mut_ptr(),
+                        adapt.as_mut_ptr(),
+                        std::ptr::null_mut(), 0,
+                        r8, r8, flags);
+                    if !t.is_null() {
+                        let ib = [0x55u8; 8];
+                        let mut ob = [0u8; 8];
+                        c::cmsDoTransform(t, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            eprintln!("{name} done");
+        }
+        // proofing on unusual intent/flag combos
+        for intent in 0..8u32 {
+            for pc in [0u32, 1, 2, 3] {
+                for flags in [0u32, 0x0100, 0x0400, 0x0800] {
+                    let t = c::cmsCreateProofingTransform(
+                        srgb, r8, lab, l8, srgb, intent, 0,
+                        flags | pc << 20);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+            }
+            eprintln!("proof i{intent} done");
+        }
+        // transform on profiles with unusual headers
+        for (cls, cs, pcs, name) in [
+            (0x6D6E7472u32, 0x52474220, 0x58595A20, "mntr"),
+            (0x70727472, 0x434D594B, 0x4C616220, "prtr"),
+            (0x6C696E6B, 0x52474220, 0x58595A20, "link"),
+            (0x73706163, 0x4C616220, 0x58595A20, "spac"),
+            (0x61627374, 0x4C616220, 0x4C616220, "abst"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    grid.as_ptr()));
+            c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            c::cmsWriteTag(prof, 0x42324130,
+                p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            let t = if !rp.is_null() {
+                c::cmsCreateTransform(rp, r8, srgb,
+                    r8, 0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
