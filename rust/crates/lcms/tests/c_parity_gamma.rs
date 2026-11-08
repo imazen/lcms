@@ -405,3 +405,40 @@ fn curve_builders_predicates() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Parametric-curve eval internals — types 0-8 through
+/// cmsEvalToneCurve16/Float + reverse eval.
+#[test]
+fn parametric_eval_arms() {
+    unsafe {
+        let p7 = [1.0f64, 0.0, 0.5, 0.0, 0.0];
+        let p8 = [1.0f64, 0.0, 0.5, 0.0, 0.0];
+        for (ptype, params, name) in [
+            (1i32, [2.2f64, 1.0, 0.0, 0.0, 0.0].as_ptr(), "t1"),
+            (2, [2.2f64, 1.0, 0.0, 0.5, 0.0].as_ptr(), "t2"),
+            (3, [2.2f64, 1.0, 0.0, 0.5, 0.0].as_ptr(), "t3"),
+            (4, [2.2f64, 1.0, 0.0, 0.5, 0.2].as_ptr(), "t4"),
+            (5, [2.2f64, 1.0, 0.0, 0.5, 0.2].as_ptr(), "t5"),
+            (6, [1.0f64, 0.0, 0.5, 0.0, 0.0].as_ptr(), "t6"),
+            (7, p7.as_ptr(), "t7"),
+            (8, p8.as_ptr(), "t8"),
+        ] {
+            let c_ = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ptype, params);
+            if c_.is_null() { eprintln!("{name} build=NULL"); continue; }
+            for x in [0.0f64, 0.25, 0.5, 0.75, 1.0] {
+                let e16 = c::cmsEvalToneCurve16(c_,
+                    (x * 65535.0) as u16);
+                let ef = c::cmsEvalToneCurveFloat(c_, x as f32);
+                let _ = (e16, ef);
+            }
+            let rev = c::cmsReverseToneCurve(c_);
+            if !rev.is_null() {
+                c::cmsEvalToneCurveFloat(rev, 0.5);
+                c::cmsFreeToneCurve(rev);
+            }
+            eprintln!("{name} ok");
+            c::cmsFreeToneCurve(c_);
+        }
+    }
+}
