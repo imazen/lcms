@@ -4561,3 +4561,72 @@ fn prelin_opt_arms() {
         c::cmsFreeToneCurve(rev);
     }
 }
+
+/// cmsvirt builder APIs — ink-limiting devicelink, NULL profile,
+/// BCHSW abstract, plus cmsDesaturateLab internals.
+#[test]
+fn virt_builder_arms() {
+    unsafe {
+        for cs in [0x434D594Bu32, 0x52474220, 0x434D5950] {
+            for limit in [0.0f64, 50.0, 100.0, 150.0, -1.0] {
+                let p = c::cmsCreateInkLimitingDeviceLink(
+                    cs, limit);
+                eprintln!("inklink cs={cs:#x} lim={limit} \
+                    ok={}", !p.is_null());
+                if !p.is_null() {
+                    c::cmsCloseProfile(p);
+                }
+            }
+        }
+        let nul = c::cmsCreateNULLProfile();
+        let nul2 = c::cmsCreateNULLProfileTHR(std::ptr::null_mut());
+        eprintln!("null={} null-thr={}", !nul.is_null(),
+            !nul2.is_null());
+        // null profile transforms — identity in/out arms
+        if !nul.is_null() {
+            let r8 = (4u32 << 16) | (3 << 3) | 1;
+            let x8 = (9u32 << 16) | (3 << 3) | 1;
+            let l8 = (10u32 << 16) | (3 << 3) | 1;
+            let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let xyz = c::cmsCreateXYZProfile();
+            for (i2, o2, f1, f2) in [
+                (nul, lab, x8, l8), (lab, nul, l8, x8),
+                (nul, xyz, x8, x8), (xyz, nul, x8, x8),
+            ] {
+                let t = c::cmsCreateTransform(i2, f1, o2, f2,
+                    0, 0);
+                eprintln!("null xform t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(lab);
+            c::cmsCloseProfile(xyz);
+        }
+        for npts in [2u32, 17, 33] {
+            for (br, co, hu, sa) in [
+                (0.0f64, 0.0, 0.0, 0.0), (10.0, 5.0, 3.0, 2.0),
+                (-10.0, -5.0, 180.0, -2.0), (100.0, 100.0, 360.0,
+                    100.0),
+            ] {
+                let p = c::cmsCreateBCHSWabstractProfile(
+                    npts, br, co, hu, sa, 5000, 6500);
+                eprintln!("bchsw n{npts} {br}/{co}/{hu}/{sa} \
+                    ok={}", !p.is_null());
+                if !p.is_null() { c::cmsCloseProfile(p); }
+            }
+        }
+        for (a2, a1, b2, b1) in [
+            (50.0f64, -50.0, 50.0, -50.0), (10.0, 0.0, 10.0, 0.0),
+            (0.0, -127.0, 0.0, -127.0),
+        ] {
+            let mut lab = c::CieLab { L: 50.0, a: 30.0,
+                b: -40.0 };
+            let r = c::cmsDesaturateLab(
+                &mut lab as *mut c::CieLab as *mut _,
+                a2, a1, b2, b1);
+            eprintln!("desat {a2}/{a1}/{b2}/{b1} r={r} \
+                a={} b={}", lab.a, lab.b);
+        }
+        if !nul.is_null() { c::cmsCloseProfile(nul); }
+        if !nul2.is_null() { c::cmsCloseProfile(nul2); }
+    }
+}

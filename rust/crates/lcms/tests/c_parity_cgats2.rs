@@ -2370,3 +2370,40 @@ fn header_arms2() {
         }
     }
 }
+
+/// cmsIT8SetTableByLabel — table navigation by label strings.
+#[test]
+fn it8_table_by_label_arms() {
+    unsafe {
+        let doc = "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n5\nEND_DATA\n\
+            IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n6\nEND_DATA\n";
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("load={}", !p.is_null());
+        if !p.is_null() {
+            for (set, field, exp, name) in [
+                (b"A\0" as &[u8], b"A\0" as &[u8],
+                    b"A\0" as &[u8], "a-a"),
+                (b"set0\0", b"A\0", b"A\0", "set0-a"),
+                (b"\0", b"A\0", b"A\0", "empty"),
+                (b"set0\0", b"\0", b"\0", "empty-field"),
+                (b"no\0", b"no\0", b"no\0", "miss"),
+            ] {
+                let r = c::cmsIT8SetTableByLabel(p,
+                    set.as_ptr() as *const i8,
+                    field.as_ptr() as *const i8,
+                    exp.as_ptr() as *const i8);
+                eprintln!("{name}={r}");
+            }
+            let r = c::cmsIT8SetTable(p, 1);
+            let r0 = c::cmsIT8SetTable(p, 0);
+            let r9 = c::cmsIT8SetTable(p, 99);
+            eprintln!("tbl set1={r} back={r0} far={r9}");
+            c::cmsIT8Free(p);
+        }
+    }
+}
