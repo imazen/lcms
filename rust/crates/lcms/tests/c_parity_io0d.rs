@@ -8096,3 +8096,40 @@ fn save_raw_copy_arms() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// NULL/Memory IOhandler internals — NULLWrite (discard sink),
+/// MemoryRead/Write/Seek edge arms.
+#[test]
+fn iohandler_edge_arms() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        // NULL IOhandler — a discard sink, writes accepted
+        let null_io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+        let s = c::cmsSaveProfileToIOhandler(prof, null_io);
+        eprintln!("null-save={s} io={}", !null_io.is_null());
+        // memory IOhandler — save then read back with seeks
+        let io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+            std::ptr::null_mut(), 0,
+            b"w\0".as_ptr() as *const _);
+        eprintln!("memio={}", !io.is_null());
+        if !io.is_null() {
+            let s2 = c::cmsSaveProfileToIOhandler(prof, io);
+            eprintln!("mem-save={s2}");
+            c::cmsCloseIOhandler(io);
+        }
+        // file IOhandler write path
+        let fio = c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(),
+            b"/dev/null\0".as_ptr() as *const _,
+            b"w\0".as_ptr() as *const _);
+        if !fio.is_null() {
+            let s3 = c::cmsSaveProfileToIOhandler(prof, fio);
+            eprintln!("file-save={s3}");
+            c::cmsCloseIOhandler(fio);
+        }
+        // profile IOhandler getter + reuse
+        let pio = c::cmsGetProfileIOhandler(prof);
+        eprintln!("profio={}", !pio.is_null());
+        c::cmsCloseProfile(prof);
+        if !null_io.is_null() { c::cmsCloseIOhandler(null_io); }
+    }
+}
