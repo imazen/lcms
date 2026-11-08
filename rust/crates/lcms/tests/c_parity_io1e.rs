@@ -3066,3 +3066,27 @@ fn is_tag_sweep() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// MD5 machinery — cmsMD5alloc/add/finish on byte buffers.
+#[test]
+fn md5_machinery() {
+    unsafe {
+        for (name, buf) in [
+            ("empty", &[][..]),
+            ("a", &[0x61u8][..]),
+            ("abc", &[0x61u8, 0x62, 0x63][..]),
+            ("long", &[0x61u8; 100][..])] {
+            let md = c::cmsMD5alloc(std::ptr::null_mut());
+            assert!(!md.is_null());
+            for chunk in buf.chunks(17) {
+                c::cmsMD5add(md, chunk.as_ptr(),
+                    chunk.len() as u32);
+            }
+            let mut id = [0u8; 16];
+            c::cmsMD5finish(
+                id.as_mut_ptr() as *mut _, md);
+            eprintln!("{name} id={:02x}{:02x}{:02x}",
+                id[0], id[1], id[2]);
+        }
+    }
+}
