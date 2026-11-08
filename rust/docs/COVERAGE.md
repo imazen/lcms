@@ -972,3 +972,49 @@ unreachable-by-API internals.
   pipeline is cloned internally, which the public API doesn't
   expose (cmsPipelineDup on a manually-built pipeline doesn't
   carry optimizer state).
+
+### round 23 — ps2 internals + named-color emitters + ncl2 arms
+
+77.08% lines / 95.19% fns / 85.48% regions / 69.49% branches.
+
+| file | lines r22 | lines r23 | delta |
+|---|---|---|---|
+| cmsps2.c | 77.34% | 82.51% | +5.17 (ExtractGray2Y + BuildColorantList + WriteNamedColorCRD) |
+| cmsnamed.c | 81.36% | 81.36% | 0 (ncl2 deep arms covered, no line delta) |
+| cmsio1.c | 77.60% | 79.00% | +1.40 |
+| cmsgmt.c | 84.13% | 84.13% | 0 |
+
+~15 gates landed since round 22: alpha_16se_sources (from16SE/
+fromFLT/fromDBL conversion arms), ps2_gray_named_emitters +
+ps2_named_crd_internals (ExtractGray2Y + WriteNamedColorCRD +
+BuildColorantList — nmcl colorspace must be the *device*
+colorspace, not 'nmcl'), dup_intents_list (DupPluginIntentsList
+loop body), unroll_double_float_arms, unroll_words_cells,
+pack_words_cells, pack_loop_iterations (16px loop bodies),
+labv2_formatter_cells, multi_item_tag_write_arms, ncl2_read_arms,
+quadratic_bp_*, tag_free_dup_arms.
+
+Remaining 0-region functions and their status:
+
+- `Pack3Bytes*Optimized` (6 fns) — dead upstream code;
+  `_cmsGetStockOutputFormatter` strips `OPTIMIZED_SH` before the
+  table lookup so they can never be selected through the API.
+- `Prelin16dup`/`Prelin8dup` — dup pointers for optimized
+  pipelines; no public path clones an already-optimized LUT.
+- `satob` — dead; the IT8 writer's WRITE_BINARY arm has no
+  caller (no predefined property or API sets WriteAs=WRITE_BINARY).
+- `GenericMPEdup`/`GenericMPEfree` — element-level tag-handler
+  dup/free for the TYPE_MPE_HANDLER table; MPE pipelines dup/free
+  through cmsStageDup/cmsStageFree, not the element handlers.
+- `RootOfLeastSquaresFitQuadraticCurve` — needs a CLUT output
+  profile whose round-trip produces ≥3 non-straight points in
+  the [0.03,0.25) window; corpus and placeholder CLUT profiles
+  all take earlier return paths.
+- `CHAD2Temp` — runs inside ComputeAbsoluteIntent when the
+  profile carries a `chad` tag with a non-D50 chromatic
+  adaptation; corpus profiles don't carry one.
+- `from16SEto*`/`from*to16SE` (3 pairs) — upstream rejects
+  16SE↔float alpha conversions; the dispatch arms are covered.
+- `ExtractGray2Y` — gray-profile CRD emission takes the output
+  LUT path; needs a gray profile class that routes through the
+  1-channel case.
