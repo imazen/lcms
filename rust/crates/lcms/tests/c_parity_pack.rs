@@ -1626,3 +1626,36 @@ fn half_byte_order_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Double byte-order formats on the devicelinks — the
+/// double byte-order machinery on more channel counts.
+#[test]
+fn double_byte_order_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("4d-bgr", (1 << 22) | (0 << 16) | (1 << 10)
+             | (4 << 3) | 0u32),
+            ("4d-abgr", (1 << 22) | (0 << 16) | (1 << 14)
+             | (1 << 10) | (4 << 3) | 0),
+            ("4d-argb", (1 << 22) | (0 << 16) | (1 << 14)
+             | (4 << 3) | 0),
+            ("4d-bgra", (1 << 22) | (0 << 16) | (1 << 10)
+             | (1 << 7) | (4 << 3) | 0),
+            ("4d-rgba", (1 << 22) | (0 << 16) | (1 << 7)
+             | (4 << 3) | 0),
+            ("4d-doswap", (1 << 22) | (0 << 16) | (1 << 10)
+             | (4 << 3) | 0),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
