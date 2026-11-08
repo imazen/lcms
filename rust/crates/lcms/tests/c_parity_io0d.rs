@@ -1388,3 +1388,31 @@ fn tag_bounds_fields() {
         }
     }
 }
+
+/// File-open machinery — missing/dir/empty/short paths.
+#[test]
+fn file_open_variants() {
+    unsafe {
+        // write a real profile to /tmp
+        let h = c::cmsCreate_sRGBProfile();
+        c::cmsSaveProfileToFile(h,
+            b"/tmp/ccov_srgb.icc\0".as_ptr() as _);
+        c::cmsCloseProfile(h);
+        for (name, path) in [
+            ("real", b"/tmp/ccov_srgb.icc\0" as &[u8]),
+            ("missing", b"/tmp/ccov_nope.icc\0"),
+            ("dir", b"/tmp\0"),
+            ("empty", b"/tmp/ccov_empty.icc\0")] {
+            if name == "empty" {
+                std::fs::write("/tmp/ccov_empty.icc", b"")
+                    .unwrap();
+            }
+            let mut p = [0u8; 256];
+            p[..path.len()].copy_from_slice(path);
+            let h2 = c::cmsOpenProfileFromFile(
+                p.as_ptr() as _, b"r\0".as_ptr() as _);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
