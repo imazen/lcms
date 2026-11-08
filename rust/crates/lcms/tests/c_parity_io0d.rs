@@ -1486,3 +1486,42 @@ fn corpus_transform_dir() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Corpus doTransform — actual pixel data through real
+/// profiles (the eval path).
+#[test]
+fn corpus_dotransform() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let rgb_fmt = (4 << 16) | (3 << 3) | 1u32;
+        for (name, path, nch) in [
+            ("gray", b"../../graylcms2.icc\0" as &[u8], 1u32),
+            ("labv2", b"../../labv2lcms2.icc\0", 3),
+            ("labv4", b"../../labv4lcms2.icc\0", 3),
+            ("xyz", b"../../xyzlcms2.icc\0", 3)] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let cs_fmt = (0 << 16) | (nch << 3) | 1u32;
+            let t = c::cmsCreateTransform(h, cs_fmt,
+                srgb, rgb_fmt, 0, 0);
+            if t.is_null() {
+                eprintln!("{name} xform=NULL");
+                c::cmsCloseProfile(h);
+                continue;
+            }
+            let inp = vec![128u8; nch as usize];
+            let mut out = [0u8; 3];
+            c::cmsDoTransform(t, inp.as_ptr() as _,
+                out.as_mut_ptr() as _, 1);
+            eprintln!("{name} out={},{},{}",
+                out[0], out[1], out[2]);
+            c::cmsDeleteTransform(t);
+            c::cmsCloseProfile(h);
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
