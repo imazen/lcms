@@ -135,3 +135,67 @@ fn internal_xyz_float_in_arms() {
         c::cmsPipelineFree(pipe);
     }
 }
+
+/// cmsio1 residual — BuildRGBOutputMatrixShaper /
+///   BuildGrayOutputPipeline via output-direction
+///   transforms (srgb->lab, lab->srgb, gray->lab)
+///   on matrix-shaper + gray profiles, all intents.
+#[test]
+fn internal_matshaper_out_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfileTHR(
+            std::ptr::null_mut(), std::ptr::null(),
+            g as *const std::ffi::c_void);
+        let frgb = (0u32 << 16) | (3 << 3) | 2;
+        let flab = (0u32 << 16) | (3 << 3) | 2;
+        let fgray = (0u32 << 16) | (1 << 3) | 2;
+        // output direction: PCS -> device
+        for (inp, ifmt, out, ofmt, name) in [
+            (lab4, flab, srgb, frgb, "lab4->srgb"),
+            (lab2, flab, srgb, frgb, "lab2->srgb"),
+            (xyz, flab, srgb, frgb, "xyz->srgb"),
+            (srgb, frgb, lab4, flab, "srgb->lab4"),
+            (srgb, frgb, xyz, flab, "srgb->xyz"),
+            (lab4, flab, gray, fgray, "lab4->gray"),
+            (xyz, flab, gray, fgray, "xyz->gray"),
+            (gray, fgray, lab4, flab, "gray->lab4"),
+            (gray, fgray, srgb, frgb, "gray->srgb"),
+        ] {
+            for int_ in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(inp, ifmt,
+                    out, ofmt, int_, 0);
+                if !t.is_null() {
+                    let src = [0x8000u16; 4];
+                    let mut dst = [0u16; 4];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    if int_ == 0 {
+                        eprintln!("{name} ok {dst:?}"); }
+                    c::cmsDeleteTransform(t);
+                } else if int_ == 0 {
+                    eprintln!("{name} t=0"); }
+            }
+        }
+        // BPC + gamut + proofing flags on output dirs
+        for fl in [0x4000u32, 0x0040, 0x0100, 0x2000] {
+            let t = c::cmsCreateTransform(lab4, flab,
+                srgb, frgb, 1, fl);
+            eprintln!("lab4->srgb fl{fl:#x} t={}",
+                !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+        }
+        for p in [srgb, lab4, lab2, xyz, gray] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+        c::cmsFreeToneCurve(g);
+    }
+}
