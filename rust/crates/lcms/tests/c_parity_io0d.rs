@@ -8312,3 +8312,136 @@ fn mhc2_write_arms() {
         }
     }
 }
+
+/// ReadSegmentedCurve deep arms — raw curv/cvst tags embedding
+/// segmented curves with formula(0-2)/sampled segments.
+#[test]
+fn segmented_curve_arms() {
+    unsafe {
+        // segmented-curve blob inside an mpet cvst element read
+        // via a raw 'data'-sig is complex — use a raw 'mpet' tag
+        // containing a cvst element whose curves are segmented.
+        // Build the segmented-curve blob:
+        // curf + count:nSeg + (nSeg-1) breaks(f32) +
+        //   nSeg x {segSig, rsv, segData}
+        let mk_seg = |segs: &[(u32, Vec<u8>)], breaks: &[f32]| {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x63757266u32.to_be_bytes()); // curf
+            v.extend_from_slice(&0u32.to_be_bytes()); // rsv
+            v.extend_from_slice(&(segs.len() as u16).to_be_bytes());
+            v.extend_from_slice(&0u16.to_be_bytes()); // rsv
+            for b in breaks {
+                v.extend_from_slice(&b.to_be_bytes());
+            }
+            for (sig, data) in segs {
+                v.extend_from_slice(&sig.to_be_bytes());
+                v.extend_from_slice(&0u32.to_be_bytes()); // rsv
+                v.extend_from_slice(data);
+            }
+            v
+        };
+        // parf type 0: {Type:u16, rsv:u16, a,b,c,d:4xf32}
+        let parf0 = {
+            let mut d = Vec::new();
+            d.extend_from_slice(&0u16.to_be_bytes()); // type 0
+            d.extend_from_slice(&0u16.to_be_bytes());
+            for p in [1.0f32, 0.5, 0.0, 0.0] {
+                d.extend_from_slice(&p.to_be_bytes());
+            }
+            d
+        };
+        // parf type 1: {Type:u16, rsv:u16, a,b,c,d,e:5xf32}
+        let parf1 = {
+            let mut d = Vec::new();
+            d.extend_from_slice(&1u16.to_be_bytes());
+            d.extend_from_slice(&0u16.to_be_bytes());
+            for p in [2.2f32, 0.8, 0.1, 0.0, 0.0] {
+                d.extend_from_slice(&p.to_be_bytes());
+            }
+            d
+        };
+        // parf type 2: {Type:u16, rsv:u16, a,b,c,d,e:5xf32}
+        let parf2 = {
+            let mut d = Vec::new();
+            d.extend_from_slice(&2u16.to_be_bytes());
+            d.extend_from_slice(&0u16.to_be_bytes());
+            for p in [2.2f32, 0.8, 0.1, 0.05, 0.0] {
+                d.extend_from_slice(&p.to_be_bytes());
+            }
+            d
+        };
+        // parf type 3 (invalid — Type>2 rejects)
+        let parf3 = {
+            let mut d = Vec::new();
+            d.extend_from_slice(&3u16.to_be_bytes());
+            d.extend_from_slice(&0u16.to_be_bytes());
+            for p in [1.0f32; 5] {
+                d.extend_from_slice(&p.to_be_bytes());
+            }
+            d
+        };
+        // samf: {nEntries:u16, nEntries x u16 samples}
+        let samf = {
+            let mut d = Vec::new();
+            d.extend_from_slice(&4u16.to_be_bytes()); // 4 entries
+            for s in [0u16, 20000, 45000, 65535] {
+                d.extend_from_slice(&s.to_be_bytes());
+            }
+            d
+        };
+        let cases: Vec<(Vec<u8>, &str)> = vec![
+            // 1 segment: no breaks
+            (mk_seg(&[(0x70617266, parf0.clone())], &[]), "parf0-1seg"),
+            // 2 segments: 1 break
+            (mk_seg(&[(0x70617266, parf0.clone()),
+                      (0x73616d66, samf.clone())], &[0.5]),
+                "parf+samf"),
+            // 3 segments: all formula types
+            (mk_seg(&[(0x70617266, parf0.clone()),
+                      (0x70617266, parf1.clone()),
+                      (0x70617266, parf2.clone())], &[0.33, 0.66]),
+                "parf012"),
+            // reject: parf type 3
+            (mk_seg(&[(0x70617266, parf3.clone())], &[]), "parf3-rej"),
+            // reject: 0 segments
+            (mk_seg(&[], &[]), "zero-seg"),
+            // reject: bad seg sig
+            (mk_seg(&[(0x42414421, vec![0; 8])], &[]), "badseg-rej"),
+            // reject: wrong wrapper sig
+            ({ let mut v = 0x62616420u32.to_be_bytes().to_vec();
+                v.extend_from_slice(&[0; 8]); v }, "badsig-rej"),
+        ];
+        for (blob, name) in &cases {
+            // wrap the segmented curve in a cvst mpet element
+            let cvst = {
+                let mut v = Vec::new();
+                v.extend_from_slice(&3u16.to_be_bytes()); // 3 in
+                v.extend_from_slice(&3u16.to_be_bytes()); // 3 out
+                for _ in 0..3 {
+                    v.extend_from_slice(blob);
+                }
+                v
+            };
+            let mpet = {
+                let mut v = Vec::new();
+                v.extend_from_slice(&0x6d706574u32.to_be_bytes()); // mpet
+                v.extend_from_slice(&0u32.to_be_bytes());
+                v.extend_from_slice(&3u16.to_be_bytes()); // nIn
+                v.extend_from_slice(&3u16.to_be_bytes()); // nOut
+                v.extend_from_slice(&1u32.to_be_bytes()); // 1 elem
+                // element: {sig, rsv, data} — no offset table
+                v.extend_from_slice(&0x63767374u32.to_be_bytes()); // cvst sig
+                v.extend_from_slice(&0u32.to_be_bytes());
+                v.extend_from_slice(&cvst);
+                v
+            };
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteRawTag(prof, 0x44324230,
+                mpet.as_ptr() as *const _, mpet.len() as u32);
+            let tag = c::cmsReadTag(prof, 0x44324230);
+            eprintln!("{name} read={}", !tag.is_null());
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
