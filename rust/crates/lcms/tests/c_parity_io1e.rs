@@ -748,3 +748,46 @@ fn unusual_lut_types() {
         }
     }
 }
+
+/// mAB serialization internals — a real devicelink's pipeline
+/// through save + read-back.
+#[test]
+fn mab_serialization() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        c::cmsDeleteTransform(ct);
+        if !dl.is_null() {
+            // save — the mAB writer on the real pipeline
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(dl, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(dl,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            eprintln!("devicelink save={cn}");
+            // reload + read the A2B0 — the mAB reader
+            let h2 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            if !h2.is_null() {
+                let r = c::cmsReadTag(h2, 0x41324230);
+                eprintln!("A2B0 read={}", r.is_null());
+                // eval through it
+                let ct2 = c::cmsCreateTransform(h2, in_fmt,
+                    h2, in_fmt, 0, 0);
+                if !ct2.is_null() {
+                    c::cmsDeleteTransform(ct2);
+                }
+                c::cmsCloseProfile(h2);
+            }
+            c::cmsCloseProfile(dl);
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
