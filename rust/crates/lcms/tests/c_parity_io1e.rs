@@ -1222,3 +1222,67 @@ fn targ_it8_handle() {
         if !it8.is_null() { c::cmsIT8Free(it8); }
     }
 }
+
+/// Remaining writeable sigs — calt/clid/ciid/ceid/ndin/tech/
+/// scrd/clot/clrt with their canonical payloads.
+#[test]
+fn last_writeable_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"x\0".as_ptr() as *const u8);
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let sigv: u32 = 0x666F7461;
+        let dt = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        // sig -> payload kind (1=XYZ 2=MLU 3=sig 4=XYZ-as-dtim)
+        let sigs: [(u32, u32, &str); 12] = [
+            (0x74656368u32, 3, "tech"),
+            (0x73637264u32, 2, "scrd"),
+            (0x636C6F74u32, 2, "clot"),
+            (0x636C7274u32, 2, "clrt"),
+            (0x6E64696Eu32, 2, "ndin"),
+            (0x63616C74u32, 4, "calt"),
+            (0x636C6964u32, 2, "clid"),
+            (0x63696964u32, 2, "ciid"),
+            (0x63656964u32, 2, "ceid"),
+            (0x76756564u32, 2, "vued"),
+            (0x76756574u32, 2, "vuet"),
+            (0x63696973u32, 3, "ciis"),
+        ];
+        for (sig, kind, name) in sigs {
+            let payload = match kind {
+                1 => &xyz as *const _ as *mut std::ffi::c_void,
+                2 => mlu as *mut std::ffi::c_void,
+                3 => &sigv as *const _ as *mut std::ffi::c_void,
+                _ => &dt as *const _ as *mut std::ffi::c_void,
+            };
+            let ok = c::cmsWriteTag(h, sig, payload);
+            eprintln!("{name} write={ok}");
+        }
+        // resave + read each
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for (sig, _k, name) in [
+            (0x74656368u32, 0u32, "tech"), (0x73637264, 0, "scrd"),
+            (0x636C6F74, 0, "clot"), (0x636C7274, 0, "clrt"),
+            (0x6E64696E, 0, "ndin"), (0x63616C74, 0, "calt"),
+            (0x636C6964, 0, "clid"), (0x63696964, 0, "ciid"),
+            (0x63656964, 0, "ceid"), (0x76756564, 0, "vued"),
+            (0x76756574, 0, "vuet"), (0x63696973, 0, "ciis")] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{name} read={}", r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
