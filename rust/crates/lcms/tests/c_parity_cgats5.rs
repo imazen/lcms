@@ -80,3 +80,32 @@ fn it8_load_save_roundtrip() {
         c::cmsIT8Free(ch);
     }
 }
+
+/// cmsIT8FindDataFormat + cmsIT8GetPatchName — the data-format
+/// lookup + patch-name retrieval.
+#[test]
+fn it8_find_format_patchname() {
+    unsafe {
+        let ch = c::cmsIT8Alloc(std::ptr::null_mut());
+        let mut rh = cgats::It8::alloc(None);
+        // set a data format
+        for fmt in ["SAMPLE_ID", "LAB_L", "LAB_A", "LAB_B"] {
+            let _ = c::cmsIT8SetDataFormat(ch, 0, cs8(fmt));
+        }
+        // find a format by sample name
+        for name in ["SAMPLE_ID", "LAB_L", "NOPE"] {
+            let c_idx = c::cmsIT8FindDataFormat(ch, cs8(name));
+            let r_idx = rh.find_data_format(name);
+            assert_eq!(c_idx, r_idx, "find {name}");
+        }
+        // patch name
+        let mut buf = [0i8; 256];
+        let cn = c::cmsIT8GetPatchName(ch, 0, buf.as_mut_ptr());
+        let cstr = if cn.is_null() { String::new() } else {
+            std::ffi::CStr::from_ptr(cn).to_string_lossy().into_owned()
+        };
+        let rstr = rh.get_patch_name(0).unwrap_or_default();
+        assert_eq!(cstr, rstr, "patch name");
+        c::cmsIT8Free(ch);
+    }
+}
