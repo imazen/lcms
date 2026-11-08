@@ -128,3 +128,26 @@ Remaining ungated surface: cmsgmt (~41%), cmscnvrt rest (~60%),
 cmstypes MPE/exotic tags beyond built profiles (~47.6%), cmserr rest,
 cmsplugin rest, cmsio1 remaining getters, cmslut rest, cmsio0 rest,
 cmsps2 rest. Unported APIs deferred: cmsGetProfileInfo*, cmsGetSupportedIntents.
+
+## Coverage campaign — gates through 2013851e
+
+30 parity gates total. Newest: io0b (save-to-mem reserialize + datetime),
+lut extension (reverse-float, float-CLUT sampling, stage accessors),
+virt3 (linearization/ink-limiting/gray builders), io1c (header getters
++ devicelink LUT eval), gmt (GBD compute variants + is_clut matrix),
+xform3 (line-stride + buffer-format + adaptation), err2 (context
+lifecycle + error-handler), plugin (4 plugin types), named extension
+(MLU utf8/wide/translation/dup), gamma extension (dup/join/smooth),
+types extension (viewing-conditions tag write/read).
+
+13 port bugs found and fixed by the gates; ~3 test-misuse bugs found and
+corrected (IT8 buffer size, MLU UTF-8 NUL-termination, created-field
+mask offset). One cosmetic divergence pinned (labv4 CSA 'cvst' vs 'idn '
+pipeline shape — identical output, different optimize path shape).
+
+Coverage ~59-61% lines / ~75-77% fns through the parity suite (floor;
+clang profraw loss on crashed binaries). Remaining: cmstypes MPE/exotic
+tag handlers (~48%), cmscnvrt link-construction variants (~60%),
+cmsps2 emission variants (~72%), cmsio0 IOhandler edge cases (~68%),
+cmsxform remaining workers (~59%), unported APIs (cmsGetProfileInfo*,
+cmsGetSupportedIntents).
