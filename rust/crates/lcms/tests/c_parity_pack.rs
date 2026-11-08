@@ -777,3 +777,31 @@ fn half_byte_order() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Named-color + unusual pixel types — TYPE_NAMED_COLOR_INDEX
+/// + 15-color + more format internals.
+#[test]
+fn named_unusual_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        // named-color index + more unusual pixel types
+        for (name, fmt) in [
+            ("named-idx", (1 << 3) | 2u32), // TYPE_NAMED_COLOR_INDEX
+            ("rgb-4b", (4 << 16) | (3 << 3) | 0), // 0-byte packed
+            ("rgb-1ch", (4 << 16) | (1 << 3) | 2),
+            ("rgb-2ch", (4 << 16) | (2 << 3) | 2),
+            ("rgb-4ch", (4 << 16) | (4 << 3) | 2),
+            ("rgb-6ch", (4 << 16) | (6 << 3) | 2),
+            ("rgb-8ch", (4 << 16) | (8 << 3) | 2),
+            ("rgb-15ch", (4 << 16) | (15 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
