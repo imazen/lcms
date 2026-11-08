@@ -8778,3 +8778,74 @@ fn save_tags_arms2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Type_LUT8/16_Write input/output table serialization — curves
+/// with different entry counts per channel.
+#[test]
+fn lut_write_tables() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        // different curve entry counts per channel
+        let mut tab256 = vec![0u16; 256];
+        let mut tab16 = vec![0u16; 16];
+        let mut tab1024 = vec![0u16; 1024];
+        for i in 0..256 { tab256[i] = (i * 255) as u16; }
+        for i in 0..16 { tab16[i] = (i * 4095) as u16; }
+        for i in 0..1024 { tab1024[i] = (i * 63) as u16; }
+        let t256 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            256, tab256.as_ptr());
+        let t16 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            16, tab16.as_ptr());
+        let t1024 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            1024, tab1024.as_ptr());
+        let mut grid = vec![0u16; 17 * 17 * 17 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 17) * 3855) as u16;
+        }
+        for (c1, c2, c3, name) in [
+            ([t256, t256, t256], [t256, t256, t256],
+                [t256, t256, t256], "all-256"),
+            ([t16, t16, t16], [t16, t16, t16],
+                [t16, t16, t16], "all-16"),
+            ([t1024, t1024, t1024], [t1024, t1024, t1024],
+                [t1024, t1024, t1024], "all-1024"),
+            ([t256, t16, t1024], [t16, t1024, t256],
+                [t1024, t256, t16], "mixed"),
+            ([t256, g, t256], [g, t256, g],
+                [t256, g, t256], "parametric-mix"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 2.1);
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                    c1.as_ptr() as *mut _));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                    mat.as_ptr(), std::ptr::null()));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                    17, 3, 3, grid.as_ptr()));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                    c3.as_ptr() as *mut _));
+            let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 22];
+            let mut nn = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut nn)
+            } else { 0 };
+            eprintln!("{name} w={w} s={s}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(t256);
+        c::cmsFreeToneCurve(t16);
+        c::cmsFreeToneCurve(t1024);
+    }
+}
