@@ -12311,3 +12311,136 @@ fn chrm_read_arms2() {
         }
     }
 }
+
+/// Type_Dictionary_Write + Type_NamedColor_Write — meta/ncl2
+/// tags with full MLU fields + empty/large variants.
+#[test]
+fn dict_ncl2_write_arms() {
+    unsafe {
+        // dict via 'meta' tag
+        for (entries, name) in [
+            (2u32, "small"),
+            (8, "mid"),
+            (40, "large"),
+            (0, "empty"),
+        ] {
+            let d = c::cmsDictAlloc(std::ptr::null_mut());
+            if d.is_null() { continue; }
+            let mlu1 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            c::cmsMLUsetASCII(mlu1, b"en\0".as_ptr(),
+                b"US\0".as_ptr(), b"disp\0".as_ptr());
+            for i in 0..entries {
+                let name_s = format!("k{i}\0");
+                let val_s = format!("v{i}\0");
+                c::cmsDictAddEntry(d,
+                    name_s.as_ptr() as *const i32,
+                    val_s.as_ptr() as *const i32,
+                    mlu1, mlu1);
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x6D657461,
+                d as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6D657461)
+            } else { std::ptr::null_mut() };
+            eprintln!("meta-{name} w={w} s={s} rd={}",
+                !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsDictFree(d);
+            c::cmsMLUfree(mlu1);
+        }
+        // ncl2 via named-color list
+        for (ncol, name) in [
+            (3u32, "n3"),
+            (1, "n1"),
+            (12, "n12"),
+        ] {
+            let nl = c::cmsAllocNamedColorList(
+                std::ptr::null_mut(), ncol, 4,
+                b"pre\0".as_ptr(), b"suf\0".as_ptr());
+            if nl.is_null() { continue; }
+            let pcs = [0x8000u16, 0x4000, 0x2000];
+            let dev = [0x1000u16, 0x2000, 0x3000, 0x4000];
+            for i in 0..ncol {
+                let nm = format!("color{i}\0");
+                c::cmsAppendNamedColor(nl,
+                    nm.as_ptr() as *const u8,
+                    pcs.as_ptr(), dev.as_ptr());
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x6E636C32,
+                nl as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6E636C32)
+            } else { std::ptr::null_mut() };
+            eprintln!("ncl2-{name} w={w} s={s} rd={}",
+                !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsFreeNamedColorList(nl);
+        }
+    }
+}
+
+/// cmsStageSampleCLut16bit/Float — CLUT sampling via callback.
+#[test]
+fn clut_sample_arms() {
+    unsafe extern "C" fn s16(input: *const u16, out: *mut u16,
+        _data: *mut std::ffi::c_void) -> i32 {
+        for i in 0..3 {
+            *out.add(i) = (*input.add(i) as u32 * 32769 / 65535)
+                as u16;
+        }
+        1
+    }
+    unsafe extern "C" fn sf(input: *const f32, out: *mut f32,
+        _data: *mut std::ffi::c_void) -> i32 {
+        for i in 0..3 {
+            *out.add(i) = *input.add(i) * 0.9;
+        }
+        1
+    }
+    unsafe {
+        for pts in [2u32, 3, 17] {
+            let n = (pts * pts * pts * 3) as usize;
+            let grid16 = vec![0x8000u16; n];
+            let gridf = vec![0.5f32; n];
+            let st16 = c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), pts, 3, 3,
+                grid16.as_ptr());
+            let stf = c::cmsStageAllocCLutFloat(
+                std::ptr::null_mut(), pts, 3, 3,
+                gridf.as_ptr());
+            let r16 = c::cmsStageSampleCLut16bit(st16, s16,
+                std::ptr::null_mut(), 0);
+            let rf = c::cmsStageSampleCLutFloat(stf, sf,
+                std::ptr::null_mut(), 0);
+            eprintln!("pts={pts} r16={r16} rf={rf}");
+            if !st16.is_null() { c::cmsStageFree(st16); }
+            if !stf.is_null() { c::cmsStageFree(stf); }
+        }
+    }
+}
