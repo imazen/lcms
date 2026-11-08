@@ -847,3 +847,57 @@ fn it8_variations() {
         }
     }
 }
+
+/// IT8 data-section arms — data rows with quoted strings, numeric
+/// formats (int/float/exp), comments mid-data, empty cells, short
+/// rows, DESCRIPTOR/KEYWORD data formats.
+#[test]
+fn it8_data_arms() {
+    let docs: &[(&str, &str)] = &[
+        ("exp", "CGATS.17\nNUMBER_OF_FIELDS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n1.0e3\nEND_DATA\n"),
+        ("quoted", "CGATS.17\nNUMBER_OF_FIELDS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n\"str val\"\nEND_DATA\n"),
+        ("hex", "CGATS.17\nNUMBER_OF_FIELDS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n0x1F\nEND_DATA\n"),
+        ("twocol", "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+            BEGIN_DATA_FORMAT\nA\tB\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n1\t2\nEND_DATA\n"),
+        ("shortrow", "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+            BEGIN_DATA_FORMAT\nA\tB\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\nBEGIN_DATA\n1\nEND_DATA\n"),
+        ("empty", "CGATS.17\nNUMBER_OF_FIELDS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 0\nBEGIN_DATA\nEND_DATA\n"),
+    ];
+    unsafe {
+        // known-good doc first — isolate doc-vs-call issues
+        let good = "CGATS.17
+NUMBER_OF_FIELDS 1
+            BEGIN_DATA_FORMAT
+A
+END_DATA_FORMAT
+            NUMBER_OF_SETS 1
+BEGIN_DATA
+1
+END_DATA
+";
+        let g = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            good.as_ptr() as *const _, good.len() as u32);
+        eprintln!("known-good h={}", !g.is_null());
+        if !g.is_null() { c::cmsIT8Free(g); }
+        for (name, doc) in docs {
+            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name}: h={}", !h.is_null());
+            if !h.is_null() {
+                let n = c::cmsIT8GetDataRowColDbl(h, 0, 0);
+                eprintln!("  r0c0={n}");
+                c::cmsIT8Free(h);
+            }
+        }
+    }
+}
