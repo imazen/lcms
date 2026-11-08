@@ -3108,3 +3108,31 @@ fn insert_stage_positions() {
         let _ = first;
     }
 }
+
+
+/// 8-bit CLUT serialization — SaveAs8bits flag serializes a 16-bit
+/// CLUT as mft1 -> the 8-bit table-write path.
+#[test]
+fn clut8bit_serialization() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let tab: Vec<u16> = (0..27*3).map(|i| (i * 5) as u16).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 3, 3, 3,
+                tab.as_ptr()));
+        c::cmsPipelineSetSaveAs8bitsFlag(p, 1);
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 2.2); // v2 -> mft1/mft2
+        let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        eprintln!("clut8bit-ser w={w} s={s}");
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+    }
+}
