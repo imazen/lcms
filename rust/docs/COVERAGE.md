@@ -183,3 +183,29 @@ These numbers are a floor.
   transform combos exercised
 - **cmsvirt.c** ~40% — remaining builders (OkLab variants, additional
   devicelink types)
+
+## C oracle through the parity suite — current (post-campaign)
+
+`just coverage-cref` after the ~64 parity gates — **61.75% lines /
+78.03% functions** total (vs 52.2%/62.7% before the campaign):
+
+| file | lines | fns | | file | lines | fns |
+|---|---|---|---|---|---|---|
+| cmsalpha.c | 86.2% | 76.8% | | cmsopt.c | 71.3% | 61.4% |
+| cmscam02.c | 91.3% | 84.0% | | cmspack.c | 46.7% | 48.9% |
+| cmscgats.c | 56.0% | 46.8% | | cmspcs.c | 61.4% | 64.1% |
+| cmscnvrt.c | 63.2% | 54.8% | | cmsplugin.c | 69.8% | 61.1% |
+| cmserr.c | 67.6% | 50.0% | | cmsps2.c | 72.4% | 61.3% |
+| cmsgamma.c | 67.6% | 58.8% | | cmssamp.c | 68.2% | 50.9% |
+| cmsgmt.c | 55.7% | 44.5% | | cmssm.c | 90.7% | 82.7% |
+| cmshalf.c | 100% | 100% | | cmstypes.c | 50.5% | 44.3% |
+| cmsintrp.c | 98.5% | 95.5% | | cmsvirt.c | 40.3% | 29.0% |
+| cmsio0.c | 69.8% | 63.4% | | cmswtpnt.c | 89.3% | 76.7% |
+| cmsio1.c | 59.4% | 47.0% | | cmsxform.c | 61.1% | 55.9% |
+| cmslut.c | 73.0% | 64.9% | | **TOTAL** | **61.75%** | **78.03%** |
+| cmsmd5.c | 88.1% | 45.5% | | | | |
+| cmsmtrx.c | 100% | 100% | | cmsnamed.c | 71.7% | 60.4% |
+
+Lowest files: `cmsvirt.c` 40.3% (the virt builders' uncovered paths),
+`cmspack.c` 46.7%, `cmstypes.c` 50.5%, `cmscgats.c` 56.0%,
+`cmsgmt.c` 55.7%, `cmsio1.c` 59.4%.
