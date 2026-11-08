@@ -945,3 +945,58 @@ fn stage_type_introspection() {
         c::cmsPipelineFree(pl);
     }
 }
+
+/// Stage machinery internals — AllocNamedColor/SampleCLut/
+/// AllocIdentity on more stage combos.
+#[test]
+fn stage_machinery() {
+    unsafe {
+        // AllocIdentity — the no-op stage
+        let id = c::cmsStageAllocIdentity(std::ptr::null_mut(), 3);
+        eprintln!("identity type={:#x}", c::cmsStageType(id));
+        // SampleCLut16bit — sample a stage's CLUT fn
+        let grid = [4u32; 3];
+        let tab16 = [0x8000u16; 4 * 4 * 4 * 3];
+        let cl16 = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+            tab16.as_ptr());
+        // SampleCLut16bit — runs the sampler through the CLUT
+        unsafe extern "C" fn samp16(
+            inp: *const u16, out: *mut u16,
+            _c: *mut std::ffi::c_void) -> i32 {
+            *out = *inp;
+            *out.add(1) = *inp.add(1);
+            *out.add(2) = *inp.add(2);
+            1
+        }
+        c::cmsStageSampleCLut16bit(cl16, samp16,
+            std::ptr::null_mut(), 0);
+        // SampleCLutFloat — a float CLUT's eval
+        let tabf = [0.5f32; 4 * 4 * 4 * 3];
+        let clf = c::cmsStageAllocCLutFloatGranular(
+            std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+            tabf.as_ptr());
+        unsafe extern "C" fn sampf(
+            inp: *const f32, out: *mut f32,
+            _c: *mut std::ffi::c_void) -> i32 {
+            *out = *inp;
+            *out.add(1) = *inp.add(1);
+            *out.add(2) = *inp.add(2);
+            1
+        }
+        c::cmsStageSampleCLutFloat(clf, sampf,
+            std::ptr::null_mut(), 0);
+        // AllocNamedColor — the named-color stage
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3,
+            b"p\0".as_ptr() as *const _,
+            b"s\0".as_ptr() as *const _);
+        let nc = c::_cmsStageAllocNamedColor(ncl, 0);
+        eprintln!("namedstage null={}", nc.is_null());
+        if !nc.is_null() { c::cmsStageFree(nc); }
+        c::cmsStageFree(id);
+        c::cmsStageFree(cl16);
+        c::cmsStageFree(clf);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
