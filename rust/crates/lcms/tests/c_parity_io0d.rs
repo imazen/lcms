@@ -24877,3 +24877,81 @@ fn internal_final75_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — _cmsReadProfileSequence mix path:
+///   profiles holding BOTH pseq and psid tags, matching
+///   and mismatched desc counts.
+#[test]
+fn internal_final76_arms() {
+    unsafe {
+        for (npseq, npsid, name) in [
+            (1u32, 1u32, "1v1"),
+            (2, 2, "2v2"),
+            (4, 4, "4v4"),
+            (2, 1, "2v1-mismatch"),
+            (1, 3, "1v3-mismatch"),
+            (0, 1, "0v1"),
+            (1, 0, "1v0"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            for (tag, nd) in [
+                (0x70736571u32, npseq),
+                (0x70736964, npsid),
+            ] {
+                let ps = c::cmsAllocProfileSequenceDescription(
+                    std::ptr::null_mut(), nd);
+                if ps.is_null() {
+                    eprintln!("{name} {tag:#x} alloc=0");
+                    continue;
+                }
+                // fill each desc's MLUs
+                let seq = ps as *mut u8;
+                let n = *(seq as *const u32);
+                let descs = *((seq as usize + 16)
+                    as *const usize) as *mut u8;
+                for i in 0..n as usize {
+                    let d = descs.add(i * 64);
+                    for (off, ch) in [
+                        (40usize, b'M'), (48, b'D'),
+                        (56, b'S'),
+                    ] {
+                        let mlu = c::cmsMLUalloc(
+                            std::ptr::null_mut(), 1);
+                        let w = [ch as i32, 0];
+                        c::cmsMLUsetWide(mlu,
+                            b"en\0".as_ptr() as *const _,
+                            b"US\0".as_ptr() as *const _,
+                            w.as_ptr());
+                        *((d as usize + off)
+                            as *mut usize) = mlu as usize;
+                    }
+                }
+                let w = c::cmsWriteTag(prof, tag,
+                    ps as *const _);
+                eprintln!("{name} {tag:#x} n={nd} w={w}");
+            }
+            let mut buf = vec![0u8; 1 << 20];
+            let mut nb = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut nb);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, nb)
+            } else { std::ptr::null_mut() };
+            if !rp.is_null() {
+                for tag in [0x70736571u32, 0x70736964] {
+                    let t = c::cmsReadTag(rp, tag);
+                    eprintln!("  {name} read {tag:#x} t={}",
+                        !t.is_null());
+                }
+                c::cmsCloseProfile(rp);
+            }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
