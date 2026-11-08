@@ -274,3 +274,24 @@ fn whitepoint_internals() {
         eprintln!("d50xy=({:.4},{:.4})", (*d50xy).x, (*d50xy).y);
     }
 }
+
+/// TempFromWhitePoint (inverse) + adaptation-edge internals.
+#[test]
+fn temp_from_whitepoint() {
+    unsafe {
+        // round-trip: temp -> wp -> temp
+        for t in [4000.0f64, 6500.0, 9300.0] {
+            let mut wp = c::CiexyY { x: 0.0, y: 0.0, Y: 0.0 };
+            c::cmsWhitePointFromTemp(&mut wp, t);
+            let mut t2 = 0.0f64;
+            let r = c::cmsTempFromWhitePoint(&mut t2, &wp);
+            eprintln!("t{t} -> wp -> t2={t2:.0} r={r}");
+        }
+        // edge temps (outside the valid range)
+        for t in [0.0f64, -1.0, 1e6] {
+            let mut wp = c::CiexyY { x: 0.0, y: 0.0, Y: 0.0 };
+            let r = c::cmsWhitePointFromTemp(&mut wp, t);
+            eprintln!("edge t{t} r={r}");
+        }
+    }
+}
