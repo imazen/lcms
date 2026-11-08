@@ -543,3 +543,40 @@ new ps2 gates were missing PS_LOCK (shared C-oracle state).
 | cmsmd5.c | 88.11% | 80.00% |
 | cmshalf.c | 100% | 100% |
 | cmsmtrx.c | 100% | 100% |
+
+## Round 13 — pack/types internals (through 973ed8f4)
+
+**71.96% lines / 90.78% functions / 80.38% regions / 63.73% branches**
+(up from round-12's 69.80/87.25). cmspack jumped 53.42→69.90%,
+cmstypes 56.53→58.47%, cmspcs 79.69→83.55%, cmsopt ~80.59%,
+cmsxform 71.96→73.57%. New: pack_chgbuf_sweep (16-table float swap),
+pack_labv2 (v2 encode/decode both paths), pack_misc16 (4ch swap-first,
+MCH2, 1ch+ex3, planar premul), pack_optimized_u8 (matshaper *Optimized
+packers), mpe_structured_writes (Type_MPEmatrix/clut_Write + GenericMPE),
+mhc2_write_read (Type_MHC2_* + identity/doubles helpers),
+dict_cooked_write (Type_Dictionary_* + ReadOneMLUC/WriteOneMLUC).
+
+Port bugs found+fixed by these gates: change_buffers_format always
+selects the 16-bit table; LabV2-from-float packers (v4>>8/direct-v2);
+pack_planar_{words,bytes} missing premul; to_fixed_domain formula;
+cms_write_tag skipping the cmsDictDup reversal.
+
+| file | lines | fns |
+|---|---|---|
+| cmstypes.c | 58.47% | 89.72% |
+| cmsio1.c | 67.20% | 88.00% |
+| cmsvirt.c | 67.00% | 96.88% |
+| cmscnvrt.c | 67.95% | 86.96% |
+| cmssamp.c | 68.22% | 85.71% |
+| cmspack.c | 69.90% | 94.93% |
+| cmsgamma.c | 71.39% | 89.47% |
+| cmscgats.c | 72.58% | 95.96% |
+| cmsxform.c | 73.57% | 75.00% |
+| cmsplugin.c | 73.61% | 100% |
+| cmsio0.c | 79.30% | 95.65% |
+| cmsnamed.c | 76.21% | 100% |
+| cmsopt.c | 80.59% | 90.91% |
+| cmsps2.c | 77.34% | 93.75% |
+| cmslut.c | 81.36% | 98.68% |
+| cmspcs.c | 83.55% | 100% |
+| TOTAL | **71.96%** | **90.78%** |
