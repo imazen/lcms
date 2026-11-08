@@ -582,12 +582,8 @@ impl It8 {
 
     /// `cmsIT8SetPropertyStr` (Uncooked/Stringify by string-vs-not)
     pub fn set_property_str(&mut self, key: &str, val: &str) -> bool {
-        let mode = if val.contains(' ') || val.contains('\t') {
-            WriteMode::Stringify
-        } else {
-            WriteMode::Uncooked
-        };
-        self.add_to_list(true, key, None, Some(val), mode)
+        // C: AddToList(..., WRITE_STRINGIFY) unconditionally — always quoted
+        self.add_to_list(true, key, None, Some(val), WriteMode::Stringify)
     }
 
     /// `cmsIT8SetPropertyDbl`
@@ -599,7 +595,8 @@ impl It8 {
 
     /// `cmsIT8SetPropertyHex`
     pub fn set_property_hex(&mut self, key: &str, val: u32) -> bool {
-        let s = format!("0x{val:x}");
+        // C stores `"%u"` (decimal); the writer emits 0x%X of satoi(value)
+        let s = format!("{val}");
         self.add_to_list(true, key, None, Some(&s), WriteMode::Hexadecimal)
     }
 
@@ -783,7 +780,10 @@ impl It8 {
         }
         let n_patches = self.get_table().n_patches;
         if n_patches == 0 {
-            if !self.allocate_data_format() || !self.allocate_data_set() {
+            // C's cmsIT8SetData -> AllocateDataSet only — re-running
+            // AllocateDataFormat here would wipe labels already set by
+            // SetDataFormat (observed: data_format cleared -> locate fails).
+            if !self.allocate_data_set() {
                 return false;
             }
             self.cook_pointers();
