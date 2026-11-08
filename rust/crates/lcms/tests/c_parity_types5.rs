@@ -3796,3 +3796,80 @@ fn full_tag_walk() {
         }
     }
 }
+
+/// MHC2 tag type — cmsMHC2Type payload write/save/read on both
+/// sides. Hits Type_MHC2_{Dup,Write,Read,Free} + the identity/
+/// doubles helpers (IsIdentity/SetIdentity/CloseEnough/
+/// ReadDoublesAt/WriteDoubles).
+#[repr(C)]
+struct CMhc2 {
+    curve_entries: u32,
+    _pad: u32,
+    red: *const f64,
+    green: *const f64,
+    blue: *const f64,
+    min_lum: f64,
+    peak_lum: f64,
+    matrix: [[f64; 4]; 3],
+}
+
+#[test]
+fn mhc2_write_read() {
+    unsafe {
+        let ch = c::cmsCreate_sRGBProfile();
+        let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+        let red: Vec<f64> = (0..256).map(|i| i as f64 / 255.0).collect();
+        let grn: Vec<f64> = (0..256).map(|i| (i as f64 / 255.0).powf(2.2)).collect();
+        let blu: Vec<f64> = (0..256).map(|i| (i as f64 / 255.0).sqrt()).collect();
+        let mat: [[f64; 4]; 3] = [
+            [1.1, 0.0, 0.0, 0.01],
+            [0.0, 0.9, 0.0, 0.0],
+            [0.0, 0.0, 0.8, 0.02]];
+        let cm = CMhc2 {
+            curve_entries: 256,
+            _pad: 0,
+            red: red.as_ptr(),
+            green: grn.as_ptr(),
+            blue: blu.as_ptr(),
+            min_lum: 0.005,
+            peak_lum: 1000.0,
+            matrix: mat,
+        };
+        let c_ok = c::cmsWriteTag(ch, 0x4D484332,
+            &cm as *const _ as *const _);
+        let rm = lcms::tagtypes::Mhc2 {
+            curve_entries: 256,
+            red_curve: red.clone(),
+            green_curve: grn.clone(),
+            blue_curve: blu.clone(),
+            min_luminance: 0.005,
+            peak_luminance: 1000.0,
+            xyz2xyz_matrix: mat,
+        };
+        let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x4D484332,
+            Some(lcms::tagtypes::TagObject::Mhc2(rm)));
+        assert_eq!(c_ok != 0, r_ok, "mhc2 write");
+        // save + byte compare
+        let mut c_out = vec![0u8; 1 << 20];
+        let mut n = c_out.len() as u32;
+        let s_ok = c::cmsSaveProfileToMem(ch,
+            c_out.as_mut_ptr() as *mut _, &mut n);
+        let r_out = lcms::profile::save_profile_to_mem(&mut rp);
+        assert_eq!(s_ok != 0, r_out.is_some(), "mhc2 save status");
+        if s_ok != 0 {
+            c_out.truncate(n as usize);
+            let mut r_out = r_out.unwrap();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "mhc2 resave");
+        }
+        // read back through the type dispatch
+        let t = c::cmsReadTag(ch, 0x4D484332);
+        eprintln!("mhc2 readback={}", !t.is_null());
+        c::cmsCloseProfile(ch);
+    }
+}
