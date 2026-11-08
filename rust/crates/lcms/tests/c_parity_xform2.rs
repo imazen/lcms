@@ -5857,3 +5857,129 @@ fn xform_parallel_gamut_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmscnvrt residual — BlackPreserving intents with
+///   TWO+ trailing CMYK devicelinks: walk-back loop
+///   decrement + devicelink re-insert arms.
+#[test]
+fn xform_blacktrail_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // helper: make a CMYK devicelink profile
+        let mk_cmyk_link = || {
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 4, 4);
+            let tcs: Vec<_> = (0..4).map(|_| g).collect();
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 4,
+                    tcs.as_ptr() as *mut _));
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6C696E6B);
+            c::cmsSetColorSpace(p, 0x434D594B);
+            c::cmsSetPCS(p, 0x434D594B); // cmyk->cmyk
+            c::cmsSetProfileVersion(p, 4.4);
+            c::cmsWriteTag(p, 0x41324230,
+                pipe as *const _);
+            c::cmsWriteTag(p, 0x42324130,
+                pipe as *const _);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n);
+            c::cmsCloseProfile(p);
+            c::cmsPipelineFree(pipe);
+            c::cmsFreeToneCurve(g);
+            pr
+        };
+        let mft1_4_3 = |clut_in: u8, clut_out: u8| {
+            // 4->3 or 3->4 mft1 tag blob
+            let mut blob = vec![
+                0x6D, 0x66, 0x74, 0x31, 0, 0, 0, 0,
+                clut_in, clut_out, 2, 0,
+            ];
+            for i in 0..9 {
+                let v: u32 = if i % 4 == 0 {
+                    0x00010000 } else { 0 };
+                blob.extend_from_slice(&v.to_be_bytes());
+            }
+            blob.extend_from_slice(&vec![
+                0x80u8; 256 * clut_in as usize]);
+            blob.extend_from_slice(&vec![
+                0x80u8; 16 * clut_out as usize]);
+            blob.extend_from_slice(&vec![
+                0x80u8; 256 * clut_out as usize]);
+            blob
+        };
+        let mk_cmyk_io = || {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x70727472);
+            c::cmsSetColorSpace(p, 0x434D594B);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 2.4);
+            let a2b = mft1_4_3(4, 3);
+            let b2a = mft1_4_3(3, 4);
+            c::cmsWriteRawTag(p, 0x41324230,
+                a2b.as_ptr() as *const _, a2b.len() as u32);
+            c::cmsWriteRawTag(p, 0x42324130,
+                b2a.as_ptr() as *const _, b2a.len() as u32);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n);
+            eprintln!("  io sv={sv} n={n} pr={}",
+                !pr.is_null());
+            c::cmsCloseProfile(p);
+            pr
+        };
+        let io = mk_cmyk_io();
+        let dl1 = mk_cmyk_link();
+        let dl2 = mk_cmyk_link();
+        eprintln!("io={} dl1={} dl2={}",
+            !io.is_null(), !dl1.is_null(), !dl2.is_null());
+        if io.is_null() || dl1.is_null() || dl2.is_null() {
+            for p in [io, dl1, dl2, srgb] {
+                if !p.is_null() {
+                    c::cmsCloseProfile(p); } }
+            return;
+        }
+        let fcmyk = (0u32 << 16) | (4 << 3) | 2;
+        // 4-profile chains ending in cmyk devicelinks
+        for (chain, np, name) in [
+            ([srgb, io, dl1, dl2].as_slice(), 4usize,
+                "srgb+io+dl+dl"),
+            ([srgb, io, io, dl1].as_slice(), 4,
+                "srgb+io+io+dl"),
+            ([io, io, dl1, dl2].as_slice(), 4,
+                "io+io+dl+dl"),
+            ([srgb, io, dl1].as_slice(), 3,
+                "srgb+io+dl"),
+            ([srgb, io, dl1, dl2, io].as_slice(), 5,
+                "srgb+io+dl+dl+io"),
+        ] {
+            for intent in [12u32, 13, 14, 15, 0] {
+                let mut hs = Vec::new();
+                for p in &chain[..np] {
+                    hs.push(*p); }
+                let t = c::cmsCreateMultiprofileTransform(
+                    hs.as_mut_ptr(), np as i32,
+                    fcmyk, fcmyk, intent, 0);
+                if intent == 14 {
+                    eprintln!("{name} i{intent} t={}",
+                        !t.is_null()); }
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+        }
+        for p in [io, dl1, dl2, srgb] {
+            c::cmsCloseProfile(p); }
+    }
+}
