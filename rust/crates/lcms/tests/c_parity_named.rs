@@ -671,3 +671,52 @@ fn mlu_translation_internals() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Named-color index/info internals — NamedColorIndex lookup,
+/// NamedColorInfo, GetNamedColorList via transform.
+#[test]
+fn named_color_index_info() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 3,
+            3, b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        let lab = [0xF000u16, 0x8000, 0x8000];
+        for n in [b"c1\0".as_ptr(), b"c2\0".as_ptr(), b"c3\0".as_ptr()] {
+            c::cmsAppendNamedColor(ncl, n,
+                lab.as_ptr(), lab.as_ptr());
+        }
+        eprintln!("count={}", c::cmsNamedColorCount(ncl));
+        // index lookups — hit + miss
+        for n in [b"c1\0".as_ptr(), b"c2\0".as_ptr(), b"zz\0".as_ptr()] {
+            let i = c::cmsNamedColorIndex(ncl, n);
+            eprintln!("idx={i}");
+        }
+        // NamedColorInfo — name/pcs/colorant out-params
+        let mut name = [0u8; 64];
+        let mut pcs = [0u16; 4];
+        let mut col = [0u16; 4];
+        for i in 0..3i32 {
+            let mut pre = [0u8; 64];
+            let mut suf = [0u8; 64];
+            let r = c::cmsNamedColorInfo(ncl, i as u32,
+                name.as_mut_ptr(), pre.as_mut_ptr(), suf.as_mut_ptr(),
+                pcs.as_mut_ptr(), col.as_mut_ptr());
+            eprintln!("info{i}={r}");
+        }
+        // GetNamedColorList via a transform on an nmcl profile
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6e6d636c);
+        c::cmsSetColorSpace(prof, 0x6e6d636c);
+        c::cmsSetPCS(prof, 0x4C616220);
+        c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _);
+        let t = c::cmsCreateTransform(prof,
+            (0xFFu32 << 16) | (1 << 3) | 1,
+            prof, (10u32 << 16) | (3 << 3) | 2, 0, 0);
+        if !t.is_null() {
+            let gl = c::cmsGetNamedColorList(t);
+            eprintln!("getncl={}", !gl.is_null());
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
