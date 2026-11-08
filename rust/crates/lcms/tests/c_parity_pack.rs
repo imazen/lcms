@@ -618,3 +618,46 @@ fn byte_order_formats() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// u16 byte-order variants — BGRA16/RGBA16/ARGB16/565 +
+/// Lab byte-order formats.
+#[test]
+fn u16_byte_order_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (name, in_fmt, out_fmt, p2) in [
+            ("bgra-16", (4 << 16) | (1 << 10) | (1 << 7)
+             | (3 << 3) | 2u32,
+             (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 2,
+             ho),
+            ("rgba-16", (4 << 16) | (1 << 7) | (3 << 3) | 2,
+             (4 << 16) | (1 << 7) | (3 << 3) | 2, ho),
+            ("argb-16", (4 << 16) | (1 << 14) | (1 << 7)
+             | (3 << 3) | 2,
+             (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 2,
+             ho),
+            ("bgr-16", (4 << 16) | (1 << 10) | (3 << 3) | 2,
+             (4 << 16) | (1 << 10) | (3 << 3) | 2, ho),
+            ("lab-bgr", (4 << 16) | (1 << 10) | (3 << 3) | 2,
+             (10 << 16) | (1 << 10) | (3 << 3) | 2, lab4),
+            ("lab-565", (4 << 16) | (3 << 3) | 1,
+             (10 << 16) | (3 << 3) | 1, lab4),
+        ] {
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x8000u16, 0x6000, 0x4000, 0xFFFF];
+                let mut out = [0u16; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let _ = c::cmsCloseProfile(lab4);
+    }
+}
