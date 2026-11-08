@@ -4063,3 +4063,41 @@ fn text_sig_handlers() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Curve-tag handlers — rTRC/gTRC/bTRC/kTRC through the curve
+/// serializer with different curve types.
+#[test]
+fn curve_tag_handlers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let tbl = [0u16, 0x4000, 0x8000, 0xFFFF];
+        let tc = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            4, tbl.as_ptr());
+        for (sig, tc2, name) in [
+            (0x72545243u32, g, "rTRC-gamma"),
+            (0x67545243, tc, "gTRC-table"),
+            (0x62545243, g, "bTRC-gamma"),
+            (0x6b545243, tc, "kTRC-table"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, tc2 as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(tc);
+    }
+}
