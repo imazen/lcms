@@ -4096,3 +4096,90 @@ fn pack_float_lab_xyz_arms() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmspack residual — Pack3BytesAndSkip1* + PackPlanarBytes/
+///   PackChunkyBytes internals via extra-channel outputs.
+#[test]
+fn pack_skip1_planar_arms() {
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
+        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
+            | (pl << 12) | (ds << 10) | (ex << 7)
+            | (ch << 3) | by
+    }
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        // output: 3ch + 1 extra, 1 byte → Pack3BytesAndSkip1
+        for (ds, sf, name) in [
+            (0u32, 0, "plain"), (1, 0, "ds"),
+            (0, 1, "sf"), (1, 1, "dssf"),
+        ] {
+            let fin = f(10, 3, 1, 0, 0, 0, 0, 0, 0);
+            let fout = f(4, 3, 1, 1, ds, 0, sf, 0, 0);
+            let t = c::cmsCreateTransform(lab, fin,
+                srgb, fout, 0, 0);
+            eprintln!("3+1ex {name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [128u8; 3 * 16];
+                let mut dst = [0u8; 4 * 16];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 16);
+                c::cmsDeleteTransform(t);
+            }
+            // also RGB→RGB extra-1 output
+            let t2 = c::cmsCreateTransform(srgb,
+                f(4, 3, 1, 0, 0, 0, 0, 0, 0),
+                srgb, fout, 0, 0);
+            eprintln!("rgb3+1ex {name} t={}", !t2.is_null());
+            if !t2.is_null() {
+                let src = [128u8; 3 * 16];
+                let mut dst = [0u8; 4 * 16];
+                c::cmsDoTransform(t2,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 16);
+                c::cmsDeleteTransform(t2); }
+        }
+        // planar bytes out (PackPlanarBytes)
+        for (pl, name) in [
+            (1u32, "pl"), (0, "ch"),
+        ] {
+            for ch in [1u32, 3, 4] {
+                let fin = f(4, 3, 1, 0, 0, 0, 0, 0, 0);
+                let fout = f(4, ch, 1, 0, 0, 0, 0, pl, 0);
+                let t = c::cmsCreateTransform(srgb, fin,
+                    srgb, fout, 0, 0);
+                eprintln!("pl{pl} {ch}ch t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = [100u8; 3 * 8];
+                    let mut dst = [0u8; 4 * 16];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        // chunky multi-ch out (PackChunkyBytes)
+        for ch in [2u32, 3, 4, 5, 6, 8] {
+            let fin = f(4, 3, 1, 0, 0, 0, 0, 0, 0);
+            let fout = f(4, ch, 1, 0, 0, 0, 0, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fin,
+                srgb, fout, 0, 0);
+            eprintln!("ch{ch} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [100u8; 3 * 8];
+                let mut dst = [0u8; 8 * 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
