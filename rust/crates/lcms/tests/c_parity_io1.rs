@@ -1495,3 +1495,40 @@ fn lut_reader_all_arms() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsLCMScolorSpace + cmsIsIntentSupported internals —
+/// colorspace-sig -> channel-count mapping + per-class intent
+/// support checks.
+#[test]
+fn colorspace_intent_internals() {
+    unsafe {
+        for (cs, name) in [
+            (0x47524159u32, "gray"), (0x52474220, "rgb"),
+            (0x434D594B, "cmyk"), (0x58595A20, "xyz"),
+            (0x4C616220, "lab"), (0x4C756976, "luv"),
+            (0x59436272, "ycbcr"), (0x4D434836, "mch6"),
+            (0xFFFF0000, "bad"), (0x00000000, "zero"),
+        ] {
+            let ch = c::_cmsLCMScolorSpace(cs);
+            eprintln!("cs {name} ch={ch}");
+        }
+        // intent support on each class
+        for (cls, name) in [
+            (0x6d6e7472u32, "mntr"), (0x6c696e6b, "link"),
+            (0x61627374, "abst"), (0x73706163, "spac"),
+            (0x6e6d636c, "nmcl"), (0x70727472, "prtr"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x4C616220);
+            for intent in 0..8 {
+                let s = c::cmsIsIntentSupported(prof, intent, 0);
+                if s != 0 {
+                    eprintln!("{name} intent{intent}=1");
+                }
+            }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
