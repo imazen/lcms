@@ -799,3 +799,42 @@ fn virt_devicelink_internals() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmsvirt builder internals — BCHSW abstract, ink-limiting and
+/// linearization devicelink builders with param variants.
+#[test]
+fn virt_builders2() {
+    unsafe {
+        for (b, c, h, s, t1, t2, name) in [
+            (0.0f64, 0.0, 0.0, 0.0, 0u32, 0u32, "bchsw-0"),
+            (10.0, -10.0, 30.0, 50.0, 5000, 6500, "bchsw-mid"),
+            (100.0, 100.0, 360.0, 100.0, 6500, 5000, "bchsw-max"),
+            (-50.0, 50.0, -30.0, -20.0, 4000, 9000, "bchsw-neg"),
+        ] {
+            let p = c::cmsCreateBCHSWabstractProfile(
+                4, b, c, h, s, t1, t2);
+            eprintln!("{name} p={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        for lim in [0.0f64, 50.0, 100.0, 200.0, 300.0] {
+            let p = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x434d594b, lim);
+            eprintln!("ink{lim} p={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        for (n, name) in [(256usize, "lin256"), (2, "lin2"), (17, "lin17")] {
+            let mut tab = vec![0f32; n];
+            for i in 0..n { tab[i] = i as f32 / (n - 1).max(1) as f32; }
+            let mut curves = [std::ptr::null_mut(); 4];
+            for c_ in curves.iter_mut() {
+                *c_ = c::cmsBuildTabulatedToneCurveFloat(
+                    std::ptr::null_mut(), n as u32, tab.as_ptr());
+            }
+            let p = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), 0x434d594b, curves.as_ptr());
+            eprintln!("{name} p={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+            for c_ in curves { c::cmsFreeToneCurve(c_); }
+        }
+    }
+}
