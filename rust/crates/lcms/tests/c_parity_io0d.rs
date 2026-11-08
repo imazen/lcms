@@ -2322,3 +2322,32 @@ fn mfgr_model_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// ACSP-magic bounds — mutate the ACSP sig then open (the
+/// one strictly-validated field).
+#[test]
+fn acsp_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // ACSP sig at offset 36
+        for (name, val) in [
+            ("acsp", 0x61637370u32), ("zero", 0),
+            ("junk", 0x12345678), ("neg", 0xffffffff),
+            ("acsp+1", 0x61637371)] {
+            let mut b = buf.clone();
+            b[36..40].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} sig={val:#x} h={}",
+                !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
