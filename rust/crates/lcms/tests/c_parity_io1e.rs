@@ -819,3 +819,40 @@ fn write_on_loaded() {
         }
     }
 }
+
+/// LUT-type dispatch — 'lut8'/'lut16'/'mAB '/'mBA ' stored
+/// types on the LUT sigs.
+#[test]
+fn lut_stored_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (name, ty) in [
+            ("lut8", b"lut8" as &[u8]),
+            ("lut16", b"lut16"),
+            ("mAB ", b"mAB "),
+            ("mBA ", b"mBA "),
+        ] {
+            let mut b = Vec::new();
+            b.extend_from_slice(ty);
+            b.extend_from_slice(&[0; 4]);
+            // minimal body — the LUT reader rejects on shape
+            // but runs the dispatch
+            b.extend_from_slice(&[0u8; 48]);
+            let ok = c::cmsWriteRawTag(h, 0x41324230,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x41324230);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
