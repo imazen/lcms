@@ -1272,3 +1272,32 @@ fn reserved_fields() {
         }
     }
 }
+
+/// Platform-signature machinery — unusual platform fields.
+#[test]
+fn platform_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the platform sig (offset 40)
+        for (name, v) in [
+            ("APPL", 0x4150504Cu32),
+            ("MSFT", 0x4D534654),
+            ("SGI ", 0x53474920),
+            ("SUNW", 0x53554E57),
+            ("0", 0u32),
+            ("huge", 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[40..44].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
