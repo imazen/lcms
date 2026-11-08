@@ -1012,3 +1012,53 @@ fn seg_validation_arms() {
     unsafe { waitpid(pid, &mut st, 0); }
     eprintln!("segv child st={st}");
 }
+
+/// DupPluginCurvesList — context-dup with a curve-type (cnvP)
+/// plugin registered.
+#[test]
+fn dup_curves_plugin_arms() {
+    unsafe extern "C" { fn fork() -> i32;
+        fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+        fn _exit(code: i32) -> !;
+        fn dlsym(h: *mut std::ffi::c_void,
+            n: *const i8) -> *mut std::ffi::c_void; }
+    let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+        let f = dlsym(std::ptr::null_mut(),
+            b"__llvm_profile_write_file\0".as_ptr() as *const i8);
+        if f.is_null() { None } else { Some(std::mem::transmute(f)) }
+    };
+    let pid = unsafe { fork() };
+    if pid == 0 {
+        unsafe {
+            // cnvP curve plugin — fires DupPluginCurvesList
+            unsafe extern "C" fn curve_fn(
+                _ctx: *mut std::ffi::c_void, _ty: i32,
+                _params: *const f64, _n: u32)
+                -> *mut std::ffi::c_void {
+                std::ptr::null_mut()
+            }
+            let mut pl = vec![0u64; 8];
+            let b = pl.as_mut_ptr() as *mut u8;
+            *(b as *mut u32) = 0x61637070;   // 'acpp'
+            *(b as *mut u32).add(1) = 2100;
+            *(b as *mut u32).add(2) = 0x636E7650;   // 'cnvP'
+            *(b as *mut usize).add(4) = curve_fn
+                as *const () as usize;
+            let ctx = c::cmsCreateContext(
+                pl.as_mut_ptr() as *mut _,
+                std::ptr::null_mut());
+            let d1 = c::cmsDupContext(ctx, std::ptr::null_mut());
+            let d2 = c::cmsDupContext(ctx, std::ptr::null_mut());
+            eprintln!("cnvp ctx={} dup={}/{}", !ctx.is_null(),
+                !d1.is_null(), !d2.is_null());
+            if !d1.is_null() { c::cmsDeleteContext(d1); }
+            if !d2.is_null() { c::cmsDeleteContext(d2); }
+            if !ctx.is_null() { c::cmsDeleteContext(ctx); }
+            if let Some(f) = flush { f(); }
+            _exit(0);
+        }
+    }
+    let mut st = 0i32;
+    unsafe { waitpid(pid, &mut st, 0); }
+    eprintln!("curvdup child st={st}");
+}
