@@ -584,3 +584,32 @@ fn dict_iterate() {
             Some(&[118i32, 0]), None, None);
     }
 }
+
+/// cmsGetPostScriptColorResource — CSA + CRD generation into an
+/// IOHANDLER (the ps2 machinery).
+#[test]
+fn postscript_color_resource() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (name, ty) in [("csa", 0u32), ("crd", 1u32)] {
+            // C side — a memory IOHANDLER to receive the resource
+            let mut cbuf = vec![0u8; 65536];
+            let cio = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+                cbuf.as_mut_ptr(), 65536,
+                b"w\0".as_ptr() as *const _);
+            assert!(!cio.is_null(), "{name} io");
+            let c_ok = c::cmsGetPostScriptColorResource(
+                std::ptr::null_mut(), ty, h, 0, 0, cio);
+            eprintln!("{name} c_ok={c_ok}");
+            c::cmsCloseIOhandler(cio);
+            // rust side — io_handler_from_mem write-mode
+            let mut rp = virt::create_srgb_profile(None).unwrap();
+            let mut rio = lcms::io::io_handler_from_mem(None,
+                vec![0u8; 65536], "w").unwrap();
+            let r_n = lcms::ps2::get_post_script_color_resource(
+                None, ty, &mut rp, 0, 0, &mut rio);
+            eprintln!("{name} r_n={r_n}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}

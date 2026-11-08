@@ -315,6 +315,7 @@ unsafe extern "C" {
     ) -> Handle;
     pub fn cmsCloseIOhandler(io: Handle) -> i32;
     pub fn cmsOpenIOhandlerFromFile(context_id: Context, name: *const i8, access: *const u8) -> Handle;
+    pub fn cmsOpenIOhandlerFromStream(context_id: Context, stream: *mut c_void) -> Handle;
     // --- cmsio0 profile API ---
     pub fn cmsOpenProfileFromFile(name: *const i8, access: *const u8) -> *mut c_void;
     pub fn cmsOpenProfileFromMem(mem: *const c_void, size: u32) -> *mut c_void;
