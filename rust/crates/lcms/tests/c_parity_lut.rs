@@ -1854,3 +1854,94 @@ fn matrix_dims() {
         }
     }
 }
+
+/// mAB-structured pipelines — [curves, matrix, curves],
+/// [curves, clut, curves] and the full 5-element
+/// [curves, clut, curves, matrix, curves] — the only layouts
+/// Type_LUTA2B_Write accepts. Written as A2B0, saved, byte-exact.
+/// Hits Type_MPEmatrix_Write + Type_MPEclut_Write + GenericMPE*.
+#[test]
+fn mpe_structured_writes() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let cur = [g; 3];
+        let rg = lcms::gamma::build_gamma(None, 2.2).unwrap();
+        let mat: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        let mut tab = [0u16; 8 * 3];
+        for (i, v) in tab.iter_mut().enumerate() {
+            *v = (i * 2730) as u16;
+        }
+        for name in ["c-mat-c", "c-clut-c", "full5", "clut-only"] {
+            let ch = c::cmsCreate_sRGBProfile();
+            let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+            let cpipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            let mut rpipe = lut::pipeline_alloc(None, 3, 3).unwrap();
+            let mk_cur = |pipe| c::cmsPipelineInsertStage(pipe, 1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3, cur.as_ptr()));
+            let mk_mat = |pipe| c::cmsPipelineInsertStage(pipe, 1,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                    3, 3, mat.as_ptr(), std::ptr::null()));
+            let mk_clut = |pipe| c::cmsPipelineInsertStage(pipe, 1,
+                c::cmsStageAllocCLut16bit(
+                    std::ptr::null_mut(), 2, 3, 3, tab.as_ptr()));
+            let mut rcur = || lut::stage_alloc_tone_curves(
+                None, 3, Some(&[&rg; 3])).unwrap();
+            match name {
+                "c-mat-c" => {
+                    mk_cur(cpipe); mk_mat(cpipe); mk_cur(cpipe);
+                    let a = rcur();
+                    let m = lut::stage_alloc_matrix(None, 3, 3, &mat, None).unwrap();
+                    let b = rcur();
+                    for st in [a, m, b] {
+                        rpipe.insert_stage(lut::StageLoc::AtEnd, st); }
+                }
+                "c-clut-c" => {
+                    mk_cur(cpipe); mk_clut(cpipe); mk_cur(cpipe);
+                    let a = rcur();
+                    let k = lut::stage_alloc_clut16bit(None, 2, 3, 3, Some(&tab)).unwrap();
+                    let b = rcur();
+                    for st in [a, k, b] {
+                        rpipe.insert_stage(lut::StageLoc::AtEnd, st); }
+                }
+                "full5" => {
+                    mk_cur(cpipe); mk_clut(cpipe); mk_cur(cpipe);
+                    mk_mat(cpipe); mk_cur(cpipe);
+                    let s: Vec<_> = (0..5).map(|i| match i {
+                        1 => lut::stage_alloc_clut16bit(None, 2, 3, 3, Some(&tab)).unwrap(),
+                        3 => lut::stage_alloc_matrix(None, 3, 3, &mat, None).unwrap(),
+                        _ => rcur(),
+                    }).collect();
+                    for st in s {
+                        rpipe.insert_stage(lut::StageLoc::AtEnd, st); }
+                }
+                _ => {
+                    mk_cur(cpipe);
+                    rpipe.insert_stage(lut::StageLoc::AtEnd, rcur());
+                }
+            }
+            let c_ok = c::cmsWriteTag(ch, 0x41324230, cpipe as *const _);
+            let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x41324230,
+                Some(lcms::tagtypes::TagObject::Mpe(rpipe)));
+            assert_eq!(c_ok != 0, r_ok, "{name} write");
+            let mut c_out = vec![0u8; 1 << 20];
+            let mut size = c_out.len() as u32;
+            let s_ok = c::cmsSaveProfileToMem(ch,
+                c_out.as_mut_ptr() as *mut _, &mut size);
+            let r_out = lcms::profile::save_profile_to_mem(&mut rp);
+            assert_eq!(s_ok != 0, r_out.is_some(), "{name} save status");
+            if s_ok != 0 {
+                c_out.truncate(size as usize);
+                let mut r_out = r_out.unwrap();
+                for i in 0..12 {
+                    c_out.get_mut(24 + i).map(|b| *b = 0);
+                    r_out.get_mut(24 + i).map(|b| *b = 0);
+                }
+                c_out.resize(r_out.len().max(c_out.len()), 0);
+                r_out.resize(c_out.len(), 0);
+                assert_eq!(c_out, r_out, "{name} resave");
+            }
+            c::cmsCloseProfile(ch);
+        }
+    }
+}
