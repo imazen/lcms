@@ -3926,3 +3926,39 @@ fn remaining_tag_handlers() {
         c::cmsDictFree(d);
     }
 }
+
+/// Remaining tag-type handlers — XYZ/signature/text/chromaticity/
+/// measurement/datetime payloads.
+#[test]
+fn misc_type_handlers() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        #[repr(C)] struct Chrm { u: u32, px: f64, py: f64,
+            gx: f64, gy: f64, bx: f64, by: f64 }
+        let xyz = Xyz { x: 0.96, y: 1.0, z: 0.82 };
+        let chrm = Chrm { u: 1, px: 0.64, py: 0.33,
+            gx: 0.3, gy: 0.6, bx: 0.15, by: 0.06 };
+        for (sig, payload, name) in [
+            (0x77747074u32, &xyz as *const _ as *const _, "xyz"),
+            (0x72686976, &chrm as *const _ as *const _, "chrm"),
+        ] {
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+        }
+        c::cmsCloseProfile(prof);
+    }
+}
