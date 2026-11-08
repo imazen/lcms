@@ -376,3 +376,43 @@ fn named_clut_eval() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Named-color stage internals — usePcs variant + PCS-vs-index
+/// eval on a named-color stage.
+#[test]
+fn named_stage_pcs() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 3,
+            b"p\0".as_ptr() as *const _,
+            b"s\0".as_ptr() as *const _);
+        for i in 0..4u32 {
+            let pcs = [(0x1000u16) * (i as u16 + 1),
+                       0x8000, 0x8000];
+            let dev = [0x1000u16 * (i as u16 + 1); 16];
+            let nm = [b'n', b'0' + i as u8, 0];
+            c::cmsAppendNamedColor(ncl,
+                nm.as_ptr() as *const u8,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        // usePcs=0 (index->PCS) vs usePcs=1 (PCS->index)
+        for usepcs in [0, 1] {
+            let st = c::_cmsStageAllocNamedColor(ncl, usepcs);
+            eprintln!("usepcs={usepcs} null={}", st.is_null());
+            if !st.is_null() {
+                let pl = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(),
+                    if usepcs == 0 { 1 } else { 3 },
+                    if usepcs == 0 { 3 } else { 1 });
+                c::cmsPipelineInsertStage(pl, 1, st);
+                let inp = if usepcs == 0 { [0.5f32, 0.0, 0.0] }
+                          else { [0.5, 0.5, 0.5] };
+                let mut out = [0.0f32; 3];
+                c::cmsPipelineEvalFloat(inp.as_ptr(),
+                    out.as_mut_ptr(), pl);
+                c::cmsPipelineFree(pl);
+            }
+        }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
