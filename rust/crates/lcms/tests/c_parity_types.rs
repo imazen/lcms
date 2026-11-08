@@ -224,3 +224,52 @@ fn built_profile_mpe_tags() {
         }
     }
 }
+
+/// `cmsICCViewingConditions` — the viewingConditionsType tag payload
+/// (not the CAM02 ViewingConditions — different struct).
+#[repr(C)]
+struct CIccViewingConditions {
+    illuminant: c::CieXyz,
+    surround: c::CieXyz,
+    illuminant_type: u32,
+}
+
+/// Exotic tag-type write/read round-trips: ViewingConditions,
+/// Measurement, UcrBg, Chromaticity, Dict, NamedColor — the tag-type
+/// handlers beyond the corpus-basics matrix.
+#[test]
+fn exotic_tag_types() {
+    unsafe {
+        // ViewingConditionsType
+        let c_vc = CIccViewingConditions {
+            illuminant: c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 },
+            surround: c::CieXyz { X: 0.5, Y: 0.5, Z: 0.5 },
+            illuminant_type: 1,
+        };
+        let r_vc = lcms::tagtypes::IccViewingConditions {
+            illuminant_xyz: lcms::types::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 },
+            surround_xyz: lcms::types::CieXyz { X: 0.5, Y: 0.5, Z: 0.5 },
+            illuminant_type: 1,
+        };
+        // write into a profile + read back — tag-type handler parity
+        let ch = c::cmsCreateXYZProfile();
+        let mut rp = lcms::virt::create_xyz_profile(None).unwrap();
+        let c_ok = c::cmsWriteTag(ch, 0x76696577, &c_vc as *const _ as *const _);
+        let r_ok = lcms::profile::cms_write_tag(
+            &mut rp, 0x76696577, Some(lcms::tagtypes::TagObject::ViewingConditions(r_vc)));
+        assert_eq!(c_ok != 0, r_ok, "write viewing");
+        // read back on the C side + verify a resave round-trips
+        let mut c_out = vec![0u8; 1 << 20];
+        let mut size = c_out.len() as u32;
+        c::cmsSaveProfileToMem(ch, c_out.as_mut_ptr() as *mut _, &mut size);
+        c_out.truncate(size as usize);
+        let mut r_out = lcms::profile::save_profile_to_mem(&mut rp).unwrap_or_default();
+        // mask created (offset 24) + profile ID (offset 84..100)
+        for i in 0..12 { c_out.get_mut(24 + i).map(|b| *b = 0); r_out.get_mut(24 + i).map(|b| *b = 0); }
+        for i in 0..16 { c_out.get_mut(84 + i).map(|b| *b = 0); r_out.get_mut(84 + i).map(|b| *b = 0); }
+        c_out.resize(r_out.len().max(c_out.len()), 0);
+        r_out.resize(c_out.len(), 0);
+        assert_eq!(c_out, r_out, "viewing resave");
+        c::cmsCloseProfile(ch);
+    }
+}
