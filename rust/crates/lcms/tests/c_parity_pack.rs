@@ -1738,3 +1738,29 @@ fn stride_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// cmsDoTransformLineStride on the devicelinks — the line-
+/// stride machinery on more channel counts.
+#[test]
+fn line_stride_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        let ct = c::cmsCreateTransform(dl,
+            (0 << 16) | (4 << 3) | 1, dl,
+            (0 << 16) | (4 << 3) | 1, 0, 0);
+        eprintln!("t={}", !ct.is_null());
+        if !ct.is_null() {
+            // line-stride eval — 2 lines x 2 pixels x 4ch
+            let inp = [0x40u8; 16];
+            let mut out = [0u8; 16];
+            c::cmsDoTransformLineStride(ct, inp.as_ptr() as _,
+                out.as_mut_ptr() as *mut _, 2, 2, 8, 8, 4, 4);
+            c::cmsDeleteTransform(ct);
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
