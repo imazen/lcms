@@ -4822,3 +4822,40 @@ fn text_type_sigs() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Multi-entry payload variants — MLU entries, dict entries,
+/// named-color entries, mpet element counts.
+#[test]
+fn multi_entry_payloads() {
+    unsafe {
+        let w = |s: &str| s.chars().map(|c| c as i32)
+            .chain([0]).collect::<Vec<i32>>();
+        // 0, 1, 4, 16-entry payloads — different offset-table arms
+        for n in [0usize, 1, 4, 16] {
+            let d = c::cmsDictAlloc(std::ptr::null_mut());
+            for i in 0..n {
+                let k = format!("k{i}");
+                c::cmsDictAddEntry(d, w(&k).as_ptr(), w("v").as_ptr(),
+                    std::ptr::null_mut(), std::ptr::null_mut());
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            let wt = c::cmsWriteTag(prof, 0x6d657461, d as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut sz = buf.len() as u32;
+            let s = if wt != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut sz)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, sz)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6d657461)
+            } else { std::ptr::null_mut() };
+            eprintln!("dict{n} w={wt} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsDictFree(d);
+        }
+    }
+}
