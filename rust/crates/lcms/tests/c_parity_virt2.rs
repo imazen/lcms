@@ -238,3 +238,76 @@ fn bchsw_abstract() {
         }
     }
 }
+
+/// cmsvirt RGB-profile builders: varied primaries/white/gamma — exercises
+/// the matrix/TRC writer paths beyond the bundled sRGB.
+#[test]
+fn rgb_profile_builders() {
+    let wps: Vec<lcms::types::CiexyY> = vec![
+        lcms::types::CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 }, // D65
+        lcms::types::CiexyY { x: 0.3457, y: 0.3585, Y: 1.0 }, // D50
+        lcms::types::CiexyY { x: 1.0 / 3.0, y: 1.0 / 3.0, Y: 1.0 }, // E
+    ];
+    let prim_sets: Vec<lcms::types::CiexyYTriple> = vec![
+        lcms::types::CiexyYTriple {
+            Red: lcms::types::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            Green: lcms::types::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+            Blue: lcms::types::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        }, // sRGB
+        lcms::types::CiexyYTriple {
+            Red: lcms::types::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            Green: lcms::types::CiexyY { x: 0.21, y: 0.71, Y: 1.0 },
+            Blue: lcms::types::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        }, // Adobe RGB
+        lcms::types::CiexyYTriple {
+            Red: lcms::types::CiexyY { x: 0.7347, y: 0.2653, Y: 1.0 },
+            Green: lcms::types::CiexyY { x: 0.1596, y: 0.8404, Y: 1.0 },
+            Blue: lcms::types::CiexyY { x: 0.0366, y: 0.0001, Y: 1.0 },
+        }, // ProPhoto
+        lcms::types::CiexyYTriple {
+            Red: lcms::types::CiexyY { x: 0.68, y: 0.32, Y: 1.0 },
+            Green: lcms::types::CiexyY { x: 0.265, y: 0.69, Y: 1.0 },
+            Blue: lcms::types::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        }, // DCI-P3
+    ];
+    for (wi, wp) in wps.iter().enumerate() {
+        for (pi, prim) in prim_sets.iter().enumerate() {
+            for g in [1.8f64, 2.2, 2.6] {
+                unsafe {
+                    let cg = c::cmsBuildGamma(std::ptr::null_mut(), g);
+                    let curves = [cg, cg, cg];
+                    let ch = c::cmsCreateRGBProfileTHR(
+                        std::ptr::null_mut(),
+                        wp as *const _ as _,
+                        prim as *const _ as _,
+                        curves.as_ptr() as _,
+                    );
+                    if ch.is_null() {
+                        // C rejected the combo — rust must too
+                        let r = lcms::virt::create_rgb_profile(
+                            None, Some(wp), Some(prim), None,
+                        );
+                        assert!(r.is_none(), "wp{wi} prim{pi} g{g}: C-NULL vs rust");
+                        continue;
+                    }
+                    let r_g = lcms::gamma::build_gamma(None, g).unwrap();
+                    let mut rp = lcms::virt::create_rgb_profile(
+                        None, Some(wp), Some(prim), Some([&r_g, &r_g, &r_g]),
+                    ).expect("rust rgb profile");
+                    // serialize + byte-compare (created masked)
+                    let mut cn = 0u32;
+                    assert!(c::cmsSaveProfileToMem(ch, std::ptr::null_mut(), &mut cn) != 0);
+                    let mut cb = vec![0u8; cn as usize];
+                    assert!(c::cmsSaveProfileToMem(ch, cb.as_mut_ptr() as *mut _, &mut cn) != 0);
+                    let rb = lcms::profile::save_profile_to_mem(&mut rp).unwrap();
+                    assert_eq!(cb.len(), rb.len(), "wp{wi} prim{pi} g{g} len");
+                    for (i, (a, b)) in cb.iter().zip(rb.iter()).enumerate() {
+                        if (24..36).contains(&i) { continue; }
+                        assert_eq!(a, b, "wp{wi} prim{pi} g{g} byte @{i:#x}");
+                    }
+                    c::cmsCloseProfile(ch);
+                }
+            }
+        }
+    }
+}
