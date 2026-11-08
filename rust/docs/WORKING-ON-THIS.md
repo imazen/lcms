@@ -641,3 +641,20 @@ MPE curves must be segmented (Type=0 'samf' or 'parf'
 parametric segments) to serialize. Rust port behavior
 must match upstream (crash is upstream behavior —
 document, don't "fix").
+
+## Findings — WriteNamedColorCRD reachability
+
+`WriteNamedColorCRD` (cmsps2) does
+`cmsCreateTransform(nmcl, TYPE_NAMED_COLOR_INDEX,
+NULL, cmsFormatterForColorspaceOfProfile(nmcl))` —
+an ncl→DEVICE-COLORSPACE transform (ncl→'1CLR' for a
+1-channel profile). A named-color profile whose PCS is
+Lab (normal A2B0 ncl→Lab shape) can't produce this —
+the transform returns NULL → CRD=0. The path needs a
+named-color DEVICELINK profile (ncl→device directly),
+the shape `CreateNamedColorDevicelink` produces — a
+real Pantone-style named-color printer fixture. An
+nmcl profile carrying only a Lab-PCS A2B0 is
+structurally insufficient; documented as
+fixture-dependent (reachable only with a genuine
+named-color devicelink profile).
