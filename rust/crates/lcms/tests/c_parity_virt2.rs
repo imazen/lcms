@@ -838,3 +838,38 @@ fn virt_builders2() {
         }
     }
 }
+
+/// cmsvirt SetTextTags + remaining builders — every virtual
+/// builder hits SetTextTags with different tag sets.
+#[test]
+fn virt_text_tags_internals() {
+    unsafe {
+        for (p, name) in [
+            (c::cmsCreate_sRGBProfile(), "srgb"),
+            (c::cmsCreateLab4Profile(std::ptr::null_mut()), "lab4"),
+            (c::cmsCreateLab2Profile(std::ptr::null_mut()), "lab2"),
+            (c::cmsCreateXYZProfile(), "xyz"),
+            (c::cmsCreateNULLProfile(), "null"),
+            (c::cmsCreate_OkLabProfile(std::ptr::null_mut()), "oklab"),
+        ] {
+            eprintln!("{name} p={}", !p.is_null());
+            if p.is_null() { continue; }
+            // read the text tags SetTextTags wrote
+            for sig in [0x64657363u32, 0x63707274, 0x77747074] {
+                let t = c::cmsReadTag(p, sig);
+                eprintln!("  {name}/{sig:#x}={}", !t.is_null());
+            }
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("  {name} saved={s} n={n} reopen={}",
+                !rp.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(p);
+        }
+    }
+}
