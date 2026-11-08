@@ -3890,3 +3890,43 @@ fn mab_element_readers() {
         }
     }
 }
+
+/// LUT reader internals — mft1/mft2/mAB/mBA tags with varied
+/// channel counts + element combos -> the readers' offset parsing.
+#[test]
+fn lut_readers_internals2() {
+    unsafe {
+        // mft2 (Lut16) — varied channels/grids
+        for (ni, no, g, name) in [
+            (1u8, 1, 2, "1x1"), (3, 3, 2, "3x3"),
+            (4, 4, 2, "4x4"), (3, 3, 17, "g17"),
+        ] {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6d667432u32.to_be_bytes());
+            t.extend_from_slice(&[0; 4]);
+            t.push(ni); t.push(no); t.push(g); t.push(0);
+            for _ in 0..9 { t.extend_from_slice(&0x10000u32.to_be_bytes()); }
+            t.extend_from_slice(&256u16.to_be_bytes());
+            t.extend_from_slice(&256u16.to_be_bytes());
+            let n = (g as usize).pow(ni as u32) * no as usize;
+            let total = 256 * ni as usize + n + 256 * no as usize;
+            for i in 0..total { t.extend_from_slice(&(i as u16).to_be_bytes()); }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x41324230, t.as_ptr() as *const _,
+                t.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut sz = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut sz);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, sz)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x41324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("mft2 {name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
