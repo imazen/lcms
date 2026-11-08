@@ -378,3 +378,31 @@ fn postscript_crd_intents() {
         let _ = (srgb, lab);
     }
 }
+
+/// PostScript on more profile shapes — xyz/gray/
+/// devicelink-4ch.
+#[test]
+fn postscript_shapes2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let xyz = c::cmsCreateXYZProfile();
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null(), g);
+        let dl4 = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            [g; 4].as_mut_ptr());
+        for (pname, h) in [
+            ("xyz", xyz), ("gray", gray), ("dl4", dl4)] {
+            for ty in [0u32, 1] {
+                let io = c::cmsOpenIOhandlerFromNULL(
+                    std::ptr::null_mut());
+                let n = c::cmsGetPostScriptColorResource(
+                    std::ptr::null_mut(), ty, h, 0, 0, io);
+                if !io.is_null() { c::cmsCloseIOhandler(io); }
+                eprintln!("{pname} ty{ty} n={n}");
+            }
+        }
+        let _ = (xyz, gray, dl4);
+        c::cmsFreeToneCurve(g);
+    }
+}
