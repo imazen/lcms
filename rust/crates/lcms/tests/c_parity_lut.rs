@@ -3798,3 +3798,41 @@ fn named_lab_stage_evals() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// LUT8/16 reader internals — mft1/mft2 tags with varied
+/// channel counts + grid sizes -> the LUT readers' element loops.
+#[test]
+fn lut8_16_readers() {
+    unsafe {
+        for (nch_in, nch_out, grid, name) in [
+            (1, 1, 2, "1x1"), (3, 3, 2, "3x3"),
+            (4, 4, 2, "4x4"), (3, 3, 17, "3x3-g17"),
+        ] {
+            // mft1 (Lut8) — 8-bit tables
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6d667431u32.to_be_bytes());
+            t.extend_from_slice(&[0; 4]);
+            t.push(nch_in); t.push(nch_out); t.push(grid); t.push(0);
+            for _ in 0..9 { t.extend_from_slice(&0x10000u32.to_be_bytes()); }
+            let n = (grid as usize).pow(nch_in as u32) * nch_out as usize;
+            let total = 256 * nch_in as usize + n + 256 * nch_out as usize;
+            for i in 0..total { t.push((i * 3) as u8); }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x41324230, t.as_ptr() as *const _,
+                t.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut sz = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut sz);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, sz)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x41324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("mft1 {name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
