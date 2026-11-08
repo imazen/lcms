@@ -1162,3 +1162,104 @@ fn named_surrogate_arms() {
         c::cmsFreeNamedColorList(nl);
     }
 }
+
+/// cmsnamed/cmsio0 residual — GrowNamedColorList via
+///   appends past initial capacity, profile save with
+///   ncl2+pseq+dict+mlu tags (SaveTags internals),
+///   OpenProfileFromFile on the serialized output.
+#[test]
+fn named_grow_save_arms() {
+    unsafe {
+        // named list: alloc small, append past cap
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let mut pcs = [0u16; 16];
+        let mut dev = [0u16; 16];
+        for i in 0..64u32 {
+            let nm = format!("n{}\0", i);
+            for k in 0..4 {
+                pcs[k] = (i * 7 + k as u32) as u16;
+                dev[k] = (i * 11 + k as u32) as u16;
+            }
+            let ok = c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+            if i < 4 || i % 16 == 0 {
+                eprintln!("append[{i}] {ok}"); }
+        }
+        eprintln!("count={}", c::cmsNamedColorCount(nl));
+        // profile with ncl2 + pseq + dict tags -> Save
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6E6D636C);
+        c::cmsSetColorSpace(p, 0x4D434834);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 4.4);
+        let xyz = [0x0000F6D6u32, 0x00010000, 0x0000D32D];
+        c::cmsWriteTag(p, 0x77747074,
+            xyz.as_ptr() as *const _);
+        c::cmsWriteTag(p, 0x6E636C32,
+            nl as *const _);
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        c::cmsDictAddEntry(dict,
+            b"k1\0".as_ptr() as *const _,
+            b"v1\0".as_ptr() as *const _,
+            std::ptr::null_mut(), std::ptr::null_mut());
+        c::cmsDictAddEntry(dict,
+            b"k2\0".as_ptr() as *const _,
+            b"v2\0".as_ptr() as *const _,
+            std::ptr::null_mut(), std::ptr::null_mut());
+        c::cmsWriteTag(p, 0x6D657461,
+            dict as *const _);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            b"desc\0".as_ptr() as *const _);
+        c::cmsWriteTag(p, 0x64657363,
+            mlu as *const _);
+        let path = std::ffi::CString::new(
+            "/tmp/lcms_named_save.icc").unwrap();
+        let sf = c::cmsSaveProfileToFile(p, path.as_ptr());
+        eprintln!("save-file={sf}");
+        // open the file back
+        let pf = c::cmsOpenProfileFromFile(
+            path.as_ptr(), b"r\0".as_ptr() as *const _);
+        eprintln!("reopen-file={}", !pf.is_null());
+        if !pf.is_null() {
+            let rd = c::cmsReadTag(pf, 0x6E636C32);
+            eprintln!("  ncl2 rd={}", !rd.is_null());
+            let rd2 = c::cmsReadTag(pf, 0x6D657461);
+            eprintln!("  dict rd={}", !rd2.is_null());
+            let rd3 = c::cmsReadTag(pf, 0x64657363);
+            eprintln!("  mlu rd={}", !rd3.is_null());
+            c::cmsCloseProfile(pf);
+        }
+        // OpenProfileFromFile variants: missing, dir,
+        //   mode combos
+        for (pth, mode, name) in [
+            ("/tmp/lcms_named_save.icc", "r", "real-r"),
+            ("/tmp/lcms_named_save.icc", "rb", "real-rb"),
+            ("/tmp/nope_lcms_x.icc", "r", "missing"),
+            ("/tmp", "r", "isdir"),
+            ("/tmp/lcms_named_save.icc", "w", "real-w"),
+            ("/tmp/lcms_named_save.icc", "x", "badmode"),
+        ] {
+            let cp = std::ffi::CString::new(pth).unwrap();
+            let cm = std::ffi::CString::new(mode).unwrap();
+            let pp = c::cmsOpenProfileFromFile(
+                cp.as_ptr(), cm.as_ptr() as *const u8);
+            eprintln!("{name} prof={}", !pp.is_null());
+            if !pp.is_null() {
+                c::cmsCloseProfile(pp); }
+        }
+        let _ = std::fs::remove_file(
+            "/tmp/lcms_named_save.icc");
+        c::cmsCloseProfile(p);
+        c::cmsDictFree(dict);
+        c::cmsMLUfree(mlu);
+        c::cmsFreeNamedColorList(nl);
+    }
+}
