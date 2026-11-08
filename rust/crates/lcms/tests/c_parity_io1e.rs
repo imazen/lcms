@@ -158,3 +158,19 @@ fn header_getters() {
         }
     }
 }
+
+/// Remaining header setters — SetHeaderFlags/Attributes/Model/
+/// Manufacturer/ProfileID — the setter paths (C-side).
+#[test]
+fn header_setters2() {
+    unsafe {
+        let ch = c::cmsCreateXYZProfile();
+        c::cmsSetHeaderFlags(ch, 0x1234);
+        c::cmsSetHeaderAttributes(ch, 0xDEADBEEF12345678);
+        c::cmsSetHeaderModel(ch, 0x6D6F646C);
+        c::cmsSetHeaderManufacturer(ch, 0x696D617A);
+        let mut pid = [0xABu8; 16];
+        c::cmsSetHeaderProfileID(ch, pid.as_mut_ptr());
+        let _ = c::cmsCloseProfile(ch);
+    }
+}

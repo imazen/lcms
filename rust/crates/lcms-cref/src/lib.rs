@@ -292,6 +292,12 @@ unsafe extern "C" {
 
     // ---- cmserr.c / cmsplugin.c misc ----
     pub fn cmsGetHeaderRenderingIntent(h_profile: HProfile) -> U32;
+    pub fn cmsSetHeaderFlags(p: HProfile, flags: U32);
+    pub fn cmsGetHeaderManufacturer(p: HProfile) -> U32;
+    pub fn cmsSetHeaderManufacturer(p: HProfile, m: U32);
+    pub fn cmsSetHeaderModel(p: HProfile, m: U32);
+    pub fn cmsSetHeaderAttributes(p: HProfile, flags: U64);
+    pub fn cmsSetHeaderProfileID(p: HProfile, id: *mut u8);
 
     // ---- cmscam02.c ----
     pub fn cmsCIECAM02Init(context_id: Context, vc: *const ViewingConditions) -> Handle;
