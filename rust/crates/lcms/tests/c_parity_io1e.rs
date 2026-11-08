@@ -634,3 +634,45 @@ fn remaining_sig_writes() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Big tag-table search — write ~30 tags then enumerate/read —
+/// the SearchTag machinery on a fuller table.
+#[test]
+fn big_tag_table() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let sigv: u32 = 0x666F7461;
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"x\0".as_ptr() as *const u8);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // write a spread of sigs across types
+        let sigs: [(u32, u32); 14] = [
+            (0x626B7074, 1), (0x6C756D69, 1), (0x63686164, 1),
+            (0x7258595A, 1), (0x6758595A, 1), (0x6258595A, 1),
+            (0x74656368, 2), (0x72696730, 2), (0x63696973, 2),
+            (0x646D6E64, 3), (0x646D6464, 3), (0x6473636D, 3),
+            (0x6B545243, 4), (0x67545243, 4),
+        ];
+        for (sig, kind) in sigs {
+            let payload = match kind {
+                1 => &xyz as *const _ as *mut std::ffi::c_void,
+                2 => &sigv as *const _ as *mut std::ffi::c_void,
+                3 => mlu as *mut std::ffi::c_void,
+                _ => g as *mut std::ffi::c_void,
+            };
+            let _ = c::cmsWriteTag(h, sig, payload);
+        }
+        let n = c::cmsGetTagCount(h);
+        eprintln!("tags={n}");
+        // enumerate + read each
+        for i in 0..n {
+            let s = c::cmsGetTagSignature(h, i as u32);
+            let _ = c::cmsReadTag(h, s);
+        }
+        c::cmsCloseProfile(h);
+    }
+}
