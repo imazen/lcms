@@ -2917,3 +2917,62 @@ fn save_tags_arms() {
         c::cmsCloseProfile(cp2);
     }
 }
+
+/// IOhandler open modes — file/mem/NULL x r/w access x error paths
+/// (missing file, bad mode, truncated profile, IOhandler reuse).
+#[test]
+fn iohandler_modes() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let data = std::fs::read(dir.join("lcms2cmyk.icc")).unwrap();
+        // profile to a temp file for the file-IOhandler path
+        let tp = "/tmp/ccov_prof.icc\0";
+        std::fs::write(tp.trim_end_matches('\0'), &data).unwrap();
+        for (name, mode) in [("file-r", "r"), ("file-w", "w"),
+                             ("file-rb", "rb"), ("file-wb", "wb"),
+                             ("file-rw", "r+"), ("file-bad", "z")] {
+            // "w"-mode truncates; restore the profile each iteration
+            std::fs::write(tp.trim_end_matches('\0'), &data).unwrap();
+            let io = c::cmsOpenIOhandlerFromFile(
+                std::ptr::null_mut(),
+                tp.as_ptr() as *const i8,
+                format!("{mode}\0").as_ptr() as *const u8);
+            eprintln!("{name}: io={}", !io.is_null());
+            if !io.is_null() {
+                let p = c::cmsOpenProfileFromIOhandlerTHR(
+                    std::ptr::null_mut(), io);
+                eprintln!("  prof={}", !p.is_null());
+                if !p.is_null() { c::cmsCloseProfile(p); }
+                // cmsOpenProfileFromIOhandlerTHR frees the handler
+                // on failure; only close on success (profile owns it).
+            }
+        }
+        // mem handlers — read + write modes, truncated profile
+        for (name, sz) in [("mem-full", data.len()),
+                           ("mem-trunc", 100usize),
+                           ("mem-zero", 0)] {
+            let io = c::cmsOpenIOhandlerFromMem(
+                std::ptr::null_mut(),
+                data.as_ptr() as *mut _, sz as u32,
+                b"r\0".as_ptr() as *const u8);
+            let p = if io.is_null() { std::ptr::null_mut() }
+                else { c::cmsOpenProfileFromIOhandlerTHR(
+                    std::ptr::null_mut(), io) };
+            eprintln!("{name}: prof={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        // missing file
+        let io = c::cmsOpenIOhandlerFromFile(
+            std::ptr::null_mut(),
+            b"/tmp/nonexistent_xyz.icc\0".as_ptr() as *const i8,
+            b"r\0".as_ptr() as *const u8);
+        eprintln!("missing-file io={}", !io.is_null());
+        // NULL iohandler
+        let io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+        let p = c::cmsOpenProfileFromIOhandlerTHR(
+            std::ptr::null_mut(), io);
+        eprintln!("null-io prof={}", !p.is_null());
+        if !p.is_null() { c::cmsCloseProfile(p); }
+    }
+}
