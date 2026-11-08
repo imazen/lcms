@@ -2072,3 +2072,41 @@ fn multich_swap_packers() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// DoTransform loop — actual pixel data through the
+/// odd-channel packers (5/7/9-14).
+#[test]
+fn dotransform_multich2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for n in [5u32, 7, 9, 10, 11, 12, 13, 14] {
+            let mut curves = vec![g; n as usize];
+            let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(),
+                match n {
+                    5 => 0x35434C52, 7 => 0x37434C52,
+                    9 => 0x39434C52, 10 => 0x41434C52,
+                    11 => 0x42434C52, 12 => 0x43434C52,
+                    13 => 0x44434C52, 14 => 0x45434C52,
+                    _ => 0x46434C52,
+                },
+                curves.as_mut_ptr());
+            let fmt = (0 << 16) | (n << 3) | 1;
+            let t = c::cmsCreateTransform(dl, fmt,
+                dl, fmt, 0, 0);
+            if t.is_null() {
+                eprintln!("{n}ch NULL");
+                c::cmsCloseProfile(dl);
+                continue;
+            }
+            let inp = vec![0x80u8; n as usize];
+            let mut out = vec![0u8; n as usize];
+            c::cmsDoTransform(t, inp.as_ptr() as _,
+                out.as_mut_ptr() as _, 1);
+            eprintln!("{n}ch do=1 out0={:#x}", out[0]);
+            c::cmsDeleteTransform(t);
+            c::cmsCloseProfile(dl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
