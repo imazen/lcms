@@ -641,3 +641,79 @@ fn internal_matshaper2_arms() {
         c::cmsCloseProfile(srgb0);
     }
 }
+
+/// cmsio1 residual — float-tag reader paths on
+///   D2B*/B2D* mpet tags across all profile classes
+///   + intent variants.
+#[test]
+fn internal_floattag2_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // build a 3->3 float cvst+clut+cvst pipeline
+        let mk_pipe = || {
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let tcs = [g, g, g];
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            let dims = [3u32; 3];
+            let grid = vec![0.5f32; 3usize.pow(3) * 3];
+            c::cmsPipelineInsertStage(pipe, 1,
+                c::cmsStageAllocCLutFloatGranular(
+                    std::ptr::null_mut(),
+                    dims.as_ptr(), 3, 3, grid.as_ptr()));
+            c::cmsPipelineInsertStage(pipe, 2,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            pipe
+        };
+        // write pipe into mpet tag on each class/tag
+        for (cls, tag, name) in [
+            (0x6D6E7472u32, 0x44324230u32, "mntr-D2B0"),
+            (0x6D6E7472, 0x44324231, "mntr-D2B1"),
+            (0x6D6E7472, 0x44324232, "mntr-D2B2"),
+            (0x6D6E7472, 0x44324233, "mntr-D2B3"),
+            (0x70727472, 0x42324430, "prtr-B2D0"),
+            (0x70727472, 0x42324431, "prtr-B2D1"),
+            (0x6C696E6B, 0x41324230, "link-A2B0"),
+            (0x6C696E6B, 0x44324230, "link-D2B0"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            let pipe = mk_pipe();
+            let ok = c::cmsWriteTag(p, tag,
+                pipe as *const _);
+            // save + reopen
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !pr.is_null() {
+                c::cmsReadTag(pr, tag)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={ok} sv={sv} rd={}",
+                !rd.is_null());
+            if !pr.is_null() {
+                c::cmsCloseProfile(pr); }
+            c::cmsCloseProfile(p);
+            c::cmsPipelineFree(pipe);
+        }
+        c::cmsCloseProfile(lab4);
+    }
+}
