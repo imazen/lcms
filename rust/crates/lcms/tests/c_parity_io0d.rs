@@ -17324,3 +17324,141 @@ fn internal_final_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + pipeline internals + context internals + tag internals
+///   + profile-info internals.
+#[test]
+fn internal_final2_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // extended transform internals — multiprofile with
+        //   BPC/adaptation/gamut flags
+        let mut profs = [srgb, lab];
+        for n_ in [2i32, 3] {
+            if n_ == 3 { profs[1] = srgb; }
+            for intent in [0u32, 1, 3] {
+                for flags in [0u32, 0x0001, 0x0002, 0x0004,
+                    0x0010, 0x0040, 0x0100, 0x0200, 0x0400] {
+                    let mut bpc = [1i32; 4];
+                    let mut intents = [intent; 4];
+                    let mut adapt = [0.5f64; 4];
+                    let t = c::cmsCreateExtendedTransform(
+                        std::ptr::null_mut(), n_ as u32,
+                        profs.as_mut_ptr(),
+                        bpc.as_mut_ptr(),
+                        intents.as_mut_ptr(),
+                        adapt.as_mut_ptr(),
+                        std::ptr::null_mut(), 0,
+                        r8, r8, flags);
+                    if !t.is_null() {
+                        let ib = [0x55u8; 8];
+                        let mut ob = [0u8; 8];
+                        c::cmsDoTransform(t, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            eprintln!("ext {n_}prof done");
+        }
+        // tag internals — reading/writing every common tag
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x58595A20);
+        let sigs = [
+            0x41324230u32, 0x41324231, 0x41324232,
+            0x41324233, 0x42324130, 0x42324131,
+            0x42324132, 0x42324133, 0x41324234,
+            0x63707274, 0x64657363, 0x77747074,
+            0x6B545243, 0x72545243, 0x67545243,
+            0x62545243, 0x7258595A, 0x6758595A,
+            0x6258595A, 0x63686164, 0x636C726F,
+            0x62726B74, 0x6C756D69, 0x76696577,
+            0x74656368, 0x646D6E64, 0x646D6464,
+            0x70726530, 0x70726531, 0x70726532,
+            0x70726430, 0x70726431, 0x70726432,
+            0x67726461, 0x7363726E, 0x77686174,
+            0x62616420, 0x00000000, 0xFFFFFFFF,
+        ];
+        for sig in sigs {
+            // read first (NULL before write), then write a
+            //   type-matched payload
+            let r0 = c::cmsReadTag(prof, sig);
+            let w = match sig {
+                0x6B545243 | 0x72545243 | 0x67545243
+                    | 0x62545243 => c::cmsWriteTag(prof,
+                        sig, g as *const _),
+                0x77747074 | 0x7258595A | 0x6758595A
+                    | 0x6258595A | 0x62726B74 | 0x6C756D69
+                    | 0x76696577 => {
+                    let wp = c::CieXyz { X: 0.9642,
+                        Y: 1.0, Z: 0.8249 };
+                    c::cmsWriteTag(prof, sig,
+                        &wp as *const c::CieXyz
+                            as *const _)
+                },
+                _ => c::cmsWriteTag(prof, sig,
+                    std::ptr::null_mut()),
+            };
+            let r = c::cmsReadTag(prof, sig);
+            eprintln!("sig {sig:#x} w={w} r0={} r={}",
+                !r0.is_null(), !r.is_null());
+        }
+        // intent-support check
+        for intent in 0..8u32 {
+            for dir in [0u32, 1] {
+                let r = c::cmsIsIntentSupported(prof,
+                    intent, dir);
+                eprintln!("intent{intent} dir{dir}={r}");
+            }
+        }
+        c::cmsCloseProfile(prof);
+        // named-color list on profile
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 4, b"p\0".as_ptr(),
+            b"s\0".as_ptr());
+        for i in 0..4 {
+            let nm = format!("n{i}\0");
+            let pcs = [0x1000u16; 4];
+            let col = [0x2000u16; 4];
+            c::cmsAppendNamedColor(nl, nm.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        let prof2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof2, 0x6E6D636C);
+        c::cmsSetColorSpace(prof2, 0x4E434C20);
+        c::cmsSetPCS(prof2, 0x4C616220);
+        c::cmsSetProfileVersion(prof2, 4.4);
+        let w = c::cmsWriteTag(prof2, 0x6E636C32,
+            nl as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n2 = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof2,
+            buf.as_mut_ptr() as *mut _, &mut n2);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr()
+                as *const _, n2)
+        } else { std::ptr::null_mut() };
+        let r = if !rp.is_null() {
+            let t = c::cmsReadTag(rp, 0x6E636C32);
+            let ok = !t.is_null();
+            c::cmsCloseProfile(rp);
+            ok
+        } else { false };
+        eprintln!("ncl2 w={w} s={s} r={r}");
+        c::cmsCloseProfile(prof2);
+        c::cmsFreeNamedColorList(nl);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
