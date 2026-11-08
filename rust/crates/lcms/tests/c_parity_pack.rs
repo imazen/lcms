@@ -1085,3 +1085,34 @@ fn lab_modifier_matrix() {
         let _ = c::cmsCloseProfile(lab4);
     }
 }
+
+/// Gray-format modifier matrix — the gray packer bodies.
+#[test]
+fn gray_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        for (name, fmt) in [
+            ("g-planar", (3 << 16) | (1 << 12) | (1 << 3) | 2u32),
+            ("g-doswap", (3 << 16) | (1 << 10) | (1 << 3) | 2),
+            ("g-swapf", (3 << 16) | (1 << 14) | (1 << 3) | 2),
+            ("g-end16", (3 << 16) | (1 << 11) | (1 << 3) | 2),
+            ("g-flavor", (3 << 16) | (1 << 13) | (1 << 3) | 2),
+            ("g-x1", (3 << 16) | (1 << 7) | (1 << 3) | 2),
+            ("g-x2", (3 << 16) | (2 << 7) | (1 << 3) | 2),
+            ("g-8", (3 << 16) | (1 << 3) | 1),
+            ("g-flt", (1 << 22) | (3 << 16) | (1 << 3) | 4),
+            ("g-dbl", (1 << 22) | (3 << 16) | (1 << 3) | 0),
+            ("g-hlf", (1 << 22) | (3 << 16) | (1 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(hi,
+                (4 << 16) | (3 << 3) | 2, gray, fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(gray);
+    }
+}
