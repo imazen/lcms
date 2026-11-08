@@ -15021,3 +15021,92 @@ fn header_getset_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// BuildRGBOutputMatrixShaper fail arms — degenerate matrix,
+/// missing TRCs, non-RGB matrix profiles.
+#[test]
+fn matshaper_fail_arms() {
+    fn xyz_tag(x: f64, y: f64, z: f64) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&0x58595A20u32.to_be_bytes());
+        t.extend_from_slice(&0u32.to_be_bytes());
+        for v in [x, y, z] {
+            t.extend_from_slice(&((v * 65536.0) as i32)
+                .to_be_bytes());
+        }
+        t
+    }
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // degenerate matrix — singular (singular inverse reject)
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x58595A20);
+        c::cmsSetProfileVersion(prof, 2.4);
+        let z = xyz_tag(0.0, 0.0, 0.0);
+        c::cmsWriteRawTag(prof, 0x7258595A, z.as_ptr() as *const _,
+            z.len() as u32);
+        c::cmsWriteRawTag(prof, 0x6758595A, z.as_ptr() as *const _,
+            z.len() as u32);
+        c::cmsWriteRawTag(prof, 0x6258595A, z.as_ptr() as *const _,
+            z.len() as u32);
+        c::cmsWriteTag(prof, 0x72545243, g as *const _);
+        c::cmsWriteTag(prof, 0x67545243, g as *const _);
+        c::cmsWriteTag(prof, 0x62545243, g as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(prof, buf.as_mut_ptr() as *mut _,
+            &mut n);
+        let rp = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        for intent in [0u32, 1, 3] {
+            let t = c::cmsCreateTransform(srgb, r8, rp, r8,
+                intent, 0);
+            let t2 = c::cmsCreateTransform(rp, r8, srgb, r8,
+                intent, 0);
+            eprintln!("degen i{intent} in={} out={}",
+                !t2.is_null(), !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        }
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        // missing-TRC matrix profile
+        let prof2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof2, 0x6D6E7472);
+        c::cmsSetColorSpace(prof2, 0x52474220);
+        c::cmsSetPCS(prof2, 0x58595A20);
+        c::cmsSetProfileVersion(prof2, 2.4);
+        for (sig, xyz) in [
+            (0x7258595Au32, (0.4124f64, 0.2126, 0.0193)),
+            (0x6758595A, (0.3576, 0.7152, 0.1192)),
+            (0x6258595A, (0.1805, 0.0722, 0.9505)),
+        ] {
+            let b = xyz_tag(xyz.0, xyz.1, xyz.2);
+            c::cmsWriteRawTag(prof2, sig,
+                b.as_ptr() as *const _, b.len() as u32);
+        }
+        // no TRCs
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(prof2, buf.as_mut_ptr() as *mut _,
+            &mut n);
+        let rp2 = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        let t = c::cmsCreateTransform(srgb, r8, rp2, r8, 0, 0);
+        let t2 = c::cmsCreateTransform(rp2, r8, srgb, r8, 0, 0);
+        eprintln!("notrc in={} out={}", !t2.is_null(),
+            !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        if !rp2.is_null() { c::cmsCloseProfile(rp2); }
+        c::cmsCloseProfile(prof2);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
