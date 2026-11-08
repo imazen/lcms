@@ -263,3 +263,16 @@ formatter machinery is all exercised. cmspack's ~135
 formatter-variant bodies (~52%) and cmstypes' MPE serialization
 internals (~56%) are the remaining gaps — reachable only
 through profile shapes the public API can't produce.
+
+## Round 6 — internals sweep 2 (through 1e86da39)
+
+**68.00% lines / 85.89% functions.** ~305 parity gates. Every
+Type_*_Read is swept (65 type sigs), the writeable-sig surface
+is exhausted, the parser-validation + LUT + named-color + IT8
++ SEQ + dict + MLU + MPE + plugin + formatter + alpha +
+stage + devicelink machinery is all exercised. cmspack's ~135
+formatter-variant bodies (~52%) and cmstypes' MPE/mAB
+serialization internals (~56%) are the remaining gaps —
+reachable only through profile shapes the public API can't
+produce or through oracle-UB inputs (the mAB writer NULL-derefs
+on non-canonical pipelines).

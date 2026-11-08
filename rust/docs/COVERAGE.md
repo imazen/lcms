@@ -366,3 +366,38 @@ lines / 86.29% functions** (up from round-4's 67.84/85.73).
 | cmsmd5.c | 88.11% | 80.00% |
 | cmshalf.c | 100% | 100% |
 | cmsmtrx.c | 100% | 100% |
+
+## Round 6 — AFTER the internals sweep 2 (through 1e86da39)
+
+C oracle re-measured after ~35 more internals gates: **68.00%
+lines / 85.89% functions** (vs round-5's 68.37/86.29 —
+within measurement variation; cmsnamed up to 75.21%).
+
+| file | lines | functions |
+|---|---|---|
+| cmspack.c | 52.14% | 66.67% |
+| cmstypes.c | 55.66% | 86.45% |
+| cmsio1.c | 64.40% | 80.00% |
+| cmscnvrt.c | 67.08% | 86.96% |
+| cmscgats.c | 70.83% | 95.96% |
+| cmsvirt.c | 66.67% | 96.88% |
+| cmsio0.c | 76.84% | 95.65% |
+| cmsnamed.c | 75.21% | 100% |
+| cmsopt.c | 76.29% | 81.82% |
+| cmsps2.c | 72.41% | 90.62% |
+| cmsgamma.c | 70.52% | 89.47% |
+| cmsxform.c | 70.89% | 75.00% |
+| cmslut.c | 69.51% | 88.16% |
+| cmsalpha.c | 86.61% | 85.37% |
+| cmscam02.c | 91.26% | 100% |
+| cmsgmt.c | 80.07% | 100% |
+| cmssamp.c | 68.22% | 85.71% |
+| cmsplugin.c | 73.61% | 100% |
+| cmserr.c | 79.30% | 100% |
+| cmssm.c | 90.70% | 100% |
+| cmspcs.c | 74.55% | 100% |
+| cmswtpnt.c | 87.10% | 100% |
+| cmsintrp.c | 98.50% | 100% |
+| cmsmd5.c | 88.11% | 80.00% |
+| cmshalf.c | 100% | 100% |
+| cmsmtrx.c | 100% | 100% |
