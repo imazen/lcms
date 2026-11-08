@@ -1786,3 +1786,38 @@ fn parametric_curve_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_Curve internals — 'curv' bodies on different point
+/// counts (0=identity, 1=gamma, 2+ = table).
+#[test]
+fn curve_point_counts() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for n in [0u32, 1, 2, 16, 256, 4096] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"curv");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&n.to_be_bytes());
+            for i in 0..n {
+                let v = (0xFFFF * i) / n.max(1);
+                b.extend_from_slice(&(v as u16).to_be_bytes());
+            }
+            let ok = c::cmsWriteRawTag(h, 0x72545243,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x72545243);
+            eprintln!("curv n={n} write={ok} read={}",
+                r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
