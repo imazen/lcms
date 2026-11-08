@@ -2296,3 +2296,42 @@ fn conversion_arms3() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// CHAD2Temp — absolute-intent transform with AdaptationState in
+/// (0,1) + chad-tagged profiles hits the temperature path.
+#[test]
+fn chad_temp_adapt() {
+    unsafe {
+        let old = c::cmsSetAdaptationState(0.5);
+        let chad = [
+            0.9974f64, -0.0040, 0.0074,
+            -0.0057, 1.0051, -0.0031,
+            0.0031, -0.0011, 0.8104,
+        ];
+        let srgb = c::cmsCreate_sRGBProfile();
+        let srgb2 = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(srgb2, 0x63686164,
+            chad.as_ptr() as *const _);
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, name) in [
+            (srgb, lab, "srgb->lab a3"),
+            (lab, srgb, "lab->srgb a3"),
+            (srgb, srgb2, "srgb->srgb2 a3"),
+            (srgb2, lab, "srgb2->lab a3"),
+            (srgb, lab, "srgb->lab a1"),
+        ] {
+            for intent in [3u32, 1, 0] {
+                let t = c::cmsCreateTransform(inp, r16, outp, l16,
+                    intent, 0);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+        }
+        c::cmsSetAdaptationState(old);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(srgb2);
+        c::cmsCloseProfile(lab);
+    }
+}
