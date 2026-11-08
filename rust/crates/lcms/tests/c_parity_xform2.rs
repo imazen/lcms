@@ -5638,3 +5638,70 @@ fn virt_opt_cnvrt_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmscnvrt/cmsopt residual — intent conversion internals on
+///   unusual profile pairs + optimizer internals.
+#[test]
+fn cnvrt_opt_residual2_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // intent-conversion internals — intents 0-15 on
+        //   every profile direction
+        for intent in 0..16u32 {
+            for flags in [0u32, 0x0400, 0x0800, 0x1000,
+                0x2000, 0x4000, 0x0001, 0x0002] {
+                let t = c::cmsCreateTransform(srgb, r8,
+                    lab, l8, intent, flags);
+                let t2 = c::cmsCreateTransform(lab, l8,
+                    srgb, r8, intent, flags);
+                let t3 = c::cmsCreateTransform(srgb, r8,
+                    srgb, r8, intent, flags);
+                let t4 = c::cmsCreateTransform(lab, l8,
+                    lab, l8, intent, flags);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t2.is_null() { c::cmsDeleteTransform(t2); }
+                if !t3.is_null() { c::cmsDeleteTransform(t3); }
+                if !t4.is_null() { c::cmsDeleteTransform(t4); }
+            }
+            eprintln!("i{intent} done");
+        }
+        // multiprofile chains with proofing-intent slots
+        let mut profs = [srgb, lab, srgb, lab];
+        for n_ in [2i32, 3, 4] {
+            for intent in 0..4u32 {
+                for bpc in [0i32, 1] {
+                    for adapt in [0.0f64, 0.5, 1.0] {
+                        let mut bpc_a = [bpc; 4];
+                        let mut i_a = [intent; 4];
+                        let mut a_a = [adapt; 4];
+                        let t = c::cmsCreateExtendedTransform(
+                            std::ptr::null_mut(), n_ as u32,
+                            profs.as_mut_ptr(),
+                            bpc_a.as_mut_ptr(),
+                            i_a.as_mut_ptr(),
+                            a_a.as_mut_ptr(),
+                            std::ptr::null_mut(), 0,
+                            r8, r8, 0);
+                        if !t.is_null() {
+                            c::cmsDeleteTransform(t); }
+                    }
+                }
+            }
+            eprintln!("ext {n_}p done");
+        }
+        // proofing gamut-check transforms
+        for pc in [0u32, 1, 2, 3] {
+            let t = c::cmsCreateProofingTransform(srgb, r8,
+                lab, l8, srgb, 0, 0, pc);
+            eprintln!("proofchk{pc}={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
