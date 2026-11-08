@@ -3365,3 +3365,30 @@ fn check_retreive_stages() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Lab-stage eval internals — each Lab-related stage through
+/// eval16 + float -> the Lab2XYZ/XYZ2Lab/LabPrelin/V2V4 evaluators.
+#[test]
+fn lab_stage_evals() {
+    unsafe {
+        for (st, nch, name) in [
+            (c::_cmsStageAllocLab2XYZ(std::ptr::null_mut()), 3, "l2x"),
+            (c::_cmsStageAllocXYZ2Lab(std::ptr::null_mut()), 3, "x2l"),
+            (c::_cmsStageAllocLabPrelin(std::ptr::null_mut()), 3, "prelin"),
+            (c::_cmsStageAllocLabV2ToV4(std::ptr::null_mut()), 3, "v2v4"),
+            (c::_cmsStageAllocLabV4ToV2(std::ptr::null_mut()), 3, "v4v2"),
+        ] {
+            if st.is_null() { eprintln!("{name} null"); continue; }
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, nch);
+            c::cmsPipelineInsertStage(p, 1, st);
+            let ib = [0x8000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            let ibf = [0.5f32; 3];
+            let mut obf = [0f32; 3];
+            c::cmsPipelineEvalFloat(ibf.as_ptr(), obf.as_mut_ptr(), p);
+            eprintln!("{name} ob={ob:?} obf={obf:?}");
+            c::cmsPipelineFree(p);
+        }
+    }
+}
