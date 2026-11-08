@@ -3392,3 +3392,36 @@ fn lab_stage_evals() {
         }
     }
 }
+
+/// Granular CLUT allocators — per-dimension grid sizes for
+/// CLut16bitGranular/FloatGranular/8bitGranular.
+#[test]
+fn granular_clut_allocs() {
+    unsafe {
+        let dims = [5u32, 4, 3]; // 5x4x3 grid
+        let n: usize = (dims[0] * dims[1] * dims[2]) as usize * 3;
+        let t16: Vec<u16> = (0..n).map(|i| (i * 7) as u16).collect();
+        let tf: Vec<f32> = (0..n).map(|i| i as f32 / n as f32).collect();
+        let t8: Vec<u8> = (0..n).map(|i| (i * 3) as u8).collect();
+        for (k, name) in [(0, "gran16"), (1, "granf")] {
+            let st = match k {
+                0 => c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    t16.as_ptr()),
+                _ => c::cmsStageAllocCLutFloatGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    tf.as_ptr()),
+            };
+            eprintln!("{name}={}", !st.is_null());
+            if !st.is_null() {
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+                c::cmsPipelineInsertStage(p, 1, st);
+                let ib = [0x4000u16; 3];
+                let mut ob = [0u16; 3];
+                c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+                eprintln!("  ob={ob:?}");
+                c::cmsPipelineFree(p);
+            }
+        }
+    }
+}
