@@ -7695,3 +7695,67 @@ fn tag_free_dup_arms() {
         }
     }
 }
+
+/// WriteMPECurve — mpet save with a cvst (curve-set) stage only.
+#[test]
+fn mpe_cvst_write() {
+    unsafe {
+        let mut seg = [
+            c::CurveSegment {
+                x0: 0.0, x1: 1.0, r#type: 6,
+                params: [2.2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.0],
+                n_grid_points: 0,
+                sampled_points: std::ptr::null_mut() }];
+        let g = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(),
+            1, seg.as_ptr());
+        let g2 = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(),
+            1, seg.as_ptr());
+        let g3 = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(),
+            1, seg.as_ptr());
+        // cvst-only pipeline
+        let curves = [g, g2, g3];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves.as_ptr() as *mut _));
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        let w = c::cmsWriteTag(prof, 0x44324230, p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        eprintln!("cvst-only w={w} s={s}");
+        // cvst + clut
+        let p2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let curves2 = [g, g2, g3];
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves2.as_ptr() as *mut _));
+        let mut grid = vec![0u16; 8 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = (i * 2730) as u16;
+        }
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 2, 3, 3,
+                grid.as_ptr()));
+        let prof2 = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof2, 4.4);
+        let w2 = c::cmsWriteTag(prof2, 0x44324230, p2 as *const _);
+        let s2 = if w2 != 0 {
+            c::cmsSaveProfileToMem(prof2,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        eprintln!("cvst+clut w={w2} s={s2}");
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(prof2);
+        c::cmsPipelineFree(p);
+        c::cmsPipelineFree(p2);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
