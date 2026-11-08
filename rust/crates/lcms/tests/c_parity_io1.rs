@@ -1655,3 +1655,52 @@ fn io1_named_abstract_readers() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// io1 Lab-version normalization — v2/v4 Lab profiles through
+/// float transforms hit the NormalizeTo/From LabFloat stage
+/// insertion arms.
+#[test]
+fn io1_lab_version_norm() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let fl = 1u32 << 22;
+        let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let srgb = c::cmsCreate_sRGBProfile();
+        for f in ["labv2lcms2.icc", "labv4lcms2.icc", "glablcms2.icc",
+                  "brightness.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for (ifmt, ofmt, name) in [
+                (lfl, lfl, "fl-fl"),
+                (l16, lfl, "16-fl"),
+                (lfl, l16, "fl-16"),
+            ] {
+                // both directions
+                let t = c::cmsCreateTransform(p, ifmt, srgb, ofmt, 0, 0);
+                let t2 = c::cmsCreateTransform(srgb, ofmt, p, ifmt, 0, 0);
+                eprintln!("{f}-{name} t={} t2={}",
+                    !t.is_null(), !t2.is_null());
+                if !t.is_null() {
+                    let ib = [0.5f32; 4];
+                    let mut ob = [0.5f32; 4];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+                if !t2.is_null() {
+                    let ib = [0.5f32; 4];
+                    let mut ob = [0.5f32; 4];
+                    c::cmsDoTransform(t2, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t2);
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
