@@ -7,12 +7,21 @@ use lcms_cref as c;
 
 #[test]
 fn cube_devicelink() {
-    let path = "/tmp/test.cube";
-    // C's cmsCreateDeviceLinkFromCubeFile fopen path differs (IsMyFile
-    // semantics on non-IT8 files); assert the Rust-produced pipeline
-    // evals a valid CLUT instead of a C-side diff.
-    let c_out = ();
-    // Rust side — the profile + its AToB0 pipeline
+    // /tmp/test.cube carries trailing symbols after the LUT — C's
+    // cmsCreateDeviceLinkFromCubeFile rejects it ("Extra symbols
+    // found"); Rust must reject identically (parity, was accept-all
+    // before the binary-search/unknown-symbol fix).
+    let ch = unsafe { c::cmsCreateDeviceLinkFromCubeFile(
+        b"/tmp/test.cube\0".as_ptr() as *const i8) };
+    let rp = It8::create_device_link_from_cube_file(
+        None, "/tmp/test.cube");
+    assert_eq!(ch.is_null(), rp.is_none(),
+        "trailing-symbol cube reject parity");
+    unsafe { if !ch.is_null() { c::cmsCloseProfile(ch); } }
+    // well-formed cube — build + eval both sides
+    let path = "/tmp/ok.cube";
+    std::fs::write(path,
+        "TITLE \"ok\"\nLUT_3D_SIZE 2\n         0 0 0\n0 0 1\n0 1 0\n0 1 1\n         1 0 0\n1 0 1\n1 1 0\n1 1 1\n").unwrap();
     let mut p =
         It8::create_device_link_from_cube_file(None, path).expect("rust cube→devicelink failed");
     let lut = lcms::profile::cms_read_tag(&mut (*p), lcms::signatures::tag::SigAToB0Tag);
@@ -30,6 +39,4 @@ fn cube_devicelink() {
         pl.eval16(&inp, &mut out);
         assert!(out.iter().all(|&v| v <= 0xffff));
     }
-    let _ = c_out;
-    let _c = 0;
 }
