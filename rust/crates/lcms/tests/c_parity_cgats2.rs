@@ -1273,3 +1273,40 @@ fn it8_parse_arms2() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/DataSection arms.
+#[test]
+fn it8_deep_arms5() {
+    unsafe {
+        let docs: Vec<(&[u8], &str)> = vec![
+            // every token class in property position
+            (b"IT8FILE\nP1 0x1F\nP2 -0.5e+3\nP3 .5\nP4 \"str\"\nP5 ident\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "alltok"),
+            // strings with all escape classes
+            (b"IT8FILE\nP1 \"a\\nb\\tc\\\\d\\u{1f600}e\\x41f\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "escapes2"),
+            // long identifier names
+            (b"IT8FILE\nVERY_LONG_PROPERTY_NAME_THAT_IS_LONGER_THAN_NORMAL \"v\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "longname"),
+            // CRLF line endings
+            (b"IT8FILE\r\nNUMBER_OF_FIELDS 1\r\nNUMBER_OF_SETS 1\r\nBEGIN_DATA_FORMAT\r\nA\r\nEND_DATA_FORMAT\r\nBEGIN_DATA\r\n1\r\nEND_DATA\r\n", "crlf"),
+            // mixed line endings
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\r\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\r\nA\nEND_DATA_FORMAT\r\nBEGIN_DATA\n1\nEND_DATA\n", "mixeol"),
+            // tabs in property values + data
+            (b"IT8FILE\nP1\t\"v\"\nNUMBER_OF_FIELDS\t1\nNUMBER_OF_SETS\t1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "tabprop"),
+            // comments at various positions
+            (b"# lead\nIT8FILE\n# pre-prop\nP1 \"v\" # inline\n# between\nNUMBER_OF_FIELDS 1 # c\nNUMBER_OF_SETS 1\n# pre-fmt\nBEGIN_DATA_FORMAT\nA # field c\nEND_DATA_FORMAT\n# pre-data\nBEGIN_DATA\n1 # val c\nEND_DATA\n# tail\n", "allcmts"),
+            // empty data section
+            (b"IT8FILE\nNUMBER_OF_FIELDS 0\nNUMBER_OF_SETS 0\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n", "empty2"),
+            // NUMBER_OF_FIELDS with + and hex
+            (b"IT8FILE\nNUMBER_OF_FIELDS +2\nNUMBER_OF_SETS 0x2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n", "signed-count"),
+            // large field/set counts (rejected)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 9999\nNUMBER_OF_SETS 9999\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "huge-count"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
