@@ -1180,3 +1180,39 @@ fn named_color_format() {
         let _ = c::cmsCloseProfile(h);
     }
 }
+
+/// Double-format modifier matrix — the double packer bodies.
+#[test]
+fn double_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("d-planar", (1 << 22) | (4 << 16) | (1 << 12)
+             | (3 << 3) | 0u32),
+            ("d-doswap", (1 << 22) | (4 << 16) | (1 << 10)
+             | (3 << 3) | 0),
+            ("d-swapf", (1 << 22) | (4 << 16) | (1 << 14)
+             | (3 << 3) | 0),
+            ("d-flavor", (1 << 22) | (4 << 16) | (1 << 13)
+             | (3 << 3) | 0),
+            ("d-x1", (1 << 22) | (4 << 16) | (1 << 7)
+             | (3 << 3) | 0),
+            ("d-x2", (1 << 22) | (4 << 16) | (2 << 7)
+             | (3 << 3) | 0),
+            ("d-x3", (1 << 22) | (4 << 16) | (3 << 7)
+             | (3 << 3) | 0),
+            ("d-x4", (1 << 22) | (4 << 16) | (4 << 7)
+             | (3 << 3) | 0),
+            ("d-premul", (1 << 22) | (4 << 16) | (1 << 23)
+             | (1 << 7) | (3 << 3) | 0),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
