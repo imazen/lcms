@@ -3845,3 +3845,33 @@ fn save_mem_edge_and_info_variants() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// GetProfileInfo variants — ASCII/UTF8/wide per info-id ->
+/// per-encoding + per-info-id dispatch.
+#[test]
+fn profile_info_variants() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        // info ids 0-9 -> desc/cprt/dmnd/dmdd/lmod/tech/etc
+        for info in 0u32..10 {
+            let mut ab = [0i8; 128];
+            let mut wb = [0i32; 64];
+            let a = c::cmsGetProfileInfoASCII(p, info,
+                b"en\0".as_ptr() as *const i8,
+                b"US\0".as_ptr() as *const i8,
+                ab.as_mut_ptr() as *mut _, 128);
+            let u = c::cmsGetProfileInfoUTF8(p, info,
+                b"en\0".as_ptr() as *const i8,
+                b"US\0".as_ptr() as *const i8,
+                ab.as_mut_ptr() as *mut _, 128);
+            let w = c::cmsGetProfileInfo(p, info,
+                b"en\0".as_ptr() as *const i8,
+                b"US\0".as_ptr() as *const i8,
+                wb.as_mut_ptr() as *mut _, 64);
+            if a + u + w > 0 {
+                eprintln!("info{info} a={a} u={u} w={w}");
+            }
+        }
+        c::cmsCloseProfile(p);
+    }
+}
