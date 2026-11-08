@@ -16772,3 +16772,106 @@ fn mtrx_sm_wtpnt_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmsalpha/cmsnamed/cmsmd5/cmserr0 residual — alpha copy-in/
+///   out internals + named-color edge + MD5 + error internals.
+#[test]
+fn alpha_named_md5_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // alpha copy-in/out — extra channels in/out with
+        //   varied copy orders + counts
+        let enc = |cs: u32, ch: u32, b: u32, fl: u32| {
+            fl | (cs << 16) | (ch << 3) | b
+        };
+        const EXTRA: u32 = 1 << 7;
+        const SWAP: u32 = 1 << 10;
+        const FLAVOR: u32 = 1 << 20;
+        const PLANAR: u32 = 1 << 12;
+        for (ifmt, ofmt, name) in [
+            (enc(4, 3, 1, EXTRA), enc(10, 3, 1, 0),
+                "1extra->0"),
+            (enc(4, 4, 1, EXTRA), enc(10, 3, 1, 0),
+                "2extra->0"),
+            (enc(4, 7, 1, EXTRA), enc(10, 3, 1, 0),
+                "5extra->0"),
+            (enc(4, 15, 1, EXTRA), enc(10, 3, 1, 0),
+                "13extra->0"),
+            (enc(10, 3, 1, 0), enc(4, 3, 1, EXTRA),
+                "0->1extra"),
+            (enc(10, 3, 1, 0), enc(4, 4, 1, EXTRA),
+                "0->2extra"),
+            (enc(10, 3, 1, 0), enc(4, 7, 1, EXTRA),
+                "0->5extra"),
+            (enc(4, 3, 1, EXTRA | SWAP),
+                enc(10, 3, 1, 0), "swap-extra"),
+            (enc(4, 3, 1, EXTRA | PLANAR),
+                enc(10, 3, 1, 0), "planar-extra"),
+            (enc(4, 3, 1, EXTRA | FLAVOR),
+                enc(10, 3, 1, 0), "flavor-extra"),
+            (enc(4, 4, 2, EXTRA), enc(10, 3, 1, 0),
+                "16bit-extra"),
+            (enc(4, 4, 4, 1 << 22 | EXTRA), enc(10, 3, 1, 0),
+                "float-extra"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, ifmt, lab,
+                ofmt, 0, 0);
+            let t2 = c::cmsCreateTransform(lab, ofmt, srgb,
+                ifmt, 0, 0);
+            eprintln!("{name} in={} out={}", !t.is_null(),
+                !t2.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 64];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+            if !t2.is_null() {
+                let ib = [0x55u8; 64];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t2, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                c::cmsDeleteTransform(t2);
+            }
+        }
+        // MD5 on varied sizes incl block-boundary
+        for sz in [0usize, 1, 63, 64, 65, 127, 128, 1000] {
+            let md = c::cmsMD5alloc(std::ptr::null_mut());
+            let data = vec![0xabu8; sz];
+            c::cmsMD5add(md, data.as_ptr(), sz as u32);
+            let mut id = [0u8; 16];
+            c::cmsMD5finish(id.as_mut_ptr() as *mut _, md);
+            eprintln!("md5 sz{sz}={id:?}");
+        }
+        // named-color on large lists + dup + index bounds
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 4, b"p\0".as_ptr(),
+            b"s\0".as_ptr());
+        for i in 0..64 {
+            let nm = format!("n{:03}\0", i);
+            let pcs = [(i * 4) as u16; 4];
+            let col = [(i * 8) as u16; 4];
+            c::cmsAppendNamedColor(nl, nm.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        let nl2 = c::cmsDupNamedColorList(nl);
+        for i in [0u32, 32, 63, 64, 99] {
+            let mut nm = [0u8; 256];
+            let mut pcs = [0u16; 4];
+            let mut col = [0u16; 4];
+            let r = c::cmsNamedColorInfo(nl2, i,
+                nm.as_mut_ptr(), std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                pcs.as_mut_ptr(), col.as_mut_ptr());
+            eprintln!("ncl{i}={r}");
+        }
+        c::cmsFreeNamedColorList(nl2);
+        c::cmsFreeNamedColorList(nl);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
