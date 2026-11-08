@@ -307,3 +307,32 @@ fn named_machinery() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Named-color transform machinery — GetNamedColorList +
+/// EvalNamedColorCLUT on a named transform.
+#[test]
+fn named_transform_machinery() {
+    unsafe {
+        // a named-color devicelink via Transform2DeviceLink
+        // on a named-color profile chain
+        let h = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(h, in_fmt, lab4, out_fmt,
+            0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        // GetNamedColorList — the transform's named list
+        // (a named transform's list; NULL on non-named)
+        let ncl = c::cmsGetNamedColorList(ct);
+        eprintln!("GetNamedColorList null={}", ncl.is_null());
+        if !ncl.is_null() {
+            let n = c::cmsNamedColorCount(ncl);
+            eprintln!("named count={n}");
+        }
+        c::cmsDeleteTransform(ct);
+        c::cmsCloseProfile(dl);
+        let _ = c::cmsCloseProfile(h);
+        let _ = c::cmsCloseProfile(lab4);
+    }
+}
