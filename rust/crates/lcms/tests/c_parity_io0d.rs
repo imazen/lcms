@@ -7330,3 +7330,51 @@ fn mpe_dup_internals() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// _cmsReadWCharArray/_cmsWriteWCharArray/surrogate internals —
+/// MLU entries with supplementary-plane chars hit the UTF-16
+/// surrogate conversion arms.
+#[test]
+fn wchar_surrogate_internals() {
+    unsafe {
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 6);
+        for (lang, cntry, txt) in [
+            ("en", "US", "ascii-only"),
+            ("ja", "JP", "テキスト"),
+            ("zh", "CN", ""),
+            ("de", "DE", "äöüÄÖÜß"),
+            ("en", "GB", "emoji \u{1f600}\u{1f31f}"),
+            ("el", "GR", "Ελληνικά κείμενο"),
+        ] {
+            let mut wk: Vec<u32> = txt.chars()
+                .map(|c| c as u32).collect();
+            wk.push(0);
+            c::cmsMLUsetWide(ml, format!("{lang}\0").as_ptr() as *const _,
+                format!("{cntry}\0").as_ptr() as *const _,
+                wk.as_ptr() as *const _);
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x64657363, ml as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x64657363)
+        } else { std::ptr::null_mut() };
+        eprintln!("w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() {
+            // read back twice for the dup arm
+            let t2 = c::cmsReadTag(rp, 0x64657363);
+            let _ = t2;
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsMLUfree(ml);
+    }
+}
