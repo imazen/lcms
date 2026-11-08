@@ -290,7 +290,7 @@ formats) — each needs its own format-code gate.
 
 ## Round 8 — io0/io1/cgats sweep (through 9b252daf)
 
-**68.23% lines / 86.13% functions.** ~337 parity gates.
+**68.37% lines / 86.21% functions.** ~337 parity gates.
 cmscgats up to 71.67%, cmsio0 to 77.36%, cmsnamed to 75.54%.
 The remaining uncovered lines are deep internals reachable
 only through oracle-UB inputs, profile shapes the public API
