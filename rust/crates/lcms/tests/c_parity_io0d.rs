@@ -12757,3 +12757,72 @@ fn lut8_read_arms2() {
         }
     }
 }
+
+/// cmsnamed internals — grow-on-append, NamedColorIndex
+/// hit/miss, _cmsStageAllocNamedColor eval, pseq alloc/dup.
+#[test]
+fn namedcolor_arms() {
+    unsafe {
+        // alloc small (n=2), append many -> NamedColorListGrow
+        let nl = c::cmsAllocNamedColorList(std::ptr::null_mut(),
+            2, 4, b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        assert!(!nl.is_null());
+        let pcs = [0x1000u16, 0x2000, 0x3000];
+        let dev = [0x4000u16, 0x5000, 0x6000, 0x7000];
+        for i in 0..40 {
+            let nm = format!("c{i}\0");
+            let r = c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const u8, pcs.as_ptr(),
+                dev.as_ptr());
+            if i < 3 || i == 39 { eprintln!("append {i}={r}"); }
+        }
+        let n = c::cmsNamedColorCount(nl);
+        // index lookups: hit / miss / prefix-match
+        for name in ["c0\0", "c5\0", "c39\0", "zzz\0", "c\0",
+            "PRE_c0\0"] {
+            let i = c::cmsNamedColorIndex(nl,
+                name.as_ptr() as *const u8);
+            eprintln!("index {name:?}={i}");
+        }
+        // NamedColorInfo per-entry
+        let mut root = [0u8; 64];
+        let mut pcs2 = [0u16; 3];
+        let mut dev2 = [0u16; 4];
+        for i in [0, 20, 39, 40, 99] {
+            let ok = c::cmsNamedColorInfo(nl, i, root.as_mut_ptr()
+                as *mut _, std::ptr::null_mut(),
+                std::ptr::null_mut(), pcs2.as_mut_ptr(),
+                dev2.as_mut_ptr());
+            eprintln!("info {i}={ok}");
+        }
+        // named-color stage eval
+        let nst = c::_cmsStageAllocNamedColor(nl, 1);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
+        c::cmsPipelineInsertStage(p, 1, nst);
+        let inp = [3u16];
+        let mut out = [0u16; 3];
+        c::cmsPipelineEval16(inp.as_ptr(), out.as_mut_ptr(), p);
+        eprintln!("ncl eval {out:?}");
+        c::cmsPipelineFree(p);
+        c::cmsFreeNamedColorList(nl);
+        // pseq alloc/dup/write
+        let ps = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 3);
+        let ps2 = c::cmsDupProfileSequenceDescription(ps);
+        eprintln!("pseq={} dup={}", !ps.is_null(), !ps2.is_null());
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        let w = c::cmsWriteTag(prof, 0x70736571,
+            ps as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut nn = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut nn)
+        } else { 0 };
+        eprintln!("pseq w={w} s={s}");
+        c::cmsCloseProfile(prof);
+        c::cmsFreeProfileSequenceDescription(ps);
+        c::cmsFreeProfileSequenceDescription(ps2);
+    }
+}
