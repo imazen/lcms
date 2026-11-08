@@ -2658,3 +2658,34 @@ fn signature_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_DateTime internals — 'calt' with a proper struct tm
+/// payload (the write path takes tm*, not a raw body).
+#[test]
+fn calt_datetime() {
+    unsafe {
+        #[repr(C)]
+        struct Tm {
+            sec: i32, min: i32, hour: i32, mday: i32,
+            mon: i32, year: i32, wday: i32, yday: i32,
+            isdst: i32,
+        }
+        let tm = Tm {
+            sec: 30, min: 45, hour: 12, mday: 15, mon: 5,
+            year: 124, wday: 6, yday: 166, isdst: 0,
+        };
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x63616C74,
+            &tm as *const _ as *mut std::ffi::c_void); // 'calt'
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x63616C74);
+        eprintln!("calt write={ok} read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
