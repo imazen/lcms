@@ -442,3 +442,62 @@ fn parametric_eval_arms() {
         }
     }
 }
+
+/// cmsgamma internals — gamma variants, segmented curves,
+/// dup/reverse/free, eval edge cases.
+#[test]
+fn gamma_internals2() {
+    unsafe {
+        // BuildGamma edge gammas
+        for g in [0.1f64, 0.5, 1.0, 2.2, 10.0, 100.0] {
+            let c_ = c::cmsBuildGamma(std::ptr::null_mut(), g);
+            if !c_.is_null() {
+                c::cmsEvalToneCurveFloat(c_, 0.5);
+                let d = c::cmsDupToneCurve(c_);
+                if !d.is_null() { c::cmsFreeToneCurve(d); }
+                c::cmsFreeToneCurve(c_);
+            }
+        }
+        // segmented curve: {x0,x1,type,params,grid,samples}
+        let mut seg = [c::CurveSegment {
+            x0: 0.0f32, x1: 1.0,
+            r#type: 6, params: [2.2f64, 1.0, 0.0, 0.0, 0.0,
+                              0.0, 0.0, 0.0, 0.0, 0.0],
+            n_grid_points: 0,
+            sampled_points: std::ptr::null_mut() }];
+        let sc = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(),
+            1, seg.as_ptr());
+        eprintln!("seeg={}", !sc.is_null());
+        if !sc.is_null() {
+            c::cmsEvalToneCurveFloat(sc, 0.5);
+            c::cmsFreeToneCurve(sc);
+        }
+        // EstimateGamma on tabulated curves
+        for n in [2u32, 4, 16, 256, 1024] {
+            let mut tab = vec![0u16; n as usize];
+            for i in 0..n as usize {
+                tab[i] = ((i as f64 / (n - 1).max(1) as f64).powf(2.2)
+                    * 65535.0) as u16;
+            }
+            let c_ = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), n, tab.as_ptr());
+            if !c_.is_null() {
+                let g = c::cmsEstimateGamma(c_, 0.001);
+                eprintln!("n{n} est={g:.3}");
+                c::cmsFreeToneCurve(c_);
+            }
+        }
+        // JoinToneCurve / ReverseToneCurve on parametric + tabulated
+        let p1 = c::cmsBuildParametricToneCurve(std::ptr::null_mut(),
+            1, [2.2f64, 1.0, 0.0].as_ptr());
+        let p2 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            16, [0u16, 4096, 8192, 12288, 16384, 20480, 24576, 28672,
+                  32768, 36864, 40960, 45056, 49152, 53248, 57344,
+                  61440].as_ptr());
+        let j = c::cmsJoinToneCurve(std::ptr::null_mut(), p1, p2, 16);
+        eprintln!("join={}", !j.is_null());
+        if !j.is_null() { c::cmsFreeToneCurve(j); }
+        c::cmsFreeToneCurve(p1);
+        c::cmsFreeToneCurve(p2);
+    }
+}
