@@ -1274,3 +1274,98 @@ fn smooth_curve_arms() {
         }
     }
 }
+
+/// cmsgamma residual — SmoothToneCurve pole-degenerate
+///   + too-many-items branches, parametric-curves
+///   plugin register + ctx-dup (DupPluginCurvesList),
+///   plugin curve-type lookup (GetParametricCurveByType).
+#[test]
+fn gamma_smooth_plugin_arms() {
+    unsafe {
+        // sawtooth curve with many poles -> "mostly poles"
+        for (n, name) in [
+            (16u32, "n16"),
+            (64, "n64"), (256, "n256"), (4096, "n4k"),
+        ] {
+            let saw: Vec<u16> = (0..n)
+                .map(|i| if i % 2 == 0 {
+                    0xFFFF } else { 0 }).collect();
+            let tc = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), n, saw.as_ptr());
+            let r = if !tc.is_null() {
+                c::cmsSmoothToneCurve(tc, 1.0)
+            } else { -1 };
+            eprintln!("saw {name} r={r}");
+            if !tc.is_null() {
+                c::cmsFreeToneCurve(tc); }
+            // mostly-zeros variant
+            let zeros: Vec<u16> = vec![0u16; n as usize];
+            let tz = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), n, zeros.as_ptr());
+            let rz = if !tz.is_null() {
+                c::cmsSmoothToneCurve(tz, 1.0)
+            } else { -1 };
+            eprintln!("zeros {name} r={rz}");
+            if !tz.is_null() {
+                c::cmsFreeToneCurve(tz); }
+        }
+        // parametric-curves plugin -> ctx->ParametricCurves
+        //   then DupContext -> DupPluginCurvesList
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        unsafe extern "C" fn my_curve_eval(
+            _t: i32, _params: *const f64,
+            x: f64) -> f64 { x * 0.5 }
+        #[repr(C)]
+        struct CurvePlugin {
+            base: PluginBase,
+            n_functions: u32,
+            function_types: [u32; 20],
+            parameter_count: [u32; 20],
+            eval: *const std::ffi::c_void,
+        }
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let mut ftypes = [0u32; 20];
+        ftypes[0] = 20;
+        ftypes[1] = 21;
+        let mut pcount = [0u32; 20];
+        pcount[0] = 1;
+        pcount[1] = 1;
+        let mut cp = CurvePlugin {
+            base: PluginBase {
+                magic: 0x61637070, ver: 2200,
+                typ: 0x70617248,
+                next: std::ptr::null_mut(),
+            },
+            n_functions: 2,
+            function_types: ftypes,
+            parameter_count: pcount,
+            eval: my_curve_eval as *const std::ffi::c_void,
+        };
+        let r = c::cmsPluginTHR(ctx,
+            &mut cp as *mut _ as *mut _);
+        eprintln!("curve-plugin reg={r}");
+        let dctx = c::cmsDupContext(ctx,
+            std::ptr::null_mut());
+        eprintln!("dctx={}", !dctx.is_null());
+        // build parametric curve of the registered type
+        //   -> GetParametricCurveByType plugin walk
+        let params = [2.2f64];
+        let tc = c::cmsBuildParametricToneCurve(ctx, 20,
+            params.as_ptr());
+        eprintln!("plugin-curve tc={}", !tc.is_null());
+        if !tc.is_null() {
+            let mut v = 0.0f64;
+            c::cmsEvalToneCurveFloat(tc, 0.5);
+            let _ = v;
+            c::cmsFreeToneCurve(tc);
+        }
+        if !dctx.is_null() {
+            c::cmsDeleteContext(dctx); }
+        c::cmsDeleteContext(ctx);
+    }
+}
