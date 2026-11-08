@@ -650,7 +650,7 @@ unsafe extern "C" {
     pub fn cmsSetAlarmCodesTHR(ctx: *mut c_void, codes: *const u16);
     pub fn cmsGetAlarmCodesTHR(ctx: *mut c_void, codes: *mut u16);
     pub fn cmsSetAdaptationStateTHR(ctx: *mut c_void, d: f64) -> f64;
-    pub fn cmsGetPCSofProfile(prof: *mut c_void) -> u32;
+    pub fn cmsGetPCS(prof: *mut c_void) -> u32;
     pub fn cmsGetColorSpace(prof: *mut c_void) -> u32;
     pub fn cmsGetDeviceClass(prof: *mut c_void) -> u32;
     pub fn cmsGetEncodedICCversion(prof: *mut c_void) -> u32;

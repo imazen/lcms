@@ -1177,8 +1177,11 @@ impl Transform {
         if !cache && !gamut {
             // Identity + identical non-planar formats: unroll→copy→pack is a
             // byte-exact round trip, so the whole transform is a line copy.
+            // whole-pixel memcpy is only valid when no extra channel exists —
+            // C's unroll/pack leaves extra bytes untouched unless COPY_ALPHA.
             if self.input_format == self.output_format
                 && crate::pack::t_planar(self.input_format) == 0
+                && crate::pack::t_extra(self.input_format) == 0
             {
                 if let Some(l) = self.lut.as_mut() {
                     if let Some(crate::opt::OptData::Identity) = l.opt_data.as_ref() {
