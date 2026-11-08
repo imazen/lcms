@@ -163,3 +163,9 @@ emitter are semantically equivalent but textually different on wrap
 positions. The flag paths (BPC/LOWRESPRECALC/HIGHRESPRECALC/
 NOWHITEONWHITEFIXUP) are exercised per-resource on sRGB by `srgb_crd`;
 the corpus adds no new flag-path coverage.
+
+- [finding] `do_transform` does not dispatch FLOAT_SH input/output
+  formats — writing f32 through the transform buffer produces garbage
+  (the float-formatter dispatch path is unported in the Rust
+  do_transform path). C's cmsDoTransform handles FLOAT_SH(1)|BYTES_SH(4)
+  formats natively. Pin the gate and revisit.
