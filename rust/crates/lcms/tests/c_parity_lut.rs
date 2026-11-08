@@ -2363,3 +2363,47 @@ fn lut16_write_stage_orders() {
         }
     }
 }
+
+/// Stage-eval sweep — every stage type through PipelineEval16/
+/// EvalFloat covers cmslut's per-type evaluators + the alloc/dup
+/// paths for each element kind.
+#[test]
+fn stage_eval_sweep() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let tab: Vec<u16> = (0..8*3).map(|i| (i * 41) as u16).collect();
+        let ftab: Vec<f32> = (0..8*3).map(|i| i as f32 / 24.0).collect();
+        let stages: &[(&str, *mut std::ffi::c_void)] = &[
+            ("curves", c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, cc.as_ptr())),
+            ("idcurves", c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, std::ptr::null())),
+            ("matrix", c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null())),
+            ("clut16", c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), 2, 3, 3, tab.as_ptr())),
+            ("clutflt", c::cmsStageAllocCLutFloat(
+                std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr())),
+            ("identity", c::cmsStageAllocIdentity(std::ptr::null_mut(), 3)),
+        ];
+        for (name, st) in stages {
+            if st.is_null() { eprintln!("{name}: alloc fail"); continue; }
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, *st);
+            let mut i16 = [0x2000u16, 0x6000, 0xA000];
+            let mut o16 = [0u16; 3];
+            c::cmsPipelineEval16(i16.as_ptr(), o16.as_mut_ptr(), p);
+            let fi = [0.5f32, 0.3, 0.7];
+            let mut fo = [0f32; 3];
+            c::cmsPipelineEvalFloat(fi.as_ptr(), fo.as_mut_ptr(), p);
+            eprintln!("{name}: o16={o16:?} fo={fo:?}");
+            // dup frees the dup paths too
+            let dp = c::cmsPipelineDup(p);
+            if !dp.is_null() { c::cmsPipelineFree(dp); }
+            c::cmsPipelineFree(p);
+        }
+    }
+}
