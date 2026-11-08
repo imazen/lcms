@@ -509,3 +509,38 @@ fn misc_virt_builders() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Proofing-transform internals — preview/simulation pipeline
+/// paths via cmsCreateProofingTransform over profile combos x
+/// intents x SOFTPROOFING/GAMUTCHECK flags.
+#[test]
+fn proofing_transform_paths() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut cmyk = std::ptr::null_mut();
+        if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
+            cmyk = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+        }
+        for flags in [0x4000u32, 0x5000, 0x1000 | 0x4000] {
+            // input + output + proofing profile
+            if !cmyk.is_null() {
+                let t = c::cmsCreateProofingTransform(
+                    srgb, 0x00ff04, cmyk, 0x4c02f1, cmyk,
+                    0, 1, flags);
+                eprintln!("proof f{flags:#x} t={}", !t.is_null());
+                if !t.is_null() {
+                    let inp = [128u8, 64, 200];
+                    let mut out = [0u8; 4];
+                    c::cmsDoTransform(t, inp.as_ptr() as *const _,
+                        out.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsCloseProfile(srgb);
+    }
+}
