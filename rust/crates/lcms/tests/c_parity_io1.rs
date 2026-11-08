@@ -166,3 +166,44 @@ fn output_lut_lab_normalization() {
         }
     }
 }
+
+/// _cmsReadDevicelinkLUT dispatch — named-color-class profile with
+/// ncl2 tag -> named-color stage + LabV2ToV4; devicelink with
+/// AToB*/DToB* tags -> float/16 LUT arms.
+#[test]
+fn devicelink_lut_dispatch() {
+    unsafe {
+        // named-color class + ncl2 tag -> the named-color arm
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
+            b"suf\0".as_ptr());
+        for (name, pcs) in [("S1\0", [0x9000u16, 0x5500, 0x5500]),
+                            ("S2\0", [0x3000, 0x2000, 0x9000])] {
+            let col = [0xFFFFu16; 4];
+            c::cmsAppendNamedColor(ncl, name.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(nmcl, 0x6e6d636c);      // 'nmcl'
+        c::cmsSetColorSpace(nmcl, 0x6e636c32);        // 'ncl2'
+        c::cmsSetPCS(nmcl, 0x4C616220);               // 'Lab '
+        c::cmsWriteTag(nmcl, 0x6e636c32, ncl as *const _);
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for intent in 0..=4u32 {
+            let t = c::cmsCreateTransform(nmcl,
+                (1 << 3) | 2, lab, 0x0a0702, intent, 0);
+            eprintln!("nmcl i{intent} t={}", !t.is_null());
+            if !t.is_null() {
+                let idx = [0u16, 1];
+                let mut out = [0u16; 3];
+                c::cmsDoTransform(t, idx.as_ptr() as *const _,
+                    out.as_mut_ptr() as *mut _, 1);
+                eprintln!("  out={out:?}");
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(nmcl);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
