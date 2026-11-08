@@ -460,3 +460,44 @@ fn black_point_internals2() {
         }
     }
 }
+
+/// Destination black point + TAC internals — profile-pair
+/// detection across intent combos.
+#[test]
+fn dest_bp_tac_internals() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "graylcms2.icc",
+                  "labv4lcms2.icc", "labv2lcms2.icc", "aRGBlcms2.icc",
+                  "limitlcms2.icc", "linlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in 0..4u32 {
+                let mut bp = [0.0f64; 3];
+                let r = c::cmsDetectDestinationBlackPoint(
+                    bp.as_mut_ptr() as *mut _, p, intent, 0);
+                if r != 0 && intent == 0 {
+                    eprintln!("{f} i{intent} dbp=({:.3},{:.3},{:.3})",
+                        bp[0], bp[1], bp[2]);
+                }
+            }
+            // pairs: srgb->p, p->lab
+            for (src, dst, name) in [
+                (srgb, p, "s->p"),
+                (p, lab, "p->l"),
+            ] {
+                let mut bp = [0.0f64; 3];
+                let _ = (src, dst, name, &mut bp);
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
