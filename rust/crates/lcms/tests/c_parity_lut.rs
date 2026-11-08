@@ -1045,3 +1045,27 @@ fn reverse_slice_machinery() {
         eprintln!("slicef ok={ok3}");
     }
 }
+
+/// Identity-stage internals — AllocIdentity + eval on more
+/// channel counts.
+#[test]
+fn identity_stages() {
+    unsafe {
+        for nch in [1u32, 2, 3, 4, 6, 8, 15, 16] {
+            let st = c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), nch);
+            eprintln!("nch={nch} null={}", st.is_null());
+            if !st.is_null() {
+                let pl = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), nch, nch);
+                c::cmsPipelineInsertStage(pl, 1, st);
+                let mut inp = [0.5f32; 16];
+                let mut out = [0.0f32; 16];
+                c::cmsPipelineEvalFloat(inp.as_ptr(),
+                    out.as_mut_ptr(), pl);
+                let _ = (inp, out);
+                c::cmsPipelineFree(pl);
+            }
+        }
+    }
+}
