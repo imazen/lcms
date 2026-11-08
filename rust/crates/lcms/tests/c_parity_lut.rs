@@ -2475,3 +2475,66 @@ fn lut_readback_cycles() {
         }
     }
 }
+
+/// mAB read-back cycle — v4-profile writes the mAB-structured
+/// pipelines, reload + ReadTag + eval covers Type_LUTA2B_Read arms
+/// (curve-set/matrix/CLUT/curve-set stage reads + offset reads).
+#[test]
+fn mab_readback_cycles() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let tab: Vec<f32> = (0..8*3).map(|i| i as f32 / 24.0).collect();
+        let tab16: Vec<u16> = (0..8*3).map(|i| (i * 11) as u16).collect();
+        for (name, parts) in [
+            ("cv", [0u8].as_slice()),
+            ("cv-mx-cv", [0,1,0].as_slice()),
+            ("cv-clut-cv", [0,2,0].as_slice()),
+            ("cv-clut-cv-mx-cv", [0,2,0,1,0].as_slice()),
+        ] {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            for &k in parts {
+                match k {
+                    0 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3, cc.as_ptr())),
+                    1 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                            3, 3, mat.as_ptr(), std::ptr::null())),
+                    _ => c::cmsPipelineInsertStage(p, 1,
+                            c::cmsStageAllocCLut16bit(
+                                std::ptr::null_mut(), 2, 3, 3,
+                                tab16.as_ptr())),
+                };
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            if s != 0 {
+                let rp = c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n);
+                let tag = c::cmsReadTag(rp, 0x41324230);
+                eprintln!("{name}: readtag={}", !tag.is_null());
+                if !tag.is_null() {
+                    let fi = [0.5f32, 0.3, 0.7];
+                    let mut fo = [0f32; 3];
+                    c::cmsPipelineEvalFloat(fi.as_ptr(),
+                        fo.as_mut_ptr(), tag);
+                    eprintln!("  eval={fo:?}");
+                }
+                c::cmsCloseProfile(rp);
+            } else {
+                eprintln!("{name}: save failed w={w}");
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
