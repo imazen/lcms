@@ -348,3 +348,53 @@ fn intent_pipelines() {
         }
     }
 }
+
+/// Pack/unroll dispatch on u8 formats — the formatter paths
+/// beyond the u16 sweep.
+#[test]
+fn u8_packed_formats() {
+    unsafe {
+        let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
+        let lab8: u32 = (10 << 16) | (3 << 3) | 1;
+        for (name, in_fmt, out_fmt) in [
+            ("srgb->lab8", rgb8, lab8),
+            ("lab8->srgb", lab8, rgb8),
+        ] {
+            let (hi, ho) = if name == "lab8->srgb" {
+                (c::cmsCreateLab4Profile(std::ptr::null_mut()),
+                 c::cmsCreate_sRGBProfile())
+            } else {
+                (c::cmsCreate_sRGBProfile(),
+                 c::cmsCreateLab4Profile(std::ptr::null_mut()))
+            };
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            let mut rp1 = if name == "lab8->srgb" {
+                virt::create_lab4_profile(None, None).unwrap()
+            } else { virt::create_srgb_profile(None).unwrap() };
+            let mut rp2 = if name == "lab8->srgb" {
+                virt::create_srgb_profile(None).unwrap()
+            } else { virt::create_lab4_profile(None, None).unwrap() };
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, out_fmt, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "{name}");
+            if !ct.is_null() && rt.is_some() {
+                let mut rt = rt.unwrap();
+                let inp = [0x80u8, 0x40, 0xC0];
+                let mut co = [0u8; 4];
+                let mut ro = [0u8; 4];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                rt.do_transform(&inp, &mut ro[..3], 1);
+                assert_eq!(co[..3], ro[..3], "{name} u8 eval");
+                c::cmsDeleteTransform(ct);
+            }
+        }
+    }
+}
