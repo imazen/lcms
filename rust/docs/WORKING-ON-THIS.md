@@ -296,3 +296,29 @@ The remaining uncovered lines are deep internals reachable
 only through oracle-UB inputs, profile shapes the public API
 can't produce (real CMYK/MCH device profiles), or per-format
 packer bodies for the less-common pixel types.
+
+## Coverage campaign checkpoint (run17)
+
+**83.06% lines / 95.59% fns / 89.56% regions / 77.34% branches**
+(upstream oracle `reference/lcms2`, ~860 parity gates landed
+across `c_parity_*.rs`)
+
+Residuals are dominated by three buckets:
+1. **OOM-only `goto Error` cleanup** — `if (!alloc) goto Error` /
+   `if (Mem == NULL) return NULL` branches throughout every file.
+   Unreachable without allocation-failure injection; documented
+   dead-for-coverage.
+2. **Genuinely dead code** — `satob`/`WRITE_BINARY`/
+   `WRITE_HEXADECIMAL` in cmscgats (no property registers
+   them), `ReadOneWChar`'s `wchar_t==2` path (Linux wchar_t=4),
+   a handful of `#if 0` blocks.
+3. **Format-word / tag-type variant bodies** — each cmspack
+   formatter has per-variant misses (swap/planar/extra-channel
+   arms) that need exact `T_*` bit patterns; still being swept.
+
+Remaining per-file missed lines (run17): cmstypes ~1000,
+cmspack ~420, cmscgats ~167, cmsvirt ~161, cmsopt ~148,
+cmsio0 ~136, cmslut ~111, cmsnamed ~102, cmsio1 ~90,
+cmscnvrt ~85, cmsplugin ~65, cmsxform ~63, cmsgamma ~49,
+cmssamp ~48, cmsps2 ~43, cmsgmt ~37, cmserr ~29, cmsalpha ~30,
+cmssm ~20, cmsmd5 ~10, cmsintrp ~8, cmspcs ~10.
