@@ -996,3 +996,48 @@ fn virt_opt_residual_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsvirt residual — FixColorSpaces/CreateNamedColor-
+///   Devicelink/Linearization/InkLimiting internals:
+///   named-color link, per-channel lin links, ink
+///   limit curves.
+#[test]
+fn virt_builders2_arms() {
+    unsafe {
+        // linearization devicelink: 1/3/4/5/6 ch
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        for (fmt, nch, name) in [
+            ((0u32 << 16) | (1 << 3) | 2, 1, "1ch"),
+            ((0u32 << 16) | (3 << 3) | 2, 3, "3ch"),
+            ((0u32 << 16) | (4 << 3) | 2, 4, "4ch"),
+            ((0u32 << 16) | (5 << 3) | 2, 5, "5ch"),
+            ((0u32 << 16) | (6 << 3) | 2, 6, "6ch"),
+            ((0u32 << 16) | (15 << 3) | 2, 15, "15ch"),
+        ] {
+            let tcs: Vec<*mut c::ToneCurve> =
+                vec![g; nch.min(15)];
+            let dl2 = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), fmt,
+                tcs.as_ptr());
+            eprintln!("lin {name} dl={}", !dl2.is_null());
+            if !dl2.is_null() {
+                c::cmsCloseProfile(dl2); }
+        }
+        // ink-limiting devicelink at limits
+        for (lim, fmt, name) in [
+            (50.0f64, (0u32 << 16) | (4 << 3) | 2, "lim50-4ch"),
+            (100.0, (0u32 << 16) | (4 << 3) | 2, "lim100"),
+            (200.0, (0u32 << 16) | (4 << 3) | 2, "lim200"),
+            (400.0, (0u32 << 16) | (4 << 3) | 2, "lim400"),
+            (0.0, (0u32 << 16) | (4 << 3) | 2, "lim0"),
+            (-1.0, (0u32 << 16) | (4 << 3) | 2, "limneg"),
+        ] {
+            let dl3 = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), fmt, lim);
+            eprintln!("{name} dl={}", !dl3.is_null());
+            if !dl3.is_null() {
+                c::cmsCloseProfile(dl3); }
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
