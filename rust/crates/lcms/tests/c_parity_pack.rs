@@ -3270,3 +3270,70 @@ fn pack_cell_sweep() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Float/half/double unroller+packer arms — FLOAT_SH(1) (bit 22)
+/// format words on RGB/Lab/gray transforms.
+#[test]
+fn float_packers2() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let fl = 1u32 << 22;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let sw = |name: &str, inp: *mut _, if_: u32, of_: u32, prof: *mut _| {
+            let t = c::cmsCreateTransform(inp, if_, prof, of_, 0, 0);
+            let ok = !t.is_null();
+            eprintln!("{name} t={ok}");
+            if ok {
+                let ib = [0.5f32; 8];
+                let mut ob = [0.5f32; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        };
+        let rf = |ch: u32, extra: u32, bytes: u32| {
+            (4u32 << 16) | fl | (extra << 7) | (ch << 3) | bytes
+        };
+        let gf = |extra: u32, bytes: u32| {
+            (3u32 << 16) | fl | (extra << 7) | (1 << 3) | bytes
+        };
+        // float in -> 16 out
+        sw("f32-16", srgb, rf(3, 0, 4), l16, lab);
+        sw("f32-16-x1", srgb, rf(3, 1, 4), l16, lab);
+        sw("f32-16-ds", srgb, rf(3, 0, 4) | (1 << 10), l16, lab);
+        sw("f32-16-sf", srgb, rf(3, 0, 4) | (1 << 14), l16, lab);
+        sw("f32-16-planar", srgb, rf(3, 0, 4) | (1 << 12), l16, lab);
+        // double in -> 16 out (BYTES=0, FLOAT=1)
+        sw("f64-16", srgb, rf(3, 0, 0), l16, lab);
+        sw("f64-16-x1", srgb, rf(3, 1, 0), l16, lab);
+        // half in -> 16 out (BYTES=2, FLOAT=1)
+        sw("f16-16", srgb, rf(3, 0, 2), l16, lab);
+        sw("f16-16-x1", srgb, rf(3, 1, 2), l16, lab);
+        // 16 in -> float out
+        let lfr = |ch: u32, bytes: u32| {
+            (4u32 << 16) | fl | (ch << 3) | bytes
+        };
+        sw("16-f32", lab, l16, lfr(3, 4), srgb);
+        sw("16-f64", lab, l16, lfr(3, 0), srgb);
+        sw("16-f16", lab, l16, lfr(3, 2), srgb);
+        sw("f32-f32", srgb, rf(3, 0, 4), lfl, lab);
+        sw("f32-lab-f32", lab, lfl, lfl, lab);
+        // gray float
+        sw("gf32-16", gray, gf(0, 4), l16, lab);
+        sw("gf64-16", gray, gf(0, 0), l16, lab);
+        sw("16-gf32", lab, l16, gf(0, 4), gray);
+        // Lab_DBL/Xyz_FLT typed formats
+        sw("lab-dbl", lab, (10u32 << 16) | fl | (3 << 3) | 0,
+            l16, lab);
+        sw("lab-flt-x1", lab, lfl | (1 << 7), l16, lab);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
