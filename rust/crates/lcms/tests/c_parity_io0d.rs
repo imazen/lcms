@@ -3192,3 +3192,32 @@ fn ucrbg_screening_tags() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Raw-tag I/O — cmsReadRawTag/WriteRawTag bytes (no type decode)
+/// over LUT and text tags.
+#[test]
+fn raw_tag_io() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let d = std::fs::read(dir.join("lcms2cmyk.icc")).unwrap();
+        let p = c::cmsOpenProfileFromMem(
+            d.as_ptr() as *const _, d.len() as u32);
+        // ReadRawTag size + bytes
+        for sig in [0x41324230u32, 0x6b545243, 0x64657363] {
+            let n = c::cmsReadRawTag(p, sig, std::ptr::null_mut(), 0);
+            let mut buf = vec![0u8; n as usize];
+            let n2 = c::cmsReadRawTag(p, sig,
+                buf.as_mut_ptr() as *mut _, n);
+            eprintln!("raw {sig:#x} size={n} read={n2}");
+        }
+        // WriteRawTag a new sig -> new raw tag
+        let raw = [0xdeu8, 0xad, 0xbe, 0xef, 1, 2, 3, 4];
+        let w = c::cmsWriteRawTag(p, 0xdeadbeef,
+            raw.as_ptr() as *const _, raw.len() as u32);
+        let rn = c::cmsReadRawTag(p, 0xdeadbeef,
+            std::ptr::null_mut(), 0);
+        eprintln!("writeraw={w} reread={rn}");
+        c::cmsCloseProfile(p);
+    }
+}
