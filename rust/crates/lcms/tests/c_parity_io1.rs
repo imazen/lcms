@@ -282,3 +282,40 @@ fn named_color_input_lut() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Gray matrix pipelines — gray profile in input/output transform
+/// position -> BuildGrayInputMatrixPipeline/BuildGrayOutput-
+/// MatrixPipeline + the gray-PCS branches.
+#[test]
+fn gray_matrix_pipelines() {
+    unsafe {
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let gray = c::cmsCreateGrayProfile(&wp as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g16 = (3u32 << 16) | (1 << 3) | 2;  // GRAY u16
+        let r16 = (4u32 << 16) | (3 << 3) | 2;  // RGB u16
+        let l16 = (10u32 << 16) | (3 << 3) | 2; // Lab u16
+        // gray in -> gray out (input + output pipelines)
+        for (inp, outp, if_, of, name) in [
+            (gray, srgb, g16, r16, "gray->srgb"),
+            (srgb, gray, r16, g16, "srgb->gray"),
+            (gray, lab, g16, l16, "gray->lab"),
+            (lab, gray, l16, g16, "lab->gray"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x40u8; 8];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
