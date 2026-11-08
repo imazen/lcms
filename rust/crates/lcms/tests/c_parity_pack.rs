@@ -861,3 +861,36 @@ fn cmyk_real_formats() {
         if !dl.is_null() { c::cmsCloseProfile(dl); }
     }
 }
+
+/// PT_ANY + unusual colorspace formats — the format machinery
+/// on colorspace-mismatched profiles.
+#[test]
+fn unusual_colorspace_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("any-16", (0 << 16) | (3 << 3) | 2u32), // PT_ANY
+            ("cmy-16", (5 << 16) | (3 << 3) | 2),
+            ("ycbcr-16", (7 << 16) | (3 << 3) | 2),
+            ("yuv-16", (8 << 16) | (3 << 3) | 2),
+            ("hsv-16", (12 << 16) | (3 << 3) | 2),
+            ("hls-16", (13 << 16) | (3 << 3) | 2),
+            ("yxy-16", (14 << 16) | (3 << 3) | 2),
+            ("yuvk-16", (11 << 16) | (4 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x8000u16, 0x6000, 0x4000, 0x2000];
+                let mut out = [0u16; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
