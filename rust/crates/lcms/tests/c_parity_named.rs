@@ -1263,3 +1263,67 @@ fn named_grow_save_arms() {
         c::cmsFreeNamedColorList(nl);
     }
 }
+
+/// cmsnamed residual — NamedColorInfo full-field
+///   reads + index-by-name + NamedColorIndex +
+///   GrowNamedColorList to 256+.
+#[test]
+fn named_info_grow_arms() {
+    unsafe {
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 4,
+            b"PREF\0".as_ptr() as *const _,
+            b"SUFF\0".as_ptr() as *const _);
+        // grow past 256 (several grows)
+        for i in 0..300u32 {
+            let nm = format!("color{}\0", i);
+            let pcs = [i as u16; 16];
+            let dev = [(i * 2) as u16; 16];
+            c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        eprintln!("count={}", c::cmsNamedColorCount(nl));
+        // NamedColorInfo on indices incl OOB
+        for idx in [0u32, 1, 299, 300, 9999] {
+            let mut name = [0u8; 256];
+            let mut prefix = [0u8; 256];
+            let mut suffix = [0u8; 256];
+            let mut pcs = [0u16; 16];
+            let mut dev = [0u16; 16];
+            let ok = c::cmsNamedColorInfo(nl, idx,
+                name.as_mut_ptr(),
+                prefix.as_mut_ptr(),
+                suffix.as_mut_ptr(),
+                pcs.as_mut_ptr(), dev.as_mut_ptr());
+            if idx <= 299 {
+                let s = std::ffi::CStr::from_ptr(
+                    name.as_ptr() as *const i8)
+                    .to_string_lossy();
+                let p = std::ffi::CStr::from_ptr(
+                    prefix.as_ptr() as *const i8)
+                    .to_string_lossy();
+                let sf = std::ffi::CStr::from_ptr(
+                    suffix.as_ptr() as *const i8)
+                    .to_string_lossy();
+                eprintln!("info[{idx}] {ok} '{s}' \
+                    '{p}' '{sf}' pcs={}", pcs[0]);
+            } else {
+                eprintln!("info[{idx}] {ok}");
+            }
+        }
+        // index-by-name
+        for nm in ["color0\0", "color150\0", "color299\0",
+                   "nope\0", "COLOR0\0"] {
+            let i = c::cmsNamedColorIndex(nl,
+                nm.as_ptr() as *const _);
+            eprintln!("idx {nm:?} = {i}");
+        }
+        // dup + free the big list
+        let d = c::cmsDupNamedColorList(nl);
+        eprintln!("dup300={}", !d.is_null());
+        if !d.is_null() {
+            c::cmsFreeNamedColorList(d); }
+        c::cmsFreeNamedColorList(nl);
+    }
+}
