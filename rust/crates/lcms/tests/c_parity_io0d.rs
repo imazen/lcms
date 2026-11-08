@@ -23524,3 +23524,116 @@ fn internal_final63_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmslut residual — CurveSetDup/CLUTElemDup/PipelineCat/
+///   UnlinkStage/EvalReverseFloat internals via pipeline
+///   dup/cat/unlink on multi-stage shapes.
+#[test]
+fn internal_final64_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // dup pipelines with every stage type
+        for (st, sname) in [
+            (0u32, "cv"), (1, "clut16"), (2, "clutf"),
+            (3, "mat"), (4, "idn"), (5, "mix"),
+        ] {
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let trcs = [g, g, g];
+            let dims = [3u32; 3];
+            let grid16 = vec![0x4000u16; 81];
+            let gridf = vec![0.5f32; 81];
+            let mat = [1.0f64, 0.0, 0.0, 0.0,
+                1.0, 0.0, 0.0, 0.0, 1.0];
+            let mk = |s_: u32| -> *mut std::ffi::c_void {
+                match s_ {
+                    0 => c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        trcs.as_ptr() as *mut _)
+                            as *mut _,
+                    1 => c::cmsStageAllocCLut16bitGranular(
+                        std::ptr::null_mut(),
+                        dims.as_ptr(), 3, 3,
+                        grid16.as_ptr()) as *mut _,
+                    2 => c::cmsStageAllocCLutFloatGranular(
+                        std::ptr::null_mut(),
+                        dims.as_ptr(), 3, 3,
+                        gridf.as_ptr()) as *mut _,
+                    3 => c::cmsStageAllocMatrix(
+                        std::ptr::null_mut(), 3, 3,
+                        mat.as_ptr(),
+                        std::ptr::null()) as *mut _,
+                    _ => c::cmsStageAllocIdentity(
+                        std::ptr::null_mut(), 3)
+                            as *mut _,
+                }
+            };
+            let stages: Vec<u32> = match st {
+                0 => vec![0],
+                1 => vec![1],
+                2 => vec![2],
+                3 => vec![3],
+                4 => vec![4],
+                _ => vec![0, 1, 2, 3, 4],
+            };
+            for (i, s_) in stages.iter().enumerate() {
+                c::cmsPipelineInsertStage(p, i as i32,
+                    mk(*s_));
+            }
+            // dup the pipeline → CurveSetDup/CLUTElemDup
+            let dp = c::cmsPipelineDup(p);
+            eprintln!("{sname} dup={}", !dp.is_null());
+            // dup each stage individually
+            let n_stages = c::cmsPipelineStageCount(p);
+            for i in 0..n_stages {
+                let st2 = c::cmsPipelineGetPtrToFirstStage(p);
+                let _ = st2;
+            }
+            // cat two pipelines
+            let p2 = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p2, 0, mk(0));
+            let r = c::cmsPipelineCat(p, p2);
+            eprintln!("  cat={r} n={}",
+                c::cmsPipelineStageCount(p));
+            // unlink stage
+            let r2 = c::cmsPipelineUnlinkStage(p, 0,
+                std::ptr::null_mut());
+            eprintln!("  unlink={r2} n={}",
+                c::cmsPipelineStageCount(p));
+            // reverse float eval
+            let srcf = [0.5f32, 0.5, 0.5];
+            let mut dstf = [0f32; 3];
+            let mut hint = [0f32; 3];
+            let r3 = c::cmsPipelineEvalReverseFloat(
+                srcf.as_ptr() as *mut _,
+                dstf.as_mut_ptr(),
+                hint.as_mut_ptr(), p);
+            eprintln!("  rev={r3}");
+            if !dp.is_null() { c::cmsPipelineFree(dp); }
+            c::cmsPipelineFree(p);
+        }
+        // float granular CLUT alloc edges
+        for (nd, nc, name) in [
+            (0u32, 0u32, "0x0"),
+            (1, 1, "1d1c"),
+            (3, 15, "3d15c"),
+            (15, 3, "15d3c"),
+        ] {
+            let dims = [nd.max(1); 15];
+            let n = if nd == 0 || nc == 0 { 1 }
+                else { nd.pow(nd.min(3)) as usize
+                    * nc as usize };
+            let grid = vec![0.5f32; n.max(1)];
+            let st = c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(),
+                dims.as_ptr(), nd.max(1), nc.max(1),
+                grid.as_ptr());
+            eprintln!("clutf {name} st={}",
+                !st.is_null());
+            if !st.is_null() {
+                c::cmsStageFree(st); }
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
