@@ -2351,3 +2351,32 @@ fn acsp_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Platform-sig bounds — mutate the platform sig then
+/// open (the platform validation machinery).
+#[test]
+fn platform_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // platform sig at offset 40
+        for (name, val) in [
+            ("zero", 0u32), ("appl", 0x4150504C),
+            ("msft", 0x4D534654), ("sgi", 0x53474920),
+            ("sunw", 0x53554E57), ("junk", 0x12345678),
+            ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[40..44].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} p={val:#x} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
