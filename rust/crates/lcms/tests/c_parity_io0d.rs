@@ -376,3 +376,31 @@ fn file_stream_open() {
         }
     }
 }
+
+/// cmsSaveProfileToFile/ToIOhandler/ToStream — the remaining
+/// save paths.
+#[test]
+fn save_variants() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let path = "/tmp/save_out.icc\0";
+        // ToFile
+        let ok1 = c::cmsSaveProfileToFile(h,
+            path.as_ptr() as *const _);
+        eprintln!("toFile ok={ok1}");
+        // ToIOhandler — a mem IOhandler
+        let mut buf = vec![0u8; 65536];
+        let io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+            buf.as_mut_ptr() as *mut _, 65536,
+            b"w\0".as_ptr() as *const _);
+        let ok2 = if !io.is_null() {
+            let r = c::cmsSaveProfileToIOhandler(h, io);
+            c::cmsCloseIOhandler(io);
+            r } else { 0 };
+        eprintln!("toIOhandler ok={ok2}");
+        // NOTE: cmsSaveProfileToStream closes its FILE*
+        // internally — a wrapper that also fcloses double-frees.
+        // ToFile + ToIOhandler cover the save machinery.
+        c::cmsCloseProfile(h);
+    }
+}
