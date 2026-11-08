@@ -1998,3 +1998,31 @@ fn colorspace_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Intent-field bounds — mutate the rendering-intent
+/// field then open (the intent validation machinery).
+#[test]
+fn intent_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // rendering intent is a u32be at offset 64
+        for (name, val) in [
+            ("i0", 0u32), ("i1", 1), ("i2", 2), ("i3", 3),
+            ("i4", 4), ("i255", 255), ("huge", 0x7fffffff),
+            ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[64..68].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} i={val} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
