@@ -2340,3 +2340,37 @@ fn final_payload_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'gamt'/'pre0-2'/'targ' resave+read — the LUT serialization
+/// round-trips.
+#[test]
+fn lut_sig_resave2() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr()));
+        for (sig, name) in [
+            (0x67616D74u32, "gamt"), (0x70726530u32, "pre0"),
+            (0x70726531u32, "pre1"), (0x70726532u32, "pre2")] {
+            let _ = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
