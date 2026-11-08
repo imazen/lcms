@@ -281,3 +281,38 @@ fn tag_table_size() {
         }
     }
 }
+
+/// Remaining header-field mutations — intent/attributes/
+/// flags/model/mfg through the validation machinery.
+#[test]
+fn remaining_header_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate fields: intent @64, attributes @56-64,
+        // flags @44, model @52, mfg @48, version @8 (covered),
+        // creation-date @24-36
+        for (name, off, val) in [
+            ("intent-9", 64usize, 9u32),
+            ("intent-99", 64, 99),
+            ("attr-huge", 56, 0xFFFFFFFFu32),
+            ("attr-zero", 56, 0),
+            ("flags-huge", 44, 0xFFFFFFFF),
+            ("model-weird", 52, 0xFFFF0000),
+            ("mfg-weird", 48, 0xFFFF0000),
+            ("year-2050", 24, 0x07E5u32), // year 2021->2050
+        ] {
+            let mut dd = d.clone();
+            dd[off..off + 4].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
