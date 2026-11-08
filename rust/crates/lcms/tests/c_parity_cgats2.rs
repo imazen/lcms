@@ -870,3 +870,57 @@ fn it8_writer_modes() {
         if !h3.is_null() { c::cmsIT8Free(h3); }
     }
 }
+
+/// IT8 table/data API internals — multi-table docs, SetTable/
+/// TableByLabel, GetPatchByName, SetIndexColumn, DefineDblFormat,
+/// GetPropertyDbl/Multi, data row/col accessors.
+#[test]
+fn it8_table_api_arms() {
+    unsafe {
+        // two-table doc via parse
+        let doc = b"CGATS.17\n\
+            NUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\n\
+            BEGIN_DATA_FORMAT\nID V\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\na 1\nb 2\nEND_DATA\n\
+            CGATS.17\n\
+            NUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA_FORMAT\nK W\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\nx 9\nEND_DATA\n";
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("load={}", !h.is_null());
+        if h.is_null() { return; }
+        let nt = c::cmsIT8TableCount(h);
+        eprintln!("tables={nt}");
+        // table switch
+        let st = c::cmsIT8SetTable(h, 0);
+        eprintln!("settable0={st}");
+        let pn = c::cmsIT8GetPatchByName(h, b"b\0".as_ptr() as *const i8);
+        eprintln!("patch_b={pn}");
+        let _ = c::cmsIT8SetTable(h, 1);
+        let stl = c::cmsIT8SetTableByLabel(h,
+            b"K\0".as_ptr() as *const i8, b"W\0".as_ptr() as *const i8,
+            std::ptr::null());
+        eprintln!("setbylabel={stl}");
+        // index column + rowcol ops
+        let _ = c::cmsIT8SetTable(h, 0);
+        let sic = c::cmsIT8SetIndexColumn(h, b"ID\0".as_ptr() as *const i8);
+        eprintln!("setindex={sic}");
+        c::cmsIT8SetDataRowCol(h, 0, 1, b"7\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataRowColDbl(h, 1, 1, 3.5);
+        let v = c::cmsIT8GetDataRowColDbl(h, 1, 1);
+        eprintln!("rc-dbl={v}");
+        // define dbl format + save
+        c::cmsIT8DefineDblFormat(h, b"%.4f\0".as_ptr() as *const i8);
+        let mut buf = vec![0u8; 1 << 16];
+        let mut n = buf.len() as u32;
+        c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("save-n={n}");
+        // property getters
+        let _ = c::cmsIT8SetPropertyDbl(h,
+            b"PD\0".as_ptr() as *const i8, 2.5);
+        let pd = c::cmsIT8GetPropertyDbl(h, b"PD\0".as_ptr() as *const i8);
+        eprintln!("propdbl={pd}");
+        c::cmsIT8Free(h);
+    }
+}
