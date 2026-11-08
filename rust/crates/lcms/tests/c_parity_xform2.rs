@@ -1134,3 +1134,48 @@ fn xform_internals() {
         }
     }
 }
+
+/// Partial-adaptation absolute intent — AdaptationState=0.5 on an
+/// sRGB(D65)->Lab(D50) transform routes ComputeAbsoluteIntent into
+/// the CHAD-temperature mix: CHAD2Temp + Temp2CHAD.
+#[test]
+fn partial_adaptation_absolute() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        c::cmsSetAdaptationStateTHR(std::ptr::null_mut(), 0.5);
+        xform::set_adaptation_state(None, 0.5);
+        let i = c::cmsCreate_sRGBProfile();
+        let o = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+        let mut ro = lcms::virt::create_lab4_profile(None, None).unwrap();
+        let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
+        let lab8: u32 = (10 << 16) | (3 << 3) | 1;
+        let n = 65;
+        let inp = fill(n * 3);
+        let mut c_out = vec![0u8; n * 3];
+        let t = c::cmsCreateTransform(i, rgb8, o, lab8, 3, 0);
+        if !t.is_null() {
+            c::cmsDoTransform(t, inp.as_ptr() as _,
+                c_out.as_mut_ptr() as _, n as u32);
+        }
+        let mut profs: Vec<Box<lcms::profile::IccProfile>> =
+            vec![rp, ro];
+        let mut bpc = vec![false; 2];
+        let intents = vec![3u32; 2];
+        let adapt = vec![0.5f64; 2];
+        let mut r_out = vec![0u8; n * 3];
+        let mut rt = lcms::xform::create_extended_transform(
+            None, &mut profs, &mut bpc, &intents, &adapt,
+            None, 0, rgb8, lab8, 0);
+        if let Some(rt) = rt.as_mut() {
+            rt.do_transform(&inp, &mut r_out, n as u32);
+        }
+        assert_eq!(t.is_null(), rt.is_none(), "abs0.5 create parity");
+        assert_eq!(c_out, r_out, "abs0.5 output");
+        c::cmsDeleteTransform(t);
+        c::cmsCloseProfile(i);
+        c::cmsCloseProfile(o);
+        c::cmsSetAdaptationStateTHR(std::ptr::null_mut(), 1.0);
+        xform::set_adaptation_state(None, 1.0);
+    }
+}
