@@ -660,3 +660,29 @@ fn thr_variants() {
         let _ = (rgb, lab, ctx);
     }
 }
+
+/// Intent-support machinery on more profile types —
+/// devicelinks/abstract/placeholder.
+#[test]
+fn intent_supported2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ph = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (pname, h) in [
+            ("devlink", dl), ("lab4", lab), ("ph", ph)] {
+            for (dir, intent) in [
+                (0u32, 0u32), (0, 1), (0, 2), (0, 3),
+                (1, 0), (1, 1), (1, 2), (1, 3)] {
+                let r = c::cmsIsIntentSupported(h, intent, dir);
+                eprintln!("{pname} d{dir}i{intent}={r}");
+            }
+        }
+        let _ = (dl, lab, ph);
+    }
+}
