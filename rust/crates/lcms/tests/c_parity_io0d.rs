@@ -344,3 +344,35 @@ fn open_variants() {
         }
     }
 }
+
+/// cmsOpenProfileFromFile/FromStream — the file/stream IO
+/// paths on the corpus.
+#[test]
+fn file_stream_open() {
+    unsafe {
+        for (i, (_n, data)) in corpus().iter().enumerate() {
+            let path = format!("/tmp/prof{i}.icc\0");
+            // write the profile to a file
+            std::fs::write(&path[..path.len() - 1],
+                data).unwrap();
+            let h1 = c::cmsOpenProfileFromFile(
+                path.as_ptr() as *const _,
+                b"r\0".as_ptr() as *const _);
+            eprintln!("file{i} open={}", !h1.is_null());
+            if !h1.is_null() { c::cmsCloseProfile(h1); }
+            // IOhandler variant — cmsOpenIOhandlerFromFile +
+            // cmsOpenProfileFromIOhandlerTHR
+            let io = c::cmsOpenIOhandlerFromFile(
+                std::ptr::null_mut(),
+                path.as_ptr() as *const _,
+                b"r\0".as_ptr() as *const _);
+            if !io.is_null() {
+                let h2 = c::cmsOpenProfileFromIOhandlerTHR(
+                    std::ptr::null_mut(), io);
+                eprintln!("iohandler{i} open={}", !h2.is_null());
+                if !h2.is_null() { c::cmsCloseProfile(h2); }
+                else { c::cmsCloseIOhandler(io); }
+            }
+        }
+    }
+}
