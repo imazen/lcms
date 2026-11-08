@@ -577,3 +577,35 @@ fn multiprofile_chains() {
         let _ = (rgb, lab, rgb2, rgb3, rgb4);
     }
 }
+
+/// Multiprofile machinery — chains with devicelinks +
+/// larger chains.
+#[test]
+fn multiprofile_devlink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let rgb = c::cmsCreate_sRGBProfile();
+        let rgb2 = c::cmsCreate_sRGBProfile();
+        let dl2 = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            [g; 4].as_mut_ptr());
+        let fmt = (4 << 16) | (3 << 3) | 2u32;
+        for (name, profs) in [
+            ("rgb-dl", vec![rgb, dl] as Vec<*mut _>),
+            ("dl-rgb", vec![dl, rgb2] as Vec<*mut _>),
+            ("rgb-dl-rgb", vec![rgb, dl, rgb2] as Vec<*mut _>),
+            ("dl-dl2", vec![dl, dl2] as Vec<*mut _>)] {
+            let mut pv = profs;
+            let n = pv.len() as i32;
+            let t = c::cmsCreateMultiprofileTransform(
+                pv.as_mut_ptr(), n, fmt, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        let _ = (rgb, rgb2, dl, dl2);
+    }
+}
