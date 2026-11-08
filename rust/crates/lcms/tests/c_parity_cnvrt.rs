@@ -717,3 +717,32 @@ fn proofing_links() {
         let _ = c::cmsCloseProfile(cmyk);
     }
 }
+
+/// Real stored-LUT evals — transforms through corpus
+/// profiles' actual LUT data.
+#[test]
+fn stored_lut_evals() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            // transform through the profile's stored LUT — the
+            // actual LUT evaluator on real serialized data
+            let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+            let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let lab4 = c::cmsCreateLab4Profile(
+                std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(h, in_fmt, lab4,
+                lab_fmt, 0, 0);
+            let _ = c::cmsCloseProfile(lab4);
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
