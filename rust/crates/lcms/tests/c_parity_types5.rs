@@ -3486,3 +3486,30 @@ fn write_dispatch_named2() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a pipeline on the array-type sigs —
+/// the write machinery on wrong-type payloads.
+#[test]
+fn write_dispatch_pipeline_array() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        for (sig, name) in [
+            (0x72657370u32, "resp"), (0x72637332u32, "rcs2"),
+            (0x70617261u32, "para"), (0x64617461u32, "data"),
+            (0x75743136u32, "ut16"), (0x75743332u32, "ut32"),
+            (0x75696638u32, "uif8"), (0x75696631u32, "uif16"),
+            (0x75696633u32, "uif32"), (0x75696636u32, "uif64"),
+            (0x73313566u32, "s15f"), (0x75663136u32, "uf16"),
+            (0x75663332u32, "uf32"), (0x75663634u32, "uf64"),
+            (0x6E756938u32, "nui8"), (0x6E756931u32, "nui16"),
+            (0x6E756933u32, "nui32"), (0x6E756936u32, "nui64"),
+            (0x75663820u32, "uf8 "), (0x75663136u32, "uf16")] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
