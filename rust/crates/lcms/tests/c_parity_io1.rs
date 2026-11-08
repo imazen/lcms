@@ -345,3 +345,32 @@ fn media_white_chad() {
         }
     }
 }
+
+/// _cmsReadFloatInputTag normalization arms — Lab-colorspace
+/// profile + mpet DToB tag -> NormalizeToLabFloat + FromLabFloat.
+#[test]
+fn float_lut_lab_normalization() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3).map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6d6e7472); // 'mntr'
+        c::cmsSetColorSpace(prof, 0x4C616220);  // 'Lab ' colorspace
+        c::cmsSetPCS(prof, 0x4C616220);          // 'Lab ' PCS
+        c::cmsWriteTag(prof, 0x44324230, p as *const _); // D2B0 mpet
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lf = (10u32 << 16) | (1 << 22) | (3 << 3) | 4;
+        let t = c::cmsCreateTransform(prof, l16, lab, l16, 0, 0);
+        let tf = c::cmsCreateTransform(prof, lf, lab, lf, 0, 0);
+        eprintln!("lab-mpet t={} tf={}", !t.is_null(), !tf.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !tf.is_null() { c::cmsDeleteTransform(tf); }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
