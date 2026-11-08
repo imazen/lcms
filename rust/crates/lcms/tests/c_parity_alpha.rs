@@ -483,3 +483,53 @@ fn alpha_format_cells() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// 16SE-source alpha conversions — in=16SE-alpha, out=HLF/FLT/
+/// DBL/8/16 alpha formats through COPY_ALPHA transforms.
+#[test]
+fn alpha_16se_sources() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let copy_alpha = 0x04000000u32;
+        // in: RGB + EXTRA + u16 + ENDIAN16 = 16SE alpha
+        let in16se = (4u32 << 16) | (3 << 3) | 2 | (1 << 7) | (1 << 11);
+        // out variants: HLF(u16+float), FLT(f32+float), DBL(b0+float), 8, 16
+        let outhlf = (10u32 << 16) | (3 << 3) | 2 | (1 << 7) | (1 << 22);
+        let outflt = (10u32 << 16) | (3 << 3) | 4 | (1 << 7) | (1 << 22);
+        let outdbl = (10u32 << 16) | (3 << 3) | 0 | (1 << 7) | (1 << 22);
+        let out8 = (10u32 << 16) | (3 << 3) | 1 | (1 << 7);
+        let out16 = (10u32 << 16) | (3 << 3) | 2 | (1 << 7);
+        // in: f32 + EXTRA = FLT alpha
+        let inflt = (4u32 << 16) | (3 << 3) | 4 | (1 << 7) | (1 << 22);
+        // in: dbl + EXTRA = DBL alpha (BYTES=0+FLOAT)
+        let indbl = (4u32 << 16) | (3 << 3) | 0 | (1 << 7) | (1 << 22);
+        for (if_, of_, name) in [
+            (in16se, outhlf, "16se->hlf"),
+            (in16se, outflt, "16se->flt"),
+            (in16se, outdbl, "16se->dbl"),
+            (in16se, out8, "16se->8"),
+            (in16se, out16, "16se->16"),
+            (inflt, outhlf, "flt->hlf"),
+            (inflt, in16se, "flt->16se"),
+            (inflt, out16, "flt->16"),
+            (indbl, outhlf, "dbl->hlf"),
+            (indbl, in16se, "dbl->16se"),
+            (indbl, outflt, "dbl->flt"),
+            (in16se, indbl, "16se->dbl2"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, if_, lab, of_, 0,
+                copy_alpha);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 32];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
