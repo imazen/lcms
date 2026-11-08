@@ -658,3 +658,19 @@ nmcl profile carrying only a Lab-PCS A2B0 is
 structurally insufficient; documented as
 fixture-dependent (reachable only with a genuine
 named-color devicelink profile).
+
+## Coverage map (run22, 2025-xx — floored after ~1424 gates)
+
+cmsxform 89.1% | cmspcs 97.4% | cmsintrp 98.7% | cmsmtrx/half/plugin 100% |
+cmsgamma 91.0% | cmsmd5 94.6% | cmswtpnt 95.7% | cmserr 88.7% | cmssm 90.7% |
+cmscam02 91.3% | cmscgats 88.4% | cmsalpha 86.6% | cmsgmt 86.4% |
+cmssamp 86.0% | cmsopt 85.7% | cmsio0 85.3% | cmslut 85.1% | cmscnvrt 84.9% |
+cmsnamed 83.7% | cmsio1 82.8% | cmspack 76.4% | cmsvirt 74.6% |
+cmstypes 74.1% | cmsps2 68.0%
+
+Residuals: WriteNamedColorCRD (needs real transformable nmcl
+fixture — ncl->device-space, not ncl->Lab), cmsvirt SetTextTags/
+SetSeqDescTag/CreateNamedColorDevicelink error tails,
+cmstypes Type_MPE_Write/WriteSegmentedCurve/LUT8/16 tails,
+cmspack formatter tails, cmsio0/cmslut/cmssamp/cmsio1/cmsps2/
+cmsnamed/cmsalpha/cmserr/cmssm mid-file tails.
