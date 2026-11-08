@@ -3361,3 +3361,22 @@ fn write_dispatch_clut() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a 3-curve-array payload — the write
+/// machinery on a TRC-array.
+#[test]
+fn write_dispatch_trc_array() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        for (sig, name) in [
+            (0x72545243u32, "rTRC"), (0x41324230u32, "A2B0")] {
+            let ok = c::cmsWriteTag(h, sig,
+                curves.as_ptr() as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsCloseProfile(h);
+    }
+}
