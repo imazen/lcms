@@ -6323,3 +6323,159 @@ fn io0_linked_headers() {
         c::cmsFreeToneCurve(tc);
     }
 }
+
+/// mpet curve-element — in-memory read first, then save-reread.
+#[test]
+fn mpe_curve_inmemory() {
+    unsafe {
+        // segmented curve: 'curf' + rsv + nseg(u16)+rsv(u16) +
+        // (nseg-1) f32 breakpoints + per-seg {sig, rsv, body}
+        let seeg = || -> Vec<u8> {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x63757266u32.to_be_bytes()); // 'curf'
+            v.extend_from_slice(&[0; 4]);
+            v.extend_from_slice(&1u16.to_be_bytes()); // 1 seg
+            v.extend_from_slice(&[0; 2]);
+            // no breakpoints for 1 seg
+            // 'parf' seg: type(u16)+rsv(u16)+4 f32 params
+            v.extend_from_slice(&0x70617266u32.to_be_bytes()); // 'parf'
+            v.extend_from_slice(&[0; 4]);
+            v.extend_from_slice(&0u16.to_be_bytes()); // Type 0
+            v.extend_from_slice(&[0; 2]);
+            for f in [1.0f32, 0.0, 0.0, 0.0] {
+                v.extend_from_slice(&f.to_be_bytes());
+            }
+            v
+        };
+        let c0 = seeg();
+        let mut cvst = Vec::new();
+        cvst.extend_from_slice(&0x63767374u32.to_be_bytes());
+        cvst.extend_from_slice(&[0; 4]);
+        cvst.extend_from_slice(&3u16.to_be_bytes());
+        cvst.extend_from_slice(&3u16.to_be_bytes());
+        // position table — element-relative offsets, curves start
+        // right after 12-byte cvst header + 24-byte table
+        for i in 0..3u32 {
+            cvst.extend_from_slice(&(12 + 24 + i * c0.len() as u32).to_be_bytes());
+            cvst.extend_from_slice(&(c0.len() as u32).to_be_bytes());
+        }
+        for _ in 0..3 { cvst.extend_from_slice(&c0); }
+        let mut mpet = Vec::new();
+        mpet.extend_from_slice(&0x6d706574u32.to_be_bytes());
+        mpet.extend_from_slice(&[0; 4]);
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&1u32.to_be_bytes()); // 1 element
+        let e0: u32 = 8 + 2 + 2 + 4 + 8;
+        mpet.extend_from_slice(&e0.to_be_bytes());
+        mpet.extend_from_slice(&(cvst.len() as u32).to_be_bytes());
+        mpet.extend_from_slice(&cvst);
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsSetDeviceClass(prof, 0x6c696e6b); // 'link'
+        c::cmsSetColorSpace(prof, 0x52474220); // 'RGB '
+        c::cmsSetPCS(prof, 0x52474220);
+        c::cmsWriteRawTag(prof, 0x44324230,
+            mpet.as_ptr() as *const _, mpet.len() as u32);
+        // in-memory read
+        let t0 = c::cmsReadTag(prof, 0x44324230);
+        eprintln!("inmem read={}", !t0.is_null());
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let t1 = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x44324230)
+        } else { std::ptr::null_mut() };
+        eprintln!("saved read={}", !t1.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
+
+/// Isolate mpet wrapper vs element blob — raw mpet with a single
+/// matf element (known to round-trip via the API).
+#[test]
+fn mpe_matf_raw() {
+    unsafe {
+        // matf element: 'matf' + rsv + in(2)+out(2) + 9 f64? no —
+        // matrix is 3x3 f32 + 3 f32 offsets
+        let mut matf = Vec::new();
+        matf.extend_from_slice(&0x6d617466u32.to_be_bytes()); // 'matf'
+        matf.extend_from_slice(&[0; 4]);
+        matf.extend_from_slice(&3u16.to_be_bytes());
+        matf.extend_from_slice(&3u16.to_be_bytes());
+        for i in 0..9u32 {
+            let v = if i % 4 == 0 { 1.0f64 } else { 0.0 };
+            matf.extend_from_slice(&v.to_be_bytes());
+        }
+        for _ in 0..3u32 {
+            matf.extend_from_slice(&0.0f64.to_be_bytes());
+        }
+        let mut mpet = Vec::new();
+        mpet.extend_from_slice(&0x6d706574u32.to_be_bytes());
+        mpet.extend_from_slice(&[0; 4]);
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&1u32.to_be_bytes());
+        let e0: u32 = 8 + 2 + 2 + 4 + 8;
+        mpet.extend_from_slice(&e0.to_be_bytes());
+        mpet.extend_from_slice(&(matf.len() as u32).to_be_bytes());
+        mpet.extend_from_slice(&matf);
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsWriteRawTag(prof, 0x44324230,
+            mpet.as_ptr() as *const _, mpet.len() as u32);
+        let t0 = c::cmsReadTag(prof, 0x44324230);
+        eprintln!("matf inmem read={}", !t0.is_null());
+        c::cmsCloseProfile(prof);
+    }
+}
+
+/// Dump a real Type_MPE_Write-serialized mpet blob to compare
+/// against the hand-crafted layout.
+#[test]
+fn mpe_blob_dump() {
+    unsafe {
+        let mat = [1.0f64, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0];
+        let off = [0.0f64; 3];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), off.as_ptr()));
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsSetDeviceClass(prof, 0x6c696e6b);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x52474220);
+        let w = c::cmsWriteTag(prof, 0x44324230, p as *const _);
+        eprintln!("write={w}");
+        let mut raw = vec![0u8; 1 << 16];
+        let n = c::cmsReadRawTag(prof, 0x44324230,
+            raw.as_mut_ptr() as *mut _, raw.len() as u32);
+        eprintln!("raw n={n}");
+        for (i, b) in raw[..n.min(64) as usize].iter().enumerate() {
+            eprint!("{:02x}", b);
+            if i % 4 == 3 { eprint!(" "); }
+        }
+        eprintln!();
+        // feed the real bytes back as a raw tag
+        let prof2 = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetProfileVersion(prof2, 4.4);
+        c::cmsSetDeviceClass(prof2, 0x6c696e6b);
+        c::cmsSetColorSpace(prof2, 0x52474220);
+        c::cmsSetPCS(prof2, 0x52474220);
+        c::cmsWriteRawTag(prof2, 0x44324230,
+            raw.as_ptr() as *const _, n);
+        let t0 = c::cmsReadTag(prof2, 0x44324230);
+        eprintln!("realbytes-raw read={}", !t0.is_null());
+        c::cmsCloseProfile(prof2);
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+    }
+}
