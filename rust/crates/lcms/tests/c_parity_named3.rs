@@ -212,3 +212,50 @@ fn named_transform_formats() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Type_NamedColor2 internals — a larger ncl2 list (16
+/// colors) through the element-dispatch machinery.
+#[test]
+fn ncl2_large() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 16, 6,
+            b"pre\0".as_ptr() as *const _,
+            b"suf\0".as_ptr() as *const _);
+        for i in 0..16u32 {
+            let mut pcs = [(0x4000u16) + i as u16 * 0x400,
+                           0x8000, 0x8000];
+            let mut dev = [0u16; 16];
+            for j in 0..6 {
+                dev[j] = ((i as u32) * (j as u32) * 0x40) as u16;
+            }
+            let name = [b'n', 0, 0, 0, 0, 0, 0, 0];
+            let mut nm = name;
+            nm[1] = b'0' + (i / 10) as u8;
+            nm[2] = b'0' + (i % 10) as u8;
+            c::cmsAppendNamedColor(ncl,
+                nm.as_ptr() as *const u8,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x6E636C32,
+            ncl as *mut std::ffi::c_void);
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        eprintln!("ncl2 write={ok} save={cn}");
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x6E636C32);
+        eprintln!("ncl2 read={}", r.is_null());
+        if !r.is_null() {
+            // read back the list's info
+            let n2 = c::cmsNamedColorCount(r);
+            eprintln!("read ncl2 count={n2}");
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
