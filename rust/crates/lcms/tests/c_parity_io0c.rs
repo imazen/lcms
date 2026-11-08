@@ -75,3 +75,63 @@ fn rendering_intent_getter() {
         assert_eq!(c_intent, rp.rendering_intent, "rendering_intent");
     }
 }
+
+/// cmsio1 residual — XYZ-colorspace float INPUT tag
+///   -> NormalizeToXyzFloat input-normalize stage.
+#[test]
+fn internal_xyz_float_in_arms() {
+    unsafe {
+        // XYZ-colorspace profile with a float A2B0 tag
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x73706163);
+        c::cmsSetColorSpace(p, 0x58595A20); // XYZ
+        c::cmsSetPCS(p, 0x58595A20);       // XYZ
+        c::cmsSetProfileVersion(p, 4.4);
+        // float pipeline: identity-ish CLUT float
+        let pipe = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 3, 3);
+        let dims = [2u32; 15];
+        let grid = vec![
+            0.5f32, 0.5, 0.5,
+            0.5, 0.5, 0.5,
+            0.5, 0.5, 0.5,
+            0.5, 0.5, 0.5,
+            0.5, 0.5, 0.5,
+            0.5, 0.5, 0.5,
+            0.5, 0.5, 0.5,
+            0.5, 0.5, 0.5,
+        ];
+        c::cmsPipelineInsertStage(pipe, 0,
+            c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), dims.as_ptr(),
+                3, 3, grid.as_ptr()));
+        c::cmsWriteTag(p, 0x41324642,
+            pipe as *const _); // A2B0 float 'D2B0'?
+        // try D2B0 float tag too
+        c::cmsWriteTag(p, 0x44324230,
+            pipe as *const _);
+        // transform: input = xyz profile, output = srgb
+        let srgb = c::cmsCreate_sRGBProfile();
+        let fin = (1u32 << 22) | (10 << 16) | (3 << 3) | 4;
+        let fout = (0u32 << 16) | (3 << 3) | 1;
+        for int_ in [0u32, 1] {
+            let t = c::cmsCreateTransform(p, fin,
+                srgb, fout, int_, 0);
+            eprintln!("xyz-in int{int_} t={}",
+                !t.is_null());
+            if !t.is_null() {
+                let src = [0.5f32, 0.5, 0.5];
+                let mut dst = [0u8; 4];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                eprintln!("  {src:?}->{dst:?}");
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(p);
+        c::cmsCloseProfile(srgb);
+        c::cmsPipelineFree(pipe);
+    }
+}
