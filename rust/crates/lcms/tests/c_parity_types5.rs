@@ -2235,3 +2235,45 @@ fn measurement_type() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_ViewingConditions — 'view' takes a
+/// cmsICCViewingConditions payload.
+#[test]
+fn viewing_conditions_type() {
+    unsafe {
+        #[repr(C)]
+        struct ViewCond {
+            illuminant: c::CieXyz,
+            surround: c::CieXyz,
+            std_illuminant: u32,
+        }
+        let vc = ViewCond {
+            illuminant: c::CieXyz { X: 0.5, Y: 0.6, Z: 0.7 },
+            surround: c::CieXyz { X: 0.3, Y: 0.4, Z: 0.5 },
+            std_illuminant: 0x44,
+        };
+        let h = c::cmsCreate_sRGBProfile();
+        // 'view' is an mntr-class tag — try on the sRGB profile
+        let ok1 = c::cmsWriteTag(h, 0x76696577,
+            &vc as *const _ as *mut std::ffi::c_void); // 'view'
+        let ok2 = c::cmsWriteTag(h, 0x76756564,
+            &vc as *const _ as *mut std::ffi::c_void); // 'vued'
+        let ok3 = c::cmsWriteTag(h, 0x76756574,
+            &vc as *const _ as *mut std::ffi::c_void); // 'vuet'
+        eprintln!("view={ok1} vued={ok2} vuet={ok3}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x76696577u32, 0x76756564, 0x76756574] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
