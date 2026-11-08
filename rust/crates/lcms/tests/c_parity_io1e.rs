@@ -1022,3 +1022,34 @@ fn unknown_sig_tags() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// LUT stored-type machinery — a real pipeline written to
+/// A2B0 (the decideType/getBaseType + LUT writers).
+#[test]
+fn lut_stored_type_writes() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let acurves = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3, curves.as_ptr());
+        let grid = [4u32; 3];
+        let tab = [0.5f32; 4 * 4 * 4 * 3];
+        let clut = c::cmsStageAllocCLutFloatGranular(
+            std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+            tab.as_ptr());
+        c::cmsPipelineInsertStage(pl, 0xFFFF, acurves);
+        c::cmsPipelineInsertStage(pl, 0xFFFF, clut);
+        // write to the LUT sigs — exercises decideType + the
+        // stored-type dispatch
+        for sig in [0x41324230u32, 0x42324130, 0x67616D74,
+                    0x70726530, 0x70726531, 0x70726532,
+                    0x44324230, 0x42424430] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{sig:#x} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
