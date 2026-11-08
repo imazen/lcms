@@ -1410,3 +1410,46 @@ fn float_reader_normalization_arms() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Float-tag reader internals — DToB/BToD mpet tags trigger the
+/// Lab/XYZ normalization insertion per device-colorspace.
+#[test]
+fn float_reader_per_cs() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (cs, sig, name) in [
+            (0x52474220u32, 0x44324230, "rgb-D2B"),
+            (0x52474220, 0x42324430, "rgb-B2D"),
+            (0x434D594B, 0x44324230, "cmyk-D2B"),
+            (0x58595A20, 0x44324230, "xyz-D2B"),
+            (0x4C756976, 0x44324230, "luv-D2B"),
+            (0x47524159, 0x44324230, "gray-D2B"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6d6e7472);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, 0x4C616220);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, sig, p as *const _);
+            let f = (4u32 << 16) | (3 << 3) | 2;
+            let (inp, outp, if_, of) = if sig == 0x42324430 {
+                (lab, prof, l16, f)
+            } else {
+                (prof, lab, f, l16)
+            };
+            let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
