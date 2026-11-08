@@ -1664,3 +1664,40 @@ fn it8_deep_arms12() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection arms — every
+/// remaining token-form + WriteHeader/DblFormat internals.
+#[test]
+fn it8_deep_arms13() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // DblFormat property → WriteHeader double format
+            (b"IT8FILE\nDBL_FORMAT \"%.15g\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1.234567890123456\nEND_DATA\n".to_vec(), "dblfmt"),
+            // multiple sheets → WriteHeader per-sheet + data-id
+            (b"IT8FILE\nDATA_IDENTIFIER \"t1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"t2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"t3\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n3\nEND_DATA\n".to_vec(), "3sheet-write"),
+            // number-only data values (integer/float/hex/sci)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 8\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA B C D E F G H\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2.5 -3 +4 .5 6. 7e2 -8e-1\n0x1 0Xf -0xFF +0x1 0 00 0.0 -0\n1e-308 1e308 -1e-308 -1e308 1E0 1E-0 1E+0 -1E0\nEND_DATA\n".to_vec(), "num-forms2"),
+            // comment inside property value string
+            (b"IT8FILE\nP1 \"a#b\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "cmt-in-str"),
+            // strings containing section keywords
+            (b"IT8FILE\nP1 \"IT8FILE\"\nP2 \"BEGIN_DATA\"\nP3 \"END_DATA\"\nP4 \"NUMBER_OF_FIELDS\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "kw-strings"),
+            // data values that are IT8 keywords
+            (b"IT8FILE\nNUMBER_OF_FIELDS 4\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B C D\nEND_DATA_FORMAT\nBEGIN_DATA\nIT8FILE BEGIN_DATA END_DATA NUMBER_OF_FIELDS\nBEGIN_DATA_FORMAT END_DATA_FORMAT DATA_IDENTIFIER ORIGINATOR\nEND_DATA\n".to_vec(), "kw-data"),
+            // very long identifier (buffer boundary)
+            ({ let mut v = b"IT8FILE\n".to_vec();
+                for _ in 0..200 { v.extend_from_slice(b"X"); }
+                v.extend_from_slice(b" 1\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n");
+                v }, "long-ident"),
+            // leading-zero numbers
+            (b"IT8FILE\nP1 007\nP2 0x007\nP3 00.7\nP4 0.007\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "lz-nums"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
