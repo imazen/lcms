@@ -4290,3 +4290,83 @@ fn pack_fmt_dup_dbl_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmspack residual — Unroll*To16/Pack*From16 float
+///   formatters via cmsChangeBuffersFormat on 16-bit
+///   transforms (only reachable path upstream).
+#[test]
+fn pack_chgfmt_float16_arms() {
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
+        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
+            | (pl << 12) | (ds << 10) | (ex << 7)
+            | (ch << 3) | by
+    }
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        // u16 transforms, then change formats to float
+        //   variants → Unroll*To16 / Pack*From16
+        for (pt, prof, name) in [
+            (10u32, lab, "Lab"), (9, xyz, "XYZ"),
+            (4, srgb, "RGB"),
+        ] {
+            for (by, flt, bname) in [
+                (4u32, 1, "flt"), (8, 1, "dbl"),
+                (2, 1, "half"), (1, 0, "u8"),
+                (2, 0, "u16"),
+            ] {
+                let fin16 = f(pt, 3, 2, 0, 0, 0, 0, 0, 0);
+                let t = c::cmsCreateTransform(prof, fin16,
+                    srgb, fin16, 0, 0);
+                if t.is_null() { continue; }
+                let newfmt = f(pt, 3, by, 0, 0, 0, 0, 0,
+                    flt);
+                let r1 = c::cmsChangeBuffersFormat(t,
+                    newfmt, fin16);
+                let mut src = vec![0u8;
+                    3 * by as usize * 8];
+                for (i, b) in src.iter_mut().enumerate() {
+                    *b = (i * 53) as u8; }
+                let mut dst = [0u16; 3 * 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 8);
+                // change output format → Pack*From16
+                let r2 = c::cmsChangeBuffersFormat(t,
+                    fin16, newfmt);
+                let src2 = [0x4000u16; 3];
+                let mut dst2 = vec![0u8;
+                    3 * by as usize];
+                c::cmsDoTransform(t,
+                    src2.as_ptr() as *const _,
+                    dst2.as_mut_ptr() as *mut _, 1);
+                eprintln!("{name} {bname} r={r1}/{r2}");
+                // swap variants
+                for (ds, sf, pl, ex, vn) in [
+                    (1u32, 0, 0, 0, "ds"),
+                    (0, 1, 0, 0, "sf"),
+                    (0, 0, 1, 0, "pl"),
+                    (0, 0, 0, 1, "ex1"),
+                ] {
+                    let fmt2 = f(pt, 3, by, ex, ds, 0,
+                        sf, pl, flt);
+                    let r3 = c::cmsChangeBuffersFormat(t,
+                        fmt2, fin16);
+                    if r3 != 0 {
+                        c::cmsDoTransform(t,
+                            src.as_ptr() as *const _,
+                            dst.as_mut_ptr() as *mut _, 4);
+                        eprintln!("  {vn} r3={r3}");
+                    }
+                }
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+    }
+}
