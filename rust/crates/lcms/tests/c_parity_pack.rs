@@ -3853,3 +3853,75 @@ fn pack_loop_iterations() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmspack residual — Unroll*/Pack* internals on exotic
+/// format/pixel-type combinations.
+#[test]
+fn pack_residual_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        // every pixel-type x bytes/flags combination
+        for cs in [3u32, 4, 6, 9, 10, 12, 13, 14, 15, 16,
+            17, 18, 19, 20, 21, 22, 23] {
+            for b in [1u32, 2, 4, 8] {
+                for fl in [0u32, 1 << 7, 1 << 12, 1 << 13,
+                    1 << 14, 1 << 15, 1 << 16, 1 << 17,
+                    1 << 18, 1 << 19, 1 << 20, 1 << 22] {
+                    let fmt = (cs << 16) | (b << 3)
+                        | 1 | fl;
+                    let t = c::cmsCreateTransform(srgb,
+                        (4 << 16) | (3 << 3) | 1,
+                        lab, fmt, 0, 0);
+                    if !t.is_null() {
+                        let ib = [0x55u8; 64];
+                        let mut ob = [0u8; 64];
+                        c::cmsDoTransform(t, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                    let t2 = c::cmsCreateTransform(lab,
+                        fmt, srgb,
+                        (4 << 16) | (3 << 3) | 1, 0, 0);
+                    if !t2.is_null() {
+                        let ib = [0x55u8; 64];
+                        let mut ob = [0u8; 64];
+                        c::cmsDoTransform(t2, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t2);
+                    }
+                }
+            }
+            eprintln!("cs{cs} done");
+        }
+        // gray formats
+        for cs in [3u32, 4, 6] {
+            for b in [1u32, 2, 4] {
+                let fmt = (cs << 16) | (1 << 3) | b;
+                let t = c::cmsCreateTransform(gray,
+                    (3 << 16) | (1 << 3) | 1, srgb,
+                    (4 << 16) | (3 << 3) | 1, 0, 0);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+                let t2 = c::cmsCreateTransform(srgb,
+                    (4 << 16) | (3 << 3) | 1, gray,
+                    (3 << 16) | (1 << 3) | 1, 0, 0);
+                if !t2.is_null() {
+                    c::cmsDeleteTransform(t2); }
+                let t3 = c::cmsCreateTransform(gray, fmt,
+                    lab, (10 << 16) | (3 << 3) | 1, 0, 0);
+                eprintln!("g cs{cs} b{b} t3={}", !t3.is_null());
+                if !t3.is_null() {
+                    c::cmsDeleteTransform(t3); }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
