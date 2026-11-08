@@ -7268,3 +7268,65 @@ fn tag_dup_internals() {
         }
     }
 }
+
+/// GenericMPEdup/GenericMPEfree/WriteMPECurve — cmsPipelineDup
+/// on MPE pipelines + saving mpet tags with curve elements.
+#[test]
+fn mpe_dup_internals() {
+    unsafe {
+        // build an mpet pipeline: curve-set + matrix + clut
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = vec![g; 3];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let mat = [1.0f64, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0];
+        let off = [0.0f64; 3];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), off.as_ptr()));
+        let mut grid = vec![0u16; 8 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = (i * 2730) as u16;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 2, 3, 3,
+                grid.as_ptr()));
+        // dup the pipeline -> GenericMPEdup on each element
+        let dp = c::cmsPipelineDup(p);
+        eprintln!("pipeline dup={}", !dp.is_null());
+        // save as mpet -> WriteMPECurve on the curve elements
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        // desc MLU for the placeholder path is already in sRGB
+        let mut ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let m0 = c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            [0x74u32, 0x65, 0x73, 0x74, 0].as_ptr() as *const _);
+        let w1 = c::cmsWriteTag(prof, 0x64657363, ml as *const _);
+        let wp = [0.9642f64, 1.0, 0.8249];
+        let w2 = c::cmsWriteTag(prof, 0x77747074,
+            wp.as_ptr() as *const _);
+        let w = c::cmsWriteTag(prof, 0x44324230, p as *const _); // D2B0
+        eprintln!("mlu={m0} desc={w1} wtpt={w2} d2b0={w}");
+        // isolate: save an sRGB profile with NO added tags
+        let prof2 = c::cmsCreate_sRGBProfile();
+        let fs2 = c::cmsSaveProfileToFile(prof2,
+            b"/tmp/plain_srgb.icc\0".as_ptr() as *const i8);
+        eprintln!("plain-srgb file save={fs2}");
+        c::cmsCloseProfile(prof2);
+        // save to a FILE first to see the real error path
+        let fs = c::cmsSaveProfileToFile(prof,
+            b"/tmp/mpet_test.icc\0".as_ptr() as *const i8);
+        eprintln!("file save={fs}");
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("mpet save={s}");
+        c::cmsCloseProfile(prof);
+        if !dp.is_null() { c::cmsPipelineFree(dp); }
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
