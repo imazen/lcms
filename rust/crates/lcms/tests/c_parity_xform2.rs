@@ -3587,3 +3587,79 @@ fn black_preserve_arms2() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// OptimizeMatrixShaper — 4-stage (abs intent) + 3-stage
+/// shaper-matrix paths, identity-matrix drop, offset-matrix and
+/// non-8bit/non-3ch rejects.
+#[test]
+fn matshaper_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // second RGB profile → 2 distinct mat-shaper pipelines
+        let prophoto = std::fs::read(
+            dir.join("lcms2prophoto.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32));
+        let rgb2 = match prophoto {
+            Some(p) if !p.is_null() => p,
+            _ => c::cmsCreate_sRGBProfile(),
+        };
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let rf = (4u32 << 16) | (3 << 3) | 5;
+        // devicelink with cv-mat(offset)-cv pipeline →
+        // the Data1->Offset != NULL reject in the 4-stage path
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let offs = [0.01f64, 0.02, -0.01];
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let link = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(link, 0x6c696e6b);   // link
+        c::cmsSetColorSpace(link, 0x52474220);    // RGB
+        c::cmsSetPCS(link, 0x52474220);
+        c::cmsSetProfileVersion(link, 4.4);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), offs.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        c::cmsWriteTag(link, 0x41324230, p as *const _);
+        let links: Vec<(*mut std::ffi::c_void,
+            *mut std::ffi::c_void, u32, u32, &str)> = vec![
+            (srgb, rgb2, r8, r8, "srgb->rgb2"),
+            (rgb2, srgb, r8, r8, "rgb2->srgb"),
+            (srgb, srgb, r8, r8, "srgb->srgb"),
+            (srgb, link, r8, r8, "srgb->link"),
+            (link, srgb, r8, r8, "link->srgb"),
+            (srgb, rgb2, r16, r16, "srgb->rgb2-16"),
+            (srgb, rgb2, rf, rf, "srgb->rgb2-f"),
+        ];
+        for intent in [0u32, 1, 3, 4] {
+            for (inp, outp, if_, of_, name) in &links {
+                if inp.is_null() || outp.is_null() { continue; }
+                let t = c::cmsCreateTransform(*inp, *if_,
+                    *outp, *of_, intent, 0);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let inp_b = [0x55u8; 8];
+                    let mut out = [0u8; 8];
+                    c::cmsDoTransform(t, inp_b.as_ptr() as *const _,
+                        out.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(rgb2);
+        c::cmsCloseProfile(link);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
