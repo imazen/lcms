@@ -775,3 +775,40 @@ fn stored_type_lut_readers() {
         }
     }
 }
+
+/// Intent/direction machinery — transforms on more
+/// profile/intent combos.
+#[test]
+fn intent_direction_combos() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        for (name, hi, ho, intent) in [
+            ("srgb-lab-0", srgb, lab4, 0u32),
+            ("srgb-lab-1", srgb, lab4, 1),
+            ("srgb-lab-2", srgb, lab4, 2),
+            ("srgb-lab-3", srgb, lab4, 3),
+            ("lab-srgb-0", lab4, srgb, 0),
+            ("lab-srgb-1", lab4, srgb, 1),
+            ("xyz-srgb", xyz, srgb, 0),
+            ("gray-srgb", gray, srgb, 0),
+            ("srgb-gray", srgb, gray, 0),
+            ("gray-lab", gray, lab4, 0),
+        ] {
+            let in_fmt: u32 = (0 << 16) | (3 << 3) | 2;
+            let out_fmt: u32 = (0 << 16) | (3 << 3) | 2;
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
+                out_fmt, intent, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(srgb);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(xyz);
+        let _ = c::cmsCloseProfile(gray);
+    }
+}
