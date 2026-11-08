@@ -2908,3 +2908,29 @@ fn link_tag() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Raw reads on stored tags — cmsReadRawTag returns the
+/// serialized bytes bypassing dispatch.
+#[test]
+fn raw_reads_stored() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [
+            (0x64657363u32, "desc"), (0x63707274, "cprt"),
+            (0x77747074, "wtpt"), (0x72545243, "rTRC"),
+            (0x7258595a, "rXYZ"), (0x63686164, "chad")] {
+            // size query
+            let n = c::cmsReadRawTag(h, sig,
+                std::ptr::null_mut(), 0);
+            let mut buf = vec![0u8; n.max(0) as usize];
+            let n2 = c::cmsReadRawTag(h, sig,
+                buf.as_mut_ptr() as *mut _, n.max(0) as u32);
+            eprintln!("{name} n={n} n2={n2}");
+        }
+        // absent tag
+        let n = c::cmsReadRawTag(h, 0x41414141,
+            std::ptr::null_mut(), 0);
+        eprintln!("absent n={n}");
+        c::cmsCloseProfile(h);
+    }
+}
