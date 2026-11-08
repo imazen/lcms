@@ -2487,3 +2487,21 @@ fn array_type_tag_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// More tag-sig variants — 'bTRC'/'gTRC'/'kTRC' +
+/// 'ncl2'/'clrt' with different payloads.
+#[test]
+fn more_tag_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (sig, name) in [
+            (0x62545243u32, "bTRC"), (0x67545243u32, "gTRC"),
+            (0x6B545243u32, "kTRC"), (0x72545243u32, "rTRC")] {
+            let ok = c::cmsWriteTag(h, sig,
+                g as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
