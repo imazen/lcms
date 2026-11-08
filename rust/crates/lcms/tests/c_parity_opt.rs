@@ -244,3 +244,51 @@ fn opt_shape_sweep() {
         for p in profs { c::cmsCloseProfile(p); }
     }
 }
+
+/// OptimizeByResampling + OptimizeByComputingLinearization arms —
+/// integer-format transforms over CLUT-carrying profiles resample
+/// the grid; 8-bit RGB->RGB hits the linearization path.
+#[test]
+fn opt_resample_linearize() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut cmyk = std::ptr::null_mut();
+        if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
+            cmyk = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+        }
+        let rgb8 = (4u32 << 16) | (3 << 3) | 1;
+        let cmyk8 = (6u32 << 16) | (4 << 3) | 1;
+        let rgb16 = (4u32 << 16) | (3 << 3) | 2;
+        // u8 RGB->CMYK: resamples the CMYK CLUT
+        if !cmyk.is_null() {
+            for (inf, of, fl, name) in [
+                (rgb8, cmyk8, 0u32, "u8"),
+                (rgb8, cmyk8, 0x4000, "u8-hi"),
+                (rgb16, cmyk8, 0u32, "u16->u8"),
+                (rgb8, cmyk8, 0x2000, "u8-lowres"),
+            ] {
+                let t = c::cmsCreateTransform(srgb, inf, cmyk,
+                    of, 0, fl);
+                eprintln!("opt {name} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [100u8; 16];
+                    let mut ob = [0u8; 16];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(cmyk);
+        }
+        // u8 RGB->RGB: linearization path (sRGB->sRGB)
+        let srgb2 = c::cmsCreate_sRGBProfile();
+        let t = c::cmsCreateTransform(srgb, rgb8, srgb2, rgb8, 0, 0);
+        eprintln!("rgb->rgb t={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(srgb2);
+        c::cmsCloseProfile(srgb);
+    }
+}
