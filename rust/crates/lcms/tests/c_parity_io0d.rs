@@ -16406,3 +16406,98 @@ fn lut_builder_residual_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsplugin/cmsps2/cmssamp/cmspcs/cmswtpnt/cmssm/cmscam02
+/// residual internals.
+#[test]
+fn misc_residual2_arms() {
+    unsafe {
+        // cmscam02 — CIECAM02 all-surround evals on varied
+        //   conditions + reverse
+        for (la, yb, sur, name) in [
+            (20.0f64, 20.0, 0, "dark"),
+            (100.0, 20.0, 1, "dim"),
+            (500.0, 20.0, 2, "avg"),
+            (1e-6, 0.0, 0, "zero-la"),
+            (1e6, 100.0, 2, "huge"),
+            (-10.0, -5.0, 0, "neg"),
+        ] {
+            let cond = c::ViewingConditions {
+                white_point: c::CieXyz { X: 0.9642, Y: 1.0,
+                    Z: 0.8249 },
+                yb, la, surround: sur as u32,
+                d_value: 0.0,
+            };
+            let h = c::cmsCIECAM02Init(
+                std::ptr::null_mut(), &cond as *const _);
+            if h.is_null() {
+                eprintln!("cam02 {name} null");
+                continue;
+            }
+            for xyz in [
+                [0.0f64, 0.0, 0.0], [0.2, 0.2, 0.2],
+                [0.9642, 1.0, 0.8249], [0.5, 0.5, 0.5],
+                [-0.1, 0.0, 1.0], [1e-6, 0.0, 1e-6],
+            ] {
+                let src = c::CieXyz { X: xyz[0], Y: xyz[1],
+                    Z: xyz[2] };
+                let mut jch = c::JCh {
+                    j: 0.0, c_: 0.0, h: 0.0 };
+                c::cmsCIECAM02Forward(h,
+                    &src as *const _, &mut jch);
+                let mut back = c::CieXyz { X: 0.0, Y: 0.0,
+                    Z: 0.0 };
+                c::cmsCIECAM02Reverse(h,
+                    &jch as *const _, &mut back);
+                eprintln!("cam02 {name} {xyz:?} -> \
+                    J{:.2} C{:.2} h{:.1} -> {back:?}",
+                    jch.j, jch.c_, jch.h);
+            }
+            c::cmsCIECAM02Done(h);
+        }
+        // cmssamp — GBD + TAC + desaturate residuals
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
+        for i in 0..64 {
+            let l_ = c::CieLab {
+                L: (i % 32) as f64 * 3.0,
+                a: ((i * 7) % 64) as f64 - 32.0,
+                b: ((i * 11) % 64) as f64 - 32.0,
+            };
+            c::cmsGDBAddPoint(gbd,
+                &l_ as *const c::CieLab as *const _);
+        }
+        c::cmsGDBCompute(gbd, 0);
+        for (l_, name) in [
+            (c::CieLab { L: 50.0, a: 0.0, b: 0.0 }, "mid"),
+            (c::CieLab { L: 0.0, a: 0.0, b: 0.0 }, "black"),
+            (c::CieLab { L: 100.0, a: 0.0, b: 0.0 }, "white"),
+            (c::CieLab { L: 50.0, a: 127.0, b: 127.0 }, "out"),
+            (c::CieLab { L: -50.0, a: -128.0, b: -128.0 },
+                "neg"),
+        ] {
+            let r = c::cmsGDBCheckPoint(gbd,
+                &l_ as *const c::CieLab as *const _);
+            eprintln!("gbd {name}={r}");
+        }
+        c::cmsGBDFree(gbd);
+        // DesaturateLab in-place on varied inputs
+        for (mut l_, name) in [
+            (c::CieLab { L: 50.0, a: 0.0, b: 0.0 }, "gray"),
+            (c::CieLab { L: 50.0, a: 50.0, b: 50.0 }, "sat"),
+            (c::CieLab { L: 0.0, a: 0.0, b: 0.0 }, "black"),
+            (c::CieLab { L: 100.0, a: 0.0, b: 0.0 }, "white"),
+            (c::CieLab { L: 50.0, a: -128.0, b: -128.0 },
+                "maxsat"),
+        ] {
+            let r = c::cmsDesaturateLab(
+                &mut l_ as *mut _ as *mut _,
+                50.0, -50.0, 50.0, -50.0);
+            eprintln!("desat {name}={r} out={l_:?}");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
