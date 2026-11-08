@@ -716,3 +716,90 @@ fn quadratic_bp_clut2() {
         c::cmsMLUfree(ml);
     }
 }
+
+/// Quadratic fit — prtr profile with A2B1+B2A1 (relative-intent
+/// round-trip) + a non-straight midrange CLUT.
+#[test]
+fn quadratic_bp_full() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x70727472);
+        c::cmsSetColorSpace(prof, 0x434d594b);
+        c::cmsSetPCS(prof, 0x4c616220);
+        c::cmsSetProfileVersion(prof, 4.4);
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        c::cmsWriteTag(prof, 0x64657363, ml as *const _);
+        let wp = [0.9642f64, 1.0, 0.8249];
+        c::cmsWriteTag(prof, 0x77747074, wp.as_ptr() as *const _);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let curves4 = [g, g, g, g];
+        let curves3 = [g, g, g];
+        // A2B1: CMYK(4)->Lab(3) — input-relative
+        let pa = c::cmsPipelineAlloc(std::ptr::null_mut(), 4, 3);
+        c::cmsPipelineInsertStage(pa, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 4,
+                curves4.as_ptr() as *mut _));
+        // non-straight: CMYK->Lab with strong midrange curvature
+        let mut ga = vec![0u16; 17 * 17 * 17 * 17 * 3];
+        let na = 17 * 17 * 17 * 17 * 3;
+        for (i, v) in ga.iter_mut().enumerate() {
+            let t = i as f64 / (na - 1) as f64;
+            let c3 = ((i / 3) % 3) as f64;
+            let shaped = t + 0.35 * c3 * (t * 12.56).sin()
+                * (1.0 - t) * t * 4.0;
+            *v = (shaped.clamp(0.0, 1.0) * 65535.0) as u16;
+        }
+        c::cmsPipelineInsertStage(pa, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 4, 3,
+                ga.as_ptr()));
+        c::cmsPipelineInsertStage(pa, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves3.as_ptr() as *mut _));
+        let wa = c::cmsWriteTag(prof, 0x41324231, pa as *const _);
+        // B2A1: Lab(3)->CMYK(4) — output-relative
+        let pb = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 4);
+        c::cmsPipelineInsertStage(pb, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves3.as_ptr() as *mut _));
+        let mut gb = vec![0u16; 17 * 17 * 17 * 4];
+        let nb = 17 * 17 * 17 * 4;
+        for (i, v) in gb.iter_mut().enumerate() {
+            let t = i as f64 / (nb - 1) as f64;
+            let c4 = ((i / 3) % 4) as f64;
+            let shaped = t + 0.30 * c4 * (t * 9.42).sin()
+                * (1.0 - t) * t * 4.0;
+            *v = (shaped.clamp(0.0, 1.0) * 65535.0) as u16;
+        }
+        c::cmsPipelineInsertStage(pb, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 3, 4,
+                gb.as_ptr()));
+        c::cmsPipelineInsertStage(pb, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 4,
+                curves4.as_ptr() as *mut _));
+        let wb = c::cmsWriteTag(prof, 0x42324131, pb as *const _);
+        eprintln!("a2b1={wa} b2a1={wb}");
+        let mut bp = [0.0f64; 3];
+        for intent in 0..4u32 {
+            let r = c::cmsDetectDestinationBlackPoint(
+                bp.as_mut_ptr() as *mut _, prof, intent, 0);
+            eprintln!("dest i{intent} r={r} bp=({:.4},{:.4},{:.4})",
+                bp[0], bp[1], bp[2]);
+        }
+        for intent in 0..4u32 {
+            let mut bp2 = [0.0f64; 3];
+            let r = c::cmsDetectBlackPoint(
+                bp2.as_mut_ptr() as *mut _, prof, intent, 0);
+            eprintln!("src i{intent} r={r} bp=({:.4},{:.4},{:.4})",
+                bp2[0], bp2[1], bp2[2]);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(pa);
+        c::cmsPipelineFree(pb);
+        c::cmsFreeToneCurve(g);
+        c::cmsMLUfree(ml);
+    }
+}
