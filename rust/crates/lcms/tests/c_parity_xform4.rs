@@ -245,3 +245,67 @@ fn line_stride_transform() {
         }
     }
 }
+
+/// NULLTRANSFORM/COPY_ALPHA/NONEGATIVES/NODEFAULTRESOURCEDEF —
+/// the transform-flag branches.
+#[test]
+fn flag_branches() {
+    unsafe {
+        for (name, flags) in [
+            ("nulltransform", 0x0200u32),
+            ("copyalpha", 0x04000000),
+            ("nonegatives", 0x8000),
+            ("nodefaultres", 0x01000000),
+            ("nocache", 0x0040),
+            ("nooptimize", 0x0100),
+            ("hires", 0x0400),
+            ("lowres", 0x0800),
+            ("forceclut", 0x0002),
+            ("clutpost", 0x0001),
+            ("clutpre", 0x0010),
+            ("gamutcheck", 0x1000),
+            ("bpc", 0x2000),
+        ] {
+            let hi = c::cmsCreate_sRGBProfile();
+            let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+            let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+                0, flags);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            let mut rp1 = virt::create_srgb_profile(None).unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None)
+                .unwrap();
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, out_fmt, flags);
+            assert_eq!(ct.is_null(), rt.is_none(), "{name}");
+            if !ct.is_null() {
+                // eval one pixel — NULLTRANSFORM should pass through
+                let inp = [30000u16, 40000, 50000];
+                let inb: Vec<u8> = inp.iter()
+                    .flat_map(|v| v.to_ne_bytes()).collect();
+                let mut co = [0u16; 3];
+                let mut ro = vec![0u8; 6];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                let mut rt2 = rt.unwrap();
+                rt2.do_transform(&inb, &mut ro, 1);
+                let ro16: Vec<u16> = ro.chunks_exact(2)
+                    .map(|b| u16::from_ne_bytes([b[0], b[1]]))
+                    .collect();
+                if name == "nulltransform" || name == "copyalpha" {
+                    // pass-through-ish paths — exact parity
+                    assert_eq!(co, ro16.as_slice(),
+                        "{name} eval c={co:?} r={ro16:?}");
+                }
+                c::cmsDeleteTransform(ct);
+            }
+        }
+    }
+}
