@@ -1460,3 +1460,25 @@ fn pipeline_introspect() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Pipeline insert positions — beginning/end/middle on
+/// different shapes.
+#[test]
+fn pipeline_insert_pos() {
+    unsafe {
+        for (name, n_insert, pos) in [
+            ("end", 2u32, 1i32), ("begin", 2, 0),
+            ("middle", 3, 0)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            for _ in 0..n_insert {
+                c::cmsPipelineInsertStage(pl, pos,
+                    c::cmsStageAllocIdentity(
+                        std::ptr::null_mut(), 3));
+            }
+            let cnt = c::cmsPipelineStageCount(pl);
+            eprintln!("{name} cnt={cnt}");
+            c::cmsPipelineFree(pl);
+        }
+    }
+}
