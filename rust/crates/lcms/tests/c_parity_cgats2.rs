@@ -1237,3 +1237,39 @@ fn it8_deep_arms4() {
         }
     }
 }
+
+/// cmscgats ParseIT8/table-structure deep arms — table counts,
+/// nested sheets, DATA_IDENTIFIER selection, malformed table
+/// boundaries.
+#[test]
+fn it8_parse_arms2() {
+    unsafe {
+        let docs: Vec<(&[u8], &str)> = vec![
+            // table-count edge: 1, 3, 5 tables
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "t1"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n3\nEND_DATA\n", "t3"),
+            // DATA_IDENTIFIER-based table selection
+            (b"IT8FILE\nDATA_IDENTIFIER \"first\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"second\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n", "dataid-sel"),
+            // empty table (header only, no data)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 0\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n", "empty-then-data"),
+            // tables with different field counts
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 4\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA B C D\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3 4\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nX Y\nEND_DATA_FORMAT\nBEGIN_DATA\n5 6\nEND_DATA\n", "diff-fields"),
+            // malformed: IT8FILE inside data section
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\nIT8FILE\n1\nEND_DATA\n", "nested-it8"),
+            // trailing content after last END_DATA
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nEXTRA_PROP \"tail\"\n", "tail-prop"),
+            // DATA_IDENTIFIER alone (no data section)
+            (b"IT8FILE\nDATA_IDENTIFIER \"id\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 0\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n", "dataid-nod"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                let nt = c::cmsIT8TableCount(p);
+                eprintln!("  tables={nt}");
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
