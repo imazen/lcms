@@ -498,3 +498,23 @@ fn float_pipeline_eval() {
         c::cmsPipelineFree(cp);
     }
 }
+
+/// Identity-stage allocators — cmsStageAllocIdentity +
+/// _cmsStageAllocIdentityCurves/_cmsStageAllocIdentityCLut.
+#[test]
+fn identity_stage_allocators() {
+    unsafe {
+        for nch in [1u32, 3, 4, 8, 15] {
+            let cs = c::cmsStageAllocIdentity(std::ptr::null_mut(), nch);
+            assert!(!cs.is_null(), "identity {nch}");
+            c::cmsStageFree(cs);
+            let icl = c::_cmsStageAllocIdentityCLut(
+                std::ptr::null_mut(), nch);
+            if !icl.is_null() { c::cmsStageFree(icl); }
+            // rust side — identity stage + identity-clut
+            let _rs = lut::stage_alloc_identity(None, nch);
+            let _rcl = lut::stage_alloc_identity_clut(None, nch);
+            let _rcu = lut::stage_alloc_identity_curves(None, nch);
+        }
+    }
+}
