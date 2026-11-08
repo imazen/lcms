@@ -1141,3 +1141,30 @@ fn stage_alloc_variants() {
         }
     }
 }
+
+/// CLUT granular grids on more combos — the CLUT
+/// internals.
+#[test]
+fn clut_granular2() {
+    unsafe {
+        for (name, ch, pts) in [
+            ("3ch-2pt", 3u32, 2u32),
+            ("3ch-17pt", 3, 17),
+            ("3ch-33pt", 3, 33),
+            ("4ch-2pt", 4, 2),
+            ("4ch-17pt", 4, 17),
+            ("2ch-16pt", 2, 16),
+            ("6ch-8pt", 6, 8)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), ch, ch);
+            let stage = c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), pts, ch, ch,
+                std::ptr::null());
+            eprintln!("{name} alloc={}", !stage.is_null());
+            if !stage.is_null() {
+                c::cmsPipelineInsertStage(pl, 1, stage);
+            }
+            c::cmsPipelineFree(pl);
+        }
+    }
+}
