@@ -4945,3 +4945,124 @@ fn lut_opt_matshaper_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsintrp/cmsmd5/cmsnamed residual — interpolation
+///   dup/free on n-dim CLUTs, MD5 streaming adds,
+///   named-list dup on populated lists.
+#[test]
+fn lut_md5_named_tail_arms() {
+    unsafe {
+        // MD5 streaming: multiple adds + finish
+        let mut pid = c::ProfileID::default();
+        let ctx = c::cmsMD5alloc(std::ptr::null_mut());
+        let data = b"the quick brown fox jumps over";
+        c::cmsMD5add(ctx, data.as_ptr(), 16);
+        c::cmsMD5add(ctx, data[16..].as_ptr(),
+            (data.len() - 16) as u32);
+        c::cmsMD5add(ctx, data.as_ptr(), 0); // empty add
+        c::cmsMD5finish(&mut pid, ctx);
+        eprintln!("md5 id={:02x?}", &pid.id8[..6]);
+        // a profile's MD5 computed id
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let ctx2 = c::cmsMD5alloc(std::ptr::null_mut());
+        for chunk in buf[..n as usize].chunks(37) {
+            c::cmsMD5add(ctx2, chunk.as_ptr(),
+                chunk.len() as u32);
+        }
+        let mut pid2 = c::ProfileID::default();
+        c::cmsMD5finish(&mut pid2, ctx2);
+        eprintln!("md5-prof={:02x?}", &pid2.id8[..6]);
+        // interp dup: alloc a 4-dim interp params,
+        //   dup via cmsStageDup on a clut stage
+        let dims = vec![3u32; 15];
+        let grid = vec![0x8000u16;
+            3usize.pow(4) * 4];
+        let clut = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), dims.as_ptr(),
+            4, 4, grid.as_ptr());
+        let clut2 = c::cmsStageDup(clut);
+        eprintln!("clut dup={}", !clut2.is_null());
+        // eval via pipeline transform
+        let pipe = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 4, 4);
+        c::cmsPipelineInsertStage(pipe, 0, clut2);
+        let lp = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(lp, 0x6C696E6B);
+        c::cmsSetColorSpace(lp, 0x434D594B);
+        c::cmsSetPCS(lp, 0x4C616220);
+        c::cmsSetProfileVersion(lp, 4.4);
+        c::cmsWriteTag(lp, 0x41324230,
+            pipe as *const _);
+        let lab4p = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let t = c::cmsCreateTransform(lp,
+            (0u32 << 16) | (4 << 3) | 2,
+            lab4p, (10u32 << 16) | (3 << 3) | 2, 0, 0);
+        eprintln!("  clut4 t={}", !t.is_null());
+        if !t.is_null() {
+            let src = [0x4000u16; 4];
+            let mut dst = [0u16; 3];
+            c::cmsDoTransform(t,
+                src.as_ptr() as *const _,
+                dst.as_mut_ptr() as *mut _, 1);
+            eprintln!("    {src:?}->{dst:?}");
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(lp);
+        c::cmsCloseProfile(lab4p);
+        c::cmsPipelineFree(pipe);
+        c::cmsStageFree(clut);
+        // named-list: dup populated list + info queries
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 5, 4,
+            b"Prefix\0".as_ptr() as *const _,
+            b"Suffix\0".as_ptr() as *const _);
+        let mut pcs = [0u16; 16];
+        let mut dev = [0u16; 16];
+        for i in 0..5u32 {
+            let nm = format!("color{}\0", i);
+            for k in 0..4 { pcs[k] = 1000 * (i + 1) as u16;
+                dev[k] = 2000 * (i + 1) as u16; }
+            c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        let cnt = c::cmsNamedColorCount(nl);
+        let nl2 = c::cmsDupNamedColorList(nl);
+        let cnt2 = c::cmsNamedColorCount(nl2);
+        eprintln!("named cnt={cnt} dup-cnt={cnt2}");
+        let mut nm = [0u8; 32];
+        let mut pfx = [0u8; 32];
+        let mut sfx = [0u8; 32];
+        let mut pcs2 = [0u16; 16];
+        let mut dev2 = [0u16; 16];
+        for i in 0..=(cnt + 1) {
+            let ok = c::cmsNamedColorInfo(nl, i,
+                nm.as_mut_ptr(), pfx.as_mut_ptr(),
+                sfx.as_mut_ptr(), pcs2.as_mut_ptr(),
+                dev2.as_mut_ptr());
+            if ok != 0 {
+                let s = std::ffi::CStr::from_ptr(
+                    nm.as_ptr() as *const i8)
+                    .to_string_lossy();
+                eprintln!("  nc[{i}] '{s}' pcs={:?} dev={:?}",
+                    &pcs2[..4], &dev2[..4]);
+            }
+        }
+        // named-color index lookup
+        let idx = c::cmsNamedColorIndex(nl,
+            b"color2\0".as_ptr());
+        eprintln!("idx(color2)={idx}");
+        let idx2 = c::cmsNamedColorIndex(nl,
+            b"nope\0".as_ptr());
+        eprintln!("idx(nope)={idx2}");
+        c::cmsFreeNamedColorList(nl2);
+        c::cmsFreeNamedColorList(nl);
+        c::cmsCloseProfile(srgb);
+    }
+}
