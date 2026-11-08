@@ -4863,3 +4863,74 @@ fn chunky_fmt_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// AllocEmptyTransform — formatter/plugin/context arms via
+/// wide format x intent x flag sweeps on transform creation.
+#[test]
+fn transform_alloc_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let enc = |cs: u32, ch: u32, b: u32, flags: u32| {
+            (flags) | (cs << 16) | (ch << 3) | b
+        };
+        let r8 = enc(4, 3, 1, 0);
+        let k8 = enc(6, 4, 1, 0);
+        let g8 = enc(3, 1, 1, 0);
+        let fl = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16)
+            | (ch << 3) | 4;
+        const BPC: u32 = 0x2000;
+        const NOOPT: u32 = 0x200;
+        const GRID: u32 = 0x400;
+        const HIGHRES: u32 = 0x0400;
+        const NULLTRANS: u32 = 0x0008;
+        const NOCACHE: u32 = 0x0040;
+        const NEGATIVES: u32 = 0x80000000u32.wrapping_shr(0);
+        // try the documented flags
+        let flagset = [0u32, BPC, NOOPT, GRID, HIGHRES, NULLTRANS,
+            NOCACHE, 0x8000u32 /* GUESSDEVICECLASS */,
+            0x40000000 /* COPY_ALPHA */, 0x0004 /* NULLTRANSFORM2? */];
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, r8, enc(10, 3, 1, 0), "r8->l8"),
+            (lab, srgb, enc(10, 3, 1, 0), r8, "l8->r8"),
+            (srgb, cmyk, r8, k8, "r8->k8"),
+            (cmyk, srgb, k8, r8, "k8->r8"),
+            (gray, srgb, g8, r8, "g8->r8"),
+            (srgb, gray, r8, g8, "r8->g8"),
+            (srgb, lab, fl(4, 3), fl(10, 3), "fl->fl"),
+            (srgb, srgb, r8, r8, "r8->r8"),
+            (lab, lab, fl(10, 3), fl(10, 3), "labfl->labfl"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for flags in &flagset {
+                for intent in [0u32, 1, 3, 10] {
+                    let t = c::cmsCreateTransform(inp, if_,
+                        outp, of_, intent, *flags);
+                    if !t.is_null() {
+                        let ib = [0x55u8; 32];
+                        let mut ob = [0u8; 64];
+                        c::cmsDoTransform(t, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            eprintln!("{name} swept");
+        }
+        let _ = NEGATIVES;
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
