@@ -2418,3 +2418,41 @@ fn ucrbg_type2() {
         c::cmsFreeToneCurve(bg);
     }
 }
+
+/// Type_ProfileSequenceDesc internals — 'pseq'/'psid' with a
+/// real cmsSEQ (via cmsAllocProfileSequenceDescription).
+#[test]
+fn pseq_type2() {
+    unsafe {
+        let seq = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 1);
+        eprintln!("seq null={}", seq.is_null());
+        let h = c::cmsCreate_sRGBProfile();
+        if !seq.is_null() {
+            for (sig, name) in [(0x70736571u32, "pseq"),
+                                (0x70736964u32, "psid")] {
+                let ok = c::cmsWriteTag(h, sig,
+                    seq as *mut std::ffi::c_void);
+                eprintln!("{name} write={ok}");
+            }
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            for sig in [0x70736571u32, 0x70736964] {
+                if c::cmsIsTag(h3, sig) != 0 {
+                    let r = c::cmsReadTag(h3, sig);
+                    eprintln!("{sig:#x} read={}", r.is_null());
+                }
+            }
+            c::cmsCloseProfile(h3);
+            c::cmsFreeProfileSequenceDescription(
+                seq as *mut std::ffi::c_void);
+        }
+        c::cmsCloseProfile(h);
+    }
+}
