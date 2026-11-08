@@ -1482,3 +1482,43 @@ fn pipeline_insert_pos() {
         }
     }
 }
+
+/// Pipeline/stage dup machinery on more shapes.
+#[test]
+fn pipeline_dup() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c3 = [g, g, g];
+        for (name, build) in [
+            ("identity", 0u32), ("curves", 1), ("mixed", 2)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            match build {
+                1 => { c::cmsPipelineInsertStage(pl, 1,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3, c3.as_ptr())); }
+                2 => {
+                    c::cmsPipelineInsertStage(pl, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3, c3.as_ptr()));
+                    c::cmsPipelineInsertStage(pl, 1,
+                        c::cmsStageAllocMatrix(
+                            std::ptr::null_mut(), 3, 3,
+                            [1.0,0.0,0.0, 0.0,1.0,0.0,
+                             0.0,0.0,1.0].as_ptr(),
+                            std::ptr::null()));
+                }
+                _ => {}
+            }
+            let dup = c::cmsPipelineDup(pl);
+            let cnt = if dup.is_null() { 0u32 } else {
+                c::cmsPipelineStageCount(dup)
+            };
+            eprintln!("{name} dup={} cnt={cnt}",
+                !dup.is_null());
+            if !dup.is_null() { c::cmsPipelineFree(dup); }
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
