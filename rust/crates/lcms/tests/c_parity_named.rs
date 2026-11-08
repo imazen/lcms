@@ -296,3 +296,39 @@ fn col_pad(c: [u16; 4]) -> [u16; 16] {
     v[..4].copy_from_slice(&c);
     v
 }
+
+/// UTF8 round-trip — MLUsetUTF8/MLUgetUTF8 with 1/2/3/4-byte
+/// sequences exercises every encodeUTF8/decodeUTF8 branch.
+#[test]
+fn utf8_mlu_roundtrip() {
+    unsafe {
+        let strs: &[&[u8]] = &[
+            b"ascii",
+            "caf\u{e9}".as_bytes(),           // 2-byte é
+            "\u{20ac}uro".as_bytes(),          // 3-byte €
+            "\u{1f600}".as_bytes(),            // 4-byte emoji
+            "a\u{e9}\u{20ac}\u{1f600}z".as_bytes(), // mixed
+        ];
+        for s in strs {
+            let cm = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            let mut cstr = s.to_vec(); cstr.push(0);
+            let ok = c::cmsMLUsetUTF8(cm, b"en".as_ptr(),
+                b"US".as_ptr(), cstr.as_ptr());
+            let mut buf = vec![0u8; 256];
+            let n = c::cmsMLUgetUTF8(cm, b"en".as_ptr(),
+                b"US".as_ptr(), buf.as_mut_ptr(), buf.len() as u32);
+            let cout = buf[..n as usize].to_vec();
+            // rust side
+            let mut rm = lcms::named::mlu_alloc(None, 1).unwrap();
+            let rok = lcms::named::mlu_set_utf8(&mut rm,
+                b"en", b"US", s);
+            let (_n, rout) = lcms::named::mlu_get_utf8(&rm, b"en", b"US",
+                Some(256));
+            assert_eq!(ok != 0, rok, "set utf8 {:?} parity",
+                String::from_utf8_lossy(s));
+            assert_eq!(cout, rout, "get utf8 {:?} parity",
+                String::from_utf8_lossy(s));
+            c::cmsMLUfree(cm);
+        }
+    }
+}
