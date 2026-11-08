@@ -771,3 +771,31 @@ fn inklimit_bchs_builders() {
         }
     }
 }
+
+/// cmsvirt remaining internals — devicelink-from-transform on
+/// different profile pairs + intents.
+#[test]
+fn virt_devicelink_internals() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, if_, of, intent, name) in [
+            (srgb, lab, r16, l16, 0u32, "srgb-lab"),
+            (lab, srgb, l16, r16, 0, "lab-srgb"),
+            (srgb, srgb, r16, r16, 2, "srgb-srgb-i2"),
+            (lab, lab, l16, l16, 3, "lab-lab-i3"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of,
+                intent, 0);
+            if t.is_null() { eprintln!("{name} t=NULL"); continue; }
+            let dl = c::cmsTransform2DeviceLink(t, 3.4, 0);
+            eprintln!("{name} dl={}", !dl.is_null());
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
