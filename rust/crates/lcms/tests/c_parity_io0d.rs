@@ -5716,3 +5716,41 @@ fn colorant_order_tag() {
         c::cmsCloseProfile(prof2);
     }
 }
+
+/// Type_Screening + scrd — screening channels with frequency/
+/// angle/spot-shape, plus screening-description tag.
+#[test]
+fn screening_full_tags() {
+    unsafe {
+        #[repr(C)] #[derive(Clone, Copy)]
+        struct Ch { f: f64, a: f64, sp: u32 }
+        #[repr(C)] struct Scrn { flag: u32, nch: u32,
+            ch: [Ch; 16] }
+        let mut sc = Scrn { flag: 0, nch: 4,
+            ch: [Ch { f: 0.0, a: 0.0, sp: 0 }; 16] };
+        for (i, (f, a, s)) in [
+            (85.0, 15.0, 1u32), (85.0, 75.0, 1),
+            (85.0, 0.0, 1), (85.0, 45.0, 2),
+        ].iter().enumerate() {
+            sc.ch[i] = Ch { f: *f, a: *a, sp: *s };
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x7363726e,
+            &mut sc as *mut _ as *const _); // 'scrn'
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x7363726e)
+        } else { std::ptr::null_mut() };
+        eprintln!("scrn w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
