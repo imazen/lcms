@@ -17545,3 +17545,99 @@ fn internal_final3_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + context internals + tag internals.
+#[test]
+fn internal_final4_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // transform internals — input/output normalization
+        //   + PCS conversion on varied profile pairs
+        for (a, b, fi, fo, name) in [
+            (srgb, lab, r8, l8, "srgb->lab"),
+            (lab, srgb, l8, r8, "lab->srgb"),
+            (srgb, srgb, r8, r8, "srgb->srgb"),
+            (lab, lab, l8, l8, "lab->lab"),
+        ] {
+            for intent in 0..4u32 {
+                for flags in [0u32, 0x0100, 0x0200, 0x0400,
+                    0x0001, 0x0002, 0x0004] {
+                    let t = c::cmsCreateTransform(a, fi, b,
+                        fo, intent, flags);
+                    if !t.is_null() {
+                        let ib = [0x55u8; 16];
+                        let mut ob = [0u8; 16];
+                        c::cmsDoTransform(t, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            eprintln!("{name} done");
+        }
+        // LUT-builder internals — extended transforms with
+        //   varied profile chains
+        let mut profs = [srgb, lab, srgb, lab];
+        for n_ in [2i32, 3, 4] {
+            for intent in 0..4u32 {
+                let mut bpc = [0i32; 4];
+                let mut intents = [intent; 4];
+                let mut adapt = [0.0f64; 4];
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), n_ as u32,
+                    profs.as_mut_ptr(), bpc.as_mut_ptr(),
+                    intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    std::ptr::null_mut(), 0,
+                    r8, r8, 0);
+                eprintln!("ext {n_}p i{intent}={}",
+                    !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+        }
+        // context internals — create with userdata + dup +
+        //   delete chains
+        let mut ud = 0xcafeu32;
+        let ctx = c::cmsCreateContext(
+            &mut ud as *mut u32 as *mut _,
+            std::ptr::null_mut());
+        if !ctx.is_null() {
+            for i in 0..8 {
+                let d = c::cmsDupContext(ctx,
+                    &mut ud as *mut u32 as *mut _);
+                if !d.is_null() {
+                    c::cmsDeleteContext(d); }
+                eprintln!("dup{i} done");
+            }
+            c::cmsDeleteContext(ctx);
+        }
+        // profile-info on file-loaded + mem-loaded profiles
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        if !rp.is_null() {
+            let mut ibuf = [0u8; 512];
+            for info in 0..10u32 {
+                let r = c::cmsGetProfileInfo(rp, info,
+                    b"en\0".as_ptr() as *const i8,
+                    b"US\0".as_ptr() as *const i8,
+                    ibuf.as_mut_ptr() as *mut _,
+                    ibuf.len() as u32);
+                eprintln!("memprof info{info}={r}");
+            }
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
