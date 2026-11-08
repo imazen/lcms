@@ -206,3 +206,88 @@ fn err_ctx_lifecycle_arms() {
         eprintln!("lifecycle ok");
     }
 }
+
+/// cmsplugin residual — IOhandler plugin registration
+///   + _cmsIOPrintf internals via plugin-registered
+///   memory IO used for profile open.
+#[test]
+fn err_io_plugin_arms() {
+    unsafe {
+        // register a no-op mem-handler plugin bundle,
+        //   then exercise PluginIO paths on a context
+        #[repr(C)]
+        struct PlugBase {
+            magic: u32, expected_version: u32,
+            ty: u32, next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct MemPlug {
+            base: PlugBase,
+            alloc: *mut std::ffi::c_void,
+            free: *mut std::ffi::c_void,
+            realloc: *mut std::ffi::c_void,
+            calloc: *mut std::ffi::c_void,
+            dup: *mut std::ffi::c_void,
+            malloc_zero: *mut std::ffi::c_void,
+        }
+        unsafe extern "C" {
+            fn malloc(n: usize)
+                -> *mut std::ffi::c_void;
+            fn free(p: *mut std::ffi::c_void);
+            fn realloc(p: *mut std::ffi::c_void, n: usize)
+                -> *mut std::ffi::c_void;
+        }
+        unsafe extern "C" fn my_alloc(
+            _ctx: *mut std::ffi::c_void, n: u32)
+            -> *mut std::ffi::c_void {
+            unsafe { malloc(n as usize) }
+        }
+        unsafe extern "C" fn my_free(
+            _ctx: *mut std::ffi::c_void,
+            p: *mut std::ffi::c_void) {
+            unsafe { free(p) }
+        }
+        unsafe extern "C" fn my_realloc(
+            _ctx: *mut std::ffi::c_void,
+            p: *mut std::ffi::c_void, n: u32)
+            -> *mut std::ffi::c_void {
+            unsafe { realloc(p, n as usize) }
+        }
+        let mut plug = MemPlug {
+            base: PlugBase {
+                magic: 0x636D7350,
+                expected_version: 2200,
+                ty: 0x6D656D48,
+                next: std::ptr::null_mut(),
+            },
+            alloc: my_alloc as *mut _,
+            free: my_free as *mut _,
+            realloc: my_realloc as *mut _,
+            calloc: std::ptr::null_mut(),
+            dup: std::ptr::null_mut(),
+            malloc_zero: std::ptr::null_mut(),
+        };
+        // register on a fresh ctx
+        let ctx = c::cmsCreateContext(
+            &mut plug as *mut _ as *mut _,
+            std::ptr::null_mut());
+        eprintln!("ctx-with-mem={}", !ctx.is_null());
+        // dup it -> DupPluginMemHandler
+        let dctx = if !ctx.is_null() {
+            c::cmsDupContext(ctx, std::ptr::null_mut())
+        } else { std::ptr::null_mut() };
+        eprintln!("dctx={}", !dctx.is_null());
+        // profile ops on both contexts
+        for cx in [ctx, dctx] {
+            if cx.is_null() { continue; }
+            let p = c::cmsCreate_sRGBProfileTHR(cx);
+            eprintln!("srgb-on-ctx={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsCloseProfile(p); }
+        }
+        if !dctx.is_null() {
+            c::cmsDeleteContext(dctx); }
+        if !ctx.is_null() {
+            c::cmsDeleteContext(ctx); }
+    }
+}
