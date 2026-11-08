@@ -1690,3 +1690,55 @@ fn cnvt_gamut_preview() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// CHAD2Temp/Temp2CHAD internals — absolute-intent transforms
+/// between profiles with different white points + CHAD tags
+/// trigger ComputeAbsoluteIntent's temp estimation.
+#[test]
+fn cnvt_chad_temp() {
+    unsafe {
+        let g22 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g22, g22, g22];
+        // D65 srgb vs D50 custom rgb — different white points
+        let wp_d50 = [0.3457f64, 0.3585, 1.0];
+        let wp_d65 = [0.3127f64, 0.3290, 1.0];
+        let prim = [
+            0.64f64, 0.33, 1.0,
+            0.30, 0.60, 1.0,
+            0.15, 0.06, 1.0,
+        ];
+        let srgb = c::cmsCreate_sRGBProfile();
+        let d50rgb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            wp_d50.as_ptr() as *const _,
+            prim.as_ptr() as *const _,
+            curves.as_ptr() as *const _);
+        let d65rgb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            wp_d65.as_ptr() as *const _,
+            prim.as_ptr() as *const _,
+            curves.as_ptr() as *const _);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        // absolute intent (3) between differing white points
+        for (inp, outp, f, name) in [
+            (srgb, d50rgb, r8, "srgb->d50-a3"),
+            (d50rgb, srgb, r8, "d50->srgb-a3"),
+            (d50rgb, d65rgb, r16, "d50->d65-a3"),
+            (srgb, d65rgb, r8, "srgb->d65-a3"),
+            (d50rgb, d50rgb, r8, "d50->d50-a3"),
+        ] {
+            let t = c::cmsCreateTransform(inp, f, outp, f, 3, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 4];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(d50rgb);
+        c::cmsCloseProfile(d65rgb);
+        c::cmsFreeToneCurve(g22);
+    }
+}
