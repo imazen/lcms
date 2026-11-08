@@ -3737,3 +3737,31 @@ fn write_dispatch_named_stage() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Stored-LUT reads — cmsReadTag on a saved devicelink's
+/// LUT tags (the LUT-read dispatch).
+#[test]
+fn stored_lut_reads() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        c::cmsSaveProfileToFile(dl,
+            b"/tmp/ccov_dl.icc\0".as_ptr() as _);
+        c::cmsCloseProfile(dl);
+        let h = c::cmsOpenProfileFromFile(
+            b"/tmp/ccov_dl.icc\0".as_ptr() as _,
+            b"r\0".as_ptr() as _);
+        assert!(!h.is_null());
+        for (sig, name) in [
+            (0x41324230u32, "A2B0"), (0x42324130, "B2A0"),
+            (0x67616D74, "gamt"), (0x70726530, "pre0"),
+            (0x70726531, "pre1"), (0x70726532, "pre2")] {
+            let v = c::cmsReadTag(h, sig);
+            eprintln!("{name} read={}", !v.is_null());
+        }
+        c::cmsCloseProfile(h);
+    }
+}
