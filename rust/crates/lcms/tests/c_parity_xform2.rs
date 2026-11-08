@@ -4442,3 +4442,94 @@ fn addconversion_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// OptimizeByComputingLinearization/OptimizeByResampling — the
+/// planar/non-RGB/degenerate-curve/8bit-flag reject arms +
+/// resample internals on planar+degenerate-profile variants.
+#[test]
+fn prelin_opt_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        // degenerate-last-stage profile: reversed TRCs
+        let degen = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(degen, 0x6D6E7472);
+        c::cmsSetColorSpace(degen, 0x52474220);
+        c::cmsSetPCS(degen, 0x58595A20);
+        c::cmsSetProfileVersion(degen, 4.4);
+        let tv = [0u16, 0x3000, 0x7000, 0x9000, 0xf000];
+        let tc = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5, tv.as_ptr());
+        let rev = c::cmsReverseToneCurve(tc);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let n = 3u32 * 27;
+        let mut grid = vec![0u16; n as usize];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = (i % 31) as u16 * 2048;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), [3u32; 3].as_ptr(), 3, 3,
+                grid.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [rev, rev, rev].as_ptr() as *mut _));
+        c::cmsWriteTag(degen, 0x41324230, p as *const _);
+        const PLANAR: u32 = 1 << 10;
+        const HIGHRES: u32 = 0x0400;
+        const CLUT_PRELIN: u32 = 0x0010;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let rp = r8 | PLANAR;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let rf = (4u32 << 16) | (3 << 3) | 5;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        for (inp, outp, if_, of_, name) in [
+            (srgb, cmyk, rp, (6u32 << 16) | (4 << 3) | 1, "planar"),
+            (srgb, cmyk, r16, (6u32 << 16) | (4 << 3) | 1,
+                "16bit-noprelin"),
+            (srgb, cmyk, rf, (6u32 << 16) | (4 << 3) | 1,
+                "float"),
+            (degen, srgb, r8, r8, "degen->srgb"),
+            (srgb, degen, r8, r8, "srgb->degen"),
+            (degen, lab, r8, l8, "degen->lab"),
+            (gray, cmyk, g8, (6u32 << 16) | (4 << 3) | 1,
+                "gray->cmyk"),
+            (srgb, cmyk, r8, (6u32 << 16) | (4 << 3) | 1,
+                "srgb->cmyk"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for flags in [0u32, HIGHRES, CLUT_PRELIN,
+                HIGHRES | CLUT_PRELIN] {
+                let t = c::cmsCreateTransform(inp, if_, outp,
+                    of_, 0, flags);
+                eprintln!("{name} f{flags:#x} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 16];
+                    let mut ob = [0u8; 16];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(degen);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(tc);
+        c::cmsFreeToneCurve(rev);
+    }
+}
