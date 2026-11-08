@@ -16194,3 +16194,133 @@ fn matshaper_internal_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmstypes residual — Type_Signature_Read/Write, Type_S15Fixed16,
+/// Type_U16Fixed16, Type_U32, Type_U8Array, Type_VideoSignal_Read,
+/// Type_MPEmatrix/curve/clut residual via API write-read round-trips.
+#[test]
+fn cmstypes_residual_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 20];
+        // write+read each atomic tag type via placeholder
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"desc\0".as_ptr());
+        // cmsScreening layout: Frequency[16]f64 +
+        //   ScreenAngle[16]f64 + SpotShape[16]u32
+        let mut scr = vec![0u8; 16 * 8 + 16 * 8 + 16 * 4];
+        for i in 0..16 {
+            let f = (10.0f64).to_be_bytes();
+            scr[i * 8..i * 8 + 8].copy_from_slice(&f);
+        }
+        let meas = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let chad_mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0];
+        let clro = c::CiexyYTriple {
+            Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+            Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        };
+        let view_xyz = c::CieXyz { X: 0.9642, Y: 1.0,
+            Z: 0.8249 };
+        for (sig, write_fn, name) in [
+            (0x63707274u32, 0u32, "text cprt"),
+            (0x64657363, 1, "desc"),
+            (0x7363726E, 2, "scr "),
+            (0x77686174, 3, "meas"),
+            (0x63686164, 4, "chad"),
+            (0x636C726F, 5, "clro"),
+            (0x74656368, 6, "tech"),
+            (0x62726B74, 7, "bkpt"),
+            (0x77747074, 8, "wtpt"),
+            (0x646D6E64, 9, "dmnd"),
+            (0x646D6464, 10, "dmdd"),
+            (0x6C756D69, 11, "lumi"),
+            (0x76696577, 12, "view"),
+            (0x70736430, 13, "psd0"),
+            (0x70733273, 14, "ps2s"),
+            (0x70733269, 15, "ps2i"),
+            (0x70733265, 16, "ps2e"),
+            (0x67726461, 17, "grda"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            let w = match write_fn {
+                0 => c::cmsWriteTag(prof, sig,
+                    b"test text\0".as_ptr() as *const _),
+                1 | 9 | 10 => c::cmsWriteTag(
+                    prof, sig, mlu as *const _),
+                13 | 14 | 15 | 16 => {
+                    // cmsICCData { flag, len, data[1] }
+                    // host-endian struct fields + spare
+                    let mut d = vec![0u8; 8 + 32];
+                    d[0..4].copy_from_slice(&0u32
+                        .to_ne_bytes());
+                    d[4..8].copy_from_slice(&16u32
+                        .to_ne_bytes());
+                    c::cmsWriteTag(prof, sig,
+                        d.as_ptr() as *const _)
+                },
+                2 => c::cmsWriteTag(prof, sig,
+                    scr.as_ptr() as *const _),
+                3 | 7 | 8 | 11 | 12 => c::cmsWriteTag(
+                    prof, sig,
+                    &view_xyz as *const c::CieXyz
+                        as *const _),
+                4 => c::cmsWriteTag(prof, sig,
+                    chad_mat.as_ptr() as *const _),
+                5 => c::cmsWriteTag(prof, sig,
+                    &clro as *const c::CiexyYTriple
+                        as *const _),
+                17 => c::cmsWriteTag(prof, sig,
+                    b"grda text\0".as_ptr() as *const _),
+                _ => c::cmsWriteTag(prof, sig,
+                    b"test\0".as_ptr() as *const _),
+            };
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            let r = if !rp.is_null() {
+                let t = c::cmsReadTag(rp, sig);
+                let ok = !t.is_null();
+                c::cmsCloseProfile(rp);
+                ok
+            } else { false };
+            eprintln!("{name} sig={sig:#x} w={w} s={s} r={r}");
+            c::cmsCloseProfile(prof);
+        }
+        // signature-type tag (ftro etc)
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x58595A20);
+        let tech_sig = 0x43505320u32;
+        let w = c::cmsWriteTag(prof, 0x74656368,
+            &tech_sig as *const u32 as *const _);
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr()
+                as *const _, n)
+        } else { std::ptr::null_mut() };
+        let r = if !rp.is_null() {
+            let t = c::cmsReadTag(rp, 0x74656368);
+            let ok = !t.is_null();
+            c::cmsCloseProfile(rp);
+            ok
+        } else { false };
+        eprintln!("tech sig w={w} s={s} r={r}");
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(srgb);
+    }
+}
