@@ -446,3 +446,66 @@ fn oklab_transform_relative() {
     t.do_transform(&inp, &mut r_out, n_px);
     assert_eq!(c_out, r_out, "OkLab→XYZ output diverged");
 }
+
+/// Remaining virt builders — BCHSW abstract, NULL profile, OkLab,
+/// ink-limiting devicelink, transform->devicelink. Serialize parity.
+#[test]
+fn misc_virt_builders() {
+    unsafe {
+        // BCHSW abstract (n_lut, bright, contrast, hue, sat, tempK src/dst)
+        for (nl, b, cn, h, sa, ts, td) in
+            [(17u32, 0.0, 1.0, 0.0, 0.0, 6500u32, 5000u32),
+             (33, -0.1, 1.2, 15.0, 1.5, 5000, 6500)] {
+            let p = c::cmsCreateBCHSWabstractProfile(nl, b, cn, h, sa, ts, td);
+            assert!(!p.is_null());
+            cmp(&format!("bchsw{nl}"), c_save(p),
+                r_save(&mut *virt::create_bchsw_abstract_profile(
+                    None, nl, b, cn, h, sa, ts, td).unwrap()));
+            c::cmsCloseProfile(p);
+        }
+        // NULL profile
+        let p = c::cmsCreateNULLProfile();
+        assert!(!p.is_null());
+        cmp("nullprof", c_save(p),
+            r_save(&mut *virt::create_null_profile(None).unwrap()));
+        c::cmsCloseProfile(p);
+        // OkLab profile
+        let p = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
+        assert!(!p.is_null());
+        cmp("oklab", c_save(p),
+            r_save(&mut *virt::create_oklab_profile(None).unwrap()));
+        c::cmsCloseProfile(p);
+        // ink-limiting devicelink — CMYK + RGB + Gray color spaces
+        for (cs, lim) in [(0x434D594Bu32, 260.0),   // 'CMYK'
+                          (0x52474220u32, 200.0),   // 'RGB '
+                          (0x47524159u32, 240.0)] { // 'GRAY'
+            let p = c::cmsCreateInkLimitingDeviceLink(cs, lim);
+            let rok = virt::create_ink_limiting_device_link(
+                None, cs, lim).is_some();
+            eprintln!("inklim cs={cs:#x} C={} R={}", !p.is_null(), rok);
+            assert_eq!(!p.is_null(), rok, "inklim {cs:#x} parity");
+            if !p.is_null() {
+                cmp(&format!("inklim{cs:#x}"), c_save(p),
+                    r_save(&mut *virt::create_ink_limiting_device_link(
+                        None, cs, lim).unwrap()));
+                c::cmsCloseProfile(p);
+            }
+        }
+        // transform -> devicelink
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let t = c::cmsCreateTransform(srgb, 0x00ff04, // TYPE_RGB_8
+            lab, 0x0a0702, 0, 0); // TYPE_Lab_16
+        if !t.is_null() {
+            let p = c::cmsTransform2DeviceLink(t, 4.4, 0);
+            eprintln!("t2dl ok={}", !p.is_null());
+            if !p.is_null() {
+                let _ = c_save(p); // C-only coverage probe
+                c::cmsCloseProfile(p);
+            }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
