@@ -1216,3 +1216,33 @@ fn double_modifier_matrix() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Multi-channel format modifier matrix — the 1/2/4/6/8-ch
+/// packer bodies.
+#[test]
+fn multichannel_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        // PT_ANY (0) + channel count variations
+        for (name, fmt) in [
+            ("1ch", (0 << 16) | (1 << 3) | 1u32),
+            ("2ch", (0 << 16) | (2 << 3) | 1),
+            ("4ch", (0 << 16) | (4 << 3) | 1),
+            ("6ch", (0 << 16) | (6 << 3) | 1),
+            ("8ch", (0 << 16) | (8 << 3) | 1),
+            ("15ch", (0 << 16) | (15 << 3) | 1),
+            ("1ch-x1", (0 << 16) | (1 << 7) | (1 << 3) | 1),
+            ("2ch-planar", (0 << 16) | (1 << 12) | (2 << 3) | 1),
+            ("4ch-doswap", (0 << 16) | (1 << 10) | (4 << 3) | 1),
+            ("6ch-swapf", (0 << 16) | (1 << 14) | (6 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
