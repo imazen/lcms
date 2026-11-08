@@ -3292,3 +3292,29 @@ fn write_dispatch_xyz() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a pipeline-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_pipeline() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr()));
+        for (sig, name) in [
+            (0x41324230u32, "A2B0"), (0x42324130u32, "B2A0"),
+            (0x67616D74u32, "gamt"), (0x70726530u32, "pre0"),
+            (0x70726531u32, "pre1"), (0x70726532u32, "pre2"),
+            (0x64657363u32, "desc")] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
