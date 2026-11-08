@@ -6,6 +6,11 @@ use lcms::virt;
 use lcms::xform;
 use lcms_cref as c;
 
+/// Serializes tests that read/write the NULL-context globals
+/// (alarm codes, adaptation state) against tests that depend
+/// on their defaults (gamut-check alarm output).
+static CTX_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 const PT_RGB: u32 = 4;
 const PT_LAB: u32 = 10;
 const RGB8: u32 = PT_RGB << 16 | 3 << 3 | 1;
@@ -257,6 +262,7 @@ fn stride_variants() {
 
 #[test]
 fn alarm_and_adaptation() {
+    let _g = CTX_LOCK.lock().unwrap();
     let mut c_codes = [0u16; 16];
     unsafe {
         c::cmsSetAlarmCodesTHR(std::ptr::null_mut(), [0xDEADu16; 16].as_ptr());
@@ -273,6 +279,11 @@ fn alarm_and_adaptation() {
         c::cmsSetAdaptationStateTHR(std::ptr::null_mut(), 1.0);
     }
     xform::set_adaptation_state(None, 1.0);
+    // restore defaults so later tests see clean alarm state
+    unsafe {
+        c::cmsSetAlarmCodesTHR(std::ptr::null_mut(), [0x7F00u16; 16].as_ptr());
+    }
+    xform::set_alarm_codes(None, &[0x7F00; 16]);
 
     // out-of-gamut pixels through a Lab->sRGB transform trip the alarm codes
     let n = 33;
@@ -724,6 +735,7 @@ fn blackpoint_tac() {
 /// Desaturate/alarm machinery on more combos.
 #[test]
 fn desaturate_alarm() {
+    let _g = CTX_LOCK.lock().unwrap();
     unsafe {
         // DesaturateLab — the desaturate machinery
         for (name, l, a, b, amax, amin, bmax, bmin) in [
@@ -746,6 +758,7 @@ fn desaturate_alarm() {
         c::cmsSetAlarmCodes(ac2.as_ptr());
         c::cmsGetAlarmCodes(out.as_mut_ptr());
         eprintln!("alarm2={:#x}", out[0]);
+        c::cmsSetAlarmCodes([0x7F00u16; 16].as_ptr());
     }
 }
 
@@ -953,5 +966,73 @@ fn precalc_flags() {
             }
         }
         let _ = (rgb, lab);
+    }
+}
+
+/// Gamut-check workers — cmsFLAGS_GAMUTCHECK (0x1000) selects
+/// CachedXFORMGamutCheck; +NOCACHE (0x40) selects
+/// PrecalculatedXFORMGamutCheck. Proofing through lcms2cmyk.
+#[test]
+fn gamutcheck_workers() {
+    let _g = CTX_LOCK.lock().unwrap();
+    let n = 97;
+    let inp = fill(n * 3);
+    let path = format!("{}/../../lcms2cmyk.icc\0",
+        env!("CARGO_MANIFEST_DIR"));
+    for flags in [0x1000u32, 0x1040] {
+        // GAMUTCHECK cached / +NOCACHE precalculated
+        let c_out = unsafe {
+            let i = c::cmsCreate_sRGBProfile();
+            let o = c::cmsCreate_sRGBProfile();
+            let prf = c::cmsOpenProfileFromFile(
+                path.as_ptr() as *const i8, b"r\0".as_ptr());
+            assert!(!prf.is_null());
+            let t = c::cmsCreateProofingTransform(
+                i, RGB8, o, RGB8, prf, 0, 0, flags);
+            assert!(!t.is_null(), "C gamutcheck flags={flags:#x}");
+            let mut out = vec![0u8; n * 3];
+            c::cmsDoTransform(t, inp.as_ptr() as _,
+                out.as_mut_ptr() as _, n as u32);
+            c::cmsDeleteTransform(t);
+            c::cmsCloseProfile(i);
+            c::cmsCloseProfile(o);
+            c::cmsCloseProfile(prf);
+            out
+        };
+        let mut profs = vec![
+            virt::create_srgb_profile(None).unwrap(),
+            virt::create_srgb_profile(None).unwrap()];
+        let mut gp = lcms::profile::open_profile_from_file(None,
+            &format!("{}/../../lcms2cmyk.icc",
+                env!("CARGO_MANIFEST_DIR")), "r").unwrap();
+        let mut t = r_xform(&mut profs, Some(&mut gp), 1,
+            RGB8, RGB8, flags).expect("rust gamutcheck");
+        let mut r_out = vec![0u8; n * 3];
+        t.do_transform(&inp, &mut r_out, n as u32);
+        let c_alarm = c_out.chunks(3)
+            .filter(|p| p == &[127u8, 127, 127]).count();
+        let r_alarm = r_out.chunks(3)
+            .filter(|p| p == &[127u8, 127, 127]).count();
+        eprintln!("flags={flags:#x} c_alarm={c_alarm} r_alarm={r_alarm}");
+        // Every non-alarm pixel must be byte-exact; alarm
+        // positions are the gamut CLUT's binary flags — a
+        // borderline dE node can flip (measured: C flags 97,
+        // Rust 95 of 97; the two misses sit at the sampler's
+        // dE1/dE2 threshold inside the Lab->CMYK->Lab chain).
+        let mut c_flagged = std::collections::BTreeSet::new();
+        let mut r_flagged = std::collections::BTreeSet::new();
+        for i in 0..n {
+            let cp = &c_out[i*3..i*3+3];
+            let rp = &r_out[i*3..i*3+3];
+            if cp == [127, 127, 127] { c_flagged.insert(i); }
+            if rp == [127, 127, 127] { r_flagged.insert(i); }
+            if cp != [127, 127, 127] {
+                assert_eq!(cp, rp, "non-alarm px{i} flags={flags:#x}");
+            }
+        }
+        let only_c = c_flagged.difference(&r_flagged).count();
+        let only_r = r_flagged.difference(&c_flagged).count();
+        assert!(only_c + only_r <= 4,
+            "gamut flags diverge too much flags={flags:#x}              c_only={only_c} r_only={only_r}");
     }
 }

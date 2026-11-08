@@ -241,3 +241,37 @@ fn dup_join_smooth_variants() {
         c::cmsFreeToneCurve(c_t);
     }
 }
+
+/// Sigmoid parametric curves — type ±109 hits sigmoid_factory /
+/// inverse_sigmoid_factory (+ inverted_sigmoid_base inside).
+#[test]
+fn sigmoid_curves() {
+    unsafe {
+        for ty in [109i32, -109] {
+            for k in [0.2f64, 1.0, 3.5, 10.0] {
+                let params = [k];
+                let cc = c::cmsBuildParametricToneCurve(
+                    std::ptr::null_mut(), ty, params.as_ptr());
+                let rr = gamma::build_parametric_tone_curve(
+                    None, ty, &params);
+                assert_eq!(!cc.is_null(), rr.is_some(),
+                    "sigmoid type={ty} k={k} alloc");
+                if cc.is_null() { continue; }
+                let rc = rr.unwrap();
+                for i in 0..=32u32 {
+                    let v = i as f32 / 32.0;
+                    let co = c::cmsEvalToneCurveFloat(cc, v);
+                    let ro = rc.eval_float(v);
+                    assert!((co - ro).abs() < 1e-6
+                        || co.is_nan() && ro.is_nan(),
+                        "sigmoid {ty} k={k} x={v}: {co} vs {ro}");
+                }
+                for v in (0..=65535u16).step_by(4096) {
+                    assert_eq!(c::cmsEvalToneCurve16(cc, v),
+                        rc.eval16(v), "sigmoid16 {ty} k={k} x={v}");
+                }
+                c::cmsFreeToneCurve(cc);
+            }
+        }
+    }
+}

@@ -56,3 +56,40 @@ fn adaptation_state() {
         let _ = xform::set_adaptation_state(None, prev);
     }
 }
+
+/// Temp<->whitepoint round trips — cmsWhitePointFromTemp /
+/// cmsTempFromWhitePoint drive CHAD2Temp/Temp2CHAD.
+#[test]
+fn temp_whitepoint_roundtrip() {
+    unsafe {
+        for t in [2500.0f64, 4000.0, 5000.0, 6500.0, 9300.0, 15000.0] {
+            let mut cwp = c::CiexyY::default();
+            let c_ok = c::cmsWhitePointFromTemp(&mut cwp, t);
+            let rwp = lcms::wtpnt::white_point_from_temp(t);
+            assert_eq!(c_ok != 0, rwp.is_some(), "wpt from temp {t}");
+            if let Some(r) = rwp {
+                assert!((cwp.x - r.x).abs() < 1e-9
+                    && (cwp.y - r.y).abs() < 1e-9
+                    && (cwp.Y - r.Y).abs() < 1e-9,
+                    "wp {t}: C {},{},{} R {},{},{}",
+                    cwp.x, cwp.y, cwp.Y, r.x, r.y, r.Y);
+                // and back
+                let mut ct = 0.0f64;
+                let c_ok2 = c::cmsTempFromWhitePoint(&mut ct, &cwp);
+                let rt = lcms::wtpnt::temp_from_white_point(&r);
+                assert_eq!(c_ok2 != 0, rt.is_some(), "temp from wp {t}");
+                if let Some(rt) = rt {
+                    assert!((ct - rt).abs() < 1e-6,
+                        "temp {t}: C {ct} R {rt}");
+                }
+            }
+        }
+        // out-of-gamut / extreme temps
+        for t in [0.0f64, 100.0, 40000.0, 1e9] {
+            let mut cwp = c::CiexyY::default();
+            let c_ok = c::cmsWhitePointFromTemp(&mut cwp, t);
+            let rwp = lcms::wtpnt::white_point_from_temp(t);
+            assert_eq!(c_ok != 0, rwp.is_some(), "extreme temp {t}");
+        }
+    }
+}
