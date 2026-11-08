@@ -76,3 +76,24 @@ fn plugin_remaining_arms() {
         if !d.is_null() { c::cmsDeleteContext(d); }
     }
 }
+
+/// Plugin lookup internals — _cmsGetTagTypeHandler per sig +
+/// cmsDupContext.
+#[test]
+fn plugin_lookup_internals() {
+    unsafe {
+        // tag-type-handler lookup across the tag-type sigs
+        for sig in [0x63757276u32, 0x70617261, 0x6d667432,
+                    0x6d414220, 0x6c617469, 0xdeadbeef] {
+            let th = c::_cmsGetTagTypeHandler(std::ptr::null_mut(), sig);
+            eprintln!("sig{sig:#x} th={}", !th.is_null());
+        }
+        // DupContext — clones the context chunk
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let dc = c::cmsDupContext(ctx, std::ptr::null_mut());
+        eprintln!("ctx={} dup={}", !ctx.is_null(), !dc.is_null());
+        if !dc.is_null() { c::cmsDeleteContext(dc); }
+        if !ctx.is_null() { c::cmsDeleteContext(ctx); }
+    }
+}
