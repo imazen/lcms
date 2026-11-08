@@ -613,3 +613,76 @@ fn postscript_color_resource() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// THR-variant transform creators — the context-taking entries.
+#[test]
+fn thr_transform_variants() {
+    unsafe {
+        let ctx = c::cmsDupContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let proof = c::cmsCreate_sRGBProfile();
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        // CreateTransformTHR
+        let t1 = c::cmsCreateTransformTHR(ctx, hi, in_fmt, ho,
+            out_fmt, 0, 0);
+        assert!(!t1.is_null(), "transformTHR");
+        c::cmsDeleteTransform(t1);
+        // CreateMultiprofileTransformTHR
+        let mut profs = [hi, ho];
+        let t2 = c::cmsCreateMultiprofileTransformTHR(ctx,
+            profs.as_mut_ptr(), 2, in_fmt, out_fmt, 0, 0);
+        assert!(!t2.is_null(), "multiprofileTHR");
+        c::cmsDeleteTransform(t2);
+        // CreateProofingTransformTHR
+        let t3 = c::cmsCreateProofingTransformTHR(ctx, hi, in_fmt,
+            ho, out_fmt, proof, 0, 0, 0);
+        assert!(!t3.is_null(), "proofingTHR");
+        c::cmsDeleteTransform(t3);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let _ = c::cmsCloseProfile(proof);
+        c::cmsDeleteContext(ctx);
+    }
+}
+
+/// cmsOpenIOhandlerFromStream + cmsOpenProfileFromIOhandler2THR +
+/// cmsOpenProfileFromStreamTHR — the remaining IO entry points.
+#[test]
+fn iohandler_stream_variants() {
+    unsafe extern "C" {
+        fn fopen(path: *const i8, mode: *const i8) -> *mut c_void;
+    }
+    for data in corpus() {
+        unsafe {
+            let path = std::env::temp_dir()
+                .join("lcms_test_ioh.icc");
+            std::fs::write(&path, &data).unwrap();
+            let cpath = std::ffi::CString::new(
+                path.to_str().unwrap()).unwrap();
+            let f = fopen(cpath.as_ptr(),
+                b"rb\0".as_ptr() as *const _);
+            assert!(!f.is_null());
+            // cmsOpenIOhandlerFromStream — the stream IOHANDLER
+            let io = c::cmsOpenIOhandlerFromStream(
+                std::ptr::null_mut(), f);
+            assert!(!io.is_null(), "iohandler stream");
+            // cmsOpenProfileFromIOhandler2THR — read through it
+            let h = c::cmsOpenProfileFromIOhandler2THR(
+                std::ptr::null_mut(), io, 0);
+            assert!(!h.is_null(), "iohandler2 open");
+            c::cmsCloseProfile(h);
+            // stream THR variant
+            let f2 = fopen(cpath.as_ptr(),
+                b"rb\0".as_ptr() as *const _);
+            let h2 = c::cmsOpenProfileFromStreamTHR(
+                std::ptr::null_mut(), f2,
+                b"r\0".as_ptr() as *const _);
+            assert!(!h2.is_null(), "streamTHR open");
+            c::cmsCloseProfile(h2);
+            break;
+        }
+    }
+}

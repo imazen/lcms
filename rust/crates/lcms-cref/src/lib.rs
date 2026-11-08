@@ -701,6 +701,10 @@ unsafe extern "C" {
     pub fn cmsCreateExtendedTransform(ctx: *mut c_void, n_profiles: u32, profs: *mut *mut c_void, bpc: *mut i32, intents: *mut u32, adaptation: *mut f64, gamut: *mut c_void, gamut_pos: u32, in_fmt: u32, out_fmt: u32, flags: u32) -> *mut c_void;
     pub fn cmsCreateMultiprofileTransform(profs: *mut *mut c_void, n_profiles: i32, in_fmt: u32, out_fmt: u32, intent: u32, flags: u32) -> *mut c_void;
     pub fn cmsCreateProofingTransform(input: *mut c_void, in_fmt: u32, output: *mut c_void, out_fmt: u32, proof: *mut c_void, intent: u32, proofing_intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsCreateTransformTHR(ctx: *mut c_void, input: *mut c_void, input_format: u32, output: *mut c_void, output_format: u32, intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsCreateMultiprofileTransformTHR(ctx: *mut c_void, profs: *mut *mut c_void, n_profiles: i32, in_fmt: u32, out_fmt: u32, intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsCreateProofingTransformTHR(ctx: *mut c_void, input: *mut c_void, in_fmt: u32, output: *mut c_void, out_fmt: u32, proof: *mut c_void, intent: u32, proofing_intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsOpenProfileFromStreamTHR(ctx: *mut c_void, stream: *mut c_void, access: *const i8) -> *mut c_void;
     pub fn cmsDoTransformStride(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32, stride: u32);
     pub fn cmsDoTransformLineStride(t: *mut c_void, input: *const c_void, output: *mut c_void, ppl: u32, lines: u32, bpl_in: u32, bpl_out: u32, bpp_in: u32, bpp_out: u32);
     pub fn cmsChangeBuffersFormat(t: *mut c_void, in_fmt: u32, out_fmt: u32) -> i32;
