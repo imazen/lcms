@@ -576,3 +576,54 @@ fn packed_evals() {
         }
     }
 }
+
+/// cross-format eval matrix — (in_fmt x out_fmt) on same-PCS
+/// srgb->srgb transforms; hits Pack* output variants too.
+#[test]
+fn cross_format_evals() {
+    unsafe {
+        // several (pt, bytes, modifiers) input/output formats —
+        // each exercises a different Unroll*/Pack* variant
+        let variants: Vec<(u32, &str)> = vec![
+            ((4 << 16) | (3 << 3) | 1, "rgb u8"),
+            ((4 << 16) | (3 << 3) | 2, "rgb u16"),
+            ((4 << 16) | (3 << 3) | 4, "rgb f32"),
+            ((4 << 16) | (4 << 3) | 1, "rgba u8"),
+            ((4 << 16) | (4 << 3) | 2, "rgba u16"),
+            ((4 << 16) | (4 << 3) | 4, "rgba f32"),
+            ((10 << 16) | (3 << 3) | 1, "lab u8"),
+            ((10 << 16) | (3 << 3) | 2, "lab u16"),
+            ((10 << 16) | (3 << 3) | 4, "lab f32"),
+            ((3 << 16) | (3 << 3) | 2, "xyz u16"),
+            ((3 << 16) | (3 << 3) | 4, "xyz f32"),
+            ((1 << 16) | (1 << 3) | 1, "gray u8"),
+            ((1 << 16) | (1 << 3) | 2, "gray u16"),
+            ((4 << 16) | (3 << 3) | 2 | (1 << 10), "rgb doswap"),
+            ((4 << 16) | (3 << 3) | 2 | (1 << 19), "rgb flavor"),
+            ((4 << 16) | (4 << 3) | 2 | (1 << 17), "rgb extra"),
+            ((4 << 16) | (3 << 3) | 2 | (1 << 9), "rgb planar"),
+        ];
+        for (in_fmt, in_name) in &variants {
+            for (out_fmt, out_name) in &variants {
+                let hi = c::cmsCreate_sRGBProfile();
+                let ho = c::cmsCreate_sRGBProfile();
+                let ct = c::cmsCreateTransform(hi, *in_fmt, ho,
+                    *out_fmt, 0, 0);
+                let _ = c::cmsCloseProfile(hi);
+                let _ = c::cmsCloseProfile(ho);
+                if ct.is_null() { continue; }
+                // in buffer sized to the in-format's byte count
+                let nbytes = ((in_fmt >> 0) & 7).max(1) as usize
+                    * ((in_fmt >> 3) & 0xF) as usize;
+                let inp = vec![0x55u8; nbytes.max(1)];
+                // out buffer
+                let obytes = ((out_fmt >> 0) & 7).max(1) as usize
+                    * ((out_fmt >> 3) & 0xF) as usize;
+                let mut co = vec![0u8; obytes.max(1)];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+    }
+}
