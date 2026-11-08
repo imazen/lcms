@@ -1000,3 +1000,46 @@ fn lut_reader_dispatch_all() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Float-tag reader internals — DToB/BToD mpet tags trigger the
+/// Lab/XYZ normalization stage insertion.
+#[test]
+fn float_tag_readers2() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        // input + output profiles with float tags
+        for (cls, sig, name) in [
+            (0x6d6e7472u32, 0x44324230, "in-D2B0"), // mntr + D2B0
+            (0x6d6e7472, 0x42324430, "out-B2D0"),   // mntr + B2D0
+            (0x6c696e6b, 0x44324230, "link-D2B0"),  // link + D2B0
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x4C616220);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, sig, p as *const _);
+            let r16 = (4u32 << 16) | (3 << 3) | 2;
+            let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let l16 = (10u32 << 16) | (3 << 3) | 2;
+            let (inp, outp, if_, of) = if cls == 0x6c696e6b {
+                (prof, prof, r16, r16)
+            } else if name.contains("in") {
+                (prof, lab, r16, l16)
+            } else {
+                (lab, prof, l16, r16)
+            };
+            let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(lab);
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsPipelineFree(p);
+    }
+}
