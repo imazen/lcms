@@ -649,3 +649,54 @@ fn ps2_gray_named_emitters() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// WriteNamedColorCRD + BuildColorantList — nmcl profile with a
+/// real ncl2 tag + A2B0 through the CRD emitter.
+#[test]
+fn ps2_named_crd_internals() {
+    let _g = PS_LOCK.lock().unwrap();
+    unsafe {
+        let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(nmcl, 0x6e6d636c);   // 'nmcl'
+        c::cmsSetColorSpace(nmcl, 0x6e6d636c);    // 'nmcl'
+        c::cmsSetPCS(nmcl, 0x4c616220);           // 'Lab '
+        // named-color list -> ncl2 tag
+        let list = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 3,
+            b"pre\0".as_ptr(), b"post\0".as_ptr());
+        for i in 0..4u32 {
+            let mut name = [0u8; 256];
+            let nm = format!("color{}\0", i);
+            name[..nm.len()].copy_from_slice(nm.as_bytes());
+            let pcs = [100u16 * (i as u16 + 1), 200, 300];
+            let dev = [0u16; 15];
+            c::cmsAppendNamedColor(list,
+                name.as_ptr() as *mut _,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        let w = c::cmsWriteTag(nmcl, 0x6e636c32, list as *const _);
+        eprintln!("ncl2 w={w}");
+        // desc + wtpt for completeness
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        c::cmsWriteTag(nmcl, 0x64657363, ml as *const _);
+        let wp = [0.9642f64, 1.0, 0.8249];
+        c::cmsWriteTag(nmcl, 0x77747074, wp.as_ptr() as *const _);
+        let mut buf = vec![0u8; 1 << 18];
+        for (intent, name) in [(0u32, "i0"), (1, "i1"), (3, "i3")] {
+            let mut n = buf.len() as u32;
+            let crd = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
+                nmcl, intent, 0, buf.as_mut_ptr() as *mut _, n);
+            eprintln!("{name} crd={crd}");
+            let mut n2 = buf.len() as u32;
+            let csa = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
+                nmcl, intent, 0, buf.as_mut_ptr() as *mut _, n2);
+            eprintln!("{name} csa={csa}");
+        }
+        c::cmsCloseProfile(nmcl);
+        c::cmsFreeNamedColorList(list);
+        c::cmsMLUfree(ml);
+    }
+}
