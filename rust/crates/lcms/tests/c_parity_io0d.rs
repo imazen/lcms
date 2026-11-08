@@ -514,3 +514,33 @@ fn unusual_tag_table() {
         }
     }
 }
+
+/// Magic/ACSP mutations — the magic-check internals.
+#[test]
+fn magic_mutations() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // 'acsp' magic @36-40
+        for (name, val) in [
+            ("acsp", 0x61637370u32), // 'acsp'
+            ("ACSP", 0x41435350u32), // 'ACSP'
+            ("acsp-x", 0x61637371u32), // 'acsq'
+            ("zeros", 0u32),
+            ("lcms", 0x6C636D73u32), // 'lcms'
+            ("size-ok", 0x000002B8u32), // 696
+        ] {
+            let mut dd = d.clone();
+            dd[36..40].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
