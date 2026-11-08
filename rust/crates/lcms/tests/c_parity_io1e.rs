@@ -1311,7 +1311,7 @@ fn real_mpe_read() {
 /// Raw-read/write internals — cmsReadRawTag/cmsWriteRawTag on
 /// more sigs (the raw machinery bypassing the type dispatch).
 #[test]
-fn raw_tag_machinery() {
+fn raw_tag_machinery2() {
     unsafe {
         let h = c::cmsCreate_sRGBProfile();
         // write raw bodies to a spread of sigs — the raw-write
@@ -2681,6 +2681,31 @@ fn tag_presence() {
         let rd2 = c::cmsReadTag(h, 0x64657363);
         eprintln!("desc-delete ok={d} istag={istag2} rd={}",
             !rd2.is_null());
+        c::cmsCloseProfile(h);
+    }
+}
+
+/// Raw-tag machinery — cmsReadRawTag/cmsWriteRawTag on
+/// more sigs.
+#[test]
+fn raw_tag_machinery() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let payload = [0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06];
+        for (sig, name) in [
+            (0x64657363u32, "desc"), (0x77747074u32, "wtpt"),
+            (0x41324230u32, "A2B0"), (0x6D657461u32, "meta"),
+            (0x63696370u32, "cicp")] {
+            // write raw
+            let w = c::cmsWriteRawTag(h, sig,
+                payload.as_ptr() as _,
+                payload.len() as u32);
+            // read raw back
+            let mut buf = [0u8; 64];
+            let n = c::cmsReadRawTag(h, sig,
+                buf.as_mut_ptr() as _, 64);
+            eprintln!("{name} w={w} rd={n}");
+        }
         c::cmsCloseProfile(h);
     }
 }
