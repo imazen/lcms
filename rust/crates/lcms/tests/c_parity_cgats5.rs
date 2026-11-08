@@ -312,3 +312,37 @@ fn it8_parser_shapes() {
         }
     }
 }
+
+/// IT8 writer internals — a wide doc (many cols/rows) through
+/// the writer's row/format machinery.
+#[test]
+fn it8_wide_doc() {
+    unsafe {
+        // a doc with 20 fields x 50 rows
+        let mut doc = String::from("CGATS.17\nNUMBER_OF_FIELDS 20\n\
+            BEGIN_DATA_FORMAT\n");
+        for i in 0..20 { doc.push_str(&format!("F{i} ")); }
+        doc.push_str("\nEND_DATA_FORMAT\nNUMBER_OF_SETS 50\n\
+            BEGIN_DATA\n");
+        for _ in 0..50 {
+            for j in 0..20 { doc.push_str(&format!("{j} ")); }
+            doc.push('\n');
+        }
+        doc.push_str("END_DATA\n");
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        assert!(!h.is_null());
+        // save — the writer's row-format machinery on 20x50
+        let mut cb = vec![0u8; 8192];
+        let mut cn = 0u32;
+        let ok = c::cmsIT8SaveToMem(h,
+            cb.as_mut_ptr() as *mut _, &mut cn);
+        eprintln!("wide save ok={ok} n={cn}");
+        // read some cells via the row/col machinery
+        let v0 = c::cmsIT8GetDataRowColDbl(h, 0, 0);
+        let v1 = c::cmsIT8GetDataRowColDbl(h, 25, 10);
+        let v2 = c::cmsIT8GetDataRowColDbl(h, 49, 19);
+        eprintln!("cells {v0}/{v1}/{v2}");
+        c::cmsIT8Free(h);
+    }
+}
