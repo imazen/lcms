@@ -1195,3 +1195,27 @@ fn matrix_variants2() {
         }
     }
 }
+
+/// CLUT-float internals on more grid combos — the CLUT
+/// float machinery.
+#[test]
+fn clut_float2() {
+    unsafe {
+        for (name, ch, pts) in [
+            ("3ch-2pt", 3u32, 2u32),
+            ("3ch-17pt", 3, 17),
+            ("4ch-2pt", 4, 2),
+            ("4ch-17pt", 4, 17)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), ch, ch);
+            let stage = c::cmsStageAllocCLutFloat(
+                std::ptr::null_mut(), pts, ch, ch,
+                std::ptr::null());
+            eprintln!("{name} alloc={}", !stage.is_null());
+            if !stage.is_null() {
+                c::cmsPipelineInsertStage(pl, 1, stage);
+            }
+            c::cmsPipelineFree(pl);
+        }
+    }
+}
