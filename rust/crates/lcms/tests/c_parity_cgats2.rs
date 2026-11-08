@@ -3654,3 +3654,107 @@ fn cgats_cube2_arms() {
         }
     }
 }
+
+/// cmscgats residual — InSymbol +sign, double-format
+///   num->id path, include-depth overflow, more
+///   numeric lexer forms.
+#[test]
+fn cgats_insym2_arms() {
+    unsafe {
+        // '+'-signed values in data rows + float/hex
+        //   + num-followed-by-idchar
+        for (doc, name) in [
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 3\n\
+              BEGIN_DATA_FORMAT\n\
+              A B C\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\n\
+              BEGIN_DATA\n\
+              +1 +2 +3\n\
+              4 5 6\nEND_DATA\n", "plus-rows"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\n\
+              A B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n\
+              + 1\nEND_DATA\n", "plus-space"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\n\
+              A B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\n\
+              BEGIN_DATA\n\
+              1.5e3 2x\n\
+              4 5\nEND_DATA\n", "numid"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 3\n\
+              BEGIN_DATA_FORMAT\n\
+              A B C\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 3\n\
+              BEGIN_DATA\n\
+              0x1F 0b101 0o17\n\
+              .5 5. 1e-2\n\
+              -1 -0x10 -.5\nEND_DATA\n", "forms"),
+            ("CGATS.17\n\
+              ORIGINATOR \"o\"\n\
+              CREATED \"d\"\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\n\
+              A\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n\
+              1e9999\nEND_DATA\n", "bigexp"),
+        ] {
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32);
+            eprintln!("{name} it8={}", !it8.is_null());
+            if !it8.is_null() {
+                // GetData probes reach the numeric paths
+                let n = c::cmsIT8GetDataDbl(it8,
+                    "SAMPLE_ID\0".as_ptr() as *const _,
+                    "A\0".as_ptr() as *const _);
+                eprintln!("  dbl={n}");
+                c::cmsIT8Free(it8);
+            }
+        }
+        // include-depth: chain of #INCLUDE files past
+        //   MAXINCLUDE (upstream default 10)
+        for depth in [1u32, 5, 12] {
+            for d in 0..depth {
+                let f = format!(
+                    "/tmp/lcms_inc_{}_{}.txt", depth, d);
+                let body = if d + 1 < depth {
+                    format!(
+                        "#INCLUDE \"lcms_inc_{}_{}.txt\"\n",
+                        depth, d + 1)
+                } else {
+                    "NUMBER_OF_FIELDS 1\n\
+                     BEGIN_DATA_FORMAT\n\
+                     A\nEND_DATA_FORMAT\n\
+                     NUMBER_OF_SETS 1\n\
+                     BEGIN_DATA\n42\nEND_DATA\n".to_string()
+                };
+                std::fs::write(&f, body).unwrap();
+            }
+            let doc = format!(
+                "CGATS.17\n\
+                 #INCLUDE \"/tmp/lcms_inc_{}_0.txt\"\n",
+                depth);
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32);
+            eprintln!("inc-depth{depth} it8={}",
+                !it8.is_null());
+            if !it8.is_null() {
+                c::cmsIT8Free(it8); }
+            for d in 0..depth {
+                let _ = std::fs::remove_file(format!(
+                    "/tmp/lcms_inc_{}_{}.txt", depth, d));
+            }
+        }
+    }
+}
