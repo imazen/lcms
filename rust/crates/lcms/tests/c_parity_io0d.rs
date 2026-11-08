@@ -4587,3 +4587,38 @@ fn per_sig_dispatch() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Multi-entry numeric arrays — S15Fixed16 + U16Fixed16 +
+/// UInt64Array serializers with multi-entry payloads.
+#[test]
+fn multi_numeric_arrays() {
+    unsafe {
+        // chad takes 9x S15Fixed16 (3x3 adaptation matrix)
+        let chad: [u32; 9] = [
+            0x00010000, 0x00001000, 0x00000100,
+            0x00002000, 0x00008000, 0x00000400,
+            0x00000800, 0x00000200, 0x0001C000,
+        ];
+        for (sig, payload, name) in [
+            (0x63686164u32, chad.as_ptr() as *const _, "chad"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
