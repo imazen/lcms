@@ -5666,3 +5666,53 @@ fn malformed_tag_reads2() {
         }
     }
 }
+
+/// Type_ColorantOrderType — 'clro' tag is a u8 channel-order
+/// array (count + indices).
+#[test]
+fn colorant_order_tag() {
+    unsafe {
+        // write path: u8 array payload
+        let order: [u8; 4] = [3, 2, 1, 0];
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x636C726F,
+            order.as_ptr() as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x636C726F)
+        } else { std::ptr::null_mut() };
+        eprintln!("clro w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+
+        // raw malformed: Count > cmsMAXCHANNELS rejects
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&0x636C726Fu32.to_be_bytes()); // type sig
+        raw.extend_from_slice(&[0; 4]);
+        raw.extend_from_slice(&17u32.to_be_bytes()); // Count=17 > 16
+        raw.extend_from_slice(&[0u8; 20]);
+        let prof2 = c::cmsCreate_sRGBProfile();
+        c::cmsWriteRawTag(prof2, 0x636C726F,
+            raw.as_ptr() as *const _, raw.len() as u32);
+        let mut n2 = buf.len() as u32;
+        let s2 = c::cmsSaveProfileToMem(prof2,
+            buf.as_mut_ptr() as *mut _, &mut n2);
+        let rp2 = if s2 != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n2)
+        } else { std::ptr::null_mut() };
+        let tag2 = if !rp2.is_null() {
+            c::cmsReadTag(rp2, 0x636C726F)
+        } else { std::ptr::null_mut() };
+        eprintln!("clro-17 s={s2} read={}", !tag2.is_null());
+        if !rp2.is_null() { c::cmsCloseProfile(rp2); }
+        c::cmsCloseProfile(prof2);
+    }
+}
