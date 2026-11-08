@@ -4790,3 +4790,76 @@ fn float_fmt_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Unroll*/Pack* chunky-byte + planar formatters — 8/16-bit
+/// packed formats across channel counts and endianness.
+#[test]
+fn chunky_fmt_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let enc = |cs: u32, ch: u32, b: u32| {
+            (cs << 16) | (ch << 3) | b
+        };
+        const PLANAR: u32 = 1 << 12;
+        const END16: u32 = 1 << 11;
+        const DOSWAP: u32 = 1 << 10;
+        const SWAPF: u32 = 1 << 14;
+        const EXTRA: u32 = 1 << 7;
+        let r8 = enc(4, 3, 1);
+        let r16 = enc(4, 3, 2);
+        let l8 = enc(10, 3, 1);
+        let l16 = enc(10, 3, 2);
+        let k8 = enc(6, 4, 1);
+        let k16 = enc(6, 4, 2);
+        let g8 = enc(3, 1, 1);
+        let g16 = enc(3, 1, 2);
+        let x8 = enc(9, 3, 1);
+        let x16 = enc(9, 3, 2);
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, r16, l16, "r16->l16"),
+            (lab, srgb, l16, r16, "l16->r16"),
+            (srgb, cmyk, r16, k16, "r16->k16"),
+            (cmyk, srgb, k16, r16, "k16->r16"),
+            (srgb, lab, r8 | PLANAR, l8, "rpl->l8"),
+            (lab, srgb, l8 | PLANAR, r8, "lpl->r8"),
+            (srgb, lab, r16 | PLANAR, l16, "r16pl->l16"),
+            (cmyk, srgb, k8 | PLANAR, r8, "kpl->r8"),
+            (srgb, cmyk, r8, k8 | PLANAR, "r8->kpl"),
+            (srgb, lab, r8 | DOSWAP, l8, "rswap->l8"),
+            (lab, srgb, l8 | DOSWAP, r8, "lswap->r8"),
+            (srgb, lab, r16 | END16, l16, "r16se->l16"),
+            (srgb, lab, r8 | SWAPF, l8, "rswf->l8"),
+            (srgb, lab, r8 | EXTRA, l8, "rexa->l8"),
+            (srgb, lab, r16 | END16 | PLANAR, l16, "rsepl"),
+            (srgb, lab, r8 | DOSWAP | EXTRA, l8, "rdswe"),
+            (srgb, lab, r8, x8, "r8->x8"),
+            (srgb, lab, r16, x16, "r16->x16"),
+            (srgb, lab, r16 | DOSWAP, l16, "r16sw->l16"),
+            (srgb, lab, g8 | PLANAR, l8, "g8pl->l8"),
+            (srgb, lab, g16 | PLANAR, l16, "g16pl->l16"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp,
+                of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 32];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
