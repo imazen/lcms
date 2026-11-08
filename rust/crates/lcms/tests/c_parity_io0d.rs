@@ -8445,3 +8445,74 @@ fn segmented_curve_arms() {
         }
     }
 }
+
+/// Type_Text_Description_Read deep arms — raw 'desc' tags with
+/// ASCII-only, ASCII+Unicode, +ScriptCode, malformed variants.
+#[test]
+fn desc_read_arms() {
+    unsafe {
+        let mk = |ascii: &[u8], uni: &[u8], script: &[u8]| {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x64657363u32.to_be_bytes()); // 'desc'
+            v.extend_from_slice(&0u32.to_be_bytes());
+            v.extend_from_slice(&(ascii.len() as u32).to_be_bytes());
+            v.extend_from_slice(ascii);
+            // unicode section: ucs2count u32 + ucs2be + scriptcode u16+count u8+mac[67]
+            v.extend_from_slice(&uni);
+            v.extend_from_slice(&script);
+            v
+        };
+        // minimal: ascii only, no unicode/scriptcode fields
+        let mut ascii_only = Vec::new();
+        ascii_only.extend_from_slice(&0x64657363u32.to_be_bytes());
+        ascii_only.extend_from_slice(&0u32.to_be_bytes());
+        ascii_only.extend_from_slice(&5u32.to_be_bytes());
+        ascii_only.extend_from_slice(b"test\0");
+        // ascii + unicode + scriptcode (real layout)
+        let mut full = Vec::new();
+        full.extend_from_slice(&0x64657363u32.to_be_bytes());
+        full.extend_from_slice(&0u32.to_be_bytes());
+        full.extend_from_slice(&5u32.to_be_bytes());
+        full.extend_from_slice(b"test\0");
+        full.extend_from_slice(&0u32.to_be_bytes()); // UnicodeCode
+        full.extend_from_slice(&3u32.to_be_bytes()); // UnicodeCount
+        // 3 ucs2be chars
+        full.extend_from_slice(&0x0041u16.to_be_bytes());
+        full.extend_from_slice(&0x00e4u16.to_be_bytes());
+        full.extend_from_slice(&0x4e2du16.to_be_bytes());
+        // scriptcode: u16 code + u8 count + mac[67]
+        full.extend_from_slice(&0u16.to_be_bytes());
+        full.extend_from_slice(&3u8.to_be_bytes());
+        full.extend_from_slice(&[0u8; 67]);
+        // reject: AsciiCount > tag
+        let mut short = Vec::new();
+        short.extend_from_slice(&0x64657363u32.to_be_bytes());
+        short.extend_from_slice(&0u32.to_be_bytes());
+        short.extend_from_slice(&0xffffu32.to_be_bytes()); // huge count
+        short.extend_from_slice(b"x\0");
+        // reject: AsciiCount > 0x7ffff
+        let mut huge = Vec::new();
+        huge.extend_from_slice(&0x64657363u32.to_be_bytes());
+        huge.extend_from_slice(&0u32.to_be_bytes());
+        huge.extend_from_slice(&0x80000u32.to_be_bytes());
+        huge.extend_from_slice(&[0; 16]);
+        for (blob, name) in [
+            (&ascii_only, "ascii-only"),
+            (&full, "full"),
+            (&short, "short-rej"),
+            (&huge, "huge-rej"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 2.1);
+            c::cmsWriteRawTag(prof, 0x64657363,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let tag = c::cmsReadTag(prof, 0x64657363);
+            eprintln!("{name} read={}", !tag.is_null());
+            if !tag.is_null() {
+                // read twice for dup arms
+                let _t2 = c::cmsReadTag(prof, 0x64657363);
+            }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
