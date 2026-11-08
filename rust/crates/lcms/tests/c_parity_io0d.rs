@@ -6180,3 +6180,40 @@ fn mpe_curve_bacs_arms() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Type_Signature_Read/Write — tech/ciis/rig0/rig2 signature
+/// tags (u32 payload).
+#[test]
+fn signature_tag_arms() {
+    unsafe {
+        for (sig, val, name) in [
+            (0x74656368u32, 0x66747020u32, "tech-ft"),
+            (0x74656368, 0x73636E72u32, "tech-scnr"),
+            (0x63696973, 0x7369676Eu32, "ciis"),
+            (0x72696730, 0x7369676Eu32, "rig0"),
+            (0x72696732, 0x7369676Eu32, "rig2"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, &val as *const _ as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            let back = if !tag.is_null() {
+                *(tag as *const u32)
+            } else { 0 };
+            eprintln!("{name} w={w} s={s} read={} val={back:#x}",
+                !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
