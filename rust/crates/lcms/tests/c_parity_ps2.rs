@@ -539,3 +539,31 @@ fn named_color_crd() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// PostScript emitters — CSA + CRD generation on input/output
+/// profiles and intents.
+#[test]
+fn ps2_emitters() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let mut buf = vec![0u8; 1 << 16];
+        for (prof, intent, name) in [
+            (srgb, 0u32, "srgb-i0"),
+            (srgb, 1, "srgb-i1"),
+            (srgb, 2, "srgb-i2"),
+            (lab, 0, "lab-i0"),
+        ] {
+            let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
+                prof, intent, 0, buf.as_mut_ptr() as *mut _,
+                buf.len() as u32);
+            eprintln!("csa {name} n={n}");
+            let n2 = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
+                prof, intent, 0, buf.as_mut_ptr() as *mut _,
+                buf.len() as u32);
+            eprintln!("crd {name} n={n2}");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
