@@ -1698,3 +1698,46 @@ fn corpus_intent_transforms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Corpus intent eval — pixel data through real profiles
+/// at different intents.
+#[test]
+fn corpus_intent_eval() {
+    unsafe {
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab_fmt = (10 << 16) | (3 << 3) | 1u32;
+        for (name, path, in_fmt, nch) in [
+            ("argb", b"../../aRGBlcms2.icc\0" as &[u8],
+             (4 << 16) | (3 << 3) | 1, 3u32),
+            ("cmyk", b"../../lcms2cmyk.icc\0" as &[u8],
+             (6 << 16) | (4 << 3) | 1, 4),
+            ("glab", b"../../glablcms2.icc\0" as &[u8],
+             (3 << 16) | (1 << 3) | 1, 1),
+            ("srgb", b"../../sRGBlcms2.icc\0" as &[u8],
+             (4 << 16) | (3 << 3) | 1, 3)] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            for intent in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(h, in_fmt,
+                    lab, lab_fmt, intent, 0);
+                if t.is_null() {
+                    eprintln!("{name} i{intent}=NULL");
+                    continue;
+                }
+                let inp = vec![128u8; nch as usize];
+                let mut out = [0u8; 3];
+                c::cmsDoTransform(t, inp.as_ptr() as _,
+                    out.as_mut_ptr() as _, 1);
+                eprintln!("{name} i{intent} out={},{},{}",
+                    out[0], out[1], out[2]);
+                c::cmsDeleteTransform(t);
+            }
+            c::cmsCloseProfile(h);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
