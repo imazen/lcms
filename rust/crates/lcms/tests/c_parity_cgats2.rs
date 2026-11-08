@@ -3758,3 +3758,98 @@ fn cgats_insym2_arms() {
         }
     }
 }
+
+/// cmscgats residual — WriteHeader/SaveToFile/
+///   SaveToMem + LoadFromFile round-trips, property
+///   str/dbl/comment/data-format/data-dbl sets,
+///   DefineDblFormat custom formats.
+#[test]
+fn cgats_write_load_arms() {
+    unsafe {
+        // build an IT8 doc, save to file + mem, reload
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        eprintln!("it8={}", !it8.is_null());
+        if it8.is_null() { return; }
+        c::cmsIT8SetSheetType(it8,
+            "CGATS.17\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyStr(it8,
+            "ORIGINATOR\0".as_ptr() as *const _,
+            "lcms-test\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyStr(it8,
+            "CREATED\0".as_ptr() as *const _,
+            "2026-11-08\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyDbl(it8,
+            "DENSITY\0".as_ptr() as *const _, 1.5);
+        c::cmsIT8SetPropertyDbl(it8,
+            "WEIGHT\0".as_ptr() as *const _, 0.25);
+        c::cmsIT8SetComment(it8,
+            "comment line one\0".as_ptr() as *const _);
+        c::cmsIT8SetComment(it8,
+            "comment two\0".as_ptr() as *const _);
+        // define a custom double format
+        c::cmsIT8DefineDblFormat(it8,
+            "%.12g\0".as_ptr() as *const _);
+        // data format + sets
+        let fmt: Vec<*const i8> = [
+            "SAMPLE_ID\0".as_ptr() as *const _,
+            "RGB_R\0".as_ptr() as *const _,
+            "RGB_G\0".as_ptr() as *const _,
+            "RGB_B\0".as_ptr() as *const _,
+            "LAB_L\0".as_ptr() as *const _,
+        ].to_vec();
+        for (i, f) in fmt.iter().enumerate() {
+            let ok = c::cmsIT8SetDataFormat(it8,
+                i as i32, *f);
+            eprintln!("  fmt[{i}] {ok}");
+        }
+        for p in 0..3u32 {
+            let patch = format!("P{p}\0");
+            for (fld, v) in [("RGB_R", p as f64 + 0.1),
+                ("RGB_G", p as f64 + 0.2),
+                ("RGB_B", p as f64 + 0.3),
+                ("LAB_L", p as f64 * 33.0)] {
+                let f = format!("{fld}\0");
+                let _ = c::cmsIT8SetDataDbl(it8,
+                    patch.as_ptr() as *const _,
+                    f.as_ptr() as *const _, v);
+            }
+        }
+        // save to mem (size query then real)
+        let mut need = 0u32;
+        c::cmsIT8SaveToMem(it8, std::ptr::null_mut(),
+            &mut need);
+        eprintln!("mem-need={need}");
+        let mut mbuf = vec![0u8; (need + 64) as usize];
+        let mut n2 = mbuf.len() as u32;
+        let sv = c::cmsIT8SaveToMem(it8,
+            mbuf.as_mut_ptr() as *mut _, &mut n2);
+        eprintln!("mem-sv={sv} n2={n2}");
+        // save to file + reload
+        let path = std::ffi::CString::new(
+            "/tmp/lcms_it8_wl.it8").unwrap();
+        let sf = c::cmsIT8SaveToFile(it8, path.as_ptr());
+        eprintln!("file-sv={sf}");
+        let it8b = c::cmsIT8LoadFromFile(
+            std::ptr::null_mut(), path.as_ptr());
+        eprintln!("reload={}", !it8b.is_null());
+        if !it8b.is_null() {
+            let v = c::cmsIT8GetDataDbl(it8b,
+                "P1\0".as_ptr() as *const _,
+                "RGB_R\0".as_ptr() as *const _);
+            eprintln!("  reread RGB_R@P1={v}");
+            let t = c::cmsIT8EnumDataFormat(it8b,
+                std::ptr::null_mut());
+            eprintln!("  enum-fmt={t}");
+            c::cmsIT8Free(it8b);
+        }
+        // reload from mem
+        let it8c = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            mbuf.as_ptr() as *const _, n2);
+        eprintln!("mem-reload={}", !it8c.is_null());
+        if !it8c.is_null() {
+            c::cmsIT8Free(it8c); }
+        c::cmsIT8Free(it8);
+        let _ = std::fs::remove_file("/tmp/lcms_it8_wl.it8");
+    }
+}
