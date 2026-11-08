@@ -720,3 +720,52 @@ fn named_color_index_info() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Dictionary internals — entries with display-name/value/
+/// encoding variants -> Type_Dictionary offset computation.
+#[test]
+fn dictionary_internals() {
+    unsafe {
+        let d = c::cmsDictAlloc(std::ptr::null_mut());
+        // entries with name, value, display-name, display-value
+        let w = |s: &str| s.chars().map(|c| c as i32)
+            .chain([0]).collect::<Vec<i32>>();
+        let dn = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(dn, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, b"disp\0".as_ptr());
+        c::cmsDictAddEntry(d, w("k1").as_ptr(), w("v1").as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        c::cmsDictAddEntry(d, w("k2").as_ptr(), w("v2").as_ptr(),
+            dn, dn);
+        c::cmsDictAddEntry(d, w("k3").as_ptr(), w("v3").as_ptr(),
+            dn, std::ptr::null_mut());
+        let head = c::cmsDictGetEntryList(d);
+        // enumerate
+        if !head.is_null() {
+            let e1 = c::cmsDictNextEntry(head);
+            let e2 = c::cmsDictNextEntry(e1);
+            let e3 = c::cmsDictNextEntry(e2);
+            eprintln!("head={} e2={} e3={}",
+                !head.is_null(), !e2.is_null(), !e3.is_null());
+        }
+        // serialize into meta tag
+        let prof = c::cmsCreate_sRGBProfile();
+        let wtag = c::cmsWriteTag(prof, 0x6d657461, d as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if wtag != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x6d657461)
+        } else { std::ptr::null_mut() };
+        eprintln!("dict w={wtag} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsDictFree(d);
+    }
+}
