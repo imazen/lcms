@@ -3422,3 +3422,42 @@ fn corpus_all_tags() {
         eprintln!("tags {ok}/{total} read");
     }
 }
+
+/// SaveProfileToMem two-phase + MultiprofileTransform — the
+/// size-query pass then the real write; multi-profile chain.
+#[test]
+fn save_two_phase_multiprofile() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        // phase 1: size query (NULL buffer)
+        let mut need = 0u32;
+        let s1 = c::cmsSaveProfileToMem(p, std::ptr::null_mut(), &mut need);
+        eprintln!("size-query s={s1} need={need}");
+        // phase 2: real write
+        let mut buf = vec![0u8; need as usize + 64];
+        let s2 = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut need);
+        eprintln!("write s={s2}");
+        // too-small buffer -> reject
+        let mut small = [0u8; 8];
+        let mut sn = small.len() as u32;
+        let s3 = c::cmsSaveProfileToMem(p,
+            small.as_mut_ptr() as *mut _, &mut sn);
+        eprintln!("small s={s3}");
+        c::cmsCloseProfile(p);
+        // multiprofile transform — chain of 3
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let mut chain = [srgb, lab, xyz];
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let x16 = (11u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateMultiprofileTransform(chain.as_mut_ptr(),
+            2, r16, x16, 0, 0);
+        eprintln!("multi t={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+    }
+}
