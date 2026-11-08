@@ -13433,3 +13433,198 @@ fn ps_input_io_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Type_LUTA2B_Read/Type_LUTB2A_Read — raw mAB/mBA blobs:
+/// curve/matrix/clut/curve orders x malformed variants.
+#[test]
+fn lutab_read_arms() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    // embedded 'curv' element: sig+rsv+u32 nEntries+u16 data
+    fn curve(vals: &[u16]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x63757276));   // 'curv'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(vals.len() as u32));
+        for v in vals { t.extend_from_slice(&be16(*v)); }
+        while t.len() % 4 != 0 { t.push(0); }   // 4-align
+        t
+    }
+    // mft2 (16-bit) lut: pad[6], nInput u8, nOutput u8,
+    //   grid u8, pad2, 9x s15f16, inp u16, out u16,
+    //   [incurves][clut][outcurves]
+    fn mft2(ich: u8, och: u8, grid: u8, mat: &[i32; 9],
+        inc: &[u16], clut_fill: u8, outc: &[u16]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x6D667432));   // 'mft2'
+        t.extend_from_slice(&be32(0));
+        t.push(ich);
+        t.push(och);
+        t.push(grid);
+        t.push(0);
+        for v in mat { t.extend_from_slice(&v.to_be_bytes()); }
+        t.extend_from_slice(&be16(inc.len() as u16));
+        t.extend_from_slice(&be16(outc.len() as u16));
+        for _ in 0..ich {
+            t.extend_from_slice(&curve(inc));
+        }
+        let n = (grid as usize).pow(ich as u32) * och as usize;
+        for i in 0..n {
+            t.extend_from_slice(&be16((i as u16 % 31)
+                * 2110 + clut_fill as u16));
+        }
+        for _ in 0..och {
+            t.extend_from_slice(&curve(outc));
+        }
+        t
+    }
+    // mAB: header {nIn u8, nOut u8, pad} + offs B/A/CLUT/M/Matrix/
+    //   u32 each (relative to tag-data base)
+    fn mab(ich: u8, och: u8, b: &[Vec<u8>],
+        a: &[Vec<u8>], clut: Option<&[u8]>, m: Option<&[Vec<u8>]>,
+        mat: &[i32; 9], sig: u32) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(sig));   // 'mAB '
+        t.extend_from_slice(&be32(0));
+        t.push(ich);
+        t.push(och);
+        t.extend_from_slice(&[0u8; 2]);
+        // 5 offsets: B, A, M, CLUT-pos-table?, mat — the
+        // mAB has B/A/M/clut/mat offsets (matrix first?)
+        let offs_at = t.len();
+        for _ in 0..5 { t.extend_from_slice(&be32(0)); }
+        // offsets are from the tag start
+        let boff = t.len();
+        for c in b { t.extend_from_slice(c); }
+        let aoff = if a.is_empty() { 0 } else { t.len() };
+        for c in a { t.extend_from_slice(c); }
+        let moff = m.map(|_| t.len()).unwrap_or(0);
+        for c in m.unwrap_or_default() {
+            t.extend_from_slice(c);
+        }
+        let clutoff = clut.map(|_| t.len()).unwrap_or(0);
+        if let Some(c) = clut { t.extend_from_slice(c); }
+        let matoff = if mat.iter().any(|v| *v != 0) {
+            t.len() } else { 0 };
+        if matoff != 0 {
+            for v in mat { t.extend_from_slice(&v.to_be_bytes()); }
+        }
+        // order: B, Matrix, M, CLUT, A offsets
+        let seq = [boff as u32, matoff as u32, moff as u32,
+            clutoff as u32, aoff as u32];
+        for (i, v) in seq.iter().enumerate() {
+            t[offs_at + i * 4..offs_at + i * 4 + 4]
+                .copy_from_slice(&v.to_be_bytes());
+        }
+        t
+    }
+    fn clut_bytes(ich: u8, och: u8, grid: u8) -> Vec<u8> {
+        let mut t = Vec::new();
+        let mut g = [0u8; 16];
+        for i in 0..ich as usize { g[i] = grid; }
+        t.extend_from_slice(&g);
+        t.push(2);                        // precision u8
+        t.extend_from_slice(&[0u8; 3]);   // reserved
+        let n = (grid as usize).pow(ich as u32) * och as usize;
+        for i in 0..n {
+            t.extend_from_slice(&be16((i as u16 % 31) * 2110));
+        }
+        t
+    }
+    let lin = curve(&[0, 0xffff]);
+    let g2 = curve(&[0, 0x8000, 0xffff]);
+    let idmat: [i32; 9] = [0x10000, 0, 0, 0, 0x10000, 0,
+        0, 0, 0x10000];
+    let nonmat: [i32; 9] = [0x10000, 0x1000, 0, 0x2000,
+        0x10000, 0, 0, 0x3000, 0x10000];
+    unsafe {
+        let variants: Vec<(u32, Vec<u8>, &str)> = vec![
+            // a2b0 = mft2 or mAB
+            (0x41324230, mft2(3, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]), "mft2-std"),
+            (0x41324230, mft2(3, 3, 2, &nonmat,
+                &[0, 0x8000, 0xffff], 1, &[0, 0xffff]),
+                "mft2-nonmat"),
+            (0x41324230, mft2(1, 1, 1, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]), "mft2-1ch"),
+            (0x41324230, mft2(4, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]), "mft2-4in"),
+            (0x41324230, mft2(3, 4, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]), "mft2-4out"),
+            (0x41324230, mab(3, 3,
+                &[lin.clone(), lin.clone(), lin.clone()],
+                &[g2.clone(), g2.clone(), g2.clone()],
+                None, None, &idmat, 0x6D414220), "mab-cv-cv"),
+            (0x41324230, mab(3, 3,
+                &[lin.clone(), lin.clone(), lin.clone()],
+                &[g2.clone(), g2.clone(), g2.clone()],
+                Some(&clut_bytes(3, 3, 3)),
+                None, &idmat, 0x6D414220), "mab-cv-clut-cv"),
+            (0x41324230, mab(3, 3,
+                &[lin.clone(), lin.clone(), lin.clone()],
+                &[g2.clone(), g2.clone(), g2.clone()],
+                Some(&clut_bytes(3, 3, 3)),
+                Some(&[lin.clone(), lin.clone(), lin.clone()]),
+                &idmat, 0x6D414220), "mab-cv-mat-clut-cv"),
+            (0x41324230, mab(3, 3,
+                &[lin.clone(), lin.clone(), lin.clone()],
+                &[],
+                Some(&clut_bytes(3, 3, 3)), None,
+                &nonmat, 0x6D414220), "mab-clut-nonmat"),
+            (0x42324130, mft2(3, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]), "b2a-mft2"),
+            (0x42324130, mft2(3, 3, 3, &nonmat,
+                &[0, 0xffff], 0, &[0, 0xffff]), "b2a-nonmat"),
+            (0x42324130, mab(3, 3,
+                &[lin.clone(), lin.clone(), lin.clone()],
+                &[g2.clone(), g2.clone(), g2.clone()],
+                None, None, &idmat, 0x6D424120), "mba-cv-cv"),
+            (0x42324130, mab(3, 3,
+                &[lin.clone(), lin.clone(), lin.clone()],
+                &[g2.clone(), g2.clone(), g2.clone()],
+                Some(&clut_bytes(3, 3, 3)),
+                None, &idmat, 0x6D424120), "mba-cv-clut-cv"),
+            // malformed
+            (0x41324230, { let mut t = mft2(3, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]); t.truncate(30);
+                t }, "mft2-trunc"),
+            (0x41324230, { let mut t = mft2(3, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]); t[8] = 0;
+                t }, "mft2-ich0"),
+            (0x41324230, { let mut t = mft2(3, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]); t[9] = 0;
+                t }, "mft2-och0"),
+            (0x41324230, { let mut t = mft2(3, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]); t[10] = 1;
+                t }, "mft2-grid1"),
+            (0x41324230, { let mut t = mft2(3, 3, 3, &idmat,
+                &[0, 0xffff], 0, &[0, 0xffff]); t[10] = 0;
+                t }, "mft2-grid0"),
+            (0x41324230, mab(3, 3, &[lin.clone()],
+                &[g2.clone()], None, None,
+                &[0i32; 9], 0x6D414220), "mab-nomat"),
+        ];
+        for (sig, blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, *sig,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 22];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, *sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
