@@ -25401,3 +25401,65 @@ fn internal_final80_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmscnvrt residual — AddConversion default branch:
+///   profiles whose PCS is neither Lab nor XYZ
+///   ('Luv ', MCH) hit the colorspace-mismatch return.
+#[test]
+fn internal_final81_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // profiles with non-Lab/XYZ PCS
+        for (pcs, pname) in [
+            (0x4C757620u32, "luv"),
+            (0x4D434833u32, "mch3"),
+            (0x59585958u32, "yxyx"),
+            (0x00000000u32, "null"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x73706163);
+            c::cmsSetColorSpace(p, pcs);
+            c::cmsSetPCS(p, pcs);
+            c::cmsSetProfileVersion(p, 4.4);
+            // 2-profile and 3-profile chains through it
+            let mut profs = [srgb, p];
+            let fin = (0u32 << 16) | (3 << 3) | 2;
+            let t = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 2, fin, fin, 0, 0);
+            eprintln!("{pname} 2chain t={}",
+                !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+            let mut profs3 = [srgb, p, srgb];
+            let t3 = c::cmsCreateMultiprofileTransform(
+                profs3.as_mut_ptr(), 3, fin, fin, 0, 0);
+            eprintln!("{pname} 3chain t={}",
+                !t3.is_null());
+            if !t3.is_null() {
+                c::cmsDeleteTransform(t3); }
+            c::cmsCloseProfile(p);
+        }
+        // gray->gray with mismatched PCS intent combos
+        let gray = c::cmsCreateGrayProfileTHR(
+            std::ptr::null_mut(), std::ptr::null(),
+            g as *const std::ffi::c_void);
+        if !gray.is_null() {
+            let mut profs = [gray, srgb];
+            let fin = (0u32 << 16) | (3 << 3) | 2;
+            for int_ in [0u32, 1, 2, 3, 13, 14, 15] {
+                let t = c::cmsCreateMultiprofileTransform(
+                    profs.as_mut_ptr(), 2, fin, fin,
+                    int_, 0);
+                eprintln!("gray int{int_} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(gray);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
