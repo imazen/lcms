@@ -483,3 +483,45 @@ fn it8_writer_arms() {
         let _ = ps;
     }
 }
+
+/// IT8 API bodies — SheetType/Comment/EnumDataFormat/
+/// GetPatchByName/DefineDblFormat/Hex/Uncooked/Multi get+set.
+#[test]
+fn it8_api_bodies() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        let g = |x: &str| format!("{x}\0").as_ptr() as *const i8;
+        let keep: Vec<_> = ["CGATS.17", "comment here", "PROP", "42",
+            "SAMPLE_ID", "v1", "p0", "multi-k", "multi-v", "HEXPROP",
+            "uncooked", "fmt"].iter().map(|x| format!("{x}\0")).collect();
+        let k = |x: &str| keep.iter().find(|s|
+            s.trim_end_matches('\0') == x).unwrap().as_ptr() as *const i8;
+        // sheet type + comment
+        c::cmsIT8SetSheetType(h, k("CGATS.17"));
+        let st = c::cmsIT8GetSheetType(h);
+        eprintln!("sheet={:?}", std::ffi::CStr::from_ptr(st));
+        c::cmsIT8SetComment(h, k("comment here"));
+        // property kinds
+        c::cmsIT8SetPropertyDbl(h, k("PROP"), 42.5);
+        c::cmsIT8SetPropertyHex(h, k("HEXPROP"), 0xDEAD);
+        c::cmsIT8SetPropertyStr(h, k("v1"), k("v1"));
+        c::cmsIT8SetPropertyUncooked(h, k("uncooked"), k("v1"));
+        c::cmsIT8SetPropertyMulti(h, k("multi-k"), k("multi-v"), k("v1"));
+        let pv = c::cmsIT8GetProperty(h, k("PROP"));
+        let pd = c::cmsIT8GetPropertyDbl(h, k("PROP"));
+        let pm = c::cmsIT8GetPropertyMulti(h, k("multi-k"), k("multi-v"));
+        eprintln!("prop={:?} dbl={pd} multi={:?}",
+            std::ffi::CStr::from_ptr(pv),
+            std::ffi::CStr::from_ptr(pm));
+        // data format enum
+        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let nf = c::cmsIT8EnumDataFormat(h, &mut names);
+        eprintln!("enumfmt={nf}");
+        // patch by name
+        let pi = c::cmsIT8GetPatchByName(h, k("p0"));
+        eprintln!("patchbyname={pi}");
+        // dbl format
+        c::cmsIT8DefineDblFormat(h, k("fmt"));
+        c::cmsIT8Free(h);
+    }
+}
