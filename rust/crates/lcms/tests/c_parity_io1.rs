@@ -1532,3 +1532,46 @@ fn colorspace_intent_internals() {
         }
     }
 }
+
+/// io1 LUT readers — proofing transforms + devicelink + preview
+/// chains hit the per-intent/reader arms.
+#[test]
+fn io1_lut_reader_chains() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // proofing transforms: input/proof/output × proofing intents
+        for proofing in 0..4u32 {
+            let t = c::cmsCreateProofingTransform(srgb, r16, srgb, r16,
+                lab, 0, proofing, 0);
+            eprintln!("proof-p{proofing} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        // multiprofile transform: srgb -> lab -> srgb
+        let profiles = [srgb, lab, srgb];
+        let t = c::cmsCreateMultiprofileTransform(
+            profiles.as_ptr() as *mut _, 3, r16, r16, 0, 0);
+        eprintln!("multi3 t={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        // devicelink transform via link profile
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        if let Ok(d) = std::fs::read(dir.join("lcms2link.icc")) {
+            let lk = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
+                d.len() as u32);
+            if !lk.is_null() {
+                for intent in 0..4u32 {
+                    let t = c::cmsCreateTransform(lab, l16, lk, l16,
+                        intent, 0);
+                    eprintln!("link-i{intent} t={}", !t.is_null());
+                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(lk);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
