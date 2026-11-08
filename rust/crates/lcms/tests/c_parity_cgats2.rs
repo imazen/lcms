@@ -3421,3 +3421,167 @@ fn cgats_symbol_arms() {
         }
     }
 }
+
+/// cmscgats residual — quoted sheet-type header,
+///   newline-in-property continuation write,
+///   table-out-of-sequence, EnumPropertyMulti
+///   subkey enumeration.
+#[test]
+fn cgats_header_seq_arms() {
+    unsafe {
+        for (doc, name) in [
+            // quoted sheet type -> SSTRING path
+            (b"\"CGATS.17\"\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               5\nEND_DATA\n\0".as_slice(), "quoted"),
+            // table out of sequence: 2 BEGIN_DATA_FORMAT
+            //   sections beyond declared count
+            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               5\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nX\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n1\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nY\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n2\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nZ\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n3\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nW\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n4\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nV\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n5\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nU\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n6\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nT\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n7\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nS\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n8\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nR\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n9\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nQ\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n0\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nP\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n9\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nO\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n8\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nN\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n7\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nM\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n6\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nL\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n5\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nK\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n4\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nJ\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n3\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nI\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n2\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nH\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n1\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nG\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n0\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nF\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n9\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nE\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n8\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n7\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n6\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n5\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n4\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nZX\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n3\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nZY\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n2\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nZZ\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n1\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXA\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n0\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXB\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n9\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXC\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n8\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXD\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n7\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXE\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n6\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXF\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n5\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXG\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n4\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXH\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n3\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXI\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n2\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXJ\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n1\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXK\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n0\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXL\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n9\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXM\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n8\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXN\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n7\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXO\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n6\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXP\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n5\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXQ\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n4\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXR\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n3\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXS\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n2\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXT\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n1\nEND_DATA\n\
+               BEGIN_DATA_FORMAT\nXU\nEND_DATA_FORMAT\n\
+               BEGIN_DATA\n0\nEND_DATA\n\0".as_slice(),
+                "many-tables"),
+        ] {
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} it8={}", !it8.is_null());
+            if !it8.is_null() {
+                c::cmsIT8Free(it8); }
+        }
+        // newline in property value -> '# ' continuation
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetPropertyUncooked(it8,
+            b"COMMENT\0".as_ptr() as *const _,
+            b"line1\nline2\nline3\0".as_ptr() as *const _);
+        // WRITE_PAIR prop for EnumPropertyMulti subkeys
+        c::cmsIT8SetPropertyMulti(it8,
+            b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
+            b"CIE_D65\0".as_ptr() as *const _,
+            b"0.5\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyMulti(it8,
+            b"COMPUTATIONAL_PARAMETER\0".as_ptr() as *const _,
+            b"MODE_A\0".as_ptr() as *const _,
+            b"1.0\0".as_ptr() as *const _);
+        let mut buf = vec![0u8; 1 << 16];
+        let mut n = buf.len() as u32;
+        c::cmsIT8SaveToMem(it8,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let txt = String::from_utf8_lossy(
+            &buf[..n as usize]);
+        for line in txt.lines() {
+            if line.contains("COMMENT")
+                || line.starts_with("# ") {
+                eprintln!("  out: {line}");
+            }
+        }
+        // EnumPropertyMulti on the pair prop
+        let mut names = [std::ptr::null_mut::<u8>(); 8];
+        let r = c::cmsIT8EnumPropertyMulti(it8,
+            b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
+            names.as_mut_ptr() as *mut _);
+        eprintln!("enum-multi r={r}");
+        c::cmsIT8Free(it8);
+    }
+}
