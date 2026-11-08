@@ -9663,7 +9663,7 @@ fn lut_read_arms5() {
                 if !rp.is_null() {
                     let nt = c::cmsGetTagCount(rp);
                     for i in 0..nt as u32 {
-                        let sig = c::cmsGetTagSignature(rp, i);
+                        let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
                         let t = c::cmsReadTag(rp, sig);
                         if !t.is_null() {
                             let _t2 = c::cmsReadTag(rp, sig);
@@ -9723,7 +9723,7 @@ fn save_tags_arms4() {
             if !rp.is_null() {
                 let nt = c::cmsGetTagCount(rp);
                 for i in 0..nt as u32 {
-                    let sig = c::cmsGetTagSignature(rp, i);
+                    let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
                     let _t = c::cmsReadTag(rp, sig);
                 }
                 let mut buf2 = vec![0u8; 1 << 22];
@@ -10648,7 +10648,7 @@ fn save_tags_arms6() {
             if !rp.is_null() {
                 let nt = c::cmsGetTagCount(rp);
                 for i in 0..nt as u32 {
-                    let sig = c::cmsGetTagSignature(rp, i);
+                    let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
                     let _t = c::cmsReadTag(rp, sig);
                 }
                 c::cmsCloseProfile(rp);
@@ -11501,7 +11501,7 @@ fn read_fail_arms() {
                 if !rp.is_null() {
                     let nt = c::cmsGetTagCount(rp);
                     for i in 0..nt as u32 {
-                        let sig = c::cmsGetTagSignature(rp, i);
+                        let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
                         let _t = c::cmsReadTag(rp, sig);
                     }
                     flush_cov!();
@@ -17952,5 +17952,86 @@ fn lut_sample_eval_arms() {
             c::cmsStageFree(st);
         }
         c::cmsFreeToneCurve(g);
+    }
+}
+
+/// cmstypes/cmsio0 residual — tag-table internals (write same
+///   sig twice = overwrite, link chains, tag-count growth,
+///   read-write-read cycles).
+#[test]
+fn tagtable_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        let xyzv = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x58595A20);
+        // overwrite same sig repeatedly
+        for sig in [0x72545243u32, 0x67545243, 0x62545243] {
+            for i in 0..4 {
+                let w = c::cmsWriteTag(prof, sig,
+                    if i % 2 == 0 { g } else { g2 }
+                        as *const _);
+                let r = c::cmsReadTag(prof, sig);
+                eprintln!("sig{sig:#x} i{i} w={w} r={}",
+                    !r.is_null());
+            }
+        }
+        // link chains — write, read, write again with
+        //   same payload ptr (link detection)
+        for sig in [0x77747074u32, 0x62726B74] {
+            let w1 = c::cmsWriteTag(prof, sig,
+                &xyzv as *const c::CieXyz as *const _);
+            let w2 = c::cmsWriteTag(prof, sig,
+                &xyzv as *const c::CieXyz as *const _);
+            eprintln!("{sig:#x} w1={w1} w2={w2}");
+        }
+        // grow tag table — write many sigs
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"x\0".as_ptr());
+        for i in 0..32u32 {
+            let sig = 0x74657374 + (i * 0x01000000);
+            let w = c::cmsWriteTag(prof, sig,
+                mlu as *const _);
+            if i % 8 == 0 {
+                eprintln!("grow i{i} sig={sig:#x} w={w}"); }
+        }
+        // tag count + read back
+        let cnt = c::cmsGetTagCount(prof as *const _);
+        eprintln!("tagcount={cnt}");
+        for i in 0..cnt {
+            let sig = c::cmsGetTagSignature(prof as *const _, i as u32);
+            let r = c::cmsReadTag(prof, sig);
+            eprintln!("tag{i} sig={sig:#x} r={}",
+                !r.is_null());
+        }
+        // save + reload + re-read every tag
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr()
+                as *const _, n)
+        } else { std::ptr::null_mut() };
+        if !rp.is_null() {
+            let cnt2 = c::cmsGetTagCount(rp as *const _);
+            eprintln!("reload cnt={cnt2}");
+            for i in 0..cnt2 {
+                let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
+                let r = c::cmsReadTag(rp, sig);
+                if r.is_null() {
+                    eprintln!("  tag{i} {sig:#x} null"); }
+            }
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsMLUfree(mlu);
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
     }
 }
