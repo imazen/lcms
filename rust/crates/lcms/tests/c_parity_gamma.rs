@@ -1187,3 +1187,90 @@ fn seg_eval_param_arms() {
         }
     }
 }
+
+/// cmsgamma residual — cmsSmoothToneCurve across curve shapes.
+#[test]
+fn smooth_curve_arms() {
+    unsafe {
+        // varied curve shapes — smooth each
+        for (pts, name) in [
+            (2usize, "2pt"), (4, "4pt"), (16, "16pt"),
+            (256, "256pt"), (1024, "1024pt"), (65536, "64k"),
+            (1, "1pt"), (0, "0pt"),
+        ] {
+            if pts == 0 {
+                let tc = c::cmsBuildTabulatedToneCurve16(
+                    std::ptr::null_mut(), 1,
+                    [0u16].as_ptr());
+                if !tc.is_null() {
+                    c::cmsFreeToneCurve(tc); }
+                continue;
+            }
+            let vals: Vec<u16> = (0..pts).map(|i|
+                ((i * 37 + i * i / pts.max(1)) % 65536)
+                    as u16).collect();
+            let tc = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), pts as u32,
+                vals.as_ptr());
+            if tc.is_null() { continue; }
+            let r = c::cmsSmoothToneCurve(tc, 0.5);
+            let n = c::cmsGetToneCurveEstimatedTableEntries(tc);
+            eprintln!("{name} smooth={r} entries={n}");
+            c::cmsFreeToneCurve(tc);
+        }
+        // non-monotonic + flat + ramp curves
+        for (g_, name) in [
+            (0u32, "ramp"), (1, "nonmono"), (2, "flat"),
+            (3, "spike"), (4, "saw"),
+        ] {
+            let vals: Vec<u16> = (0..256).map(|i| match g_ {
+                0 => (i * 257) as u16,
+                1 => ((i as i32 - 128).abs() * 512) as u16,
+                2 => 32768,
+                3 => if i == 128 { 65535 } else { 0 },
+                _ => ((i % 32) * 2048) as u16,
+            }).collect();
+            let tc = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 256, vals.as_ptr());
+            if tc.is_null() { continue; }
+            let r = c::cmsSmoothToneCurve(tc, 0.5);
+            let r2 = c::cmsSmoothToneCurve(tc, 0.0);
+            eprintln!("{name} smooth={r}/{r2}");
+            c::cmsFreeToneCurve(tc);
+        }
+        // parametric curves — smooth on non-tabulated
+        for ty in [1i32, 2, 3, 4, 5, 6, 7, 8] {
+            let p = [2.2f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            let tc = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ty, p.as_ptr());
+            if tc.is_null() { continue; }
+            let r = c::cmsSmoothToneCurve(tc, 0.5);
+            eprintln!("param{ty} smooth={r}");
+            c::cmsFreeToneCurve(tc);
+        }
+        // segmented curve smooth
+        let segs = [
+            c::CurveSegment {
+                x0: f32::NEG_INFINITY, x1: 0.5,
+                r#type: 4,
+                params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null(),
+            },
+            c::CurveSegment {
+                x0: 0.5, x1: f32::INFINITY,
+                r#type: 4,
+                params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null(),
+            },
+        ];
+        let sc = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 2, segs.as_ptr());
+        if !sc.is_null() {
+            let r = c::cmsSmoothToneCurve(sc, 0.5);
+            eprintln!("seg smooth={r}");
+            c::cmsFreeToneCurve(sc);
+        }
+    }
+}
