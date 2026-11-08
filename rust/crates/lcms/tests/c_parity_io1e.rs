@@ -285,9 +285,6 @@ fn type_mismatched_reads() {
         // write a text tag's raw bytes to a numeric-array sig —
         // the stored TYPE differs from the sig's expected type
         let txt = b"not a matrix\0";
-        let mut io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
-            txt.as_ptr() as *mut _, txt.len() as u32,
-            b"r\0".as_ptr() as *const _);
         // write raw bytes to 'chad' (expects sf15Fixed16Array)
         let ok = c::cmsWriteRawTag(h, 0x63686164, txt.as_ptr()
             as *const _, 8);
