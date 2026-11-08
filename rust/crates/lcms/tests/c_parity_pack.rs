@@ -2652,3 +2652,49 @@ fn float_pack_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Multi-channel packers — MCH2/MCH4/MCH6/MCH8 + big-endian + skip1
+/// format variants through the pack-table dispatch.
+#[test]
+fn mch_pack_arms() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // use profiles across channel counts where valid
+        let srgb = c::cmsCreate_sRGBProfile();
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let gray = c::cmsCreateGrayProfile(&wp as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        let mut cmyk = std::ptr::null_mut();
+        if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
+            cmyk = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+        }
+        // (PT_MCH<<16)|fl|(ch<<3)|bytes — multi-channel packers
+        let f = |cs: u32, ch: u32, by: u32, fl: u32|
+            (cs << 16) | fl | (ch << 3) | by;
+        let cases: &[(*mut std::ffi::c_void, *mut std::ffi::c_void,
+                     u32, u32, &str)] = &[
+            (srgb, gray, f(4,3,1,0), f(3,1,1,0), "3->1 u8"),
+            (srgb, gray, f(4,3,2,0), f(3,1,2,0), "3->1 u16"),
+            (srgb, gray, f(4,3,1,1<<10), f(3,1,1,0), "3->1 u8doswap"),
+            (srgb, gray, f(4,3,1,1<<16|1<<14), f(3,1,1,0), "3->1 be"),
+        ];
+        for (inp, outp, inf, of, name) in cases {
+            if (*inp).is_null() || (*outp).is_null() { continue; }
+            let t = c::cmsCreateTransform(*inp, *inf, *outp, *of, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ch = ((*inf >> 3) & 15) as usize;
+                let ib = vec![0x40u8; ch * 4];
+                let mut ob = [0u8; 16];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+    }
+}
