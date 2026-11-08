@@ -672,3 +672,39 @@ fn version_mutations2() {
         }
     }
 }
+
+/// Tag-count/entry-count mutations — the tag-count machinery
+/// internals.
+#[test]
+fn tag_count_mutations2() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // tag count @128-132
+        for (name, val) in [
+            ("n-0", 0u32),
+            ("n-1", 1u32),
+            ("n-5", 5u32),
+            ("n-50", 50u32),
+            ("n-500", 500u32),
+            ("n-huge", 0x10000u32),
+            ("n-neg", 0x80000001u32),
+        ] {
+            let mut dd = d.clone();
+            dd[128..132].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() {
+                let n = c::cmsGetTagCount(h2);
+                eprintln!("  count={n}");
+                c::cmsCloseProfile(h2);
+            }
+        }
+    }
+}
