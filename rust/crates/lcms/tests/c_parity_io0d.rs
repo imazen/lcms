@@ -18347,3 +18347,95 @@ fn internal_final8_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final9_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // all profile-direction x intent x flag transforms on
+        //   srgb/lab/gray/cmyk
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        for (a, b, fi, fo, name) in [
+            (srgb, gray, r8, g8, "rgb->gray"),
+            (gray, srgb, g8, r8, "gray->rgb"),
+            (lab, gray, l8, g8, "lab->gray"),
+            (gray, lab, g8, l8, "gray->lab"),
+        ] {
+            for intent in 0..4u32 {
+                let t = c::cmsCreateTransform(a, fi, b,
+                    fo, intent, 0);
+                eprintln!("{name} i{intent}={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+        }
+        if !cmyk.is_null() {
+            for (a, b, fi, fo, name) in [
+                (cmyk, gray, k8, g8, "cmyk->gray"),
+                (gray, cmyk, g8, k8, "gray->cmyk"),
+                (cmyk, lab, k8, l8, "cmyk->lab"),
+                (lab, cmyk, l8, k8, "lab->cmyk"),
+            ] {
+                for intent in 0..4u32 {
+                    let t = c::cmsCreateTransform(a, fi, b,
+                        fo, intent, 0);
+                    eprintln!("{name} i{intent}={}",
+                        !t.is_null());
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+            }
+        }
+        // transform on profiles with all-white/black/exotic
+        //   white points
+        for (wx, wy, name) in [
+            (0.3127f64, 0.3290, "d65"), (0.3457, 0.3585, "d50"),
+            (0.4476, 0.4075, "a"), (0.5, 0.5, "mid"),
+            (0.0, 0.0, "zero"), (1.0, 1.0, "corner"),
+            (0.25, 0.25, "q1"), (0.75, 0.15, "q4"),
+        ] {
+            let wp = c::CiexyY { x: wx, y: wy, Y: 1.0 };
+            let prim = c::CiexyYTriple {
+                Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+                Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+                Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+            };
+            let trcs = [g, g, g];
+            let prof = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _,
+                &prim as *const c::CiexyYTriple as *const _,
+                trcs.as_ptr() as *const *mut std::ffi::c_void);
+            let t = if !prof.is_null() {
+                c::cmsCreateTransform(prof, r8, lab,
+                    l8, 0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} prof={} t={}",
+                !prof.is_null(), !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !prof.is_null() { c::cmsCloseProfile(prof); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
