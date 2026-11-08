@@ -169,3 +169,48 @@ fn cam02_adaptation() {
         }
     }
 }
+
+/// cmspcs conversion parity — XYZ2Lab/Lab2XYZ/Lab2LCh/LCh2Lab/
+/// encoded round-trips on value sweeps + edge whites.
+#[test]
+fn pcs_conversions() {
+    use lcms::pcs as p;
+    use lcms::types as t;
+    let d50 = t::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+    for i in 0..8u32 {
+        let f = i as f64 / 7.0;
+        let xyz = t::CieXyz { X: f * 0.9 + 0.05, Y: f,
+            Z: (1.0 - f) * 0.9 };
+        let cl = p::xyz2lab(Some(&d50), &xyz);
+        let mut clab = c::CieLab { L: 0.0, a: 0.0, b: 0.0 };
+        unsafe {
+            let cwp = c::CieXyz { X: d50.X, Y: d50.Y, Z: d50.Z };
+            let cxyz = c::CieXyz { X: xyz.X, Y: xyz.Y, Z: xyz.Z };
+            c::cmsXYZ2Lab(&cwp, &mut clab, &cxyz);
+        }
+        assert!((cl.L - clab.L).abs() < 1e-9 && (cl.a - clab.a).abs() < 1e-9
+            && (cl.b - clab.b).abs() < 1e-9,
+            "xyz2lab px{i}: {:?} vs {:?}", cl, clab);
+        let bx = p::lab2xyz(Some(&d50), &cl);
+        assert!((bx.X - xyz.X).abs() < 1e-9,
+            "lab2xyz px{i}: {:?} vs {:?}", bx, xyz);
+        let lch = p::lab2lch(&cl);
+        let bl = p::lch2lab(&lch);
+        assert!((bl.L - cl.L).abs() < 1e-9,
+            "lch rt px{i}: {:?} vs {:?}", bl, cl);
+    }
+    for w in [[0u16, 0, 0], [0xFFFF, 0xFFFF, 0xFFFF],
+              [0x8000, 0x8000, 0x8000]] {
+        let mut fl = c::CieLab { L: 0.0, a: 0.0, b: 0.0 };
+        let mut w2 = [0u16; 3];
+        unsafe {
+            c::cmsLabEncoded2Float(&mut fl, w.as_ptr());
+            c::cmsFloat2LabEncoded(w2.as_mut_ptr(), &fl);
+        }
+        let rl = p::lab_encoded2float(w);
+        let rw = p::float2lab_encoded(&rl);
+        assert_eq!(rw, w2, "enc rt {w:?}");
+        assert!((rl.L - fl.L).abs() < 1e-3,
+            "enc->f {w:?}: {:?} vs {:?}", rl, fl);
+    }
+}
