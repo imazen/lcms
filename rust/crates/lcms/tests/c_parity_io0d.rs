@@ -13937,3 +13937,162 @@ fn intent_gamut_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+/// Tag writers/readers batch: view/meas/tech/crdi/parametric +
+/// linearization devicelink + context + MLU-wide + unlink.
+#[test]
+fn misc_tag_ctx_arms() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn s15(v: f64) -> [u8; 4] {
+        ((v * 65536.0) as i32).to_be_bytes()
+    }
+    // 'view' tag: XYZ[3] s15f16 + XYZ illuminant + XYZ surround
+    //   + illum type u32
+    fn view_tag() -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x76696577));
+        t.extend_from_slice(&be32(0));
+        for v in [0.9642f64, 1.0, 0.8249] {
+            t.extend_from_slice(&s15(v));
+        }
+        for v in [0.9642f64, 1.0, 0.8249] {
+            t.extend_from_slice(&s15(v));
+        }
+        for v in [0.9642f64, 1.0, 0.8249] {
+            t.extend_from_slice(&s15(v));
+        }
+        t.extend_from_slice(&be32(1));
+        t
+    }
+    // 'meas' tag: standard u32 + XYZ[3] + geometry u32 +
+    //   flare u32 + illum u32
+    fn meas_tag(geom: u32) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x6D656173));
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(0));
+        for v in [0.9642f64, 1.0, 0.8249] {
+            t.extend_from_slice(&s15(v));
+        }
+        t.extend_from_slice(&be32(geom));
+        t.extend_from_slice(&be32(0x00010000));
+        t.extend_from_slice(&be32(3));
+        t
+    }
+    // 'para' parametric curve: u16 type + pad + params s15f16
+    fn para(ptype: u16, params: &[f64]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x70617261));
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&ptype.to_be_bytes());
+        t.extend_from_slice(&[0u8; 2]);
+        for v in params { t.extend_from_slice(&s15(*v)); }
+        t
+    }
+    unsafe {
+        for (sig, blob, name) in [
+            (0x76696577u32, view_tag(), "view"),
+            (0x6D656173, meas_tag(0), "meas-g0"),
+            (0x6D656173, meas_tag(1), "meas-g1"),
+            (0x6D656173, meas_tag(99), "meas-g99"),
+            (0x64657363, para(0, &[2.2]), "para0"),
+            (0x72545243, para(1, &[2.2, -0.5, 0.0]),
+                "para1"),
+            (0x72545243, para(2, &[2.2, -0.5, 0.2, 0.04]),
+                "para2"),
+            (0x72545243, para(3, &[2.2, -0.5, 0.2, 0.04, 0.0]),
+                "para3"),
+            (0x72545243, para(4, &[2.2, -0.5, 0.2, 0.04, 1.0,
+                -0.2, 0.0]), "para4"),
+            (0x72545243, para(5, &[2.2, -0.5, 0.2, 0.04, 1.0,
+                -0.2, 0.0]), "para5"),
+            (0x72545243, para(99, &[1.0]), "para-bad"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, sig,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        // linearization devicelink — gray + cmyk
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
+        let tc = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5, tv.as_ptr());
+        let arr = [tc];
+        let lp = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x47524159,
+            arr.as_ptr() as *const *mut _);
+        eprintln!("lindl gray={}", !lp.is_null());
+        if !lp.is_null() { c::cmsCloseProfile(lp); }
+        // gray-only linearization — cmyk crashes upstream
+        eprintln!("pre-ctx");
+        // context create/dup/user-data
+        let mut ud = 0x1234u32;
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(),
+            &mut ud as *mut u32 as *mut _);
+        eprintln!("post-ctx ctx={}", !ctx.is_null());
+        let dup = c::cmsDupContext(ctx, std::ptr::null_mut());
+        let u2 = c::cmsGetContextUserData(ctx);
+        eprintln!("ctx={} dup={} ud={}", !ctx.is_null(),
+            !dup.is_null(), u2 as usize);
+        if !dup.is_null() {
+            c::cmsDeleteContext(dup);
+        }
+        if !ctx.is_null() {
+            c::cmsDeleteContext(ctx);
+        }
+        eprintln!("pre-mlu");
+        // MLU wide-char
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 2);
+        let wv = [0x0068i32, 0x0069, 0x4E2D, 0];
+        c::cmsMLUsetWide(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), wv.as_ptr());
+        let mut ob = [0i32; 16];
+        let got = c::cmsMLUgetWide(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), ob.as_mut_ptr(),
+            (ob.len() * 4) as u32);
+        eprintln!("mlu-wide got={got}");
+        c::cmsMLUfree(mlu);
+        eprintln!("pre-unlink");
+        // pipeline unlink
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let dims = [3u32; 3];
+        let grid = vec![0x4000u16; 81];
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                grid.as_ptr()));
+        let mut stage: *mut std::ffi::c_void =
+            std::ptr::null_mut();
+        for loc in [0i32, 1, 0, 2, -1] {
+            let r = c::cmsPipelineUnlinkStage(p, loc,
+                &mut stage as *mut _ as *mut _);
+            eprintln!("unlink {loc}={r} st={}", !stage.is_null());
+            if !stage.is_null() {
+                c::cmsStageFree(stage);
+                stage = std::ptr::null_mut();
+            }
+        }
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(tc);
+    }
+}
