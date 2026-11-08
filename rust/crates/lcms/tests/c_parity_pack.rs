@@ -4726,3 +4726,90 @@ fn pack_planar_float_arms() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmspack residual — more format-word combos hitting
+///   remaining Unroll/Pack variant bodies: skip1/
+///   skip1swap/swapfirst on u16 + float, planar
+///   variants, extra-first at each channel count.
+#[test]
+fn pack_variant_tail_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let flab16 = (10u32 << 16) | (3 << 3) | 2;
+        let fxyz16 = (9u32 << 16) | (3 << 3) | 2;
+        // input: rgb u16 variants -> lab
+        for (fin, name) in [
+            ((4u32 << 16) | (4 << 3) | 2, "rgbx16"),
+            ((4u32 << 16) | (1 << 10) | (4 << 3) | 2,
+                "xrgb16-ds"),
+            ((4u32 << 16) | (1 << 14) | (4 << 3) | 2,
+                "xrgb16-sf"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
+                "rgb16-plan"),
+            ((4u32 << 16) | (1 << 10) | (1 << 14)
+                | (4 << 3) | 2, "xrgb-both"),
+            ((4u32 << 16) | (1 << 11) | (4 << 3) | 2,
+                "xrgb16-e16"),
+            ((4u32 << 16) | (2 << 7) | (5 << 3) | 2,
+                "xrgbxx16"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fin,
+                lab4, flab16, 0, 0);
+            eprintln!("in {name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x4000u16; 8];
+                let mut dst = [0u16; 4];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // output: lab -> rgb u16 variants
+        for (fout, name) in [
+            ((4u32 << 16) | (4 << 3) | 2, "rgbx16"),
+            ((4u32 << 16) | (1 << 10) | (4 << 3) | 2,
+                "xrgb16-ds"),
+            ((4u32 << 16) | (1 << 14) | (4 << 3) | 2,
+                "xrgb16-sf"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
+                "rgb16-plan"),
+            ((4u32 << 16) | (2 << 7) | (5 << 3) | 2,
+                "xrgbxx16"),
+        ] {
+            let t = c::cmsCreateTransform(lab4, flab16,
+                srgb, fout, 0, 0);
+            eprintln!("out {name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x8000u16; 3];
+                let mut dst = [0u16; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // xyz->lab + lab->xyz u16 + float variants
+        for (a, af, b, bf, name) in [
+            (xyz, fxyz16, lab4, flab16, "x->l16"),
+            (lab4, flab16, xyz, fxyz16, "l->x16"),
+            (xyz, (1u32 << 22) | (9 << 16)
+                | (3 << 3) | 4,
+             lab4, flab16, "x->lf"),
+            (lab4, flab16, xyz, (1u32 << 22)
+                | (9 << 16) | (3 << 3) | 4, "l->xf"),
+        ] {
+            let t = c::cmsCreateTransform(a, af, b, bf,
+                0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(xyz);
+    }
+}
