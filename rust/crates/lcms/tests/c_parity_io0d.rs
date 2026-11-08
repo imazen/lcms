@@ -12444,3 +12444,104 @@ fn clut_sample_arms() {
         }
     }
 }
+
+/// cmsGetPostScriptCSA/CRD — WriteOutputLUT + PostScript header
+/// arms on srgb/lab/cmyk/gray profiles x intents x flags.
+#[test]
+fn ps_lut_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let mut buf = vec![0u8; 1 << 20];
+        for (p, name) in [
+            (srgb, "srgb"), (lab, "lab"), (gray, "gray"),
+            (cmyk, "cmyk"),
+        ] {
+            if p.is_null() { continue; }
+            for intent in [0u32, 1, 3] {
+                for flags in [0u32, 1, 0x0040] {
+                    let mut n = buf.len() as u32;
+                    let r = c::cmsGetPostScriptCSA(
+                        std::ptr::null_mut(), p, intent, flags,
+                        buf.as_mut_ptr() as *mut _, n);
+                    let mut n2 = buf.len() as u32;
+                    let r2 = c::cmsGetPostScriptCRD(
+                        std::ptr::null_mut(), p, intent, flags,
+                        buf.as_mut_ptr() as *mut _, n2);
+                    if intent == 0 {
+                        eprintln!("ps {name} f{flags:#x} csa={r} \
+                            crd={r2}");
+                    }
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
+
+/// cmsSliceSpace16/Float + DefaultInterpolatorsFactory — CLUT
+/// evals with 1-4ch + grid sizes -> interp dispatch arms.
+#[test]
+fn slice_interp_arms() {
+    // SliceSpace sampler — `out` is NULL (iteration helper)
+    unsafe extern "C" fn s16(input: *const u16, _out: *mut u16,
+        _d: *mut std::ffi::c_void) -> i32 {
+        unsafe {
+            let _ = *input;
+        }
+        1
+    }
+    unsafe extern "C" fn sf(input: *const f32, _out: *mut f32,
+        _d: *mut std::ffi::c_void) -> i32 {
+        unsafe {
+            let _ = *input;
+        }
+        1
+    }
+    unsafe {
+        for nch in [1u32, 2, 3, 4] {
+            for pts in [2u32, 5, 33] {
+                let dims = vec![pts; nch as usize];
+                let r16 = c::cmsSliceSpace16(nch, dims.as_ptr(),
+                    s16, nch as usize as *mut _);
+                let rf = c::cmsSliceSpaceFloat(nch, dims.as_ptr(),
+                    sf, nch as usize as *mut _);
+                eprintln!("{nch}ch pts{pts} r16={r16} rf={rf}");
+            }
+        }
+        // CLUT eval on multi-channel pipelines — interp factory
+        for nch in [3u32, 4] {
+            let total = (3u32.pow(nch) * nch) as usize;
+            let grid = vec![0x4000u16; total];
+            let dims = vec![3u32; nch as usize];
+            let cl = c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), nch, nch,
+                grid.as_ptr());
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), nch, nch);
+            c::cmsPipelineInsertStage(p, 1, cl);
+            let inp = vec![0x5555u16; nch as usize];
+            let mut out = vec![0u16; nch as usize];
+            c::cmsPipelineEval16(inp.as_ptr(),
+                out.as_mut_ptr(), p);
+            let inpf = vec![0.33f32; nch as usize];
+            let mut outf = vec![0f32; nch as usize];
+            c::cmsPipelineEvalFloat(inpf.as_ptr(),
+                outf.as_mut_ptr(), p);
+            eprintln!("eval {nch}ch out={out:?} outf={outf:?}");
+            c::cmsPipelineFree(p);
+        }
+    }
+}
