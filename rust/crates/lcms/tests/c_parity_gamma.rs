@@ -501,3 +501,53 @@ fn gamma_internals2() {
         c::cmsFreeToneCurve(p2);
     }
 }
+
+/// AllocateToneCurveStruct/CurveSetDup — tone-curve alloc paths
+/// (dup, segmented, joined, estimated) + pipeline curve-set dup.
+#[test]
+fn tonecurve_alloc_arms() {
+    unsafe {
+        // tabulated curves of various sizes
+        for n in [2u32, 3, 16, 256, 4096, 65535] {
+            let mut tab = vec![0u16; n as usize];
+            for (i, v) in tab.iter_mut().enumerate() {
+                *v = ((i * 65535) / ((n as usize) - 1)) as u16;
+            }
+            let c_ = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), n, tab.as_ptr());
+            if !c_.is_null() {
+                let d = c::cmsDupToneCurve(c_);
+                if !d.is_null() { c::cmsFreeToneCurve(d); }
+                let j = c::cmsJoinToneCurve(
+                    std::ptr::null_mut(), c_, c_, 256);
+                if !j.is_null() { c::cmsFreeToneCurve(j); }
+                c::cmsFreeToneCurve(c_);
+            }
+        }
+        // curve-set stages inside pipelines -> CurveSetDup
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        let d = c::cmsPipelineDup(p);
+        eprintln!("pipedup={}", !d.is_null());
+        if !d.is_null() { c::cmsPipelineFree(d); }
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        // MLU UTF8 -> decodeUTF8
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 2);
+        c::cmsMLUsetUTF8(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            "mixed \u{1f600} \u{00e4}\u{4e2d} text\0".as_ptr());
+        c::cmsMLUsetUTF8(ml, b"ja\0".as_ptr() as *const _,
+            b"JP\0".as_ptr() as *const _,
+            "\u{30c6}\u{30b9}\u{30c8}\0".as_ptr());
+        let mut out = [0u8; 256];
+        let n = c::cmsMLUgetUTF8(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            out.as_mut_ptr() as *mut _, 256);
+        eprintln!("mlu-utf8 n={n}");
+        c::cmsMLUfree(ml);
+    }
+}
