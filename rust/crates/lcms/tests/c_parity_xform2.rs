@@ -6284,3 +6284,40 @@ fn xform_cnvrt2_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsxform residual — DoTransformLineStride +
+///   DoTransformStride on strided/planar buffers +
+///   Notify callbacks via flags.
+#[test]
+fn xform_stride_notify_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(srgb, frgb,
+            lab4, flab, 0, 0);
+        eprintln!("t={}", !t.is_null());
+        // DoTransformStride: pixels-per-row + stride
+        let src = [0x4000u16; 3 * 16];
+        let mut dst = [0u16; 3 * 16];
+        c::cmsDoTransformStride(t,
+            src.as_ptr() as *const _,
+            dst.as_mut_ptr() as *mut _, 4, 12);
+        // DoTransformLineStride: per-line params
+        let mut dst2 = [0u16; 3 * 32];
+        c::cmsDoTransformLineStride(t,
+            src.as_ptr() as *const _,
+            dst2.as_mut_ptr() as *mut _,
+            4, 2, 24, 48, 6, 6);
+        // stride = pixels (tightly packed)
+        c::cmsDoTransformStride(t,
+            src.as_ptr() as *const _,
+            dst.as_mut_ptr() as *mut _, 8, 0);
+        eprintln!("strides done {dst:?}");
+        c::cmsDeleteTransform(t);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
