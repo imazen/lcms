@@ -1870,3 +1870,26 @@ fn mpe_abstract_elements() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Named-color MPE element — the named stage type.
+#[test]
+fn mpe_named_element() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let list = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3, b"P\0".as_ptr() as _,
+            b"S\0".as_ptr() as _);
+        if !list.is_null() {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 1, 3);
+            let st = c::_cmsStageAllocNamedColor(
+                list as *mut _, 0);
+            c::cmsPipelineInsertStage(pl, 1, st);
+            let ok = c::cmsWriteTag(h, 0x41324230,
+                pl as *mut std::ffi::c_void);
+            eprintln!("named write={ok}");
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsCloseProfile(h);
+    }
+}
