@@ -361,3 +361,45 @@ fn packed_format_variants() {
         let _ = c::cmsCloseProfile(gray);
     }
 }
+
+/// Format-modifier internals — PLANAR/DOSWAP/SWAPFIRST/
+/// EXTRA/PREMUL/ENDIAN16/FLAVOR combos.
+#[test]
+fn format_modifier_variants() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        // modifier bits on the RGB float format
+        for (name, fmt) in [
+            ("planar", (1 << 22) | (4 << 16) | (1 << 12)
+             | (3 << 3) | 4u32),
+            ("doswap", (1 << 22) | (4 << 16) | (1 << 10)
+             | (3 << 3) | 4),
+            ("swapfirst", (1 << 22) | (4 << 16) | (1 << 14)
+             | (3 << 3) | 4),
+            ("endian16", (1 << 22) | (4 << 16) | (1 << 11)
+             | (3 << 3) | 4),
+            ("extra1", (1 << 22) | (4 << 16) | (1 << 7)
+             | (3 << 3) | 4),
+            ("extra2", (1 << 22) | (4 << 16) | (2 << 7)
+             | (3 << 3) | 4),
+            ("flavor", (1 << 22) | (4 << 16) | (1 << 13)
+             | (3 << 3) | 4),
+            ("premul", (1 << 22) | (4 << 16) | (1 << 23)
+             | (1 << 7) | (3 << 3) | 4),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0.5f64, 0.4, 0.3, 1.0, 0.5, 0.4];
+                let mut out = [0.0f64; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
