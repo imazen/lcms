@@ -3008,3 +3008,23 @@ fn header_setters4() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Remaining header getters — CMM/datetime/version
+/// machinery.
+#[test]
+fn header_getters3() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let cmm = c::cmsGetHeaderCMM(h);
+        let ver = c::cmsGetEncodedICCversion(h);
+        eprintln!("cmm={cmm:#x} ver={ver:#x}");
+        let mut dt = [0u16; 6];
+        let r = c::cmsGetHeaderCreationDateTime(h,
+            dt.as_mut_ptr() as *mut _);
+        eprintln!("dt r={r} y={} m={}", dt[0], dt[1]);
+        c::cmsSetEncodedICCversion(h, 0x04300000);
+        let v2 = c::cmsGetEncodedICCversion(h);
+        eprintln!("v2={v2:#x}");
+        c::cmsCloseProfile(h);
+    }
+}
