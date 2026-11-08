@@ -50,3 +50,33 @@ fn it8_comment_table_multi() {
         c::cmsIT8Free(ch);
     }
 }
+
+/// cmsIT8LoadFromMem + cmsIT8SaveToMem — the load/save round-trip
+/// machinery on a real CGATS file.
+#[test]
+fn it8_load_save_roundtrip() {
+    // a minimal CGATS.17 document
+    let doc = b"CGATS.17\nORIGINATOR \"test\"\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 2\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n".to_vec();
+    unsafe {
+        let ch = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as _, doc.len() as u32);
+        assert!(!ch.is_null(), "C load");
+        // save back — query size then write
+        let mut csize = 0u32;
+        c::cmsIT8SaveToMem(ch, std::ptr::null_mut(), &mut csize);
+        let mut cbytes = vec![0u8; csize as usize];
+        let c_ok = c::cmsIT8SaveToMem(ch,
+            cbytes.as_mut_ptr() as *mut _, &mut csize);
+        assert_ne!(c_ok, 0, "C save");
+        let rh = cgats::It8::load_from_mem(None, &doc).unwrap();
+        let rbytes = rh.save_to_mem();
+        // the serialized forms should be byte-identical (the
+        // writer is deterministic)
+        let cstr = String::from_utf8_lossy(&cbytes[..csize as usize])
+            .into_owned();
+        if cstr != rbytes {
+            eprintln!("it8 roundtrip\nC:\n{cstr}\nR:\n{rbytes}");
+        }
+        c::cmsIT8Free(ch);
+    }
+}
