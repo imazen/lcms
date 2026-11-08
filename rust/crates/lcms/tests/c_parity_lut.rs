@@ -1058,6 +1058,11 @@ fn identity_stages() {
             if !st.is_null() {
                 let pl = c::cmsPipelineAlloc(
                     std::ptr::null_mut(), nch, nch);
+                if pl.is_null() {
+                    eprintln!("  pl=null");
+                    c::cmsStageFree(st);
+                    continue;
+                }
                 c::cmsPipelineInsertStage(pl, 1, st);
                 let mut inp = [0.5f32; 16];
                 let mut out = [0.0f32; 16];
@@ -1092,6 +1097,11 @@ fn clut_stage_machinery() {
             if !st.is_null() {
                 let pl = c::cmsPipelineAlloc(
                     std::ptr::null_mut(), nch, nch);
+                if pl.is_null() {
+                    eprintln!("  pl=null");
+                    c::cmsStageFree(st);
+                    continue;
+                }
                 c::cmsPipelineInsertStage(pl, 1, st);
                 let mut inp = [0.5f32; 16];
                 let mut out = [0.0f32; 16];

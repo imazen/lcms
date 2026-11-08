@@ -470,3 +470,39 @@ C oracle re-measured after ~15 more gates: **68.23% lines /
 | cmsmd5.c | 88.11% | 80.00% |
 | cmshalf.c | 100% | 100% |
 | cmsmtrx.c | 100% | 100% |
+
+## Round 10 — AFTER the lut/io1e/xform2 sweep (through 7152a5d0)
+
+C oracle re-measured after ~35 more gates: **68.45% lines /
+86.21% functions**. Also fixed an oracle-UB in
+`identity_stages` (16-channel pipeline alloc → NULL →
+eval assertion).
+
+| file | lines | functions |
+|---|---|---|
+| cmspack.c | 53.42% | 68.84% |
+| cmstypes.c | 55.64% | 86.45% |
+| cmsio1.c | 64.40% | 80.00% |
+| cmscnvrt.c | 67.08% | 86.96% |
+| cmscgats.c | 71.67% | 95.96% |
+| cmsvirt.c | 67.00% | 96.88% |
+| cmsio0.c | 78.07% | 95.65% |
+| cmsnamed.c | 76.21% | 100% |
+| cmsopt.c | 77.46% | 84.09% |
+| cmsps2.c | 72.41% | 90.62% |
+| cmsgamma.c | 70.95% | 89.47% |
+| cmsxform.c | 71.61% | 75.00% |
+| cmslut.c | 69.64% | 88.16% |
+| cmsalpha.c | 86.61% | 85.37% |
+| cmscam02.c | 91.26% | 100% |
+| cmsgmt.c | 80.07% | 100% |
+| cmssamp.c | 68.22% | 85.71% |
+| cmsplugin.c | 73.61% | 100% |
+| cmserr.c | 79.69% | 100% |
+| cmssm.c | 90.70% | 100% |
+| cmspcs.c | 76.09% | 100% |
+| cmswtpnt.c | 87.10% | 100% |
+| cmsintrp.c | 98.50% | 100% |
+| cmsmd5.c | 88.11% | 80.00% |
+| cmshalf.c | 100% | 100% |
+| cmsmtrx.c | 100% | 100% |
