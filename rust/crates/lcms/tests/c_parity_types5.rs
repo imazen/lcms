@@ -3051,3 +3051,31 @@ fn final_type_sweep2() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// MPE element types on more combos — the MPE element
+/// serialization internals.
+#[test]
+fn mpe_element_types3() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr()));
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 3));
+        // 'mpet' write with a 2-stage pipeline
+        for (sig, name) in [
+            (0x6D706574u32, "mpet"), (0x6D704220u32, "mpB "),
+            (0x6D614220u32, "maB "), (0x6D624120u32, "mbA ")] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
