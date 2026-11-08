@@ -3389,3 +3389,60 @@ fn labv2_premul_packers() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// OutputFormattersFloat bodies — float-output transforms hit
+/// PackFloats/Doubles/Half/16/8FromFloat + LabV2 float arms.
+#[test]
+fn float_pack_out_sweep() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let fl = 1u32 << 22;
+        let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
+        let sw = |name: &str, inp: *mut _, if_: u32, of_: u32, prof: *mut _| {
+            let t = c::cmsCreateTransform(inp, if_, prof, of_, 0, 0);
+            let ok = !t.is_null();
+            eprintln!("{name} t={ok}");
+            if ok {
+                let ib = [0.5f32; 8];
+                let mut ob = [0.5f32; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        };
+        // float in (lab) -> various out formats on srgb/gray
+        let rf = |ch: u32, extra: u32, bytes: u32| {
+            (4u32 << 16) | fl | (extra << 7) | (ch << 3) | bytes
+        };
+        let r16 = |ch: u32, bytes: u32| (4u32 << 16) | (ch << 3) | bytes;
+        let gf = |extra: u32, bytes: u32| {
+            (3u32 << 16) | fl | (extra << 7) | (1 << 3) | bytes
+        };
+        sw("fl->f32", lab, lfl, rf(3, 0, 4), srgb);
+        sw("fl->f32-x1", lab, lfl, rf(3, 1, 4), srgb);
+        sw("fl->f32-ds", lab, lfl, rf(3, 0, 4) | (1 << 10), srgb);
+        sw("fl->f32-sf", lab, lfl, rf(3, 0, 4) | (1 << 14), srgb);
+        sw("fl->f64", lab, lfl, rf(3, 0, 0), srgb);
+        sw("fl->f16", lab, lfl, rf(3, 0, 2), srgb);
+        sw("fl->16", lab, lfl, r16(3, 2), srgb);
+        sw("fl->8", lab, lfl, r16(3, 1), srgb);
+        sw("fl->8x", lab, lfl, r16(3, 1) | (1 << 7), srgb);
+        sw("fl->g32", lab, lfl, gf(0, 4), gray);
+        sw("fl->g16", lab, lfl, (3u32 << 16) | (1 << 3) | 2, gray);
+        // LabV2 float arms — lab2 profile with Lab8/16 out
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        sw("fl->labv2-8", lab, lfl, l8, lab2);
+        sw("fl->labv2-16", lab, lfl, l16, lab2);
+        sw("fl->labv4", lab, lfl, l16, lab);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
