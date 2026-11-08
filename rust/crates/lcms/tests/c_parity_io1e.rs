@@ -535,3 +535,43 @@ fn class_dependent_reads() {
         }
     }
 }
+
+/// cmsReadTag on every sig of every corpus profile — the
+/// real-profile read dispatch on all tag types.
+#[test]
+fn corpus_all_sig_reads() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            let n = c::cmsGetTagCount(h);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                // typed read — hits Type_*_Read on the stored
+                // type; NULL on unusual/corrupt
+                let r = c::cmsReadTag(h, sig);
+                let _ = r;
+                // raw read — always works on a stored tag
+                let mut tb = [0u8; 8];
+                let rn = c::cmsReadRawTag(h, sig,
+                    tb.as_mut_ptr() as *mut _, 8);
+                let _ = rn;
+            }
+            // and the header machinery on this profile
+            let _ = c::cmsGetDeviceClass(h);
+            let _ = c::cmsGetColorSpace(h);
+            let _ = c::cmsGetPCS(h);
+            let mut fl = 0u32;
+            c::cmsGetHeaderFlags(h, &mut fl);
+            let mut att = 0u64;
+            c::cmsGetHeaderAttributes(h, &mut att);
+            let _ = c::cmsGetHeaderModel(h);
+            let _ = c::cmsGetHeaderManufacturer(h);
+            let _ = c::cmsGetHeaderCreator(h);
+            let _ = c::cmsGetHeaderRenderingIntent(h);
+            let mut pid = [0u8; 16];
+            c::cmsGetHeaderProfileID(h, pid.as_mut_ptr());
+            c::cmsCloseProfile(h);
+        }
+    }
+}
