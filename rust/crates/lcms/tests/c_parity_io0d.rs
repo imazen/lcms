@@ -1123,3 +1123,32 @@ fn acsp_magic_fields() {
         }
     }
 }
+
+/// CMM-signature machinery — unusual header fields.
+#[test]
+fn cmm_signature_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the CMM sig (offset 4)
+        for (name, v) in [
+            ("lcms", 0x6C636D73u32),
+            ("0", 0u32),
+            ("huge", 0xFFFFFFFFu32),
+            ("ADBE", 0x41444245),
+            ("APPL", 0x4150504C),
+            ("MSFT", 0x4D534654)] {
+            let mut d = cbuf.clone();
+            d[4..8].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
