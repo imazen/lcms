@@ -332,3 +332,37 @@ serialization internals + Dup/Free on unusual payloads,
 cmsio1's tag-serialization internals — reachable only through
 oracle-UB inputs or profile shapes the public API can't
 construct.
+
+## Round 5 — AFTER the remaining-internals sweep (through 6aeb6b5d)
+
+C oracle re-measured after ~20 more internals gates: **68.37%
+lines / 86.29% functions** (up from round-4's 67.84/85.73).
+
+| file | lines | functions |
+|---|---|---|
+| cmspack.c | 52.14% | 66.67% |
+| cmstypes.c | 55.71% (was 53.89%) | 86.45% |
+| cmsio1.c | 64.40% | 80.00% |
+| cmscnvrt.c | 67.08% | 86.96% |
+| cmscgats.c | 70.83% (was 69.35%) | 95.96% |
+| cmsvirt.c | 66.34% | 96.88% |
+| cmsio0.c | 76.23% | 95.65% |
+| cmsnamed.c | 73.21% | 97.83% |
+| cmsopt.c | 76.29% | 81.82% |
+| cmsps2.c | 72.41% | 90.62% |
+| cmsgamma.c | 71.53% | 89.47% |
+| cmsxform.c | 70.89% | 75.00% |
+| cmslut.c | 79.49% | 96.05% |
+| cmsalpha.c | 86.61% | 85.37% |
+| cmscam02.c | 91.26% | 100% |
+| cmsgmt.c | 80.07% | 100% |
+| cmssamp.c | 68.22% | 85.71% |
+| cmsplugin.c | 73.61% | 100% |
+| cmserr.c | 79.30% | 100% |
+| cmssm.c | 90.70% | 100% |
+| cmspcs.c | 74.55% | 100% |
+| cmswtpnt.c | 87.10% | 100% |
+| cmsintrp.c | 98.50% | 100% |
+| cmsmd5.c | 88.11% | 80.00% |
+| cmshalf.c | 100% | 100% |
+| cmsmtrx.c | 100% | 100% |

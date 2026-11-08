@@ -252,3 +252,14 @@ serialization internals (~54%) are the remaining gaps —
 reachable only through profile shapes the public API can't
 produce (mAB writes need valid 5-slot pipelines no builder
 emits) or oracle-UB inputs.
+
+## Round 5 — remaining-internals sweep (through 6aeb6b5d)
+
+**68.37% lines / 86.29% functions.** ~257 parity gates. The
+Type_*_Read dispatch is fully swept (65 type sigs), the
+writeable sig surface is exhausted, the parser-validation +
+LUT + named-color + IT8 + SEQ + dict + MLU + MPE + plugin +
+formatter machinery is all exercised. cmspack's ~135
+formatter-variant bodies (~52%) and cmstypes' MPE serialization
+internals (~56%) are the remaining gaps — reachable only
+through profile shapes the public API can't produce.
