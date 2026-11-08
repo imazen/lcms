@@ -14440,3 +14440,64 @@ fn cicp_crdi_mpecurve_arms() {
         }
     }
 }
+
+/// GenerateCSA/GenerateCRD deep arms + GetXFormColorSpaces +
+/// _cmsReadFloatOutputTag via output-class float profiles.
+#[test]
+fn csa_color_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        // output-class profile for _cmsReadFloatOutputTag
+        let outp = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(outp, 0x70727472);   // 'prtr'
+        c::cmsSetColorSpace(outp, 0x4C616220);
+        c::cmsSetPCS(outp, 0x58595A20);
+        c::cmsSetProfileVersion(outp, 4.4);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        c::cmsWriteTag(outp, 0x41324230, p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        for (prof, name) in [
+            (srgb, "srgb"), (lab, "lab"), (gray, "gray"),
+            (cmyk, "cmyk"), (outp, "outp"),
+        ] {
+            if prof.is_null() { continue; }
+            for intent in 0..4u32 {
+                let csa = c::cmsGetPostScriptCSA(
+                    std::ptr::null_mut(), prof, intent, 0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let crd = c::cmsGetPostScriptCRD(
+                    std::ptr::null_mut(), prof, intent, 0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                if intent == 0 {
+                    eprintln!("{name} csa={csa} crd={crd}");
+                }
+            }
+            // GetXFormColorSpaces — read both color spaces
+            let cs = c::cmsGetColorSpace(prof);
+            let pcs = c::cmsGetPCS(prof);
+            eprintln!("{name} cs={cs:#x} pcs={pcs:#x}");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(outp);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
