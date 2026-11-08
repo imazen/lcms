@@ -1323,3 +1323,50 @@ fn class_intent_dispatch() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// AddConversion PCS-pair arms — multiprofile chains crossing
+/// XYZ-PCS and Lab-PCS profiles hit the XYZ->Lab / Lab->XYZ /
+/// same-PCS + non-empty-layer insertion + mismatch branches.
+#[test]
+fn pcs_conversion_chains() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let mut labs: Vec<*mut std::ffi::c_void> = vec![lab4, lab2];
+        for f in ["labv2lcms2.icc", "labv4lcms2.icc", "linlcms2.icc"] {
+            if let Ok(d) = std::fs::read(dir.join(f)) {
+                let p = c::cmsOpenProfileFromMem(
+                    d.as_ptr() as *const _, d.len() as u32);
+                if !p.is_null() { labs.push(p); }
+            }
+        }
+        // srgb(xyz-pcs) -> lab-profile -> srgb chains
+        for &lp in &labs {
+            for tail in [srgb, lab4] {
+                let mut profs = [srgb, lp, tail];
+                let t = c::cmsCreateMultiprofileTransform(
+                    profs.as_mut_ptr(), 3,
+                    0x00ff04, 0x00ff04, 0, 0);
+                eprintln!("chain srgb->lab->? t={}", !t.is_null());
+                if !t.is_null() {
+                    let inp = [100u8, 150, 200];
+                    let mut out = [0u8; 3];
+                    c::cmsDoTransform(t, inp.as_ptr() as *const _,
+                        out.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            // lab->lab direct (same-PCS arm)
+            let mut ll = [lp, lab4];
+            let t = c::cmsCreateMultiprofileTransform(
+                ll.as_mut_ptr(), 2, 0x0a0702, 0x0a0702, 0, 0);
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        for p in labs { c::cmsCloseProfile(p); }
+        c::cmsCloseProfile(srgb);
+    }
+}
