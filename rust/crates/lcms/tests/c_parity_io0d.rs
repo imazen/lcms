@@ -22433,3 +22433,83 @@ fn internal_final51_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final52_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // transforms on profiles with all tag-payload type
+        //   combinations
+        for (st, name) in [
+            (0u32, "cv+clut+cv+clut+cv+clut+cv+clut+cv+clut+cv"),
+            (1, "clut+cv+clut+cv+clut+cv+clut+cv+clut+cv+clut"),
+            (2, "mat+cv+clut+cv+clut+cv+clut+cv+clut+cv+clut"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 1.0];
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            for i in 0..11 {
+                match (i + st) % 3 {
+                    0 => { c::cmsPipelineInsertStage(p,
+                        i as i32,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            [g, g, g].as_ptr()
+                                as *mut _)); },
+                    1 => { c::cmsPipelineInsertStage(p,
+                        i as i32,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(),
+                            dims.as_ptr(), 3, 3,
+                            grid.as_ptr())); },
+                    _ => { c::cmsPipelineInsertStage(p,
+                        i as i32,
+                        c::cmsStageAllocMatrix(
+                            std::ptr::null_mut(), 3, 3,
+                            mat.as_ptr(), std::ptr::null())); },
+                }
+            }
+            for sig in [0x41324230u32, 0x42324130] {
+                let w = c::cmsWriteTag(prof, sig,
+                    p as *const _);
+                eprintln!("{name} {sig:#x} w={w}");
+            }
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            let t = if !rp.is_null() {
+                c::cmsCreateTransform(rp, r8, srgb,
+                    r8, 0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
