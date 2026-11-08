@@ -2291,3 +2291,34 @@ fn creationdate_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Manufacturer/model bounds — mutate those fields then
+/// open (the mfr/model validation machinery).
+#[test]
+fn mfgr_model_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // mfr sig at 48, model sig at 52
+        for (name, m, d) in [
+            ("zero", 0u32, 0u32), ("ones", 1, 1),
+            ("appl", 0x4150504C, 0x4150504C),
+            ("junk", 0x12345678, 0x9abcdef0),
+            ("neg", 0xffffffff, 0xffffffff)] {
+            let mut b = buf.clone();
+            b[48..52].copy_from_slice(&m.to_be_bytes());
+            b[52..56].copy_from_slice(&d.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} m={m:#x} d={d:#x} h={}",
+                !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
