@@ -154,3 +154,61 @@ fn named_color_profile() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Named-color transform internals — the named-color
+/// transform pipeline on more format combos.
+#[test]
+fn named_transform_formats() {
+    unsafe {
+        // build a named-color transform — input named-color
+        // index, output Lab16
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 3,
+            b"pre\0".as_ptr() as *const _,
+            b"suf\0".as_ptr() as *const _);
+        for i in 0..4u32 {
+            let mut pcs = [(0x8000u16) + i as u16 * 0x1000,
+                           0x8000, 0x8000];
+            let mut dev = [0u16; 16];
+            dev[i as usize] = 0xFFFF;
+            let name = [
+                [b'c', b'1', 0],
+                [b'c', b'2', 0],
+                [b'c', b'3', 0],
+                [b'c', b'4', 0],
+            ][i as usize];
+            c::cmsAppendNamedColor(ncl,
+                name.as_ptr() as *const u8,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        // a named-color PROFILE — write the ncl2 list into
+        // a profile's ncl2 tag, then transform from it
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x6E636C32,
+            ncl as *mut std::ffi::c_void);
+        c::cmsSetDeviceClass(h, 0x6E6D636C); // 'nmcl'
+        c::cmsSetColorSpace(h, 0x6E6D636C); // cmsSigNamedData
+        c::cmsSetPCS(h, 0x4C616220);        // Lab PCS
+        // transform named->Lab through the profile's ncl2
+        // single-profile named transform — cmscnvrt.c:576
+        // fires on nmcl class + nProfiles==1 (multiprofile
+        // with a 1-element array)
+        let nc_fmt: u32 = (1 << 3) | 2; // TYPE_NAMED_COLOR_INDEX
+        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let mut profs = [h];
+        let ct = c::cmsCreateMultiprofileTransform(
+            profs.as_mut_ptr(), 1, nc_fmt, lab_fmt, 0, 0);
+        eprintln!("named write={ok} transform null={}",
+            ct.is_null());
+        if !ct.is_null() {
+            let inp = [0u16];
+            let mut co = [0u16; 3];
+            c::cmsDoTransform(ct, inp.as_ptr() as _,
+                co.as_mut_ptr() as *mut _, 1);
+            eprintln!("named eval={:?}", co);
+            c::cmsDeleteTransform(ct);
+        }
+        c::cmsCloseProfile(h);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
