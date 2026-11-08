@@ -324,3 +324,57 @@ fn multitables_and_enums() {
         assert_eq!(ct, rt, "set table by label");
     }
 }
+
+/// IT8 parser internals — more doc shapes (multi-table,
+/// unusual fields, escapes, comments).
+#[test]
+fn it8_parser_shapes() {
+    unsafe {
+        for (name, doc) in [
+            ("multi-table",
+             "CGATS.17\nTABLE 1\nNUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\nBEGIN_DATA\n1 2\nEND_DATA\n\
+              TABLE 2\nNUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nC\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n9\n\
+              END_DATA\n"),
+            ("quoted-prop",
+             "CGATS.17\nORIGINATOR \"quoted origin\"\n\
+              NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1\n\
+              END_DATA\n"),
+            ("long-vals",
+             "CGATS.17\nNUMBER_OF_FIELDS 3\nBEGIN_DATA_FORMAT\nA B C\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n\
+              123456789 0.000001 -9999\nEND_DATA\n"),
+            ("sci-notation",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n\
+              1e-3 2E5\nEND_DATA\n"),
+            ("mixed-tabs",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA\tB\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1\t2\n\
+              END_DATA\n"),
+            ("crlf",
+             "CGATS.17\r\nNUMBER_OF_FIELDS 2\r\nBEGIN_DATA_FORMAT\r\n\
+              A B\r\nEND_DATA_FORMAT\r\nNUMBER_OF_SETS 1\r\n\
+              BEGIN_DATA\r\n1 2\r\nEND_DATA\r\n"),
+            ("escaped-prop",
+             "CGATS.17\nORIGINATOR \\\"escaped\\\"\n\
+              NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1\n\
+              END_DATA\n"),
+        ] {
+            let mut err = 0;
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const std::ffi::c_void,
+                doc.len() as u32);
+            eprintln!("{name} it8={}", !it8.is_null());
+            if !it8.is_null() {
+                c::cmsIT8Free(it8);
+            }
+            let _ = err;
+        }
+    }
+}
