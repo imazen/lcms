@@ -1789,3 +1789,45 @@ fn xform_nothing_gamut() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// CHAD2Temp — absolute-intent transform on a profile with a
+/// `chad` tag (non-D50 chromatic adaptation) hits the
+/// temperature estimation path.
+#[test]
+fn chad_temp_internals() {
+    unsafe {
+        // Bradford D65->D50 chromatic adaptation (non-identity)
+        let chad = [
+            0.9974f64, -0.0040, 0.0074,
+            -0.0057, 1.0051, -0.0031,
+            0.0031, -0.0011, 0.8104,
+        ];
+        let srgb = c::cmsCreate_sRGBProfile();
+        let srgb2 = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(srgb2, 0x63686164,
+            chad.as_ptr() as *const _);
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, name) in [
+            (srgb2, lab, "srgb-chad->lab"),
+            (lab, srgb2, "lab->srgb-chad"),
+            (srgb, srgb2, "srgb->srgb-chad"),
+            (srgb2, srgb, "srgb-chad->srgb"),
+        ] {
+            // intent 3 = absolute colorimetric
+            let t = c::cmsCreateTransform(inp, r16, outp, l16, 3, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 4];
+                let mut ob = [0x8000u16; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(srgb2);
+        c::cmsCloseProfile(lab);
+    }
+}
