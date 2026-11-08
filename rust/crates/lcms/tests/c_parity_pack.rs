@@ -2868,3 +2868,43 @@ fn extra_swap_flavor_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// 6-channel MCH packers — a 6CLR devicelink profile transform
+/// hits Unroll6Bytes/Pack6Bytes and the MCH flavor paths.
+#[test]
+fn mch6_packers() {
+    unsafe {
+        let ftab: Vec<f32> = (0..(2usize.pow(6) * 6))
+            .map(|i| (i % 64) as f32 / 64.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 6, 6);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 6, 6,
+                ftab.as_ptr()));
+        let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(dl, 0x6c696e6b);
+        c::cmsSetColorSpace(dl, 0x36434C52); // '6CLR'
+        c::cmsSetPCS(dl, 0x36434C52);
+        c::cmsSetProfileVersion(dl, 4.4);
+        c::cmsWriteTag(dl, 0x44324230, p as *const _); // D2B0
+        for (fmt, name) in [
+            ((20u32 << 16) | (6 << 3) | 2, "mch6-16"),
+            ((20u32 << 16) | (6 << 3) | 1, "mch6-8"),
+            ((20u32 << 16) | (6 << 3) | 0, "mch6-float"),
+            ((20u32 << 16) | (6 << 3) | 2 | 0x0040, "mch6-16-swap"),
+            ((20u32 << 16) | (6 << 3) | 2 | 0x0200, "mch6-16-doswap"),
+        ] {
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 6];
+                let mut ob = [0u16; 6];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                eprintln!("  ob={ob:?}");
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(dl);
+        c::cmsPipelineFree(p);
+    }
+}
