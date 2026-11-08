@@ -895,3 +895,104 @@ fn internal_inlut_v4_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — _cmsReadOutputLUT/ColorantTable/
+///   CHAD on output-class profiles with B2A + clrt +
+///   chad tags at intents/flags.
+#[test]
+fn internal_outlut_clrt_chad_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        // output-class profile with mft1 B2A + clrt +
+        //   chad
+        for (tags, name) in [
+            (0x1u32, "b2a-only"),
+            (0x2, "clrt-only"),
+            (0x4, "chad-only"),
+            (0x3, "b2a+clrt"),
+            (0x7, "all"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x70727472);
+            c::cmsSetColorSpace(p, 0x434D594B);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 2.4);
+            if tags & 1 != 0 {
+                let mut blob = vec![
+                    0x6D, 0x66, 0x74, 0x31,
+                    0, 0, 0, 0, 3, 4, 2, 0];
+                for i in 0..9 {
+                    let v: u32 = if i % 4 == 0 {
+                        0x00010000 } else { 0 };
+                    blob.extend_from_slice(
+                        &v.to_be_bytes());
+                }
+                blob.extend_from_slice(&[0x80u8; 256 * 3]);
+                blob.extend_from_slice(&[0x80u8; 8 * 4]);
+                blob.extend_from_slice(&[0x80u8; 256 * 4]);
+                c::cmsWriteRawTag(p, 0x42324130,
+                    blob.as_ptr() as *const _,
+                    blob.len() as u32);
+            }
+            if tags & 2 != 0 {
+                let mut b = vec![
+                    0x63u8, 0x6C, 0x72, 0x74,
+                    0, 0, 0, 0];
+                b.extend_from_slice(&4u32.to_be_bytes());
+                for i in 0..4 {
+                    b.extend_from_slice(
+                        format!("cl{}\0", i).as_bytes());
+                    b.extend_from_slice(&[0u8; 28]);
+                    b.extend_from_slice(&[0x80u8; 12]);
+                }
+                c::cmsWriteRawTag(p, 0x636C726F,
+                    b.as_ptr() as *const _,
+                    b.len() as u32);
+            }
+            if tags & 4 != 0 {
+                let mut b = vec![
+                    0x63u8, 0x68, 0x61, 0x64,
+                    0, 0, 0, 0];
+                for i in 0..9 {
+                    let v: u32 = if i % 4 == 0 {
+                        0x00010000 } else { 0 };
+                    b.extend_from_slice(
+                        &v.to_be_bytes());
+                }
+                c::cmsWriteRawTag(p, 0x63686164,
+                    b.as_ptr() as *const _,
+                    b.len() as u32);
+            }
+            let mut buf = [0u8; 1 << 18];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} prof={}", !pr.is_null());
+            if !pr.is_null() {
+                for i in [0u32, 1, 2] {
+                    let t = c::cmsCreateTransform(lab4,
+                        flab, pr, frgb, i, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                    let t2 = c::cmsCreateTransform(srgb,
+                        frgb, pr, frgb, i, 0);
+                    if !t2.is_null() {
+                        c::cmsDeleteTransform(t2); }
+                }
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
