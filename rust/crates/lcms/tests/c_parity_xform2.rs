@@ -6141,3 +6141,68 @@ fn xform_getter_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmscnvrt residual — AddConversion intent paths:
+///   gamut-check + proofing intents on more profile
+///   shape combos + ncl2/named-color transforms.
+#[test]
+fn xform_cnvrt_intent_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let gray = c::cmsCreateGrayProfileTHR(
+            std::ptr::null_mut(), std::ptr::null(),
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2)
+                as *const std::ffi::c_void);
+        let frgb = (4u32 << 16) | (3 << 3) | 1;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let fgray = (3u32 << 16) | (1 << 3) | 2;
+        // proofing transforms: proof profile in both
+        //   slots
+        for (a, af, b, bf, p, i, fl, name) in [
+            (srgb, frgb, srgb, frgb, lab4, 0u32, 0x0040u32,
+                "proof-lab4"),
+            (srgb, frgb, lab4, flab, srgb, 1, 0x0040,
+                "proof-srgb-i1"),
+            (lab4, flab, lab4, flab, srgb, 0, 0x0040,
+                "lab->lab-proof"),
+            (gray, fgray, srgb, frgb, lab4, 0, 0x0040,
+                "gray->srgb-proof"),
+            (srgb, frgb, xyz, flab, lab4, 0, 0x0040,
+                "srgb->xyz-proof"),
+        ] {
+            let mut profs = [a, b, p];
+            let t = c::cmsCreateProofingTransformTHR(
+                std::ptr::null_mut(),
+                a, af, b, bf, p, i, i, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [128u8, 64, 200, 0];
+                let mut dst = [0u8; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+            let _ = profs;
+        }
+        // intent sweep incl. preserve-k on rgb->gray
+        for i in 0..16u32 {
+            let t = c::cmsCreateTransform(srgb, frgb,
+                gray, fgray, i, 0);
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+            let t2 = c::cmsCreateTransform(gray, fgray,
+                srgb, frgb, i, 0);
+            if !t2.is_null() {
+                c::cmsDeleteTransform(t2); }
+        }
+        eprintln!("intent sweep done");
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(srgb);
+    }
+}
