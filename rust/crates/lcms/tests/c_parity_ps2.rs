@@ -617,3 +617,35 @@ fn ps2_gray_colorant() {
         c::cmsFreeToneCurve(g22);
     }
 }
+
+/// ExtractGray2Y + BuildColorantList + EmitNamedColorCS — gray
+/// and named-color-class profiles through the PostScript emitters.
+#[test]
+fn ps2_gray_named_emitters() {
+    let _g = PS_LOCK.lock().unwrap();
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        // named-color profile: nmcl class + ncl2 tag
+        let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(nmcl, 0x6e6d636c);
+        c::cmsSetColorSpace(nmcl, 0x34e434e); // NCLR-ish
+        c::cmsSetPCS(nmcl, 0x4c616220);
+        let mut buf = vec![0u8; 1 << 18];
+        let mut n = buf.len() as u32;
+        for (prof, name) in [(gray, "gray"), (nmcl, "nmcl")] {
+            let mut n2 = buf.len() as u32;
+            let csa = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
+                prof, 0, 0, buf.as_mut_ptr() as *mut _, n2);
+            eprintln!("{name}-csa={csa}");
+            let mut n3 = buf.len() as u32;
+            let crd = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
+                prof, 0, 0, buf.as_mut_ptr() as *mut _, n3);
+            eprintln!("{name}-crd={crd}");
+        }
+        let _ = n;
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(nmcl);
+        c::cmsFreeToneCurve(g);
+    }
+}
