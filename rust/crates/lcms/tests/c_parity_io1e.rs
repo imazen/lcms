@@ -1934,3 +1934,29 @@ fn mpet_stored_type() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// 'gamt'/'pre0-2'/'targ' — the remaining LUT-sig writes with
+/// pipeline payloads.
+#[test]
+fn gamt_pre_targ_writes() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr()));
+        // 'gamt' + pre0-2 are LUT-typed sigs
+        for (sig, name) in [
+            (0x67616D74u32, "gamt"), (0x70726530u32, "pre0"),
+            (0x70726531u32, "pre1"), (0x70726532u32, "pre2"),
+            (0x74617267u32, "targ")] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
