@@ -13742,3 +13742,62 @@ fn wchar_dict_arms() {
         }
     }
 }
+
+/// SaveTags/_cmsSearchTag/cmsLinkTag — tag-table write/sort/
+/// dup arms via overlapping + raw + linked tag sets.
+#[test]
+fn savetags_arms() {
+    unsafe {
+        for ver in [4.4f64, 2.1] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            // linked tags (same object on 2 sigs)
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+            let arr = [g, g, g];
+            c::cmsWriteTag(prof, 0x72545243,   // rTRC
+                g as *const _);
+            c::cmsWriteTag(prof, 0x67545243,   // gTRC = same
+                g as *const _);
+            c::cmsWriteTag(prof, 0x62545243,   // bTRC = same
+                g as *const _);
+            let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+                b"US\0".as_ptr(), b"shared\0".as_ptr());
+            c::cmsWriteTag(prof, 0x64657363, mlu as *const _);
+            c::cmsWriteTag(prof, 0x63707274, mlu as *const _);
+            c::cmsWriteTag(prof, 0x646D6E64, mlu as *const _);
+            // raw tag (unknown type) interleaved
+            let raw = [0x74u8, 0x79, 0x70, 0x65, 0, 0, 0, 0,
+                1, 2, 3, 4];
+            c::cmsWriteRawTag(prof, 0x61626364,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            // overwrite an existing tag (dup sig)
+            c::cmsWriteTag(prof, 0x72545243, arr.as_ptr()
+                as *mut _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let n2 = if !rp.is_null() {
+                c::cmsGetTagCount(rp)
+            } else { -1 };
+            eprintln!("v{ver} s={s} tags={n2}");
+            if !rp.is_null() {
+                for i in 0..n2.max(0) {
+                    let sg = c::cmsGetTagSignature(rp, i as u32);
+                    let rd = c::cmsReadTag(rp, sg);
+                    eprintln!("  tag{i} {sg:#x} rd={}",
+                        !rd.is_null());
+                }
+                c::cmsCloseProfile(rp);
+            }
+            c::cmsMLUfree(mlu);
+            c::cmsFreeToneCurve(g);
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
