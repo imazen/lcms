@@ -1124,3 +1124,28 @@ fn multi_type_dispatch() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Cross-profile tag copy — read a tag from one profile, write
+/// it to another (exercises Type_*_Dup on the object).
+#[test]
+fn cross_profile_copy() {
+    unsafe {
+        let ha = c::cmsCreate_sRGBProfile();
+        let hb = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // copy several tag types across
+        for sig in [0x72545243u32, // rTRC (curve)
+                    0x64657363,    // desc (mluc)
+                    0x63707274,    // cprt (text/mluc)
+                    0x77747074,    // wtpt (XYZ)
+                    0x63686164,    // chad (sf32 matrix)
+                    0x6C756D69,    // lumi (XYZ)
+                    0x7258595A] {  // rXYZ
+            let obj = c::cmsReadTag(ha, sig);
+            if obj.is_null() { continue; }
+            let ok = c::cmsWriteTag(hb, sig, obj);
+            eprintln!("{sig:#x} copy={ok}");
+        }
+        c::cmsCloseProfile(ha);
+        c::cmsCloseProfile(hb);
+    }
+}
