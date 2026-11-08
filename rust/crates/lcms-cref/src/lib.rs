@@ -671,6 +671,14 @@ unsafe extern "C" {
     pub fn cmsGetColorSpace(prof: *mut c_void) -> u32;
     pub fn cmsGetDeviceClass(prof: *mut c_void) -> u32;
     pub fn cmsGetEncodedICCversion(prof: *mut c_void) -> u32;
+    pub fn cmsGetHeaderFlags(p: *mut c_void, flags: *mut u32);
+    pub fn cmsGetHeaderAttributes(p: *mut c_void, flags: *mut u64);
+    pub fn cmsGetHeaderCreator(p: *mut c_void) -> u32;
+    pub fn cmsGetHeaderModel(p: *mut c_void) -> u32;
+    pub fn cmsGetHeaderProfileID(p: *mut c_void, id: *mut u8);
+    pub fn cmsGetHeaderCreationDateTime(p: *mut c_void, dt: *mut c_void) -> i32;
+    pub fn cmsIsCLUT(prof: *mut c_void, intent: u32, direction: u32) -> i32;
+    pub fn cmsGetInfo(p: *mut c_void, info: u32) -> *const u16;
     pub fn cmsSetEncodedICCversion(prof: *mut c_void, version: u32);
 
     // transform-internals shims for the prelin8 divergence bisect

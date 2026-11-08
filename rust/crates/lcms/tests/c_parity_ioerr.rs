@@ -318,3 +318,49 @@ fn io1_lut_reader_eval() {
         unsafe { c::cmsCloseProfile(ch) };
     }
 }
+
+/// cmsio1 header-getter matrix: PCS/colorspace/class/version/flags/
+/// attributes/creator/model/profileID/IsCLUT across the corpus.
+#[test]
+fn io1_header_getters() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap().filter_map(|e| e.ok()).map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
+        .collect();
+    files.sort();
+    for f in files {
+        let name = f.file_name().unwrap().to_string_lossy();
+        let data = std::fs::read(&f).unwrap();
+        let ch = unsafe { c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32) };
+        if ch.is_null() { continue; }
+        let rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
+        unsafe {
+            assert_eq!(c::cmsGetPCS(ch), rp.pcs, "{name} pcs");
+            assert_eq!(c::cmsGetColorSpace(ch), rp.color_space, "{name} colorspace");
+            assert_eq!(c::cmsGetDeviceClass(ch), rp.device_class, "{name} class");
+            assert_eq!(c::cmsGetEncodedICCversion(ch), rp.version, "{name} version");
+            let mut fl = 0u32;
+            c::cmsGetHeaderFlags(ch, &mut fl);
+            assert_eq!(fl, rp.flags, "{name} flags");
+            let mut at = 0u64;
+            c::cmsGetHeaderAttributes(ch, &mut at);
+            assert_eq!(at, rp.attributes, "{name} attributes");
+            assert_eq!(c::cmsGetHeaderCreator(ch), rp.creator, "{name} creator");
+            assert_eq!(c::cmsGetHeaderModel(ch), rp.model, "{name} model");
+            let mut id = [0u8; 16];
+            c::cmsGetHeaderProfileID(ch, id.as_mut_ptr());
+            assert_eq!(id, rp.profile_id.id8, "{name} profile id");
+            for intent in 0..4u32 {
+                for dir in 0..2u32 {
+                    assert_eq!(
+                        c::cmsIsCLUT(ch, intent, dir) != 0,
+                        lcms::io1::is_clut(&mut rp.clone(), intent, dir as i32),
+                        "{name} is_clut i{intent} d{dir}"
+                    );
+                }
+            }
+        }
+        unsafe { c::cmsCloseProfile(ch) };
+    }
+}
