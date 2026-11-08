@@ -2909,3 +2909,61 @@ fn conversion_arms7() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// PatchLUT/OptimizeByResampling deep arms — CLUT resample with
+/// prelin flags on RGB/CMYK/gray pipelines.
+#[test]
+fn opt_resample_deep() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let link = std::fs::read(dir.join("lcms2link2.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        // resample flags on every pipeline shape
+        for (inp, outp, if_, of_, fl, name) in [
+            (cmyk, lab, k16, l16, 0x0400|0x0010, "cmyk hi+pre"),
+            (cmyk, lab, k16, l16, 0x0800|0x0010, "cmyk lo+pre"),
+            (cmyk, lab, k16, l16, 0x0400|0x0001, "cmyk hi+post"),
+            (cmyk, lab, k16, l16, 0x0800|0x0001, "cmyk lo+post"),
+            (cmyk, lab, k16, l16, 0x0400|(5u32<<16), "cmyk hi+g5"),
+            (cmyk, lab, k16, l16, 0x0800|(7u32<<16), "cmyk lo+g7"),
+            (srgb, lab, r16, l16, 0x0400|0x0010, "srgb hi+pre"),
+            (srgb, lab, r16, l16, 0x0800|0x0001, "srgb lo+post"),
+            (gray, lab, g16, l16, 0x0400|0x0010, "gray hi+pre"),
+            (link, lab, k16, l16, 0x0400|0x0010, "link hi+pre"),
+            (cmyk, srgb, k16, r16, 0x0400|0x0010, "cmyk->srgb hi+pre"),
+            (lab, cmyk, l16, k16, 0x0800|0x0010, "lab->cmyk lo+pre"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 64];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !link.is_null() { c::cmsCloseProfile(link); }
+        c::cmsFreeToneCurve(g);
+    }
+}
