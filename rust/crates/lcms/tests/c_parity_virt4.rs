@@ -155,3 +155,32 @@ fn device_link_colorspaces() {
         }
     }
 }
+
+/// Device-link builders on more channel counts — deeper
+/// cmsVirtMakeDeviceLinkTag branches (MCH8, MCH12, CMY-only).
+#[test]
+fn device_link_channels() {
+    unsafe {
+        for cs in [15u32, 16, 17] { // MCH8, MCH12, MCH15-ish
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.6);
+            let nch = if cs == 15 { 8 } else if cs == 16 { 12 } else { 15 };
+            let curves = vec![g; nch];
+            let ch = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), cs, curves.as_ptr());
+            let rg = gamma::build_gamma(None, 1.6).unwrap();
+            let refs: Vec<&lcms::gamma::ToneCurve> =
+                std::iter::repeat(&rg).take(nch).collect();
+            let mut rp = virt::create_linearization_device_link(None, cs, &refs);
+            assert_eq!(ch.is_null(), rp.is_none(), "linearization cs{cs}");
+            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            c::cmsFreeToneCurve(g);
+        }
+        for cs in [15u32, 16, 17] {
+            let ch = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), cs, 150.0);
+            let mut rp = virt::create_ink_limiting_device_link(None, cs, 150.0);
+            assert_eq!(ch.is_null(), rp.is_none(), "inklimit cs{cs}");
+            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+        }
+    }
+}
