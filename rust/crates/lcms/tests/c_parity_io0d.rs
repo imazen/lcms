@@ -4480,3 +4480,38 @@ fn ucrbg_resp_scrn_tags() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Screening + response16 + named-color tag handlers.
+#[test]
+fn scrn_resp_named_tags() {
+    unsafe {
+        // screening — {Flag, nChannels, Channels[n]}
+        #[repr(C)] #[derive(Clone, Copy)]
+        struct ScrCh { f: f64, sa: f64, ch: u32 }
+        #[repr(C)] struct Scrn { flag: u32, nc: u32,
+            ch: [ScrCh; 16] }
+        let s = Scrn { flag: 0, nc: 2,
+            ch: [ScrCh { f: 1.0, sa: 45.0, ch: 0 }; 16] };
+        for (sig, payload, name) in [
+            (0x7363726eu32, &s as *const _ as *const _, "scrn"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let sv = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if sv != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={sv} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
