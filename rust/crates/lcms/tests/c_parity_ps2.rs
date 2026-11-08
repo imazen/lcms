@@ -511,3 +511,31 @@ fn gray_csa_named_crd() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// WriteNamedColorCRD — named-color-class profile + ncl2 tag ->
+/// the CR named-color write path.
+#[test]
+fn named_color_crd() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2,
+            3, b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        let lab = [0xF000u16, 0x8000, 0x8000];
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
+            lab.as_ptr(), lab.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"c2\0".as_ptr(),
+            lab.as_ptr(), lab.as_ptr());
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6e6d636c); // 'nmcl'
+        c::cmsSetColorSpace(prof, 0x6e6d636c);   // 'nmcl' colorspace
+        c::cmsSetPCS(prof, 0x4C616220);           // 'Lab ' PCS
+        c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _); // 'ncl2'
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        c::cmsWriteTag(prof, 0x77747074, &wp as *const _ as *const _); // 'wtpt'
+        let mut buf = vec![0u8; 1 << 20];
+        let r = c::cmsGetPostScriptCRD(std::ptr::null_mut(), prof,
+            0, 0, buf.as_mut_ptr() as *mut _, buf.len() as u32);
+        eprintln!("nmcl-crd={r}");
+        c::cmsCloseProfile(prof);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
