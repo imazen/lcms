@@ -3140,3 +3140,114 @@ fn cgats_lexer_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmscgats residual — ParseFloatNumber NULL/overflow
+///   branches + satob binary-write path + InSymbol
+///   .include/quoted-symbol branches.
+#[test]
+fn cgats_num_bin_arms() {
+    unsafe {
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        // doc with extreme-but-parseable numerics
+        let doc = b"IT8FILE\nORIGINATOR o\n\
+            NUMBER_OF_FIELDS 4\n\
+            BEGIN_DATA_FORMAT\nA B C D\n\
+            END_DATA_FORMAT\nNUMBER_OF_SETS 3\n\
+            BEGIN_DATA\n\
+            1e2147483648 2 -999999999999 1.5e200\n\
+            1e+0000000002 1e-0000000002 .5e9 -9e99\n\
+            2147483647.9 -2147483648.9 1e999 1e-999\n\
+            END_DATA\n\0";
+        let h = c::cmsIT8LoadFromMem(ctx,
+            doc.as_ptr() as *const _, doc.len() as u32 - 1);
+        eprintln!("h={}", !h.is_null());
+        if !h.is_null() {
+            // GetDataDbl on every cell incl missing
+            for r in 0..8 {
+                for c_ in 0..6 {
+                    let d = c::cmsIT8GetDataRowColDbl(
+                        h, r, c_);
+                    let s = c::cmsIT8GetDataRowCol(h,
+                        r, c_);
+                    if r < 2 && c_ < 4 {
+                        eprintln!("  [{r},{c_}] d={d} \
+                            s={:?}",
+                            if s.is_null() {
+                                "null".to_string() }
+                            else {
+                                std::ffi::CStr::from_ptr(
+                                    s).to_string_lossy()
+                                    .to_string() });
+                    }
+                }
+            }
+            // SetData with binary values → satob on write
+            for (row, col, v, name) in [
+                (0, 0, "0b10101010", "bin8"),
+                (0, 1, "0b1", "bin1"),
+                (0, 2, "0xABCDEF", "hex"),
+                (1, 0, "0b", "binonly"),
+                (1, 1, "0B1100", "bin-upper"),
+                (2, 0, "notanum", "nan"),
+                (2, 1, "", "empty"),
+                (9, 0, "0b1111", "oobarow"),
+                (0, 9, "0b1111", "oobcol"),
+            ] {
+                let r = c::cmsIT8SetDataRowCol(h, row, col,
+                    format!("{v}\0").as_ptr()
+                        as *const _);
+                eprintln!("set {name} r={r}");
+            }
+            // save → satob on binary-valued cells
+            for path in [
+                "/home/lilith/tmp/cb-a.it8",
+            ] {
+                let p2 = format!("{path}\0");
+                let s = c::cmsIT8SaveToFile(h,
+                    p2.as_ptr() as *const _);
+                let h2 = c::cmsIT8LoadFromFile(ctx,
+                    p2.as_ptr() as *const _);
+                eprintln!("sv={s} rl={}", !h2.is_null());
+                if !h2.is_null() {
+                    c::cmsIT8Free(h2); }
+                std::fs::remove_file(path).ok();
+            }
+            // mem-save path
+            let mut buf = vec![0u8; 1 << 16];
+            let mut n = buf.len() as u32;
+            let sm = c::cmsIT8SaveToMem(h,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("savemem={sm} n={n}");
+            c::cmsIT8Free(h);
+        }
+        // .include directive docs
+        for (doc2, name) in [
+            (b"IT8FILE\n.INCLUDE \"x.it8\"\n\
+                BEGIN_DATA\nEND_DATA\n\0" as &[u8],
+                "include"),
+            (b"IT8FILE\n.include \"x.it8\"\n\
+                BEGIN_DATA\nEND_DATA\n\0",
+                "include-low"),
+            (b"IT8FILE\nORIGINATOR 'unclosed\n\
+                BEGIN_DATA\nEND_DATA\n\0",
+                "unclosed-q"),
+            (b"IT8FILE\nORIGINATOR \"unclosed2\n\
+                BEGIN_DATA\nEND_DATA\n\0",
+                "unclosed-dq"),
+            (b"IT8FILE\nORIGINATOR \x00bin\n\
+                BEGIN_DATA\nEND_DATA\n\0",
+                "bin-in-doc"),
+            (b"IT8FILE\n@weird !chars #here\n\
+                BEGIN_DATA\nEND_DATA\n\0",
+                "weird-chars"),
+        ] {
+            let h2 = c::cmsIT8LoadFromMem(ctx,
+                doc2.as_ptr() as *const _,
+                doc2.len() as u32);
+            eprintln!("{name} h={}", !h2.is_null());
+            if !h2.is_null() { c::cmsIT8Free(h2); }
+        }
+        c::cmsDeleteContext(ctx);
+    }
+}
