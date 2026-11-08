@@ -4183,3 +4183,110 @@ fn pack_skip1_planar_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmspack residual — DupFormatterFactoryList via formatter
+///   plugin + cmsDupContext, plus dbl→float eval paths and
+///   LabV2 float encoders.
+#[test]
+fn pack_fmt_dup_dbl_arms() {
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
+        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
+            | (pl << 12) | (ds << 10) | (ex << 7)
+            | (ch << 3) | by
+    }
+    unsafe extern "C" fn my_factory(
+        _t: u32, _d: u32, _m: u32)
+        -> *const std::ffi::c_void {
+        std::ptr::null()
+    }
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        // formatter plugin into ctx → dup ctx →
+        //   DupFormatterFactoryList list-walk
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct FmtPlugin {
+            base: PluginBase,
+            factory: *const std::ffi::c_void,
+        }
+        for npl in [1u32, 4] {
+            let ctx = c::cmsCreateContext(
+                std::ptr::null_mut(), std::ptr::null_mut());
+            let mut plugs = vec![];
+            for _ in 0..npl {
+                plugs.push(FmtPlugin {
+                    base: PluginBase {
+                        magic: 0x61637070,
+                        ver: 2200,
+                        typ: 0x66726D48,
+                        next: std::ptr::null_mut(),
+                    },
+                    factory: my_factory
+                        as *const std::ffi::c_void,
+                });
+            }
+            for p in &plugs {
+                let r = c::cmsPluginTHR(ctx,
+                    p as *const _ as *mut _);
+                eprintln!("reg={r}");
+            }
+            let d = c::cmsDupContext(ctx,
+                std::ptr::null_mut());
+            eprintln!("fmt dup{npl} d={}", !d.is_null());
+            if !d.is_null() { c::cmsDeleteContext(d); }
+            c::cmsDeleteContext(ctx);
+        }
+        // dbl→float eval paths (FloatXFORM on doubles)
+        for (pt, prof, name) in [
+            (10u32, lab, "Lab"), (9, c::cmsCreateXYZProfile(),
+                "XYZ"), (4, srgb, "RGB"), (3,
+                c::cmsCreateGrayProfile(
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut()), "Gray"),
+        ] {
+            for (by, bname) in [
+                (8u32, "dbl"), (4, "flt"), (2, "half"),
+            ] {
+                let fin = f(pt, match pt {
+                    3 => 1, _ => 3 }, by, 0, 0, 0, 0, 0, 1);
+                let fout = f(pt, match pt {
+                    3 => 1, _ => 3 }, 4, 0, 0, 0, 0, 0, 1);
+                let t = c::cmsCreateTransform(prof, fin,
+                    prof, fout, 0, 0);
+                eprintln!("{name} {bname}->flt t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let mut src = vec![0u8;
+                        match pt { 3 => 1, _ => 3 }
+                            * by as usize * 4];
+                    for (i, b) in src.iter_mut()
+                        .enumerate() { *b = (i * 43) as u8; }
+                    let mut dst = vec![0u8;
+                        match pt { 3 => 1, _ => 3 } * 4 * 4];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t);
+                }
+                // u16→float LabV2 encoder paths
+                let fin2 = f(pt, match pt {
+                    3 => 1, _ => 3 }, 2, 0, 0, 0, 0, 0, 0);
+                let fout2 = f(pt, match pt {
+                    3 => 1, _ => 3 }, by, 0, 0, 0, 0, 0, 1);
+                let t2 = c::cmsCreateTransform(prof, fin2,
+                    prof, fout2, 0, 0);
+                if !t2.is_null() {
+                    c::cmsDeleteTransform(t2); }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
