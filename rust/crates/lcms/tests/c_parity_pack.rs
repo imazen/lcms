@@ -3646,3 +3646,58 @@ fn labv2_formatter_cells() {
         c::cmsCloseProfile(lab2);
     }
 }
+
+/// Pack*Words output packers — u16 chunky output on 1/3/4/6
+/// channel profiles with swap/skip/swapfirst variants.
+#[test]
+fn pack_words_cells() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        let m6 = (15u32 << 16) | (6 << 3) | 2; // 6ch
+        for (inp, outp, if_, of_, name) in [
+            (lab, gray, l16, g16, "lab->gray u16"),
+            (lab, gray, l16, g16 | (1 << 10), "lab->gray swap"),
+            (lab, gray, l16, g16 | (1 << 7), "lab->gray extra"),
+            (lab, gray, l16, g16 | (1 << 14), "lab->gray sf"),
+            (srgb, lab, r16, l16 | (1 << 10), "srgb->lab swap"),
+            (srgb, lab, r16, l16 | (1 << 7), "srgb->lab extra"),
+            (srgb, lab, r16, l16 | (1 << 14) | (1 << 7), "srgb->lab sf+ex"),
+            (srgb, lab, r16, l16 | (1 << 10) | (1 << 14) | (1 << 7),
+             "srgb->lab all"),
+            (lab, cmyk, l16, k16, "lab->cmyk u16"),
+            (lab, cmyk, l16, k16 | (1 << 10), "lab->cmyk swap"),
+            (lab, cmyk, l16, k16 | (1 << 7), "lab->cmyk extra"),
+            (lab, lab, l16, l16, "lab->lab"),
+        ] {
+            if outp.is_null() { eprintln!("{name} nullprof"); continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 4];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        let _ = m6;
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
