@@ -82,3 +82,90 @@ fn header_creation_datetime() {
         assert_eq!(ct.sec, d.seconds as i32, "tm sec");
     }
 }
+
+/// cmsio1 residual — _cmsReadCHAD v2-display-missing-
+///   wtpt identity path, named-color Lab-PCS -> V2ToV4
+///   stage, Lab-cs+Lab-PCS mft1 -> V4ToV2/V2ToV4.
+#[test]
+fn internal_chad_labv_arms() {
+    unsafe {
+        // v2 display-class profile with NO wtpt tag
+        //   -> CHAD identity path
+        let p1 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p1, 0x6D6E7472);
+        c::cmsSetColorSpace(p1, 0x52474220);
+        c::cmsSetPCS(p1, 0x58595A20);
+        c::cmsSetProfileVersion(p1, 2.4);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let trcs = [g, g, g];
+        for sig in [0x72545243u32, 0x67545243, 0x62545243] {
+            c::cmsWriteTag(p1, sig,
+                g as *const _);
+        }
+        let xyz = [0x0000F6D6u32, 0x00010000, 0x0000D32D];
+        for sig in [0x7258595Au32, 0x6758595A, 0x6258595A] {
+            c::cmsWriteTag(p1, sig,
+                xyz.as_ptr() as *const _);
+        }
+        let mut buf = [0u8; 32768];
+        let mut bn = 32768u32;
+        c::cmsSaveProfileToMem(p1,
+            buf.as_mut_ptr() as *mut _, &mut bn);
+        let p1r = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, 32768);
+        eprintln!("v2-disp-no-wtpt prof={}",
+            !p1r.is_null());
+        let fin = (0u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(p1r, fin,
+            p1r, fin, 1, 0);
+        eprintln!("  intent1-xform t={}", !t.is_null());
+        if !t.is_null() {
+            c::cmsDeleteTransform(t); }
+        if !p1r.is_null() {
+            c::cmsCloseProfile(p1r); }
+        c::cmsCloseProfile(p1);
+        // named-color profile with Lab PCS -> LabV2ToV4
+        let ncp = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(ncp, 0x6E6D636C);
+        c::cmsSetColorSpace(ncp, 0x46434C52);
+        c::cmsSetPCS(ncp, 0x4C616220);
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let pcs3 = [0x1000u16, 0x2000, 0x3000];
+        let dev3 = [0x4000u16, 0x5000, 0x6000];
+        c::cmsAppendNamedColor(nl,
+            b"a\0".as_ptr() as *const _,
+            pcs3.as_ptr(), dev3.as_ptr());
+        c::cmsAppendNamedColor(nl,
+            b"b\0".as_ptr() as *const _,
+            pcs3.as_ptr(), dev3.as_ptr());
+        c::cmsWriteTag(ncp, 0x6E636C32,
+            nl as *const _);
+        let tn = c::cmsCreateTransform(ncp,
+            (3u32 << 16) | (1 << 3) | 2, // gray->lab-ish
+            ncp, fin, 0, 0);
+        eprintln!("ncl-lab t={}", !tn.is_null());
+        if !tn.is_null() {
+            c::cmsDeleteTransform(tn); }
+        c::cmsCloseProfile(ncp);
+        c::cmsFreeNamedColorList(nl);
+        // Lab colorspace + Lab PCS + mft1 tag
+        let lab2 = c::cmsCreateLab2Profile(
+            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let t1 = c::cmsCreateTransform(lab2,
+            (12u32 << 16) | (3 << 3) | 2,
+            lab4, (12u32 << 16) | (3 << 3) | 2, 0, 0);
+        eprintln!("lab2->lab4 t={}", !t1.is_null());
+        if !t1.is_null() {
+            c::cmsDeleteTransform(t1); }
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(lab4);
+        c::cmsFreeToneCurve(g);
+    }
+}
