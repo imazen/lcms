@@ -5873,3 +5873,80 @@ fn curve_text_read_arms() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Type_Dictionary_Read + _cmsReadWCharArray/ReadEmbeddedText —
+/// raw 'dict' tags with 16/24/32-byte records and malformed arms.
+#[test]
+fn dict_record_arms() {
+    unsafe {
+        // dict tag: {count:u32, reclen:u32, entries[reclen/8 x
+        // (off:u32, sz:u32)], data...}
+        let utf16 = |s: &str| -> Vec<u8> {
+            let mut v = Vec::new();
+            for ch in s.encode_utf16().chain(std::iter::once(0)) {
+                v.extend_from_slice(&ch.to_be_bytes());
+            }
+            v
+        };
+        // minimal mluc blob: {count:1, reclen:12, ent{en,US,ln,off}, str}
+        let mluc = |s: &str| -> Vec<u8> {
+            let body: Vec<u8> = s.encode_utf16()
+                .flat_map(|c| c.to_be_bytes()).collect();
+            let mut v = Vec::new();
+            v.extend_from_slice(&1u32.to_be_bytes());
+            v.extend_from_slice(&12u32.to_be_bytes());
+            v.extend_from_slice(&0x656eu32.to_be_bytes());
+            v.extend_from_slice(&0x5553u32.to_be_bytes());
+            v.extend_from_slice(&(body.len() as u32).to_be_bytes());
+            v.extend_from_slice(&20u32.to_be_bytes());
+            v.extend_from_slice(&body);
+            v
+        };
+        let mk = |reclen: u32| -> Vec<u8> {
+            let name = utf16("key1");
+            let value = utf16("val1");
+            let dn = mluc("disp name");
+            let dv = mluc("disp val");
+            // entry sizes: 16->2 fields, 24->3, 32->4
+            let n_fields = (reclen / 8) as usize;
+            let base = 16 + reclen as usize; // header + count/reclen + table
+            let mut offs = Vec::new();
+            let mut data = Vec::new();
+            for fld in [&name, &value, &dn, &dv][..n_fields].iter() {
+                offs.push((base + data.len()) as u32);
+                offs.push(fld.len() as u32);
+                data.extend_from_slice(fld);
+            }
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x64696374u32.to_be_bytes()); // 'dict'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&1u32.to_be_bytes()); // count
+            t.extend_from_slice(&reclen.to_be_bytes());
+            for o in offs {
+                t.extend_from_slice(&o.to_be_bytes());
+            }
+            t.extend_from_slice(&data);
+            t
+        };
+        for (reclen, name) in [(16u32, "r16"), (24, "r24"), (32, "r32"),
+                               (20, "r20-bad"), (8, "r8-bad")] {
+            let raw = mk(reclen);
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x6d657461,
+                raw.as_ptr() as *const _, raw.len() as u32); // 'meta'
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6d657461)
+            } else { std::ptr::null_mut() };
+            eprintln!("dict-{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
