@@ -4890,3 +4890,67 @@ fn pack_optimized_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmspack residual — more format-word variants:
+///   double in/out, extra-3+, premul+extra combos,
+///   half-float, 12-bit.
+#[test]
+fn pack_variant2_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // lab -> rgb at u8/u16/double out variants
+        for (fout, name) in [
+            ((4u32 << 16) | (3 << 3) | 8, "rgb-dbl"),
+            ((4u32 << 16) | (3 << 3) | 4, "rgb-flt"),
+            ((4u32 << 16) | (3 << 3) | 2 | (1 << 22),
+                "rgb-12?"),
+            ((4u32 << 16) | (4 << 3) | 4, "rgbx-flt"),
+            ((4u32 << 16) | (5 << 3) | 4, "rgbxx-flt"),
+            ((4u32 << 16) | (6 << 3) | 4, "rgbxxx-flt"),
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7),
+                "rgb8-ex"),
+            ((4u32 << 16) | (3 << 3) | 2 | (1 << 7),
+                "rgb16-ex"),
+        ] {
+            let t = c::cmsCreateTransform(lab4, flab,
+                srgb, fout, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x8000u16; 3];
+                let mut dst = [0u8; 32];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // rgb -> lab at u8/u16/double in variants
+        for (fin, name) in [
+            ((4u32 << 16) | (3 << 3) | 8, "rgb-dbl-in"),
+            ((4u32 << 16) | (3 << 3) | 4, "rgb-flt-in"),
+            ((4u32 << 16) | (4 << 3) | 4, "rgbx-flt-in"),
+            ((4u32 << 16) | (5 << 3) | 4, "rgbxx-flt-in"),
+            ((4u32 << 16) | (1 << 10) | (3 << 3) | 8,
+                "rgb-dbl-ds"),
+            ((4u32 << 16) | (1 << 14) | (3 << 3) | 8,
+                "rgb-dbl-sf"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fin,
+                lab4, flab, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0.5f64; 8];
+                let mut dst = [0u16; 4];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
