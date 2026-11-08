@@ -2318,3 +2318,55 @@ fn insymbol_edge_arms() {
         }
     }
 }
+
+/// HeaderSection — #KEYWORD/#DATA_FORMAT_IDENTIFIER decls,
+/// quoted-vs-unquoted property values, WRITE_PAIR non-string
+/// reject, blank/comment lines, bad tokens.
+#[test]
+fn header_arms2() {
+    unsafe {
+        let wrap = |hdr: &str| format!(
+            "IT8FILE\n{hdr}NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n5\nEND_DATA\n");
+        let docs: Vec<(String, &str)> = vec![
+            (wrap("#KEYWORD CUSTOMKEY\nCUSTOMKEY \"val\"\n"),
+                "keyword-decl"),
+            (wrap("#DATA_FORMAT_IDENTIFIER SAMPLEID\n"),
+                "datafmt-id-decl"),
+            (wrap("ORIGINATOR \"quoted value\"\n"), "quoted-val"),
+            (wrap("ORIGINATOR unquoted\n"), "unquoted-val"),
+            (wrap("ORIGINATOR 42\n"), "num-val"),
+            (wrap("ORIGINATOR 'sq val'\n"), "sq-val"),
+            (wrap("INSTRUMENTATION \"a\" \"b\"\n"), "two-strs"),
+            (wrap("WEIGHTING_FUNCTION \"w=1\"\n"), "wfpair-str"),
+            (wrap("WEIGHTING_FUNCTION 42\n"), "wfpair-nonstr"),
+            (wrap("WEIGHTING_FUNCTION badident\n"),
+                "wfpair-ident"),
+            (wrap("\n\nORIGINATOR \"v\"\n\n"), "blank-lines"),
+            (wrap("ORIGINATOR \"v\"\n# comment\n"), "comment"),
+            (wrap("5 badtok\n"), "num-token"),
+            (wrap("ORIGINATOR\n"), "no-val"),
+            (wrap("#KEYWORD\n"), "keyword-noval"),
+            (wrap("#DATA_FORMAT_IDENTIFIER\n"), "datafmt-noval"),
+            (wrap("#KEYWORD \"notident\"\n"), "keyword-str"),
+            (wrap("#UNKNOWNKEY val\n"), "unknown-hash"),
+            (wrap("MYKEY v1 v2 v3\n"), "multi-val"),
+            (wrap("MYKEY 'a' 'b' 'c'\n"), "multi-sq"),
+            (wrap("MYKEY\t\"tabbed\"\n"), "tab-sep"),
+        ];
+        for (doc, name) in &docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} ok={}", !p.is_null());
+            if !p.is_null() {
+                let v = c::cmsIT8GetProperty(
+                    p, b"ORIGINATOR\0".as_ptr() as *const i8);
+                let v2 = c::cmsIT8GetProperty(
+                    p, b"CUSTOMKEY\0".as_ptr() as *const i8);
+                eprintln!("  orig={v:?} cust={v2:?}");
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
