@@ -4934,3 +4934,68 @@ fn transform_alloc_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Unroll*/Pack* half-float + word + premul formatters.
+#[test]
+fn half_fmt_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let enc = |cs: u32, ch: u32, b: u32, flags: u32| {
+            flags | (cs << 16) | (ch << 3) | b
+        };
+        const FLOAT: u32 = 1 << 22;
+        const HALF: u32 = 1 << 21;          // half-float
+        const PREMUL: u32 = 1 << 23;
+        const PLANAR: u32 = 1 << 12;
+        const EXTRA: u32 = 1 << 7;
+        let r8 = enc(4, 3, 1, 0);
+        let l8 = enc(10, 3, 1, 0);
+        let g8 = enc(3, 1, 1, 0);
+        let rh = enc(4, 3, 2, HALF);
+        let lh = enc(10, 3, 2, HALF);
+        let rf = enc(4, 3, 4, FLOAT);
+        let lf = enc(10, 3, 4, FLOAT);
+        let rw = enc(4, 3, 2, 0);           // word 16
+        let lw = enc(10, 3, 2, 0);
+        let rpa = enc(4, 4, 1, PREMUL);
+        let rpp = enc(4, 4, 2, PREMUL | PLANAR);
+        let rpl = enc(4, 3, 2, PLANAR);
+        let rex = enc(4, 4, 1, EXTRA);
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, rh, lh, "half->half"),
+            (srgb, lab, rh, l8, "half->l8"),
+            (lab, srgb, lh, r8, "lhalf->r8"),
+            (srgb, lab, rf, lf, "rflt->lflt"),
+            (srgb, lab, rw, lw, "r16->l16"),
+            (lab, srgb, lw, rw, "l16->r16"),
+            (srgb, lab, rpa, l8, "premul->l8"),
+            (srgb, lab, rpp, l8, "premul-pl->l8"),
+            (srgb, lab, rpl, l8, "r16pl->l8"),
+            (srgb, lab, rex, l8, "extra->l8"),
+            (gray, srgb, g8, rh, "g8->half"),
+            (srgb, gray, rh, g8, "half->g8"),
+            (srgb, srgb, rh, rh, "half-id"),
+            (srgb, lab, rh, lf, "half->flt"),
+            (srgb, lab, rf, lh, "flt->half"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp,
+                of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 32];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
