@@ -324,3 +324,36 @@ fn alpha_multi_extra_and_swaps() {
         }
     }
 }
+
+/// Alpha machinery internals — alpha-in/alpha-out formats on
+/// real transforms.
+#[test]
+fn alpha_machinery() {
+    unsafe {
+        for h in [c::cmsCreate_sRGBProfile(),
+                  c::cmsCreateXYZProfile(),
+                  c::cmsCreateLab4Profile(std::ptr::null_mut()),
+                  c::cmsCreateLab2Profile(std::ptr::null_mut()),
+                  c::cmsCreateNULLProfile()] {
+            // 4-channel RGBA in/out on a 3-channel profile —
+            // the alpha-channel machinery
+            let rgba: u32 = (4 << 16) | (4 << 3) | 2;
+            let lab4 = c::cmsCreateLab4Profile(
+                std::ptr::null_mut());
+            let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let ct = c::cmsCreateTransform(h, rgba, lab4,
+                lab_fmt, 0, 0);
+            if !ct.is_null() {
+                // transform a buffer with an alpha channel —
+                // the alpha-extraction/injection machinery
+                let mut inp = [30000u16, 40000, 50000, 0xFFFF];
+                let mut out = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+            let _ = c::cmsCloseProfile(lab4);
+            c::cmsCloseProfile(h);
+        }
+    }
+}
