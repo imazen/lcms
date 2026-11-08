@@ -1616,3 +1616,42 @@ fn io1_float_devicelink() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// io1 named-color + abstract LUT readers — transform creation
+/// on nmcl/abst-class profiles hits the per-class LUT readers.
+#[test]
+fn io1_named_abstract_readers() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let n16 = (16u32 << 16) | (1 << 3) | 2; // named-color fmt?
+        for f in ["lcms2link.icc", "lcms2link2.icc", "brightness.icc",
+                  "nullcms2.icc", "labv4lcms2.icc", "labv2lcms2.icc",
+                  "glablcms2.icc", "aRGBlcms2.icc", "gray3lcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            // both directions through lab/srgb
+            for (inp, outp, if_, of_, intent, name) in [
+                (p, lab, n16, l16, 0u32, "p-lab-i0"),
+                (p, lab, n16, l16, 1, "p-lab-i1"),
+                (lab, p, l16, r16, 0, "lab-p-i0"),
+                (lab, p, l16, r16, 2, "lab-p-i2"),
+                (srgb, p, r16, r16, 0, "rgb-p-i0"),
+            ] {
+                let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                    intent, 0);
+                eprintln!("{f}-{name} t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(srgb);
+    }
+}
