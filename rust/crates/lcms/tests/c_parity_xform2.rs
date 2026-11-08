@@ -631,3 +631,32 @@ fn proofing_variants() {
         let _ = (rgb, lab, rgb2);
     }
 }
+
+/// Context machinery — THR variants on more combos.
+#[test]
+fn thr_variants() {
+    unsafe {
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let rgb = c::cmsCreate_sRGBProfileTHR(ctx);
+        let lab = c::cmsCreateLab4ProfileTHR(ctx,
+            std::ptr::null_mut());
+        let fmt = (4 << 16) | (3 << 3) | 2u32;
+        let lfmt = (10 << 16) | (3 << 3) | 2u32;
+        let t1 = c::cmsCreateTransformTHR(ctx, rgb, fmt,
+            lab, lfmt, 0, 0);
+        eprintln!("rgb-lab-thr={}", !t1.is_null());
+        if !t1.is_null() { c::cmsDeleteTransform(t1); }
+        let mut profs = [rgb, lab];
+        let mut intents = [0u32, 0];
+        let mut bpc = [0i32, 0];
+        let mut adaptation = 0.0f64;
+        let t2 = c::cmsCreateExtendedTransform(ctx, 2,
+            profs.as_mut_ptr(), bpc.as_mut_ptr(),
+            intents.as_mut_ptr(), &mut adaptation,
+            std::ptr::null_mut(), 0, fmt, lfmt, 0);
+        eprintln!("ext={}", !t2.is_null());
+        if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        let _ = (rgb, lab, ctx);
+    }
+}
