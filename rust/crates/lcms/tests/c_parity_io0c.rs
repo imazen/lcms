@@ -199,3 +199,116 @@ fn internal_matshaper_out_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — _cmsReadInputLUT Lab-colorspace
+///   + mft1-type A2B0 -> LabV4ToV2 + LabV2ToV4 stage
+///   inserts (v2 Lab device profile).
+#[test]
+fn internal_lab_mft_in_arms() {
+    unsafe {
+        // v2 profile: colorspace=Lab, PCS=Lab, mft1 A2B0
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x70727472);
+        c::cmsSetColorSpace(p, 0x4C616220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 2.4);
+        // mft1 tag: in3 out3 grid2 + matrix + tables
+        let mut blob = vec![
+            0x6D, 0x66, 0x74, 0x31, 0, 0, 0, 0,
+            3, 3, 2, 0,
+        ];
+        for i in 0..9 {
+            let v: u32 = if i % 4 == 0 {
+                0x00010000 } else { 0 };
+            blob.extend_from_slice(&v.to_be_bytes());
+        }
+        blob.extend_from_slice(&[0x80u8; 256 * 3]);
+        blob.extend_from_slice(&[0x80u8; 8 * 3]);
+        blob.extend_from_slice(&[0x80u8; 256 * 3]);
+        c::cmsWriteRawTag(p, 0x41324230,
+            blob.as_ptr() as *const _, blob.len() as u32);
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let pr = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        eprintln!("v2-lab-mft prof={}", !pr.is_null());
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let fin = (10u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(pr, fin,
+            lab4, fin, 0, 0);
+        eprintln!("  t={}", !t.is_null());
+        if !t.is_null() {
+            let src = [0x8000u16; 3];
+            let mut dst = [0u16; 3];
+            c::cmsDoTransform(t,
+                src.as_ptr() as *const _,
+                dst.as_mut_ptr() as *mut _, 1);
+            eprintln!("  {src:?}->{dst:?}");
+            c::cmsDeleteTransform(t);
+        }
+        // mft2 variant too
+        let p2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p2, 0x70727472);
+        c::cmsSetColorSpace(p2, 0x4C616220);
+        c::cmsSetPCS(p2, 0x4C616220);
+        c::cmsSetProfileVersion(p2, 2.4);
+        let mut b2 = vec![
+            0x6D, 0x66, 0x74, 0x32, 0, 0, 0, 0,
+            3, 3, 2, 0,
+        ];
+        for i in 0..9 {
+            let v: u32 = if i % 4 == 0 {
+                0x00010000 } else { 0 };
+            b2.extend_from_slice(&v.to_be_bytes());
+        }
+        b2.extend_from_slice(&[0u8; 2]); // in-n u16
+        b2.extend_from_slice(&[0x02, 0x00]); // in sz
+        // mft2: nInputEntries u16, nOutputEntries u16
+        //   then in-table n*3 u16, clut, out-table
+        //   actually layout: u16 in-entries, out-entries
+        let mut b3 = vec![
+            0x6D, 0x66, 0x74, 0x32, 0, 0, 0, 0,
+            3, 3, 2, 0,
+        ];
+        for i in 0..9 {
+            let v: u32 = if i % 4 == 0 {
+                0x00010000 } else { 0 };
+            b3.extend_from_slice(&v.to_be_bytes());
+        }
+        b3.extend_from_slice(&[0x01, 0x00]); // in=256
+        b3.extend_from_slice(&[0x01, 0x00]); // out=256
+        for _ in 0..(256 * 3) {
+            b3.extend_from_slice(&0x8000u16
+                .to_be_bytes()); }
+        for _ in 0..(8 * 3) {
+            b3.extend_from_slice(&0x8000u16
+                .to_be_bytes()); }
+        for _ in 0..(256 * 3) {
+            b3.extend_from_slice(&0x8000u16
+                .to_be_bytes()); }
+        let _ = b2;
+        c::cmsWriteRawTag(p2, 0x41324230,
+            b3.as_ptr() as *const _, b3.len() as u32);
+        let mut n2 = buf.len() as u32;
+        c::cmsSaveProfileToMem(p2,
+            buf.as_mut_ptr() as *mut _, &mut n2);
+        let pr2 = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n2);
+        eprintln!("v2-lab-mft2 prof={}", !pr2.is_null());
+        let t2 = c::cmsCreateTransform(pr2, fin,
+            lab4, fin, 0, 0);
+        eprintln!("  t2={}", !t2.is_null());
+        if !t2.is_null() {
+            c::cmsDeleteTransform(t2); }
+        if !pr.is_null() { c::cmsCloseProfile(pr); }
+        if !pr2.is_null() { c::cmsCloseProfile(pr2); }
+        c::cmsCloseProfile(p);
+        c::cmsCloseProfile(p2);
+        c::cmsCloseProfile(lab4);
+    }
+}
