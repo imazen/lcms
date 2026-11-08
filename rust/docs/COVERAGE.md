@@ -238,3 +238,46 @@ every combo's eval), cmstypes (~30 Type_* Read/Dup/Free branches
 on unusual payloads), cmsio1 (tag-serialization internals on
 uncommon tag shapes), cmscgats (parser error paths), cmscnvrt
 (intent-link internals on unusual chains).
+
+## Round 3 — AFTER the internals sweep (through 536cd5f1)
+
+C oracle re-measured after the round-3 gates: **67.17% lines /
+84.68% functions** (up from round-2's 66.46/84.04; round-1's
+52.2/62.7). Every exported `cms*` + `cmsIT8*` + `cmsDup*` +
+`cmsNamedColor*` + `cmsPostScript*` API is exercised; 33
+Type_* read paths via crafted raw tags; 17x17 formatter-pair
+matrix; all-intent ps2 emission; v2/v4 stored-type dispatch.
+
+| file | lines | functions |
+|---|---|---|
+| cmstypes.c | 53.77% (was 51.07%) | 83.18% |
+| cmspack.c | 48.95% | 57.97% |
+| cmsio1.c | 64.20% | 80.00% |
+| cmscnvrt.c | 67.25% | 86.96% |
+| cmscgats.c | 67.18% | 94.95% |
+| cmsvirt.c | 66.34% | 96.88% |
+| cmspcs.c | 74.04% (was 63.75%) | 100% |
+| cmsio0.c | 75.20% | 95.65% |
+| cmsnamed.c | 72.38% | 97.83% |
+| cmsopt.c | 76.29% | 81.82% |
+| cmsps2.c | 72.41% | 90.62% |
+| cmsgamma.c | 71.39% | 89.47% |
+| cmsxform.c | 70.89% | 75.00% |
+| cmslut.c | 79.23% | 96.05% |
+| cmsalpha.c | 86.61% | 85.37% |
+| cmscam02.c | 91.26% | 100% |
+| cmsgmt.c | 78.97% | 100% |
+| cmssamp.c | 68.22% | 85.71% |
+| cmsplugin.c | 73.61% | 100% |
+| cmserr.c | 79.30% | 100% |
+| cmssm.c | 90.70% | 100% |
+| cmswtpnt.c | 87.10% | 100% |
+| cmsintrp.c | 98.50% | 100% |
+| cmsmd5.c | 88.11% | 80.00% |
+| cmshalf.c | 100% | 100% |
+| cmsmtrx.c | 100% | 100% |
+
+Remaining line-level gaps are deep internals: the ~135
+formatter variant bodies in cmspack beyond the eval'd combos,
+the MPE/pipeline serialization internals in cmstypes, tag
+serialization internals in cmsio1.
