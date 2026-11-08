@@ -67,6 +67,8 @@ Rust `lcms` through **`cargo test`**: 60.6% lines / 66.6% fns.
 | `c_parity_cgats2` | `cmscgats.c`: IT8 writer (`SaveToMem`), `SetSheetType`/`Comment`, property str/dbl/hex/multi/uncooked, `SetDataFormat`/`SetData`/`SetDataDbl`/`SetDataRowCol`, `GetPatchName`/`ByName`, `FindDataFormat`, parse->save roundtrip, malformed rejects | byte-exact writer output + getter/result parity |
 | `c_parity_ioerr` | `cmsio0.c` open paths: 25+ corrupted profile streams (bad magic, tag-table corruption, truncations, header flips, appended garbage); `cmsio1.c` getters + `IsIntentSupported` matrix | accept/reject + getter parity |
 | `c_parity_pack` | `cmspack.c`: 18-format sweep x all pairs over RGB/Lab/XYZ/Gray/CMYK/MCH5-10 (devicelink profiles), packed 565/444, doswap/endian16/planar/swapfirst, invalid-format rejects | byte-exact `cmsDoTransform`; float outputs pinned to ~4e-5 rel residual |
+| `c_parity_types` | `cmstypes.c` tag-level: per-tag raw read/write/reserialize across the bundled corpus | raw payload + resave byte-exact (created masked) |
+| `c_parity_err` | `cmserr.c`/`cmsgmt.c`/context: GBD alloc->add->compute->check grid, error-handler code+text parity on SynError, context lifecycle | bool/result + error-code/text parity |
 
 ### Findings the new gate produced
 
@@ -117,6 +119,17 @@ Rust `lcms` through **`cargo test`**: 60.6% lines / 66.6% fns.
     that was TEST misuse: `cmsIT8GetPatchName` unconditionally writes
     `MAXSTR` (1024) bytes into the caller's buffer via `strncpy`, and the
     gate passed 64. With a 1024-byte buffer both calls are clean.)
+11. **`cgats.rs::syn_error` wrong code + format** — signaled `ERROR_READ`
+    (5) instead of `cmsERROR_CORRUPTION_DETECTED` (12), formatted
+    `"msg (line N)"` instead of C's `": Line N, msg"` (FileName empty for
+    mem/alloc docs), and dropped the trailing period on
+    `"Invalid or more than NUMBER_OF_FIELDS fields."`. Caught by
+    error-handler parity.
+12. **`cgats.rs::set_property_dbl` ignored `define_dbl_format`** — C does
+    `snprintf(buf, DoubleFormatter, val)`; Rust used Display. `%.2f`→
+    `1.50` vs `1.5`. Added `format_dbl`, a printf-spec applier covering
+    `%f`/`%e`/`%E`/`%g`/`%G` including `%g`'s exponential-vs-fixed
+    selection and trailing-zero stripping.
 
 ## ICC spec references
 
