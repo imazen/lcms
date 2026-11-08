@@ -1489,3 +1489,43 @@ fn pseq_type() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_MPE internals — a crafted 'mpe '-typed tag through the
+/// element-dispatch machinery.
+#[test]
+fn mpe_type() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // 'mpe ' body — the MPE tag format: sig + channels +
+        // element count + elements. A curve-set element.
+        let mut b = Vec::new();
+        b.extend_from_slice(b"mpe ");
+        b.extend_from_slice(&[0; 4]);
+        b.extend_from_slice(&1u16.to_be_bytes()); // inch
+        b.extend_from_slice(&1u16.to_be_bytes()); // outch
+        b.extend_from_slice(&1u32.to_be_bytes()); // nelem
+        // element: 'cvst' (curve set)
+        b.extend_from_slice(b"cvst");
+        b.extend_from_slice(&[0; 4]);
+        b.extend_from_slice(&1u32.to_be_bytes()); // ncurves
+        // one curve: 'curf' float table
+        b.extend_from_slice(b"curf");
+        b.extend_from_slice(&[0; 4]);
+        b.extend_from_slice(&2u32.to_be_bytes()); // npoints
+        b.extend_from_slice(&0.0f32.to_be_bytes());
+        b.extend_from_slice(&1.0f32.to_be_bytes());
+        let ok = c::cmsWriteRawTag(h, 0x41324230,
+            b.as_ptr() as *const std::ffi::c_void,
+            b.len() as u32);
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h3 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h3, 0x41324230);
+        eprintln!("mpe write={ok} read={}", r.is_null());
+        if !h3.is_null() { c::cmsCloseProfile(h3); }
+        c::cmsCloseProfile(h);
+    }
+}
