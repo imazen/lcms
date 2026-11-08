@@ -1656,3 +1656,48 @@ fn corpus_serialize() {
         }
     }
 }
+
+/// Corpus stored-table writes — write unusual tags to a
+/// loaded profile (the stored-table write path).
+#[test]
+fn corpus_stored_writes() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+            let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            c::cmsMLUsetASCII(mlu,
+                b"en\0".as_ptr() as *const u8,
+                b"US\0".as_ptr() as *const u8,
+                b"x\0".as_ptr() as *const u8);
+            // write a spread of tags — the stored-table write
+            // machinery on a loaded profile
+            for (sig, kind) in [
+                (0x77747074u32, 1u32), (0x626B7074, 1),
+                (0x6C756D69, 1), (0x63686164, 1),
+                (0x64657363, 2), (0x63707274, 2),
+                (0x646D6E64, 2), (0x646D6464, 2)] {
+                let payload = if kind == 1 {
+                    &xyz as *const _ as *mut std::ffi::c_void
+                } else {
+                    mlu as *mut std::ffi::c_void
+                };
+                let _ = c::cmsWriteTag(h, sig, payload);
+            }
+            // resave + read — the stored-table serialization
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h2 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let _ = h2;
+            c::cmsCloseProfile(h);
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+            c::cmsMLUfree(mlu);
+        }
+    }
+}
