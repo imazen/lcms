@@ -12826,3 +12826,82 @@ fn namedcolor_arms() {
         c::cmsFreeProfileSequenceDescription(ps2);
     }
 }
+
+/// Type_MHC2_Read — raw MHC2 blob: valid tables+matrix +
+/// oversized/short/missing-offset variants.
+#[test]
+fn mhc2_read_arms2() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn f15(v: f64) -> [u8; 4] {
+        ((v * 65536.0) as i32).to_be_bytes()
+    }
+    fn f64be(v: f64) -> [u8; 8] { v.to_be_bytes() }
+    // mhc2 body: CurveEntries u32, MinL/PeakL f15, MatrixOff,
+    // ROff, GOff, BOff u32 (offsets from tag base)
+    fn mhc2(ne: u32, with_mat: bool, entries: u32) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x4D484332));   // 'MHC2'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(entries));
+        t.extend_from_slice(&f15(0.0));
+        t.extend_from_slice(&f15(1.0));
+        let off = 40u32;
+        t.extend_from_slice(&be32(if with_mat { off }
+            else { 0 }));
+        let taboff = if with_mat { off + 8 * 12 } else { off };
+        t.extend_from_slice(&be32(taboff));
+        t.extend_from_slice(&be32(taboff + 8 + ne * 8));
+        t.extend_from_slice(&be32(taboff + 16 + ne * 16));
+        if with_mat {
+            for i in 0..12 {
+                t.extend_from_slice(&f64be(if i % 4 == 0 {
+                    1.0 } else { 0.0 }));
+            }
+        }
+        for c in 0..3 {
+            t.extend_from_slice(&be32(0));          // table hdr?
+            for i in 0..ne {
+                t.extend_from_slice(&f64be(
+                    (i % 7) as f64 / 7.0 + c as f64 * 0.01));
+            }
+        }
+        t
+    }
+    unsafe {
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (mhc2(16, true, 16), "valid-mat"),
+            (mhc2(16, false, 16), "valid-nomat"),
+            (mhc2(1, true, 1), "n1"),
+            (mhc2(256, true, 256), "n256"),
+            (mhc2(4, true, 4096), "too-many-entries"),
+            (mhc2(4, true, 5000), "entries>4096"),
+            ({ let mut t = mhc2(16, true, 16); t.truncate(30);
+                t }, "truncated"),
+            ({ let mut t = mhc2(16, false, 16);
+                t[8..12].copy_from_slice(&be32(0xFFFFFFFF));
+                t }, "huge-entries"),
+        ];
+        for (blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, 0x4D484332,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x4D484332)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
