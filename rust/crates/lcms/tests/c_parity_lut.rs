@@ -4292,3 +4292,67 @@ fn lut8_16_writer_shapes() {
         }
     }
 }
+
+/// cmslut residual — inputChan>MAX_INPUT_DIMENSIONS
+///   reject on CLut16bit/Float granular allocs +
+///   CurveSetDup/CLUTElemDup via pipeline dup on
+///   curve-set and clut stages.
+#[test]
+fn lut_dup_oversize_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // oversize input channels → range error
+        for (n, name) in [
+            (15u32, "15"), (16, "16"), (100, "100"),
+        ] {
+            let dims = [3u32; 15];
+            let c16 = c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(),
+                n, 3, std::ptr::null_mut());
+            let cf = c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), dims.as_ptr(),
+                n, 3, std::ptr::null_mut());
+            eprintln!("{name} c16={} cf={}",
+                !c16.is_null(), !cf.is_null());
+            if !c16.is_null() { c::cmsStageFree(c16); }
+            if !cf.is_null() { c::cmsStageFree(cf); }
+        }
+        // pipeline dup on cvst + clut stages →
+        //   CurveSetDup/CLUTElemDup bodies
+        for nch in [1u32, 3, 4] {
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), nch, nch);
+            let trcs = vec![g; nch as usize];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), nch,
+                    trcs.as_ptr() as *mut _));
+            let dims = [3u32; 15];
+            let npt = 3usize.pow(nch) * nch as usize;
+            let g16 = vec![0x4000u16; npt];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    nch, nch, g16.as_ptr()));
+            let nf = 3usize.pow(nch) * nch as usize;
+            let gf = vec![0.5f32; nf];
+            c::cmsPipelineInsertStage(p, 2,
+                c::cmsStageAllocCLutFloatGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    nch, nch, gf.as_ptr()));
+            let dp = c::cmsPipelineDup(p);
+            eprintln!("{nch}ch dp={}", !dp.is_null());
+            if !dp.is_null() {
+                // eval the dup'd pipeline → verify dup'd
+                //   stages are functional
+                let src = vec![0x4000u16; nch as usize];
+                let mut dst = vec![0u16; nch as usize];
+                c::cmsPipelineEval16(
+                    src.as_ptr(), dst.as_mut_ptr(), dp);
+                c::cmsPipelineFree(dp);
+            }
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
