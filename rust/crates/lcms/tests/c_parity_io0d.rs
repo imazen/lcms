@@ -1451,3 +1451,38 @@ fn corpus_profile_transform() {
         }
     }
 }
+
+/// Corpus transforms in the right direction — corpus->sRGB
+/// + corpus->corpus on real profiles with matching formats.
+#[test]
+fn corpus_transform_dir() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let rgb_fmt = (4 << 16) | (3 << 3) | 1u32;
+        for (name, path, nch) in [
+            ("lcms2link", b"../../lcms2link.icc\0" as &[u8], 4u32),
+            ("gray", b"../../graylcms2.icc\0", 1),
+            ("labv2", b"../../labv2lcms2.icc\0", 3),
+            ("lin", b"../../linlcms2.icc\0", 4),
+            ("labv4", b"../../labv4lcms2.icc\0", 3),
+            ("xyz", b"../../xyzlcms2.icc\0", 3)] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let cs_fmt = (0 << 16) | (nch << 3) | 1u32;
+            let t1 = c::cmsCreateTransform(h, cs_fmt,
+                srgb, rgb_fmt, 0, 0);
+            let t2 = c::cmsCreateTransform(h, cs_fmt,
+                h, cs_fmt, 0, 0);
+            eprintln!("{name} c->rgb={} c->c={}",
+                !t1.is_null(), !t2.is_null());
+            if !t1.is_null() { c::cmsDeleteTransform(t1); }
+            if !t2.is_null() { c::cmsDeleteTransform(t2); }
+            c::cmsCloseProfile(h);
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
