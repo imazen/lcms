@@ -2843,3 +2843,28 @@ fn stage_internals() {
         let _ = sz1;
     }
 }
+
+/// SaveAs8bitsFlag + pipeline internals — the flag's
+/// get/set/restore, pipeline dup honoring it.
+#[test]
+fn save_as_8bits_flag() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        // flag set/get/restore -> internal flag accessor arms
+        for v in [0i32, 1, 0, 1] {
+            let old = c::cmsPipelineSetSaveAs8bitsFlag(p, v);
+            eprintln!("set8={v} old={old}");
+        }
+        // dup honors the flag
+        let dp = c::cmsPipelineDup(p);
+        if !dp.is_null() {
+            let _ = c::cmsPipelineSetSaveAs8bitsFlag(dp, 0);
+            c::cmsPipelineFree(dp);
+        }
+        c::cmsPipelineFree(p);
+    }
+}
