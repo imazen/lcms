@@ -2,7 +2,7 @@
 //! format variants; each hits a different Pack/Unroll formatter fn.
 //! C gets native u16s (as_ptr()); Rust gets the byte buffer.
 
-use lcms::{virt, xform, types::*};
+use lcms::{virt, xform, gamma, types::*};
 use lcms_cref as c;
 
 #[test]
@@ -255,6 +255,40 @@ fn anyspace_format() {
                 eprintln!("anyspace c={co:?} r={ro16:?}");
             }
             c::cmsDeleteTransform(ct);
+        }
+    }
+}
+
+/// 1ch/2ch format matrix — gray/duo-channel formatter paths.
+#[test]
+fn low_channel_formats() {
+    unsafe {
+        // gray (1ch) + duo (2ch) formats u8/u16
+        for (name, nch, bytes) in [
+            ("gray8", 1u32, 1u32), ("gray16", 1, 2),
+            ("duo8", 2, 1), ("duo16", 2, 2),
+        ] {
+            let in_fmt = (7 << 16) | (nch << 3) | bytes; // gray cs
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+            let hi = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, g);
+            let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
+                (10 << 16) | (3 << 3) | 2, 0, 0);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            let rtc = gamma::build_gamma(None, 2.2).unwrap();
+            let mut rp1 = virt::create_gray_profile(None, None,
+                Some(&rtc)).unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, (10 << 16) | (3 << 3) | 2, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "{name}");
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
         }
     }
 }
