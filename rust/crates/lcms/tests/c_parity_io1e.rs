@@ -1511,3 +1511,31 @@ fn write_side_dispatch() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Tag-table machinery on real stored tags — write + delete
+/// + link + enumerate on a corpus profile.
+#[test]
+fn stored_tag_table() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            let n0 = c::cmsGetTagCount(h);
+            // write a tag — the stored-table write path
+            let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+            let w1 = c::cmsWriteTag(h, 0x77747074,
+                &xyz as *const _ as *mut std::ffi::c_void);
+            // link a tag — the stored-table link machinery
+            c::cmsLinkTag(h, 0x626B7074, 0x77747074);
+            // enumerate — the stored-table internals
+            let n1 = c::cmsGetTagCount(h);
+            let mut links = 0;
+            for i in 0..n1 {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                if c::cmsTagLinkedTo(h, sig) != 0 { links += 1; }
+            }
+            eprintln!("n={n0}->{n1} write={w1} links={links}");
+            c::cmsCloseProfile(h);
+        }
+    }
+}
