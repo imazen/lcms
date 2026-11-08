@@ -1043,3 +1043,62 @@ fn virt_builders2_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsvirt residual — BCHSW abstract profiles at
+///   edge params + NULL/OkLab/Lab2 builders on ctx.
+#[test]
+fn virt_bchsw_arms() {
+    unsafe {
+        // BCHSW: brightness/contrast/hue/sat/whitepoint
+        //   combos
+        for (lut, b, c_, h, s, name) in [
+            (0u32, 0.0, 0.0, 0.0, 0.0, "identity"),
+            (1, 20.0, 0.0, 0.0, 0.0, "bright20"),
+            (1, -20.0, 0.0, 0.0, 0.0, "bright-20"),
+            (1, 0.0, 40.0, 0.0, 0.0, "contrast40"),
+            (1, 0.0, -40.0, 0.0, 0.0, "contrast-40"),
+            (1, 0.0, 0.0, 60.0, 0.0, "hue60"),
+            (1, 0.0, 0.0, -120.0, 0.0, "hue-120"),
+            (1, 0.0, 0.0, 0.0, 50.0, "sat50"),
+            (1, 0.0, 0.0, 0.0, -50.0, "sat-50"),
+            (2, 10.0, 20.0, 30.0, 40.0, "all4"),
+            (8, 5.0, 5.0, 5.0, 5.0, "lut8"),
+        ] {
+            let p = c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), lut, b, c_, h, s,
+                std::ptr::null(), std::ptr::null());
+            eprintln!("{name} prof={}", !p.is_null());
+            if !p.is_null() {
+                // use it in a transform
+                let lab4 = c::cmsCreateLab4Profile(
+                    std::ptr::null_mut());
+                let flab = (10u32 << 16) | (3 << 3) | 2;
+                let mut profs = [lab4, p, lab4];
+                let t = c::cmsCreateMultiprofileTransform(
+                    profs.as_mut_ptr(), 3,
+                    flab, flab, 0, 0);
+                eprintln!("  chain t={}", !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+                c::cmsCloseProfile(lab4);
+                c::cmsCloseProfile(p);
+            }
+        }
+        // NULL + OkLab + Lab2 on ctx
+        let nul = c::cmsCreateNULLProfileTHR(
+            std::ptr::null_mut());
+        eprintln!("null-prof={}", !nul.is_null());
+        if !nul.is_null() {
+            c::cmsCloseProfile(nul); }
+        let okl = c::cmsCreate_OkLabProfile(
+            std::ptr::null_mut());
+        eprintln!("oklab={}", !okl.is_null());
+        if !okl.is_null() {
+            c::cmsCloseProfile(okl); }
+        let lab2 = c::cmsCreateLab2ProfileTHR(
+            std::ptr::null_mut(), std::ptr::null());
+        eprintln!("lab2={}", !lab2.is_null());
+        if !lab2.is_null() {
+            c::cmsCloseProfile(lab2); }
+    }
+}
