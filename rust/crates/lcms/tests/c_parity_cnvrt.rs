@@ -468,3 +468,36 @@ fn unusual_class_chains() {
         let _ = c::cmsCloseProfile(bchsw);
     }
 }
+
+/// Transform FROM a devicelink profile — the devicelink-transform
+/// branch in the link machinery.
+#[test]
+fn devicelink_transform() {
+    unsafe {
+        // bake a devicelink, then transform through it
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        c::cmsDeleteTransform(ct);
+        if !dl.is_null() {
+            let in_fmt2: u32 = (4 << 16) | (3 << 3) | 2;
+            let ct2 = c::cmsCreateTransform(dl, in_fmt2, dl,
+                in_fmt2, 0, 0);
+            eprintln!("dl->dl transform null={}", ct2.is_null());
+            if !ct2.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 3];
+                c::cmsDoTransform(ct2, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct2);
+            }
+            c::cmsCloseProfile(dl);
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
