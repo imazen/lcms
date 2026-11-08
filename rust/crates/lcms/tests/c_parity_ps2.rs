@@ -739,3 +739,105 @@ fn ps2_gray_lut_emitters() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsps2 residual — named-color CSA/CRD emit +
+///   intent/shape/flag variants through
+///   cmsGetPostScriptCSA/CRD/ColorResource.
+#[test]
+fn ps2_named_intent_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // named-color profile (class 'nmcl')
+        let ncp = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(ncp, 0x6E6D636C);
+        c::cmsSetColorSpace(ncp, 0x46434C52);
+        c::cmsSetPCS(ncp, 0x58595A20);
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let pcs = [0x1000u16, 0x2000, 0x3000];
+        let dev = [0x4000u16, 0x5000, 0x6000];
+        c::cmsAppendNamedColor(nl,
+            b"red\0".as_ptr() as *const _,
+            pcs.as_ptr(), dev.as_ptr());
+        c::cmsAppendNamedColor(nl,
+            b"blue\0".as_ptr() as *const _,
+            pcs.as_ptr(), dev.as_ptr());
+        c::cmsWriteTag(ncp, 0x6E636C32,
+            nl as *const _);
+        // matrix-shaper profile for WriteInputMatrixShaper
+        #[repr(C)]
+        struct CieXyy { x: f64, y: f64, yy: f64 }
+        let wp = CieXyy { x: 0.3, y: 0.3, yy: 1.0 };
+        let prim = [
+            CieXyy { x: 0.6, y: 0.3, yy: 1.0 },
+            CieXyy { x: 0.2, y: 0.6, yy: 1.0 },
+            CieXyy { x: 0.15, y: 0.06, yy: 1.0 },
+        ];
+        let trcs = [g as *mut std::ffi::c_void,
+                    g as *mut std::ffi::c_void,
+                    g as *mut std::ffi::c_void];
+        let msp = c::cmsCreateRGBProfileTHR(
+            std::ptr::null_mut(),
+            &wp as *const _ as *const _,
+            prim.as_ptr() as *const _,
+            trcs.as_ptr());
+        // CSA/CRD on named-color + matrix-shaper + srgb,
+        //   all intents + flag combos
+        for (prof, pname) in [
+            (ncp, "ncl"), (srgb, "srgb"),
+        ] {
+            // named-color CSA only valid at intent 0 —
+            //   intents 1+ crash upstream on ncl2
+            let ints: &[u32] = if prof == ncp {
+                &[0] } else { &[0, 1, 2, 3] };
+            for int_ in ints.iter().copied() {
+                for fl in [0u32, 0x0040, 0x0100] {
+                    let mut buf = vec![0u8; 1 << 18];
+                    let csa = c::cmsGetPostScriptCSA(
+                        std::ptr::null_mut(), prof, int_,
+                        fl, buf.as_mut_ptr() as *mut _,
+                        buf.len() as u32);
+                    let mut buf2 = vec![0u8; 1 << 18];
+                    let crd = c::cmsGetPostScriptCRD(
+                        std::ptr::null_mut(), prof, int_,
+                        fl, buf2.as_mut_ptr() as *mut _,
+                        buf2.len() as u32);
+                    if int_ == 0 && fl == 0 {
+                        eprintln!("{pname} csa={csa} \
+                            crd={crd}");
+                    }
+                }
+            }
+        }
+        // ColorResource — valid types 0=CSA,1=CRD;
+        //   needs an IOHANDLER arg, not a raw buffer
+        for ty in [0u32, 1] {
+            let mut buf = vec![0u8; 1 << 18];
+            let mut nb = buf.len() as u32;
+            let io = c::cmsOpenIOhandlerFromMem(
+                std::ptr::null_mut(),
+                buf.as_mut_ptr() as *mut _,
+                nb, b"w\0".as_ptr() as *const _);
+            if io.is_null() {
+                eprintln!("cres ty={ty} io=0");
+                continue;
+            }
+            let r = c::cmsGetPostScriptColorResource(
+                std::ptr::null_mut(), ty, srgb, 0, 0,
+                io as *mut _);
+            eprintln!("cres ty={ty} r={r}");
+            let _ = nb;
+            c::cmsCloseIOhandler(io);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(ncp);
+        if !msp.is_null() {
+            c::cmsCloseProfile(msp); }
+        c::cmsFreeNamedColorList(nl);
+        c::cmsFreeToneCurve(g);
+    }
+}
