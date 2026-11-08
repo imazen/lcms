@@ -3623,3 +3623,23 @@ fn write_dispatch_it8() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on an MPE-typed payload — the write
+/// machinery on the MPE element types.
+#[test]
+fn write_dispatch_mpe() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let stage = c::cmsStageAllocIdentity(
+            std::ptr::null_mut(), 3);
+        for (sig, name) in [
+            (0x6D706574u32, "mpet"), (0x6D614220u32, "maB "),
+            (0x6D624120u32, "mbA "), (0x6D704220u32, "mpB ")] {
+            let ok = c::cmsWriteTag(h, sig,
+                stage as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsStageFree(stage);
+        c::cmsCloseProfile(h);
+    }
+}
