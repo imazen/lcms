@@ -389,3 +389,56 @@ fn it8_writer_shapes() {
         }
     }
 }
+
+/// IT8 parser internals — remaining doc shapes (comments
+/// interspersed, unusual field types, binary, whitespace).
+#[test]
+fn it8_parser_edges() {
+    unsafe {
+        for (name, doc) in [
+            ("comments-mid",
+             "CGATS.17\n# comment before fields\n\
+              NUMBER_OF_FIELDS 1\n# mid\nBEGIN_DATA_FORMAT\nA\n\
+              END_DATA_FORMAT\n# before data\nNUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n# trailing\n"),
+            ("neg-numbers",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 3\n\
+              BEGIN_DATA\n-1 -2.5\n+3 +4.5\n0 0\nEND_DATA\n"),
+            ("sci-notation",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 3\n\
+              BEGIN_DATA\n1e3 1E-3\n1.5e+2 2.5E-2\n\
+              -1e-3 1e+10\nEND_DATA\n"),
+            ("tab-sep",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\nA\tB\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\nBEGIN_DATA\n1\t2\n3\t4\n\
+              END_DATA\n"),
+            ("empty-strings",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\nBEGIN_DATA\n\"\" \"\"\n\
+              1 2\nEND_DATA\n"),
+            ("mixed-quotes",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\nBEGIN_DATA\n'single' \"double\"\n\
+              1 2\nEND_DATA\n"),
+        ] {
+            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} null={}", h.is_null());
+            if !h.is_null() {
+                let mut cb = vec![0u8; 2048];
+                let mut cn = 0u32;
+                let ok = c::cmsIT8SaveToMem(h,
+                    cb.as_mut_ptr() as *mut _, &mut cn);
+                eprintln!("  save ok={ok} n={cn}");
+                c::cmsIT8Free(h);
+            }
+        }
+    }
+}
