@@ -10945,3 +10945,80 @@ fn lut16_write_arms18() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// Type_LUT16_Write remaining internals — WriteSetOfCurves
+/// per-channel entry-count + WriteMatrix offset + WriteCLUT
+/// grid-dim arms on all valid shapes.
+#[test]
+fn lut16_write_arms19() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 3.1);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        // all valid mft2 orders × channel counts × entry variants
+        for (ni, no, stages, name) in [
+            (1u32, 1, "cv-clut-cv", "1ch-cvcc"),
+            (1, 1, "clut-cv", "1ch-cc"),
+            (1, 1, "mat-clut-cv", "1ch-mcc"),
+            (2, 2, "clut-cv", "2ch-cc"),
+            (2, 2, "cv-clut-cv", "2ch-cvcc"),
+            (3, 3, "mat-clut-cv", "3ch-mcc"),
+            (4, 4, "clut-cv", "4ch-cc"),
+            (4, 4, "cv-clut-cv", "4ch-cvcc"),
+            (4, 4, "mat-clut-cv", "4ch-mcc"),
+        ] {
+            for (sig, name2) in [
+                (0x41324230u32, "a2b0"),
+                (0x42324130u32, "b2a0"),
+            ] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 2.1);
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), ni, no);
+                for st in stages.split('-') {
+                    let s = match st {
+                        "cv" => {
+                            let curves = match ni {
+                                1 => [g].as_ptr(),
+                                2 => [g, g2].as_ptr(),
+                                4 => [g, g2, g3, g].as_ptr(),
+                                _ => [g, g2, g3].as_ptr(),
+                            };
+                            c::cmsStageAllocToneCurves(
+                                std::ptr::null_mut(), ni,
+                                curves as *mut _)
+                        }
+                        "mat" => c::cmsStageAllocMatrix(
+                            std::ptr::null_mut(), no, no,
+                            mat.as_ptr(), std::ptr::null()),
+                        "clut" => {
+                            let np = 5u32;
+                            let total = (np.pow(ni) * no) as usize;
+                            let mut grid = vec![0u16; total];
+                            for (i, v) in grid.iter_mut().enumerate() {
+                                *v = ((i % 17) * 3855) as u16;
+                            }
+                            c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                                np, ni, no, grid.as_ptr())
+                        }
+                        _ => continue,
+                    };
+                    c::cmsPipelineInsertStage(p, 1, s);
+                }
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 22];
+                let mut nn = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut nn)
+                } else { 0 };
+                eprintln!("{name}/{name2} w={w} s={s}");
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
