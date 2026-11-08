@@ -1471,3 +1471,32 @@ fn transform_flags_dispatch() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// ComputeConversion matrix internals — devicelink + matrix-shaper
+/// profile chains hit the PCS-adaptation matrix computation.
+#[test]
+fn compute_conversion_matrices() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // devicelink profile chained with srgb hits ComputeConversion
+        if let Ok(d) = std::fs::read(dir.join("lcms2link.icc")) {
+            let dl = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            let srgb = c::cmsCreate_sRGBProfile();
+            let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            if !dl.is_null() {
+                let mut chain = [dl, lab, srgb];
+                let r16 = (4u32 << 16) | (3 << 3) | 2;
+                let t = c::cmsCreateMultiprofileTransform(
+                    chain.as_mut_ptr(), 3, r16, r16, 0, 0);
+                eprintln!("dl-chain t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            c::cmsCloseProfile(srgb);
+            c::cmsCloseProfile(lab);
+        }
+    }
+}
