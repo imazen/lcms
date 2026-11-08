@@ -353,3 +353,28 @@ fn postscript_intents() {
         let _ = (srgb, lab);
     }
 }
+
+/// PostScript CRD intent/flag machinery — CRD on intents
+/// 0-3 + flags.
+#[test]
+fn postscript_crd_intents() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (pname, h) in [
+            ("srgb", srgb), ("lab4", lab)] {
+            for intent in [0u32, 1, 2, 3] {
+                for flags in [0u32, 1 << 0, 1 << 5] {
+                    let io = c::cmsOpenIOhandlerFromNULL(
+                        std::ptr::null_mut());
+                    let n = c::cmsGetPostScriptColorResource(
+                        std::ptr::null_mut(), 1, h, intent,
+                        flags, io);
+                    if !io.is_null() { c::cmsCloseIOhandler(io); }
+                    eprintln!("{pname} i{intent}f{flags} n={n}");
+                }
+            }
+        }
+        let _ = (srgb, lab);
+    }
+}
