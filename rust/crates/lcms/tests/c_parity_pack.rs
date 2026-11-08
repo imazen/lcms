@@ -4549,3 +4549,100 @@ fn pack_swap_extra_arms() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmspack residual — float INPUT formatters:
+///   UnrollXYZFloat/Double/LabFloat/LabDouble and
+///   PackPlanarBytes output, all swap/extra variants.
+#[test]
+fn pack_float_in_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let frgb = (4u32 << 16) | (3 << 3) | 1;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let fxyz = (9u32 << 16) | (3 << 3) | 2;
+        // float input: srgb out to a Lab/XYZ profile
+        //   needs float formats on the input side:
+        //   transform (float_in_profile, fin, srgb, rgb)
+        for (in_prof, fin, name) in [
+            // Lab float input variants -> srgb
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
+                | (3 << 3) | 4, "labf-in-ds"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 14)
+                | (3 << 3) | 4, "labf-in-sf"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
+                | (1 << 14) | (3 << 3) | 4, "labf-in-both"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 7)
+                | (3 << 3) | 4, "labf-in-ex1"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 12)
+                | (3 << 3) | 4, "labf-in-planar"),
+            (lab, (1u32 << 22) | (10 << 16) | (3 << 3)
+                | 4, "labf-in-plain"),
+            // Lab double input
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
+                | (3 << 3) | 8, "labd-in-ds"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 14)
+                | (3 << 3) | 8, "labd-in-sf"),
+            (lab, (1u32 << 22) | (10 << 16) | (1 << 7)
+                | (3 << 3) | 8, "labd-in-ex1"),
+            (lab, (1u32 << 22) | (10 << 16) | (3 << 3)
+                | 8, "labd-in-plain"),
+            // XYZ float/double input -> srgb
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 10)
+                | (3 << 3) | 4, "xyzf-in-ds"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 14)
+                | (3 << 3) | 4, "xyzf-in-sf"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 7)
+                | (3 << 3) | 4, "xyzf-in-ex1"),
+            (xyz, (1u32 << 22) | (9 << 16) | (3 << 3)
+                | 4, "xyzf-in-plain"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 10)
+                | (3 << 3) | 8, "xyzd-in-ds"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 14)
+                | (3 << 3) | 8, "xyzd-in-sf"),
+            (xyz, (1u32 << 22) | (9 << 16) | (3 << 3)
+                | 8, "xyzd-in-plain"),
+        ] {
+            let t = c::cmsCreateTransform(in_prof, fin,
+                srgb, frgb, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0.5f64; 8];
+                let mut dst = [0u8; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                eprintln!("  dst={dst:?}");
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // PackPlanarBytes: planar u8 OUTPUT formats
+        for (fout, name) in [
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 1,
+                "out-planar8"),
+            ((4u32 << 16) | (1 << 12) | (1 << 7)
+                | (3 << 3) | 1, "out-planar-ex1"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
+                "out-planar16"),
+        ] {
+            let t = c::cmsCreateTransform(lab, flab,
+                srgb, fout, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x8000u16; 3];
+                let mut dst = [0u8; 32];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                eprintln!("  dst={:?}", &dst[..6]);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        let _ = (flab, fxyz);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+    }
+}
