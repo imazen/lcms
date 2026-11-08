@@ -1364,3 +1364,53 @@ fn it8_deep_arms6() {
         }
     }
 }
+
+/// cmscgats remaining ParseCube/DataSection arms — CookPointers
+/// + data-format variants + sheet-structure edge cases.
+#[test]
+fn it8_deep_arms7() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // data format with duplicate field names
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA A B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\n4 5 6\nEND_DATA\n".to_vec(), "dup-fields"),
+            // field names matching reserved keywords
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nBEGIN_DATA END_DATA\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n".to_vec(), "kw-fields"),
+            // format section before IT8FILE properties
+            (b"IT8FILE\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nP1 \"v\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "fmt-then-prop"),
+            // data values = format field names (string values)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\nA\nBEGIN_DATA\nEND_DATA\nEND_DATA\n".to_vec(), "kw-values"),
+            // extra whitespace/comment between format and data
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\n\n# comment\n\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "fmt-gap"),
+            // DATA_IDENTIFIER selects which sheet to read
+            (b"IT8FILE\nDATA_IDENTIFIER \"s1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"s2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"s1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n3\nEND_DATA\n".to_vec(), "dup-dataid"),
+            // NUMBER_OF_SETS mismatch with actual rows
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\n2\n3\n4\n5\nEND_DATA\n".to_vec(), "extra-rows2"),
+            // zero-length data values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n\"\" 1\n\"x\" \"\"\nEND_DATA\n".to_vec(), "empty-str"),
+            // many fields per row (max table width)
+            ({ let mut v = b"IT8FILE\nNUMBER_OF_FIELDS 20\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\n".to_vec();
+                for i in 0..20 {
+                    v.extend_from_slice(format!("F{i} ").as_bytes());
+                }
+                v.extend_from_slice(b"\nEND_DATA_FORMAT\nBEGIN_DATA\n");
+                for _ in 0..2 {
+                    for i in 0..20 {
+                        v.extend_from_slice(format!("{i} ").as_bytes());
+                    }
+                    v.push(b'\n');
+                }
+                v.extend_from_slice(b"END_DATA\n");
+                v }, "20-fields"),
+            // deeply nested quote escapes
+            (b"IT8FILE\nP1 \"a\\\"b\\\"c\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "nested-esc"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
