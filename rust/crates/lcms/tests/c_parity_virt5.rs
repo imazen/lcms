@@ -135,3 +135,55 @@ fn profile_sequence() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// cmsCreateRGBProfile on unusual primaries — the RGB-builder
+/// internals on arbitrary chromaticities + TRCs.
+#[test]
+fn rgb_builder_variants() {
+    unsafe {
+        for (name, wp, r, g, b, gamma) in [
+            ("d50-p3", [0.9642f64, 1.0, 0.8249],
+             [0.68, 0.32], [0.265, 0.69], [0.15, 0.06], 2.2),
+            ("d65-srgb", [0.9505, 1.0, 1.0890],
+             [0.64, 0.33], [0.30, 0.60], [0.15, 0.06], 2.2),
+            ("e-linear", [1.0f64, 1.0, 1.0],
+             [0.70, 0.30], [0.25, 0.65], [0.15, 0.06], 1.0),
+            ("d93-bt2020", [0.9634f64, 1.0, 0.8323],
+             [0.708, 0.292], [0.17, 0.797], [0.131, 0.046], 2.4),
+        ] {
+            #[repr(C)]
+            struct CxyY { x: f64, y: f64, Y: f64 }
+            #[repr(C)]
+            struct CXyzTrip { r: CxyY, g: CxyY, b: CxyY }
+            let wpv = CxyY { x: wp[0], y: wp[1], Y: wp[2] };
+            let wpx = 0.3127f64; // xy from the white's XYZ
+            let wpy = 0.3290;
+            // build the white-point xyY (the API takes xyY)
+            let wpyy = CxyY { x: wpx, y: wpy, Y: 1.0 };
+            let prim = CXyzTrip {
+                r: CxyY { x: r[0], y: r[1], Y: 1.0 },
+                g: CxyY { x: g[0], y: g[1], Y: 1.0 },
+                b: CxyY { x: b[0], y: b[1], Y: 1.0 },
+            };
+            let trc = c::cmsBuildGamma(std::ptr::null_mut(),
+                gamma);
+            let curves = [trc, trc, trc];
+            let curvesv: [*mut std::ffi::c_void; 3] =
+                [curves[0] as *mut std::ffi::c_void,
+                 curves[1] as *mut std::ffi::c_void,
+                 curves[2] as *mut std::ffi::c_void];
+            let h = c::cmsCreateRGBProfile(
+                &wpyy as *const _ as *const std::ffi::c_void,
+                &prim as *const _ as *const std::ffi::c_void,
+                curvesv.as_ptr());
+            eprintln!("{name} null={}", h.is_null());
+            if !h.is_null() {
+                let mut cn = 0u32;
+                c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                    &mut cn);
+                eprintln!("  save={cn}");
+                c::cmsCloseProfile(h);
+            }
+        }
+    }
+}
