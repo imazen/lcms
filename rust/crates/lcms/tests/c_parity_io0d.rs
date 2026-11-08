@@ -18206,3 +18206,36 @@ fn internal_final7_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsvirt residual — LinearizationDeviceLink on real
+///   colorspace sigs.
+#[test]
+fn lindevlink_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let arr: Vec<*mut c::ToneCurve> = vec![g; 16];
+        for cs in [0x47524159u32, 0x52474220, 0x434D594B,
+            0x4C616220, 0x58595A20, 0x434D5920, 0x32434320,
+            0x36434C52, 0x00000000, 0xFFFFFFFF] {
+            let p = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), cs, arr.as_ptr());
+            eprintln!("lin {cs:#x}={}", !p.is_null());
+            if !p.is_null() {
+                let t = c::cmsCreateTransform(p,
+                    (4u32 << 16) | (3 << 3) | 1,
+                    c::cmsCreate_sRGBProfile(),
+                    (4u32 << 16) | (3 << 3) | 1, 0, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                c::cmsCloseProfile(p);
+            }
+        }
+        // non-THR variant too
+        for cs in [0x47524159u32, 0x52474220, 0x434D594B] {
+            let p = c::cmsCreateLinearizationDeviceLink(
+                cs, arr.as_ptr() as *const *mut _);
+            eprintln!("lin-nonthr {cs:#x}={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
