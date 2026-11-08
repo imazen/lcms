@@ -1144,3 +1144,39 @@ fn xyz_modifier_matrix() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Named-color format internals — TYPE_NAMED_COLOR_INDEX on
+/// a named-color profile.
+#[test]
+fn named_color_format() {
+    unsafe {
+        // a named-color profile via the placeholder + ncl2 tag
+        let h = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(h, 0x6E6D636C); // 'nmcl'
+        c::cmsSetColorSpace(h, 0x6E6D636C); // 'nmcl'
+        c::cmsSetPCS(h, 0x4C616220); // Lab
+        // a named-color list written to 'ncl2'
+        let list = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3, b"P\0".as_ptr() as _,
+            b"S\0".as_ptr() as _);
+        if !list.is_null() {
+            let _ = c::cmsWriteTag(h, 0x6E636C32,
+                list as *mut std::ffi::c_void);
+        }
+        // the named-index format — 1-channel u16 index
+        let named_fmt: u32 = (1 << 3) | 2;
+        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(h, named_fmt, h,
+            lab_fmt, 0, 0);
+        eprintln!("named fmt t={}", !ct.is_null());
+        if !ct.is_null() {
+            let inp = [0u16; 1];
+            let mut out = [0u16; 3];
+            c::cmsDoTransform(ct, inp.as_ptr() as _,
+                out.as_mut_ptr() as *mut _, 1);
+            c::cmsDeleteTransform(ct);
+        }
+        let _ = c::cmsCloseProfile(h);
+    }
+}
