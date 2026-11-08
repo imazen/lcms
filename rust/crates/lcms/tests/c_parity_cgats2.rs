@@ -3047,3 +3047,96 @@ fn cgats_cube_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmscgats residual — InSymbol keyword classes +
+///   ParseFloatNumber notations + satob hex-data
+///   internals via all IT8 keyword and number forms.
+#[test]
+fn cgats_lexer_arms() {
+    unsafe {
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        // every IT8 keyword + every number notation
+        let docs: Vec<(&[u8], &str)> = vec![
+            (b"IT8FILE\nORIGINATOR x\nMANUFACTURER y\n\
+                CREATEDATE z\nPROD_DATE 2024-01-01\n\
+                SERIAL 123\nMATERIAL m\nINSTRUMENTATION i\n\
+                MEASUREMENT_SOURCE s\nLABORATORY l\n\
+                SAMPLE_ID 1\nSAMPLE_NAME n\n\
+                COMMENT c\nKEYWORD k\nBEGIN_DATA_FORMAT\n\
+                A\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n\
+                NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+                \0", "all-kw"),
+            // float notations in data
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\n\
+                BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 20\nBEGIN_DATA\n\
+                0\n1\n-1\n+1\n.5\n5.\n-.5\n+.5\n\
+                1e0\n1E0\n1e+5\n1e-5\n1.5e3\n-2.5E-3\n\
+                0x10\n0xFF\n1.e5\n.5e-2\n1_000\ninf\n\
+                END_DATA\n\0", "floats"),
+            // hex data via DATA_FORMAT types
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\n\
+                BEGIN_DATA_FORMAT\nHEX DEC\n\
+                END_DATA_FORMAT\nNUMBER_OF_SETS 4\n\
+                BEGIN_DATA\n\
+                0xDEADBEEF 42\n\
+                0x0 0\n\
+                0XABCD 1\n\
+                0x1F.8 2\n\
+                END_DATA\n\0", "hexdata"),
+            // nested/special symbols
+            (b"IT8FILE\nORIGINATOR \"s\"\n\
+                BEGIN_DATA_FORMAT\n\"A-B.C_D/E\"\n\
+                END_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n\
+                \0", "specialfmt"),
+            (b"IT8FILE\nORIGINATOR o\n\
+                BEGIN_DATA_FORMAT\n\
+                A\tB\tC\tD\tE\tF\tG\tH\n\
+                END_DATA_FORMAT\n\
+                NUMBER_OF_SETS 2\nBEGIN_DATA\n\
+                1 2 3 4 5 6 7 8\n\
+                9 10 11 12 13 14 15 16\n\
+                END_DATA\n\0", "wide"),
+            // case variants of keywords
+            (b"it8file\noriginator x\n\
+                begin_data_format\nA\nend_data_format\n\
+                begin_data\nend_data\n\0", "lower"),
+            (b"It8File\nOriginator x\n\
+                Begin_Data_Format\nA\nEnd_Data_Format\n\
+                Begin_Data\nEnd_Data\n\0", "mixed"),
+            // numbers with unusual spacing
+            (b"IT8FILE\nNUMBER_OF_FIELDS   3\n\
+                NUMBER_OF_SETS\t2\n\
+                BEGIN_DATA_FORMAT\n A  B  C\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n\
+                 1   2   3  \n4\t5\t6\n\
+                END_DATA\n\0", "spacing"),
+        ];
+        for (doc, name) in &docs {
+            let h = c::cmsIT8LoadFromMem(ctx,
+                doc.as_ptr() as *const _,
+                doc.len() as u32);
+            eprintln!("{name} h={}", !h.is_null());
+            if !h.is_null() {
+                // probe data access → satob/decode paths
+                let nt = c::cmsIT8TableCount(h);
+                for i in 0..nt {
+                    c::cmsIT8SetTable(h, i);
+                    for row in 0..4 {
+                        for col in 0..4 {
+                            let v = c::cmsIT8GetDataRowCol(
+                                h, row, col);
+                            let _ = v;
+                            let d = c::cmsIT8GetDataRowColDbl(
+                                h, row, col);
+                            let _ = d;
+                        }
+                    }
+                }
+                c::cmsIT8Free(h);
+            }
+        }
+        c::cmsDeleteContext(ctx);
+    }
+}
