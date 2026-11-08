@@ -1893,3 +1893,44 @@ fn mpe_named_element() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'mpet' stored-type — does a devicelink store as 'mpet'
+/// or 'mAB '? The stored-type machinery.
+#[test]
+fn mpet_stored_type() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ct = c::cmsCreateTransform(hi,
+            (4 << 16) | (3 << 3) | 2, ho,
+            (10 << 16) | (3 << 3) | 2, 0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        c::cmsDeleteTransform(ct);
+        if !dl.is_null() {
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(dl, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(dl,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            // find the A2B0 stored type — mAB or mpet?
+            for i in 0..c::cmsGetTagCount(dl) {
+                let sig = c::cmsGetTagSignature(dl, i as u32);
+                if sig == 0x41324230 {
+                    // the stored bytes' type field
+                    let sz = c::cmsReadRawTag(dl, sig,
+                        std::ptr::null_mut(), 0);
+                    let mut rb = vec![0u8; sz as usize];
+                    c::cmsReadRawTag(dl, sig,
+                        rb.as_mut_ptr() as *mut _, sz);
+                    let ty = u32::from_be_bytes(
+                        [rb[0], rb[1], rb[2], rb[3]]);
+                    eprintln!("A2B0 stored type={ty:#x}");
+                }
+            }
+            c::cmsCloseProfile(dl);
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
