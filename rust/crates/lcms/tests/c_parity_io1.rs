@@ -319,3 +319,29 @@ fn gray_matrix_pipelines() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// _cmsReadMediaWhitePoint + _cmsReadCHAD — wtpt/chad tag reads on
+/// profiles with/without those tags; header setter/getter arms.
+#[test]
+fn media_white_chad() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        for f in ["lcms2cmyk.icc", "graylcms2.icc", "labv2lcms2.icc",
+                  "sRGB3.icc", "linlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let mut wp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+            let r = c::_cmsReadMediaWhitePoint(
+                &mut wp as *mut _ as *mut _, p);
+            let mut chad = [0f64; 9];
+            let r2 = c::_cmsReadCHAD(chad.as_mut_ptr() as *mut _, p);
+            eprintln!("{f} wp={r} ({:.3},{:.3},{:.3}) chad={r2}",
+                wp.x, wp.y, wp.z);
+            c::cmsCloseProfile(p);
+        }
+    }
+}

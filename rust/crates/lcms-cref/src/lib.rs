@@ -616,6 +616,8 @@ unsafe extern "C" {
     pub fn cmsSetDeviceClass(p: *mut c_void, sig: u32);
     pub fn cmsSetColorSpace(p: *mut c_void, sig: u32);
     pub fn cmsSetPCS(p: *mut c_void, sig: u32);
+    pub fn _cmsReadMediaWhitePoint(dest: *mut c_void, prof: *mut c_void) -> i32;
+    pub fn _cmsReadCHAD(dest: *mut c_void, prof: *mut c_void) -> i32;
     pub fn cmsSetProfileVersion(p: *mut c_void, version: f64);
     pub fn cmsGetProfileVersion(p: *const c_void) -> f64;
     pub fn cmsGetProfileInfo(p: *mut c_void, info: u32, lang: *const i8, cntry: *const i8, buf: *mut c_void, bufsize: u32) -> u32;
