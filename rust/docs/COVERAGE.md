@@ -157,7 +157,7 @@ Downloaded 2026-11-07 to `/mnt/v/icc-spec/` (not committed — binary docs):
 | cmsgamma.c | 81.7% → 77.8% * | | cmsmd5.c | 82.4% → 88.1% |
 | cmsgmt.c | 45.3% → 41.3% * | | cmsnamed.c | 81.7% → 72.1% * |
 | cmshalf.c | 100% → 100% | | cmsmtrx.c | 100% → 100% |
-| **TOTAL** | **52.2% → 58.8% lines, 62.7% → 71.5% fns** | | | |
+| **TOTAL** | **52.2% → 61.3% lines, 62.7% → 76.9% fns** | | | |
 
 `*` = the clang-instrumented run loses entire binaries' profraws to
 SIGSEGV/SIGABRT (LLVM's atexit never fires) — apparent dips are lost
