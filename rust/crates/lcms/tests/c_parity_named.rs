@@ -376,3 +376,49 @@ fn named_color_ops() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// ncl2 tag write/read — named-color list with prefix/suffix MLU
+/// blocks through a profile tag -> ReadNamedColorList/
+/// WriteNamedColorList bodies + UTF16 name paths.
+#[test]
+fn named_color_tag_cycle() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 3, 4, b"pre\0".as_ptr(),
+            b"suf\0".as_ptr());
+        for (name, pcs) in [
+            ("PANTONE Red\0", [0x9000u16, 0x5500, 0x5500]),
+            ("Spot Blue\0", [0x3000, 0x2000, 0x9000]),
+            ("Metallic\0", [0x7000, 0x7000, 0x6000]),
+        ] {
+            let col = [0xFFFFu16; 4];
+            c::cmsAppendNamedColor(ncl, name.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        let p = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6e6d636c);
+        c::cmsSetColorSpace(p, 0x6e636c32);
+        c::cmsSetPCS(p, 0x4C616220);
+        let w = c::cmsWriteTag(p, 0x6e636c32, ncl as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        eprintln!("ncl2 write={w} save={s} n={n}");
+        if s != 0 {
+            let rp = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n);
+            let tag = c::cmsReadTag(rp, 0x6e636c32);
+            eprintln!("ncl2 read={}", !tag.is_null());
+            if !tag.is_null() {
+                let cnt = c::cmsNamedColorCount(tag);
+                eprintln!("  count={cnt}");
+            }
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(p);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
