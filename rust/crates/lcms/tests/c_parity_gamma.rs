@@ -1534,3 +1534,42 @@ fn gamma_join_probe_arms() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// cmstypes WriteSetOfCurves residual — curve whose
+///   first segment Type<0 -> writes as 'curv' type
+///   (reversed-parametric shape). Cover via reversed
+///   parametric curves serialized into kTRC tags.
+#[test]
+fn gamma_negseg_write_arms() {
+    unsafe {
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x58595A20);
+        c::cmsSetProfileVersion(p, 4.4);
+        for t in [1i32, 2, 3, 4, 5, 6, 7, 8] {
+            let params = [2.2f64, 1.0, 0.5, 0.1, 0.2,
+                          0.0, 0.0];
+            let tc = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), t,
+                params.as_ptr());
+            if tc.is_null() { continue; }
+            let rt = c::cmsReverseToneCurve(tc);
+            for (c_, cname) in [(tc, "fwd"), (rt, "rev")] {
+                if c_.is_null() { continue; }
+                let w = c::cmsWriteTag(p, 0x6B545243,
+                    c_ as *const _);
+                let mut buf = [0u8; 1 << 17];
+                let mut n = buf.len() as u32;
+                let sv = c::cmsSaveProfileToMem(p,
+                    buf.as_mut_ptr() as *mut _, &mut n);
+                eprintln!("t{t} {cname} w={w} sv={sv}");
+            }
+            if !rt.is_null() {
+                c::cmsFreeToneCurve(rt); }
+            c::cmsFreeToneCurve(tc);
+        }
+        c::cmsCloseProfile(p);
+    }
+}
