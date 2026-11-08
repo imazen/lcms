@@ -16501,3 +16501,82 @@ fn misc_residual2_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmsplugin/cmsps2/cmsio0/cmsio1 residual — context create/
+///   delete/dup + PS resource variants + profile IO internals.
+#[test]
+fn plugin_ps_io_arms() {
+    unsafe {
+        // context create/dup/delete cycles
+        for i in 0..8 {
+            let ctx = c::cmsCreateContext(
+                std::ptr::null_mut(),
+                std::ptr::null_mut());
+            if ctx.is_null() { eprintln!("ctx{i} null"); continue; }
+            let d = c::cmsDupContext(ctx,
+                std::ptr::null_mut());
+            if !d.is_null() { c::cmsDeleteContext(d); }
+            c::cmsDeleteContext(ctx);
+            eprintln!("ctx{i} done");
+        }
+        // global-context dup (NULL)
+        let gd = c::cmsDupContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        eprintln!("global dup={}", !gd.is_null());
+        if !gd.is_null() { c::cmsDeleteContext(gd); }
+        // PS resource variants — color-space + class combos
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), g);
+        for (prof, intent, name) in [
+            (srgb, 0u32, "srgb-perc"),
+            (srgb, 1, "srgb-rel"),
+            (srgb, 3, "srgb-sat"),
+            (lab, 0, "lab-perc"),
+            (lab, 1, "lab-rel"),
+            (gray, 0, "gray-perc"),
+            (gray, 3, "gray-sat"),
+        ] {
+            let mut buf = [0u8; 1 << 18];
+            let csa = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(), prof, intent, 0,
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32);
+            let crd = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(), prof, intent, 0,
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32);
+            let mut io = c::cmsOpenIOhandlerFromMem(
+                std::ptr::null_mut(),
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+                b"w\0".as_ptr());
+            let col = c::cmsGetPostScriptColorResource(
+                std::ptr::null_mut(), 0 /*PS2CSA*/,
+                prof, intent, 0, io);
+            if !io.is_null() {
+                c::cmsCloseIOhandler(io); }
+            eprintln!("{name} csa={csa} crd={crd} col={col}");
+        }
+        // cmsGetHeaderAttributes on every profile
+        for (prof, name) in [
+            (srgb, "srgb"), (lab, "lab"), (gray, "gray")] {
+            let mut attrs = 0u64;
+            c::cmsGetHeaderAttributes(prof,
+                &mut attrs as *mut u64);
+            eprintln!("{name} attrs={attrs:?}");
+            let cls = c::cmsGetDeviceClass(prof);
+            let cs = c::cmsGetColorSpace(prof);
+            let pcs = c::cmsGetPCS(prof);
+            let ver = c::cmsGetProfileVersion(prof);
+            eprintln!("  cls={cls:#x} cs={cs:#x} pcs={pcs:#x} \
+                ver={ver}");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
