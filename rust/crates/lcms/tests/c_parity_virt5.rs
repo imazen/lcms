@@ -346,3 +346,44 @@ fn version_machinery() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Devicelink-builder internals — InkLimiting/Linearization
+/// on more parameter combos.
+#[test]
+fn devicelink_variants2() {
+    unsafe {
+        // ink-limiting on more limits + formats
+        for (name, cs, limit) in [
+            ("cmyk-200", 0x434D594B, 200.0),
+            ("cmyk-400", 0x434D594B, 400.0),
+            ("mch6-300", 0x36434820, 300.0), // 6ch
+            ("gray-300", 0x47524159, 300.0), // gray reject
+        ] {
+            let h = c::cmsCreateInkLimitingDeviceLink(cs, limit);
+            eprintln!("{name} null={}", h.is_null());
+            if !h.is_null() {
+                let mut cn = 0u32;
+                c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                    &mut cn);
+                eprintln!("  save={cn}");
+                c::cmsCloseProfile(h);
+            }
+        }
+        // linearization on more channel counts
+        for (name, cs) in [
+            ("gray", 0x47524159),
+            ("rgb", 0x52474220),
+            ("cmyk", 0x434D594B),
+            ("lab", 0x4C616220),
+        ] {
+            let mut g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.8);
+            let mut curves = [g; 16];
+            let h = c::cmsCreateLinearizationDeviceLink(
+                cs, curves.as_mut_ptr()
+                    as *const *mut std::ffi::c_void);
+            eprintln!("lin-{name} null={}", h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+    }
+}
