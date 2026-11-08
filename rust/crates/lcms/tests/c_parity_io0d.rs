@@ -3385,3 +3385,40 @@ fn parametric_curve_reader() {
         }
     }
 }
+
+/// Corpus tag-read sweep — every tag in every corpus profile ->
+/// the full cmstypes reader dispatch + io0 tag-table machinery.
+#[test]
+fn corpus_all_tags() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let mut profiles = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                let n = e.file_name().to_string_lossy().into_owned();
+                if n.ends_with(".icc") || n.ends_with(".icm") {
+                    profiles.push(e.path());
+                }
+            }
+        }
+        eprintln!("{} corpus profiles", profiles.len());
+        let mut total = 0usize;
+        let mut ok = 0usize;
+        for pf in &profiles {
+            let Ok(d) = std::fs::read(pf) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let n = c::cmsGetTagCount(p);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(p, i as u32);
+                let tag = c::cmsReadTag(p, sig);
+                total += 1;
+                if !tag.is_null() { ok += 1; }
+            }
+            c::cmsCloseProfile(p);
+        }
+        eprintln!("tags {ok}/{total} read");
+    }
+}
