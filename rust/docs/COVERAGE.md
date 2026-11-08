@@ -648,3 +648,43 @@ xform.rs change_buffers_format 16-bit semantics. Failing targets under clang
 instrumentation: c_parity_cam02, c_parity_cube, c_parity_pcs, c_parity_xform2
 (the last was a parallel NULL-context race — now CTX_LOCK-serialized; the
 first three are the known instrumentation-codegen failures).
+### round 16 — class/intent dispatch + LUT read-back + tag/MLU/iohandler sweeps
+
+75.35% lines / 94.87% fns / 83.86% regions / 67.04% branches.
+
+| file | lines |
+|---|---|
+| cmstypes.c | 63.74% |
+| cmspack.c | ~70% |
+| cmscnvrt.c | ~70% |
+| cmsvirt.c | 69.97% |
+| cmscgats.c | ~78% |
+| cmsio0.c | ~81% |
+| cmsio1.c | ~76% |
+| cmsplugin.c | ~74% |
+| cmsnamed.c | ~77% |
+| cmsps2.c | ~77% |
+| cmsgamma.c | ~84% |
+| cmslut.c | ~82% |
+| cmsopt.c | ~81% |
+| cmsxform.c | 83.93% |
+| cmspcs.c | up (44% fns -> conversions+delta-e covered) |
+| cmssamp.c | 68.22% |
+
+Gates added: class_intent_dispatch, opt_matrix_shaper_shapes,
+stage_eval_sweep, save_tags_arms, plugin_remaining_arms,
+blackpoint_dispatch, named_color_ops, matrix_shaper_lab_pcs,
+lut_readback_cycles, mab_readback_cycles, named_color_tag_cycle,
+opt_shape_sweep, iohandler_modes, tag_type_sweep, tag_reader_sweep,
+clut_sampler_slice, named_color_stage, pcs_conversion_chains,
+it8_data_arms, devicelink_lut_dispatch, output_lut_lab_normalization,
+float_pack_arms, gbd_sweep, matrix_shaper_directions, lab_xyz_stages,
+mlu_ops_branches, named_color_input_lut, gray_matrix_pipelines,
+gamut_preview_lut_readers, proofing_transform_paths, pcs_conversions,
+pcs_delta_e_xyz.
+
+c_parity_cube fixed to assert the C-parity reject on the malformed
+file (was relying on the buggy accept-all parse). Function coverage
+plateaued at 94.87% — the remaining 64 uncovered fns are largely
+unreachable-by-API internals (reserved/dead branches, plugin-shim
+paths, WriteBinary/satob dead enum). Line coverage is now the axis.
