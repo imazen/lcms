@@ -3078,3 +3078,33 @@ fn eval_curves_channels() {
         }
     }
 }
+
+/// InsertStage position arms — BEFORE/AFTER a stage + BEGIN/END.
+#[test]
+fn insert_stage_positions() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        // AT_BEGIN=0, AT_END=1 — insert a curve, then matrix before/after
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g; 3].as_ptr() as *mut _));
+        let first = c::cmsPipelineGetPtrToFirstStage(p);
+        // insert matrix at end + at begin (before first)
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        let cnt = c::cmsPipelineStageCount(p);
+        eprintln!("stages={cnt}");
+        let fi = [0.5f32; 3];
+        let mut fo = [0f32; 3];
+        c::cmsPipelineEvalFloat(fi.as_ptr(), fo.as_mut_ptr(), p);
+        eprintln!("eval={fo:?}");
+        c::cmsPipelineFree(p);
+        let _ = first;
+    }
+}
