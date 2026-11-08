@@ -609,3 +609,25 @@ fn multiprofile_devlink() {
         let _ = (rgb, rgb2, dl, dl2);
     }
 }
+
+/// Proofing machinery — cmsCreateProofingTransform on more
+/// combos.
+#[test]
+fn proofing_variants() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let rgb2 = c::cmsCreate_sRGBProfile();
+        let fmt = (4 << 16) | (3 << 3) | 2u32;
+        for (name, pin, pproof, pout) in [
+            ("rgb-rgb-rgb", rgb, rgb2, rgb2),
+            ("rgb-lab-rgb", rgb, lab, rgb2),
+            ("rgb-rgb-lab", rgb, rgb2, lab)] {
+            let t = c::cmsCreateProofingTransform(pin, fmt,
+                pout, fmt, pproof, 0, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        let _ = (rgb, lab, rgb2);
+    }
+}
