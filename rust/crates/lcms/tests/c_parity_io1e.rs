@@ -1559,3 +1559,45 @@ fn intent_support_machinery() {
         }
     }
 }
+
+/// Real mAB/mBA stored-type reads — a Transform2DeviceLink
+/// profile's stored pipeline through the read machinery.
+#[test]
+fn stored_mab_reads() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        c::cmsDeleteTransform(ct);
+        if !dl.is_null() {
+            // save + reload — the stored-mAB read machinery
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(dl, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(dl,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h2 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            // read the A2B0/B2A0 tags — the real mAB LUT read
+            for sig in [0x41324230u32, 0x42324130] {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", r.is_null());
+                if !r.is_null() {
+                    let inp = [30000u16, 40000, 50000];
+                    let mut out = [0u16; 3];
+                    c::cmsPipelineEval16(inp.as_ptr(),
+                        out.as_mut_ptr(), r);
+                }
+            }
+            c::cmsCloseProfile(h2);
+            c::cmsCloseProfile(dl);
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
