@@ -3853,3 +3853,88 @@ fn cgats_write_load_arms() {
         let _ = std::fs::remove_file("/tmp/lcms_it8_wl.it8");
     }
 }
+
+/// cmscgats residual — GetData/GetDataRowCol/
+///   GetProperty/SetDataRowCol internals on a loaded
+///   doc: valid/OOB row-col, missing patch/sample,
+///   str/dbl variants.
+#[test]
+fn cgats_getdata_arms() {
+    unsafe {
+        let doc = "CGATS.17\n\
+            ORIGINATOR \"o\"\n\
+            NUMBER_OF_FIELDS 3\n\
+            BEGIN_DATA_FORMAT\n\
+            SAMPLE_ID R G\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 3\n\
+            BEGIN_DATA\n\
+            p0 1.0 2.0\n\
+            p1 3.0 4.0\n\
+            p2 5.0 6.0\nEND_DATA\n";
+        let it8 = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("it8={}", !it8.is_null());
+        if it8.is_null() { return; }
+        // property lookups
+        for key in ["ORIGINATOR\0", "NOPE\0",
+                    "CREATED\0"] {
+            let v = c::cmsIT8GetProperty(it8,
+                key.as_ptr() as *const _);
+            let s = if v.is_null() { "NULL".to_string() }
+                else { unsafe {
+                    std::ffi::CStr::from_ptr(v)
+                        .to_string_lossy().into_owned() } };
+            eprintln!("prop {key:?} = {s}");
+        }
+        let dv = c::cmsIT8GetPropertyDbl(it8,
+            "NUMBER_OF_SETS\0".as_ptr() as *const _);
+        eprintln!("prop-dbl NS={dv}");
+        // GetData patch/sample
+        for (patch, sample) in [
+            ("p0\0", "R\0"), ("p1\0", "G\0"),
+            ("p2\0", "SAMPLE_ID\0"),
+            ("nope\0", "R\0"), ("p0\0", "nope\0"),
+        ] {
+            let v = c::cmsIT8GetData(it8,
+                patch.as_ptr() as *const _,
+                sample.as_ptr() as *const _);
+            let vd = c::cmsIT8GetDataDbl(it8,
+                patch.as_ptr() as *const _,
+                sample.as_ptr() as *const _);
+            eprintln!("{patch:?}/{sample:?}: \
+                str={} dbl={vd}", !v.is_null());
+        }
+        // row/col accessors incl. OOB
+        for (r, c_) in [(0i32, 0), (1, 1), (2, 2),
+                        (-1, 0), (0, -1), (99, 0), (0, 99),
+                        (3, 3)] {
+            let s = c::cmsIT8GetDataRowCol(it8, r, c_);
+            let d = c::cmsIT8GetDataRowColDbl(it8, r, c_);
+            eprintln!("rc({r},{c_}): str={} dbl={d}",
+                !s.is_null());
+        }
+        // SetData variants
+        for (patch, sample, val) in [
+            ("p0\0", "R\0", "9.9\0"),
+            ("p1\0", "G\0", "abc\0"),
+            ("nope\0", "R\0", "1\0"),
+        ] {
+            let ok = c::cmsIT8SetData(it8,
+                patch.as_ptr() as *const _,
+                sample.as_ptr() as *const _,
+                val.as_ptr() as *const _);
+            eprintln!("set {patch:?}/{sample:?}={val:?} \
+                {ok}");
+        }
+        for (r, c_, v) in [(0i32, 0, "7.7\0"),
+                           (1, 1, "8.8\0"), (5, 5, "x\0")] {
+            let ok = c::cmsIT8SetDataRowCol(it8, r, c_,
+                v.as_ptr() as *const _);
+            let ok2 = c::cmsIT8SetDataRowColDbl(it8, r, c_,
+                9.9);
+            eprintln!("setrc({r},{c_}) {ok}/{ok2}");
+        }
+        c::cmsIT8Free(it8);
+    }
+}
