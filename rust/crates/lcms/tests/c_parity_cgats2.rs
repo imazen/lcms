@@ -775,3 +775,75 @@ fn cube_devicelink() {
         }
     }
 }
+
+/// IT8 load variation sweep — HeaderSection property forms,
+/// ParseFloatNumber (exp/.5/-3/1e3), hex and quoted values,
+/// DataSection mixed int/float cells, multi-table docs.
+#[test]
+fn it8_variations() {
+    unsafe {
+        let docs: &[(&str, &str)] = &[
+            ("floats", "CGATS.17\n\
+                NUMBER_OF_FIELDS 2\n\
+                BEGIN_DATA_FORMAT\nSAMPLE_ID F1\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 4\n\
+                BEGIN_DATA\n\
+                a 1.5e3\nb -2.5E-2\nc .5\nd 3.\nEND_DATA\n"),
+            ("props", "CGATS.17\n\
+                ORIGINATOR \"my org\"\n\
+                FILE_DESCRIPTOR \"a file\"\n\
+                CREATED \"2022\"\n\
+                FLOATPROP 1.5e-3\n\
+                NEGPROP -4.25\n\
+                NUMBER_OF_FIELDS 1\n\
+                BEGIN_DATA_FORMAT\nID\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 1\n\
+                BEGIN_DATA\nx\nEND_DATA\n"),
+            ("hex", "CGATS.17\n\
+                NUMBER_OF_FIELDS 2\n\
+                BEGIN_DATA_FORMAT\nID HEX\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 1\n\
+                BEGIN_DATA\nx 0x1FF\nEND_DATA\n"),
+            ("multitab", "CGATS.17\n\
+                NUMBER_OF_FIELDS 1\n\
+                BEGIN_DATA_FORMAT\nID\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 1\n\
+                BEGIN_DATA\na\nEND_DATA\n\
+                CGATS.17\n\
+                NUMBER_OF_FIELDS 1\n\
+                BEGIN_DATA_FORMAT\nID\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 1\n\
+                BEGIN_DATA\nb\nEND_DATA\n"),
+            ("empty-prop", "CGATS.17\n\
+                EMPTY_PROP \"\"\n\
+                NUMBER_OF_FIELDS 1\n\
+                BEGIN_DATA_FORMAT\nID\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 1\n\
+                BEGIN_DATA\nx\nEND_DATA\n"),
+            ("strid", "CGATS.17\n\
+                NUMBER_OF_FIELDS 2\n\
+                BEGIN_DATA_FORMAT\nSAMPLE_ID RGB\nEND_DATA_FORMAT\n\
+                NUMBER_OF_SETS 2\n\
+                BEGIN_DATA\n\
+                \"sample 1\" 10\n\
+                \"sample 2\" 20\nEND_DATA\n"),
+        ];
+        for (name, doc) in docs {
+            let mut cd = doc.as_bytes().to_vec();
+            let ch = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                cd.as_ptr() as *const _, cd.len() as u32);
+            let rh = lcms::cgats::It8::load_from_mem(None, doc.as_bytes());
+            eprintln!("{name}: C={} R={}", !ch.is_null(), rh.is_some());
+            assert_eq!(!ch.is_null(), rh.is_some(), "{name} load parity");
+            if !ch.is_null() {
+                // probe float property reads (ParseFloatNumber)
+                for prop in ["FLOATPROP", "NUMBER_OF_SETS"] {
+                    let n = std::ffi::CString::new(prop).unwrap();
+                    let v = c::cmsIT8GetPropertyDbl(ch, n.as_ptr());
+                    eprintln!("  {prop}={v}");
+                }
+                c::cmsIT8Free(ch);
+            }
+        }
+    }
+}
