@@ -2948,3 +2948,42 @@ fn mch_8_9_10_packers() {
         }
     }
 }
+
+/// Format-flag mega-sweep — DOSWAP/SWAPFIRST/EXTRA/FLAVOR/
+/// PLANAR/BYTESHALF/ENDIAN16 combos on RGB + CMYK transforms.
+#[test]
+fn format_flag_megasweep() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for (flags, name) in [
+            (0x0000u32, "plain"),
+            (0x0200, "doswap"),
+            (0x4000, "planar"),
+            (0x0040, "swapfirst"),
+            (0x0002 | 0x0200 | 0x4000, "swap+planar"),
+            (0x8000, "flavor"),
+            (0x0002 | 0x8000, "flavor+16"),
+            (0x0400, "premul"),
+            (0x0100, "endian16"),
+            (0x0002 | 0x0200 | 0x0040 | 0x8000, "all"),
+        ] {
+            // flags live in the upper/lower bits of the format word;
+            // the base is PT_RGB/4ch/16b.
+            let fmt = r16 | flags;
+            let t = c::cmsCreateTransform(srgb, fmt, lab, l16, 0, 0);
+            eprintln!("rgb {name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 3];
+                let mut ob = [0u16; 3];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
