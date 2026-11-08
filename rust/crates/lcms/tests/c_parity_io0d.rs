@@ -6821,3 +6821,81 @@ fn mba_element_offset_arms() {
         }
     }
 }
+
+/// Type_LUT8_Read/Type_LUT16_Read internals — raw mft1/mft2 tags
+/// with matrix + curve-set + CLUT structure variants.
+#[test]
+fn mft_reader_internals() {
+    unsafe {
+        // mft2: 'mft2' + in(u8)+out(u8)+grid(u8)+pad + 9xs15f16
+        // matrix + u16 inEnt + u16 outEnt + in curves + clut + out
+        let mft2 = |grid: u8, inent: u16, outent: u16,
+                    clut_vals: &[u16], inc: &[u16], outc: &[u16]|
+            -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6d667432u32.to_be_bytes()); // 'mft2'
+            t.extend_from_slice(&[0; 4]);
+            t.push(3); t.push(3); t.push(grid); t.push(0);
+            for i in 0..9u32 {
+                let v = if i % 4 == 0 { 0x00010000u32 } else { 0 };
+                t.extend_from_slice(&v.to_be_bytes());
+            }
+            t.extend_from_slice(&inent.to_be_bytes());
+            t.extend_from_slice(&outent.to_be_bytes());
+            for _ in 0..3 {
+                for &v in inc {
+                    t.extend_from_slice(&v.to_be_bytes());
+                }
+            }
+            for &v in clut_vals {
+                t.extend_from_slice(&v.to_be_bytes());
+            }
+            for _ in 0..3 {
+                for &v in outc {
+                    t.extend_from_slice(&v.to_be_bytes());
+                }
+            }
+            t
+        };
+        // mft1: same but u8 entries, no matrix
+        let mft1 = |grid: u8, clut_vals: &[u8]| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6d667431u32.to_be_bytes()); // 'mft1'
+            t.extend_from_slice(&[0; 4]);
+            t.push(3); t.push(3); t.push(grid); t.push(0);
+            t.extend_from_slice(&[0; 4]); // inEnt=256 outEnt=256
+            t.extend_from_slice(&[0; 2]);
+            for _ in 0..3 { t.extend(std::iter::repeat(0u8..=255).take(256).flatten()); }
+            t.extend_from_slice(clut_vals);
+            for _ in 0..3 { t.extend(std::iter::repeat(0u8..=255).take(256).flatten()); }
+            t
+        };
+        let inc: Vec<u16> = (0..4).map(|i| (i * 16384) as u16).collect();
+        let outc = inc.clone();
+        let clut: Vec<u16> = (0..8 * 3).map(|i| (i * 2048) as u16).collect();
+        let clut1: Vec<u8> = (0..8 * 3).map(|i| (i * 7) as u8).collect();
+        for (raw, sig, name) in [
+            (mft2(2, 4, 4, &clut, &inc, &outc), 0x41324230u32, "mft2-full"),
+            (mft2(4, 4, 4, &(0..64*3).map(|i| (i*100) as u16).collect::<Vec<u16>>(), &inc, &outc), 0x41324230, "mft2-grid4"),
+            (mft2(2, 1, 1, &clut, &inc[..1], &outc[..1]), 0x41324230, "mft2-1ent"),
+            (mft1(2, &clut1), 0x41324230, "mft1-full"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, sig,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
