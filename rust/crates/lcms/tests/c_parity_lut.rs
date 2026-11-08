@@ -5174,3 +5174,121 @@ fn lut_opt_white_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmslut/cmsnamed residual — StageSampleCLut16bit
+///   (callback sampler), SliceSpace16/Float,
+///   MLUget{ASCII,UTF8,Wide,Translation} on multi-lang
+///   strings, EvalToneCurve variants.
+#[test]
+fn lut_sample_slice_arms() {
+    unsafe {
+        // CLUT sample callback -> fills grid
+        unsafe extern "C" fn sampler(
+            inp: *const u16, out: *mut u16,
+            _ud: *mut std::ffi::c_void) -> i32 {
+            let i = unsafe {
+                std::slice::from_raw_parts(inp, 3) };
+            let o = unsafe {
+                std::slice::from_raw_parts_mut(out, 3) };
+            o[0] = i[1]; o[1] = i[2]; o[2] = i[0];
+            1
+        }
+        let dims = [3u32; 3];
+        let clut = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+            std::ptr::null());
+        let ok = c::cmsStageSampleCLut16bit(clut,
+            sampler,
+            std::ptr::null_mut(), 0);
+        eprintln!("sample-clut={ok}");
+        // SliceSpace16/Float: iterate a 3D cube
+        unsafe extern "C" fn slicer(
+            inp: *const u16, _out: *mut u16,
+            _ud: *mut std::ffi::c_void) -> i32 {
+            let i = unsafe {
+                std::slice::from_raw_parts(inp, 3) };
+            let _ = i[0] as u32 + i[1] as u32 + i[2] as u32;
+            1
+        }
+        unsafe extern "C" fn slicerf(
+            inp: *const f32, _out: *mut f32,
+            _ud: *mut std::ffi::c_void) -> i32 {
+            let i = unsafe {
+                std::slice::from_raw_parts(inp, 3) };
+            let _ = i[0] + i[1] + i[2];
+            1
+        }
+        for n in [2u32, 3, 5] {
+            let dims2 = [n; 3];
+            let r1 = c::cmsSliceSpace16(3, dims2.as_ptr(),
+                slicer,
+                std::ptr::null_mut());
+            let r2 = c::cmsSliceSpaceFloat(3,
+                dims2.as_ptr(),
+                slicerf,
+                std::ptr::null_mut());
+            eprintln!("slice n{n} 16={r1} f={r2}");
+        }
+        // EvalToneCurve 16/float on several curve types
+        for ty in [1.0f64, 2.2, 0.5, 0.0] {
+            let g = if ty == 0.0 {
+                let t = [0u16, 0x8000, 0xFFFF];
+                c::cmsBuildTabulatedToneCurve16(
+                    std::ptr::null_mut(), 3, t.as_ptr())
+            } else {
+                c::cmsBuildGamma(std::ptr::null_mut(), ty)
+            };
+            for v in [0u16, 0x4000, 0x8000, 0xFFFF] {
+                let r = c::cmsEvalToneCurve16(g, v);
+                let rf = c::cmsEvalToneCurveFloat(g,
+                    v as f32 / 65535.0);
+                if v == 0x8000 {
+                    eprintln!("tc{ty}: e16={r} ef={rf}"); }
+            }
+            c::cmsFreeToneCurve(g);
+        }
+        // MLU multi-lang get variants
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 3);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            b"English text\0".as_ptr() as *const _);
+        c::cmsMLUsetASCII(mlu, b"de\0".as_ptr() as *const _,
+            b"DE\0".as_ptr() as *const _,
+            b"Deutsch\0".as_ptr() as *const _);
+        c::cmsMLUsetASCII(mlu, b"fr\0".as_ptr() as *const _,
+            b"FR\0".as_ptr() as *const _,
+            "Français\0".as_ptr() as *const _);
+        let mut buf = [0u8; 128];
+        for (lang, cty) in [
+            (b"en\0" as &[u8], b"US\0"),
+            (b"de\0", b"DE\0"), (b"fr\0", b"FR\0"),
+            (b"es\0", b"ES\0"), (b"en\0", b"GB\0"),
+        ] {
+            let n = c::cmsMLUgetASCII(mlu,
+                lang.as_ptr() as *const _,
+                cty.as_ptr() as *const _,
+                buf.as_mut_ptr(), buf.len() as u32);
+            let s = std::ffi::CStr::from_ptr(
+                    buf.as_ptr() as *const i8)
+                .to_string_lossy();
+            eprintln!("get {lang:?}/{cty:?}: {n} = {s}");
+        }
+        // UTF8 + Wide variants
+        let mut wbuf = [0i32; 64];
+        let nw = c::cmsMLUgetWide(mlu,
+            b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            wbuf.as_mut_ptr(),
+            (wbuf.len() * 4) as u32);
+        eprintln!("getWide={nw}");
+        let mut u8buf = [0u8; 128];
+        let n8 = c::cmsMLUgetUTF8(mlu,
+            b"de\0".as_ptr() as *const _,
+            b"DE\0".as_ptr() as *const _,
+            u8buf.as_mut_ptr(),
+            u8buf.len() as u32);
+        eprintln!("getUTF8={n8}");
+        c::cmsMLUfree(mlu);
+        c::cmsStageFree(clut);
+    }
+}
