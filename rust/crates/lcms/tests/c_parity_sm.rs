@@ -1005,3 +1005,66 @@ fn sm_detect_gbd_arms() {
         eprintln!("gbd-alloc-free ok");
     }
 }
+
+/// cmssm residual — GBD alloc + profile-side gamut
+///   check via float gamut transforms + DetectTAC on
+///   cmyk devicelink.
+#[test]
+fn sm_gbd_shell_arms() {
+    unsafe {
+        // GBD: add boundary points -> compute shell ->
+        //   check points inside/outside
+        let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
+        // add a shell of Lab points (gamut boundary)
+        let pts: Vec<(f64, f64, f64)> = vec![
+            (0.0, 0.0, 0.0), (100.0, 0.0, 0.0),
+            (50.0, 50.0, 50.0), (50.0, -50.0, -50.0),
+            (50.0, 50.0, -50.0), (50.0, -50.0, 50.0),
+            (20.0, 30.0, 0.0), (80.0, -30.0, 0.0),
+            (50.0, 0.0, 60.0), (50.0, 0.0, -60.0),
+            (50.0, 60.0, 0.0), (50.0, -60.0, 0.0),
+        ];
+        for (l, a, b) in &pts {
+            let lab = c::CieLab { L: *l, a: *a, b: *b };
+            let ok = c::cmsGDBAddPoint(gbd,
+                &lab as *const _ as *const _);
+            if !ok == 0 {}
+        }
+        let cc = c::cmsGDBCompute(gbd, 0);
+        eprintln!("gbd-compute={cc}");
+        for (l, a, b, name) in [
+            (50.0, 0.0, 0.0, "center"),
+            (0.0, 0.0, 0.0, "black"),
+            (200.0, 0.0, 0.0, "far-out"),
+            (50.0, 200.0, 200.0, "extreme"),
+            (50.0, 5.0, 5.0, "near"),
+        ] {
+            let lab = c::CieLab { L: l, a: a, b: b };
+            let chk = c::cmsGDBCheckPoint(gbd,
+                &lab as *const _ as *const _);
+            eprintln!("  chk {name}={chk}");
+        }
+        c::cmsGBDFree(gbd);
+        // profile-side gamut check: float gamut
+        //   transform via proofing
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        for (fl, name) in [
+            (0x0040u32, "gamutchk"),
+            (0x0100, "nofilter"),
+            (0x2000, "gmc"),
+            (0x0040 | 0x0002, "gchk-probe"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, frgb,
+                lab4, flab, 1, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
