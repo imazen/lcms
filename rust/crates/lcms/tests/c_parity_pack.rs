@@ -987,3 +987,39 @@ fn u8_modifier_matrix() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Float-format modifier matrix — the float packer bodies.
+#[test]
+fn float_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("f-planar", (1 << 22) | (4 << 16) | (1 << 12)
+             | (3 << 3) | 4u32),
+            ("f-doswap", (1 << 22) | (4 << 16) | (1 << 10)
+             | (3 << 3) | 4),
+            ("f-swapf", (1 << 22) | (4 << 16) | (1 << 14)
+             | (3 << 3) | 4),
+            ("f-flavor", (1 << 22) | (4 << 16) | (1 << 13)
+             | (3 << 3) | 4),
+            ("f-x1", (1 << 22) | (4 << 16) | (1 << 7)
+             | (3 << 3) | 4),
+            ("f-x2", (1 << 22) | (4 << 16) | (2 << 7)
+             | (3 << 3) | 4),
+            ("f-x3", (1 << 22) | (4 << 16) | (3 << 7)
+             | (3 << 3) | 4),
+            ("f-x4", (1 << 22) | (4 << 16) | (4 << 7)
+             | (3 << 3) | 4),
+            ("f-premul", (1 << 22) | (4 << 16) | (1 << 23)
+             | (1 << 7) | (3 << 3) | 4),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
