@@ -3597,3 +3597,52 @@ fn unroll_word_double_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// LabV2/ALabV2 formatter cells — FLAVOR_SH(1) selects the V2
+/// Lab encoding variants (unroll/pack + float + extra).
+#[test]
+fn labv2_formatter_cells() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let fl = 1u32 << 22;
+        // PT_Lab(10) | FLAVOR(13) | channels/bytes
+        let l8v2 = (10u32 << 16) | (1 << 13) | (3 << 3) | 1;
+        let l16v2 = (10u32 << 16) | (1 << 13) | (3 << 3) | 2;
+        let la8v2 = l8v2 | (1 << 7);
+        let la16v2 = l16v2 | (1 << 7);
+        let lflv2 = (10u32 << 16) | (1 << 13) | (3 << 3) | 4 | fl;
+        let laflv2 = lflv2 | (1 << 7);
+        let ldlv2 = (10u32 << 16) | (1 << 13) | (3 << 3) | 0 | fl; // double
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, if_, of_, name) in [
+            (lab, srgb, l8v2, r8, "l8v2->r8"),
+            (lab, srgb, l16v2, r8, "l16v2->r8"),
+            (lab, srgb, la8v2, r8, "la8v2->r8"),
+            (lab, srgb, la16v2, r8, "la16v2->r8"),
+            (lab, srgb, lflv2, r8, "lflv2->r8"),
+            (lab, srgb, laflv2, r8, "laflv2->r8"),
+            (lab, srgb, ldlv2, r8, "ldlv2->r8"),
+            (srgb, lab, r8, l8v2, "r8->l8v2"),
+            (srgb, lab, r16, l16v2, "r16->l16v2"),
+            (srgb, lab, r8, la8v2, "r8->la8v2"),
+            (srgb, lab, r16, la16v2, "r16->la16v2"),
+            (lab2, srgb, l16v2, r8, "v2prof"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 16];
+                let mut ob = [0u8; 16];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(lab2);
+    }
+}
