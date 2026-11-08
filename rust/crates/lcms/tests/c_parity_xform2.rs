@@ -2050,3 +2050,72 @@ fn nonicc_intent_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// AddConversion/PatchLUT/DefaultICCintents deep arms —
+/// conversion-class combos across profile types + intents +
+/// versions.
+#[test]
+fn conversion_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let abs = std::fs::read(dir.join("brightness.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let link = std::fs::read(dir.join("lcms2link2.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let x16 = (9u32 << 16) | (3 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        for (inp, outp, if_, of_, intent, name) in [
+            (srgb, lab2, r16, l16, 0, "v2lab"),
+            (lab2, srgb, l16, r16, 0, "v2lab->"),
+            (abs, srgb, l16, r16, 0, "abs->srgb"),
+            (abs, lab, l16, l16, 0, "abs->lab"),
+            (link, lab, k16, l16, 0, "link->lab"),
+            (link, srgb, k16, r16, 0, "link->srgb"),
+            (xyz, lab, x16, l16, 0, "xyz->lab"),
+            (lab, xyz, l16, x16, 0, "lab->xyz"),
+            (xyz, srgb, x16, r16, 3, "xyz->srgb abs"),
+            (gray, xyz, g16, x16, 0, "gray->xyz"),
+            (cmyk, xyz, k16, x16, 0, "cmyk->xyz"),
+            (xyz, cmyk, x16, k16, 0, "xyz->cmyk"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 8];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !abs.is_null() { c::cmsCloseProfile(abs); }
+        if !link.is_null() { c::cmsCloseProfile(link); }
+        c::cmsFreeToneCurve(g);
+    }
+}
