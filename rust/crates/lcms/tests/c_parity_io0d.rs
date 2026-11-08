@@ -4749,3 +4749,42 @@ fn dict_mpet_sig_dispatch() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Named-color on different sigs — ncl2 + nmcl-class + meta
+/// dict payload combos.
+#[test]
+fn named_color_sig_dispatch() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2,
+            3, b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        let lab16 = [0xF000u16; 3];
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
+            lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"c2\0".as_ptr(),
+            lab16.as_ptr(), lab16.as_ptr());
+        for (cls, sig, name) in [
+            (0x6e6d636cu32, 0x6e636c32, "nmcl-ncl2"),
+            (0x6d6e7472, 0x6e636c32, "mntr-ncl2"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetDeviceClass(prof, cls);
+            let w = c::cmsWriteTag(prof, sig, ncl as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
