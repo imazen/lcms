@@ -11344,3 +11344,183 @@ fn write_fail_arms3() {
         c::cmsFreeToneCurve(seg);
     }
 }
+
+/// Type_*_Read error arms — `_cmsRead*` fail -> Error branches.
+/// Patch io->Read (offset 280) on a real memory-read handler with
+/// a counter-gated stub; sweep fail-at-call-N through open+read.
+static READ_CALLS: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+static READ_LIMIT: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::MAX);
+static REAL_READ: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+type ReadFn = unsafe extern "C" fn(*mut std::ffi::c_void,
+    *mut std::ffi::c_void, u32, u32) -> u32;
+
+unsafe extern "C" fn gated_read(io: *mut std::ffi::c_void,
+    buf: *mut std::ffi::c_void, size: u32, count: u32) -> u32 {
+    use std::sync::atomic::Ordering::Relaxed;
+    let n = READ_CALLS.fetch_add(1, Relaxed);
+    if n >= READ_LIMIT.load(Relaxed) {
+        return 0;
+    }
+    let real: ReadFn = std::mem::transmute(
+        REAL_READ.load(Relaxed));
+    real(io, buf, size, count)
+}
+
+unsafe fn open_gated(data: &[u8], limit: u32)
+    -> (*mut std::ffi::c_void, *mut std::ffi::c_void) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+        data.as_ptr() as *mut u8, data.len() as u32,
+        b"r\0".as_ptr());
+    if io.is_null() { return (io, std::ptr::null_mut()); }
+    READ_CALLS.store(0, Relaxed);
+    READ_LIMIT.store(limit, Relaxed);
+    let real = *(io as *const usize).add(280 / 8);
+    REAL_READ.store(real, Relaxed);
+    *(io as *mut usize).add(280 / 8) = gated_read as usize;
+    let prof = c::cmsOpenProfileFromIOhandlerTHR(
+        std::ptr::null_mut(), io);
+    (io, prof)
+}
+
+#[test]
+fn read_fail_arms() {
+    unsafe {
+        // a fat saved profile with every readable tag type
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 3.1);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 2.1);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g2, g3].as_ptr() as *mut _));
+        let mut grid = vec![0u16; 5 * 5 * 5 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 17) * 3855) as u16;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                5, 3, 3, grid.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g3, g, g2].as_ptr() as *mut _));
+        c::cmsWriteTag(prof, 0x41324230, p as *const _);
+        c::cmsWriteTag(prof, 0x72545243, g as *const _);
+        // struct tags → their Type_*_Read fail arms join the sweep
+        #[repr(C)] struct Dt { y: u16, mo: u16, d: u16,
+            h: u16, mi: u16, s: u16 }
+        let dt = Dt { y: 2026, mo: 1, d: 1, h: 0, mi: 0, s: 0 };
+        c::cmsWriteTag(prof, 0x63616c74,
+            &dt as *const _ as *const _);
+        let chad = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        c::cmsWriteTag(prof, 0x63686164, chad.as_ptr() as *const _);
+        #[repr(C)] struct XyY { x: f64, y: f64, yy: f64 }
+        #[repr(C)] struct Chrm { n: u32, ty: u16, _p: u16,
+            c: [XyY; 3] }
+        let chrm = Chrm { n: 3, ty: 0, _p: 0, c: [
+            XyY { x: 0.64, y: 0.33, yy: 1.0 },
+            XyY { x: 0.30, y: 0.60, yy: 1.0 },
+            XyY { x: 0.15, y: 0.06, yy: 1.0 }] };
+        c::cmsWriteTag(prof, 0x6368726d,
+            &chrm as *const _ as *const _);
+        #[repr(C)] struct Meas { fl: u32, il: u32, ob: u32,
+            ge: u32, ba: u32, me: u32 }
+        let meas = Meas { fl: 0, il: 1, ob: 1,
+            ge: 1, ba: 1, me: 1 };
+        c::cmsWriteTag(prof, 0x6d656173,
+            &meas as *const _ as *const _);
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        #[repr(C)] struct View { o: Xyz, b: Xyz,
+            la: f64, yb: f64, dd: f64 }
+        let view = View {
+            o: Xyz { x: 0.9642, y: 1.0, z: 0.8249 },
+            b: Xyz { x: 0.9642, y: 1.0, z: 0.8249 },
+            la: 20.0, yb: 20.0, dd: 1.0 };
+        c::cmsWriteTag(prof, 0x76696577,
+            &view as *const _ as *const _);
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
+            b"suf\0".as_ptr());
+        if !ncl.is_null() {
+            let mut nm = [0u16; 32];
+            nm[0] = b'C' as u16;
+            let pcs = [0u16; 3];
+            let dev = [0u16; 16];
+            c::cmsAppendNamedColor(ncl, nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+            c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _);
+        }
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        let dn: [i32; 3] = [b'n' as i32, b'1' as i32, 0];
+        let dv: [i32; 3] = [b'v' as i32, b'1' as i32, 0];
+        c::cmsDictAddEntry(dict, dn.as_ptr(), dv.as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        c::cmsWriteTag(prof, 0x6d657461, dict as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut fsz = buf.len() as u32;
+        let ok = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut fsz);
+        assert_ne!(ok, 0);
+        buf.truncate(fsz as usize);
+        // open+read-every-tag under each read-fail threshold
+        let mut n_ok = 0u32;
+        let mut n_fail = 0u32;
+        // fork per limit — upstream dereferences half-read
+        // structures on mid-tag Read failure; a crash in the child
+        // still counts the covered arms.
+        unsafe extern "C" { fn fork() -> i32;
+            fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+            fn _exit(c: i32) -> !;
+            fn dlsym(h: *mut std::ffi::c_void,
+                n: *const i8) -> *mut std::ffi::c_void; }
+        // flush llvm-cov counters before _exit — %p.profraw keeps
+        // each fork's data separate; absent in uninstrumented builds
+        let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+            let f = dlsym(std::ptr::null_mut(),
+                b"__llvm_profile_write_file\0".as_ptr()
+                    as *const i8);
+            if f.is_null() { None }
+            else { Some(std::mem::transmute(f)) }
+        };
+        macro_rules! flush_cov { () => {
+            if let Some(f) = flush { f(); }
+        } }
+        for limit in 0..400u32 {
+            let pid = fork();
+            if pid == 0 {
+                let (io, rp) = open_gated(&buf, limit);
+                if !rp.is_null() {
+                    let nt = c::cmsGetTagCount(rp);
+                    for i in 0..nt as u32 {
+                        let sig = c::cmsGetTagSignature(rp, i);
+                        let _t = c::cmsReadTag(rp, sig);
+                    }
+                    flush_cov!();
+                    _exit(0);
+                }
+                if !io.is_null() { c::cmsCloseIOhandler(io); }
+                flush_cov!();
+                _exit(1);
+            }
+            let mut st = 0i32;
+            waitpid(pid, &mut st, 0);
+            if st == 0 { n_ok += 1; } else { n_fail += 1; }
+        }
+        eprintln!("read-fail ok={n_ok} fail={n_fail}");
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
