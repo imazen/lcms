@@ -87,6 +87,7 @@ fn multiprofile_chain() {
 
 #[test]
 fn proofing_transform() {
+    let _g = CTX_LOCK.lock().unwrap();
     // sRGB -> sRGB proofed through CMYK (lcms2cmyk.icc), GamutCheck flag
     let n = 137;
     let inp = fill(n * 3);
