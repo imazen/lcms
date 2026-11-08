@@ -633,3 +633,42 @@ fn cmm_mutations() {
         }
     }
 }
+
+/// ICC-version encoding mutations — the version-machinery
+/// internals.
+#[test]
+fn version_mutations2() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // ICC version @8-12 (major.minor.bugfix)
+        for (name, val) in [
+            ("v2.0", 0x02000000u32),
+            ("v2.1", 0x02100000u32),
+            ("v2.4", 0x02400000u32),
+            ("v4.0", 0x04000000u32),
+            ("v4.2", 0x04200000u32),
+            ("v4.3", 0x04300000u32),
+            ("v4.4", 0x04400000u32),
+            ("v5.0", 0x05000000u32),
+            ("v9.9", 0x09900000u32),
+            ("v0.0", 0x00000000u32),
+        ] {
+            let mut dd = d.clone();
+            dd[8..12].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() {
+                let ver = c::cmsGetProfileVersion(h2);
+                eprintln!("  read={ver}");
+                c::cmsCloseProfile(h2);
+            }
+        }
+    }
+}
