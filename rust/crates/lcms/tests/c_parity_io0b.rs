@@ -169,3 +169,125 @@ fn internal_chad_labv_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — pseq+psid with MATCHING counts
+///   -> merge path (ProfileID+Description mix);
+///   RGB matrix-shaper profile with PCS=Lab ->
+///   BuildRGBInputMatrixShaper XYZ2Lab insert.
+#[test]
+fn internal_pseq_mix_lab_arms() {
+    unsafe {
+        // profile with pseq + psid both having n=2
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (n, name) in [(1u32, "n1"), (2, "n2")] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x58595A20);
+            c::cmsSetProfileVersion(p, 4.4);
+            let trcs = [g, g, g];
+            for sig in [0x72545243u32, 0x67545243,
+                0x62545243] {
+                c::cmsWriteTag(p, sig, g as *const _);
+            }
+            let xyz = [0x0000F6D6u32, 0x00010000,
+                0x0000D32D];
+            for sig in [0x7258595Au32, 0x6758595A,
+                0x6258595A] {
+                c::cmsWriteTag(p, sig,
+                    xyz.as_ptr() as *const _);
+            }
+            // pseq + psid both with n entries
+            let pseq = c::cmsAllocProfileSequenceDescription(
+                std::ptr::null_mut(), n);
+            let psid = c::cmsAllocProfileSequenceDescription(
+                std::ptr::null_mut(), n);
+            // fill each desc's MLUs + attrs (dup needs
+            //   valid MLU ptrs)
+            #[repr(C)]
+            struct SeqDesc {
+                dev_mfg: u32, dev_model: u32,
+                attrs: u64,
+                tech: u32,
+                mfr: *mut std::ffi::c_void,
+                model: *mut std::ffi::c_void,
+                desc: *mut std::ffi::c_void,
+            }
+            #[repr(C)]
+            struct Seq {
+                n: u32, ctx: *mut std::ffi::c_void,
+                seq: *mut SeqDesc,
+            }
+            for s in [pseq, psid] {
+                if s.is_null() { continue; }
+                let sp = s as *mut Seq;
+                for i in 0..n as isize {
+                    let d = (*sp).seq.offset(i);
+                    let mlu = c::cmsMLUalloc(
+                        std::ptr::null_mut(), 1);
+                    c::cmsMLUsetASCII(mlu,
+                        b"en\0".as_ptr() as *const _,
+                        b"US\0".as_ptr() as *const _,
+                        b"desc\0".as_ptr() as *const _);
+                    (*d).mfr = mlu;
+                    (*d).model = mlu;
+                    (*d).desc = mlu;
+                }
+            }
+            c::cmsWriteTag(p, 0x70736571,
+                pseq as *const _);
+            c::cmsWriteTag(p, 0x70736964,
+                psid as *const _);
+            let mut buf = [0u8; 1 << 17];
+            let mut sz = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut sz);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, sz)
+            } else { std::ptr::null_mut() };
+            let rd = if !pr.is_null() {
+                c::cmsReadTag(pr, 0x70736571)
+            } else { std::ptr::null_mut() };
+            eprintln!("pseq-mix {name} sv={sv} rd={}",
+                !rd.is_null());
+            if !pr.is_null() {
+                c::cmsCloseProfile(pr); }
+            c::cmsCloseProfile(p);
+            if !pseq.is_null() {
+                c::cmsFreeProfileSequenceDescription(pseq); }
+            if !psid.is_null() {
+                c::cmsFreeProfileSequenceDescription(psid); }
+        }
+        // RGB matrix-shaper with PCS=Lab
+        let p2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p2, 0x6D6E7472);
+        c::cmsSetColorSpace(p2, 0x52474220);
+        c::cmsSetPCS(p2, 0x4C616220); // Lab PCS
+        c::cmsSetProfileVersion(p2, 4.4);
+        let trcs = [g, g, g];
+        for sig in [0x72545243u32, 0x67545243,
+            0x62545243] {
+            c::cmsWriteTag(p2, sig, g as *const _);
+        }
+        let xyz = [0x0000F6D6u32, 0x00010000,
+            0x0000D32D];
+        for sig in [0x7258595Au32, 0x6758595A,
+            0x6258595A] {
+            c::cmsWriteTag(p2, sig,
+                xyz.as_ptr() as *const _);
+        }
+        let srgb = c::cmsCreate_sRGBProfile();
+        let fin = (0u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(p2, fin,
+            srgb, fin, 0, 0);
+        eprintln!("rgb-lab-pcs t={}", !t.is_null());
+        if !t.is_null() {
+            c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(p2);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
