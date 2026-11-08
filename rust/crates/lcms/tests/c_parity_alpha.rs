@@ -533,3 +533,54 @@ fn alpha_16se_sources() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmspack residual — alpha-channel formatters on every
+///   colorspace x width x planar/doswap/swapfirst combo.
+#[test]
+fn pack_alpha_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // transform on every alpha format combo
+        for (ac, name) in [
+            (0u32, "ac0"), (1, "ac1"), (2, "ac2"), (3, "ac3"),
+            (4, "ac4"), (5, "ac5"), (6, "ac6"), (7, "ac7"),
+        ] {
+            for (doswap, name2) in [
+                (false, "n"), (true, "s"),
+            ] {
+                for (swapfirst, name3) in [
+                    (false, "n"), (true, "f"),
+                ] {
+                    for (planar, name4) in [
+                        (false, "p"), (true, "c"),
+                    ] {
+                        let fmt = (4u32 << 16)
+                            | (3 << 3) | 1
+                            | (ac << 20)
+                            | ((doswap as u32) << 12)
+                            | ((swapfirst as u32) << 13)
+                            | ((planar as u32) << 10);
+                        let t = c::cmsCreateTransform(
+                            srgb, fmt, lab, l8, 0, 0);
+                        if !t.is_null() {
+                            let ib = [0x55u8; 16];
+                            let mut ob = [0u8; 16];
+                            c::cmsDoTransform(t,
+                                ib.as_ptr() as *const _,
+                                ob.as_mut_ptr() as *mut _, 1);
+                            c::cmsDeleteTransform(t);
+                        }
+                    }
+                }
+            }
+            eprintln!("ac{ac} done");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
