@@ -365,3 +365,21 @@ fn version_machinery() {
         }
     }
 }
+
+/// Version getters/setters on more combos — the version
+/// machinery internals.
+#[test]
+fn version_getters() {
+    unsafe {
+        for (name, v) in [
+            ("v2.0", 0x02000000u32), ("v4.3", 0x04300000)] {
+            let h = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetEncodedICCversion(h, v);
+            let enc = c::cmsGetEncodedICCversion(h);
+            let pv = c::cmsGetProfileVersion(h);
+            eprintln!("{name} enc={:#x} pv={}", enc, pv);
+            c::cmsCloseProfile(h);
+        }
+    }
+}
