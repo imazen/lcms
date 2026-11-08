@@ -4201,3 +4201,50 @@ fn signature_viewing_tags() {
         }
     }
 }
+
+/// Curve-tag variants — segmented + parametric + tabulated curves
+/// on all 4 TRC sigs.
+#[test]
+fn curve_tag_variants() {
+    unsafe {
+        #[repr(C)] struct Seg { x0: f32, x1: f32, ty: i32,
+            params: [f64; 10], n: u32, pt: *const f32 }
+        let smp = [0.0f32, 0.5, 1.0];
+        let segs = [Seg { x0: 0.0, x1: 1.0, ty: 0,
+            params: [0.0; 10], n: 3, pt: smp.as_ptr() }];
+        let sg = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(),
+            1, segs.as_ptr() as *const _);
+        let params = [2.2f64, 1.0, 0.0, 0.0, 0.0,
+                      0.0, 0.0, 0.0, 0.0, 0.0];
+        let pg = c::cmsBuildParametricToneCurve(
+            std::ptr::null_mut(), 1, params.as_ptr());
+        let tbl = [0u16, 0x8000, 0xFFFF];
+        let tb = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            3, tbl.as_ptr());
+        for (sig, tc, name) in [
+            (0x72545243u32, sg, "seg-rTRC"),
+            (0x67545243, pg, "para-gTRC"),
+            (0x62545243, tb, "tab-bTRC"),
+            (0x6b545243, sg, "seg-kTRC"),
+        ] {
+            if tc.is_null() { continue; }
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, tc as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
