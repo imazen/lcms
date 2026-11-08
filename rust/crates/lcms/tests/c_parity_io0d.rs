@@ -7378,3 +7378,106 @@ fn wchar_surrogate_internals() {
         c::cmsMLUfree(ml);
     }
 }
+
+/// Decide*Type arms — version + payload properties pick among
+/// multiple allowed types on a sig.
+#[test]
+fn decide_type_arms() {
+    unsafe {
+        let prof2 = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof2, 2.1);
+        let prof4 = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof4, 4.4);
+        // text desc: v2 -> desc, v4 -> mluc (DecideTextDescType)
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        for (prof, ver, name) in [
+            (prof2, 2.1, "v2"),
+            (prof4, 4.4, "v4"),
+        ] {
+            let w = c::cmsWriteTag(prof, 0x64657363, ml as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            eprintln!("desc-{name} w={w} s={s}");
+        }
+        // curves: 1-seg para type 0-5 -> para on v4; multi-seg /
+        // inverted / type>5 -> curv on v4 too
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut seg = [
+            c::CurveSegment {
+                x0: 0.0, x1: 0.5, r#type: 6,
+                params: [2.2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.0],
+                n_grid_points: 0,
+                sampled_points: std::ptr::null_mut() },
+            c::CurveSegment {
+                x0: 0.5, x1: 1.0, r#type: 6,
+                params: [1.8, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                         0.0, 0.0],
+                n_grid_points: 0,
+                sampled_points: std::ptr::null_mut() },
+        ];
+        let multiseg = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 2, seg.as_ptr());
+        let mut seg2 = [
+            c::CurveSegment {
+                x0: 0.0, x1: 1.0, r#type: -1,
+                params: [0.0; 10], n_grid_points: 0,
+                sampled_points: std::ptr::null_mut() },
+        ];
+        let inv = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 1, seg2.as_ptr());
+        for (c_, name) in [
+            (g, "para"),
+            (multiseg, "multiseg"),
+            (inv, "inverted"),
+        ] {
+            if c_.is_null() { eprintln!("{name} null"); continue; }
+            let w = c::cmsWriteTag(prof4, 0x6b545243, c_ as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof4,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            eprintln!("curv-{name} w={w} s={s}");
+        }
+        // LUTs: SaveAs8Bits picks mft1 vs mft2 on v2
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let mat = [1.0f64, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0];
+        let off = [0.0f64; 3];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), off.as_ptr()));
+        let mut grid = vec![0u16; 8 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = (i * 2730) as u16;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 2, 3, 3,
+                grid.as_ptr()));
+        let w = c::cmsWriteTag(prof2, 0x41324230, p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof2,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        eprintln!("lut-v2 w={w} s={s}");
+        c::cmsCloseProfile(prof2);
+        c::cmsCloseProfile(prof4);
+        c::cmsMLUfree(ml);
+        c::cmsFreeToneCurve(g);
+        if !multiseg.is_null() { c::cmsFreeToneCurve(multiseg); }
+        if !inv.is_null() { c::cmsFreeToneCurve(inv); }
+        c::cmsPipelineFree(p);
+    }
+}
