@@ -1701,3 +1701,45 @@ fn it8_deep_arms13() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/ParseIT8 arms —
+/// more token forms + malformed + boundary inputs.
+#[test]
+fn it8_deep_arms14() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // every whitespace character between tokens
+            (b"IT8FILE \x09P1\x20\x09\"v\"\x09\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "all-ws"),
+            // comment between every token
+            (b"IT8FILE\n#c1\nP1 \"v\"\n#c2\nNUMBER_OF_FIELDS 1\n#c3\nNUMBER_OF_SETS 1\n#c4\nBEGIN_DATA_FORMAT\n#c5\nA\n#c6\nEND_DATA_FORMAT\n#c7\nBEGIN_DATA\n#c8\n1\n#c9\nEND_DATA\n#c10\n".to_vec(), "cmt-between"),
+            // property names that are prefixes of keywords
+            (b"IT8FILE\nBEGIN_D 1\nEND_D 2\nNUMBER_OF_FIELD 3\nNUMBER_OF_SET 4\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "prefix-kw"),
+            // property names matching data-format field names
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nORIGINATOR DESCRIPTOR CREATED\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n".to_vec(), "fmt-kw-names"),
+            // property value = field name
+            (b"IT8FILE\nP1 A\nP2 B\nP3 C\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "prop-field"),
+            // data rows with only quotes (no values)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n\"\"\n\" \"\n\"x\"\nEND_DATA\n".to_vec(), "empty-quotes"),
+            // number followed immediately by string
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1\"str\"\n2 \"s2\"\nEND_DATA\n".to_vec(), "num-str"),
+            // property with numeric value + quoted value on next line
+            (b"IT8FILE\nP1 123\nP2 \"abc\"\nP3 45.6\nP4 \"def\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "mixed-prop"),
+            // multiple properties per line (semicolon-separated)
+            (b"IT8FILE\nP1 \"a\"; P2 \"b\"; P3 \"c\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "multi-prop"),
+            // data with trailing comma-like values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1,2\n3,4\nEND_DATA\n".to_vec(), "comma-data"),
+            // NUMBER_OF_FIELDS with decimal value
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1.0\nNUMBER_OF_SETS 1.0\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "dec-count"),
+            // all-uppercase / mixed-case keywords
+            (b"IT8FILE\nnumber_of_fields 1\nNumber_Of_Sets 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "lowcase-kw"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
