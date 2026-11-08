@@ -658,7 +658,7 @@ fn ps2_named_crd_internals() {
     unsafe {
         let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(nmcl, 0x6e6d636c);   // 'nmcl'
-        c::cmsSetColorSpace(nmcl, 0x6e6d636c);    // 'nmcl'
+        c::cmsSetColorSpace(nmcl, 0x33434c52);    // '3CLR' device
         c::cmsSetPCS(nmcl, 0x4c616220);           // 'Lab '
         // named-color list -> ncl2 tag
         let list = c::cmsAllocNamedColorList(
