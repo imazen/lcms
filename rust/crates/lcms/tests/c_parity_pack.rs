@@ -1304,3 +1304,33 @@ fn four_channel_formats() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// 4-channel modifier matrix on the CMYK devicelink.
+#[test]
+fn four_channel_modifier_matrix() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("4ch-doswap", (0 << 16) | (1 << 10) | (4 << 3) | 1),
+            ("4ch-swapf", (0 << 16) | (1 << 14) | (4 << 3) | 1),
+            ("4ch-end16", (0 << 16) | (1 << 11) | (4 << 3) | 1),
+            ("4ch-flavor", (0 << 16) | (1 << 13) | (4 << 3) | 1),
+            ("4ch-x1", (0 << 16) | (1 << 7) | (4 << 3) | 1),
+            ("4ch-x2", (0 << 16) | (2 << 7) | (4 << 3) | 1),
+            ("4ch-x3", (0 << 16) | (3 << 7) | (4 << 3) | 1),
+            ("4ch-x4", (0 << 16) | (4 << 7) | (4 << 3) | 1),
+            ("4ch-premul", (0 << 16) | (1 << 23) | (1 << 7)
+             | (4 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
