@@ -5901,3 +5901,86 @@ fn alpha_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmswtpnt residual — ComputeChromaticAdaptation/
+///   _cmsAdaptMatrixToD50 arms via cmsAdaptToIlluminant on
+///   D50/D65/A/E/F2 illuminant pairs at adaptation states
+///   0/0.5/1/oob, plus WhitePointFromTemp/TempFromWhitePoint
+///   sweeps and XYZ2xyY/xyY2XYZ round-trips.
+#[test]
+fn wtpnt_arms() {
+    unsafe {
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct Xyz { x: f64, y: f64, z: f64 }
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct Xyy { x: f64, y: f64, yy: f64 }
+        // WhitePointFromTemp across the range + edge temps
+        for t in [0.0f64, 1.0, 1000.0, 2000.0, 3000.0, 4000.0,
+                  5000.0, 6500.0, 6504.0, 10000.0, 15000.0,
+                  25000.0, 30000.0, 1e6, -1.0, f64::NAN,
+                  f64::INFINITY] {
+            let mut wp = Xyy { x: 0.0, y: 0.0, yy: 0.0 };
+            let r = c::cmsWhitePointFromTemp(
+                &mut wp as *mut _ as *mut _, t);
+            eprintln!("wpt {t}: {r} -> {:.4},{:.4}",
+                wp.x, wp.y);
+            if r != 0 {
+                let mut t2 = 0.0f64;
+                let r2 = c::cmsTempFromWhitePoint(
+                    &mut t2,
+                    &wp as *const _ as *const _);
+                eprintln!("  back: {r2} {t2:.1}"); } }
+        // AdaptToIlluminant on illuminant pairs
+        let d50 = Xyz { x: 0.9642, y: 1.0, z: 0.8249 };
+        let d65 = Xyz { x: 0.9505, y: 1.0, z: 1.0890 };
+        let illum_a = Xyz { x: 1.0985, y: 1.0, z: 0.3558 };
+        let illum_e = Xyz { x: 1.0, y: 1.0, z: 1.0 };
+        let f2 = Xyz { x: 0.99187, y: 1.0, z: 0.67395 };
+        let pairs: [(Xyz, Xyz, &str); 10] = [
+            (d50, d65, "d50->d65"), (d65, d50, "d65->d50"),
+            (d50, illum_a, "d50->A"), (illum_a, d50, "A->d50"),
+            (d50, illum_e, "d50->E"), (d50, f2, "d50->F2"),
+            (d65, illum_a, "d65->A"), (d50, d50, "d50->d50"),
+            (illum_e, illum_e, "E->E"),
+            (f2, illum_a, "F2->A"),
+        ];
+        for state in [0.0f64, 0.3, 0.7, 1.0, 1.5, -0.5] {
+            let prev = c::cmsSetAdaptationState(state);
+            for (w, ill, nm) in &pairs {
+                let src = Xyz { x: 0.5, y: 0.5, z: 0.5 };
+                let mut out = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                let r = c::cmsAdaptToIlluminant(
+                    &mut out as *mut _ as *mut _,
+                    w as *const _ as *const _,
+                    ill as *const _ as *const _,
+                    &src as *const _ as *const _);
+                if *nm == "d50->d65" {
+                    eprintln!("adapt@{state} {nm}: {r} -> {:.4},{:.4},{:.4}",
+                        out.x, out.y, out.z); }
+                let _ = r; }
+            c::cmsSetAdaptationState(prev); }
+        // XYZ<->xyY round trips + zero-Y edge
+        for (x, y, z) in [
+            (0.5f64, 0.5, 0.5), (0.9642, 1.0, 0.8249),
+            (0.0, 0.0, 0.0), (1.0, 0.0, 0.5),
+            (-0.1, 0.5, -0.1), (2.0, 1.5, 2.5),
+        ] {
+            let src = Xyz { x, y, z };
+            let mut xy = Xyy { x: 0.0, y: 0.0, yy: 0.0 };
+            c::cmsXYZ2xyY(
+                &mut xy as *mut _ as *mut _,
+                &src as *const _ as *const _);
+            let mut back = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+            c::cmsxyY2XYZ(
+                &mut back as *mut _ as *mut _,
+                &xy as *const _ as *const _);
+            eprintln!("xyz ({x},{y},{z}) -> xyY ({:.4},{:.4},{:.4}) -> ({:.4},{:.4},{:.4})",
+                xy.x, xy.y, xy.yy, back.x, back.y, back.z); }
+        // D50 constants
+        let d50x = c::cmsD50_XYZ();
+        let d50y = c::cmsD50_xyY();
+        eprintln!("D50 consts: {}", !d50x.is_null() && !d50y.is_null());
+    }
+}
