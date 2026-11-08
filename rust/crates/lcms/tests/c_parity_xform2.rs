@@ -3115,3 +3115,82 @@ fn conversion_arms8() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// DefaultICCintents/AddConversion/PatchLUT remaining deep
+/// arms — more class/intent/format combos on every profile
+/// pair.
+#[test]
+fn conversion_arms9() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let abs = std::fs::read(dir.join("brightness.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // 8-bit transforms on every class pair
+        for (inp, outp, if_, of_, intent, name) in [
+            (srgb, lab, r8, l8, 0, "8-srgb->lab"),
+            (srgb, lab, r8, l8, 1, "8-srgb->lab rel"),
+            (lab, srgb, l8, r8, 0, "8-lab->srgb"),
+            (srgb, cmyk, r8, k8, 0, "8-srgb->cmyk"),
+            (cmyk, srgb, k8, r8, 0, "8-cmyk->srgb"),
+            (gray, lab, g8, l8, 0, "8-gray->lab"),
+            (lab, gray, l8, g8, 0, "8-lab->gray"),
+            (srgb, xyz, r8, (9u32<<16)|(3<<3)|1, 0, "8-srgb->xyz"),
+            (xyz, srgb, (9u32<<16)|(3<<3)|1, r8, 0, "8-xyz->srgb"),
+            (abs, lab, l8, l8, 0, "8-abs->lab"),
+            (lab2, lab, l8, l8, 0, "8-v2lab->v4lab"),
+            (lab, lab2, l8, l8, 0, "8-v4lab->v2lab"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 8];
+                let mut ob = [0x80u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // 8-bit + 16-bit mixed-format transforms
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, r8, l16, "8->16 srgb->lab"),
+            (srgb, lab, r16, l8, "16->8 srgb->lab"),
+            (lab, srgb, l8, r16, "8->16 lab->srgb"),
+            (lab, srgb, l16, r8, "16->8 lab->srgb"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !abs.is_null() { c::cmsCloseProfile(abs); }
+        c::cmsFreeToneCurve(g);
+    }
+}
