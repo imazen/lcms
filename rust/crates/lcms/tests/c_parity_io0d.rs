@@ -17091,3 +17091,149 @@ fn io_internal4_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut residual — profile-info internals +
+///   pipeline eval on unusual stage combos + tag internals.
+#[test]
+fn io_internal5_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // profile-info internals — all getters on all
+        //   profile classes
+        for (cls, cs, pcs, name) in [
+            (0x6D6E7472u32, 0x52474220, 0x58595A20, "mntr"),
+            (0x70727472, 0x434D594B, 0x4C616220, "prtr"),
+            (0x73636E72, 0x52474220, 0x58595A20, "scnr"),
+            (0x6C696E6B, 0x52474220, 0x58595A20, "link"),
+            (0x73706163, 0x4C616220, 0x58595A20, "spac"),
+            (0x61627374, 0x4C616220, 0x4C616220, "abst"),
+            (0x6E6D636C, 0x4E434C20, 0x4C616220, "nmcl"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsSetHeaderRenderingIntent(prof, 1);
+            c::cmsSetHeaderFlags(prof, 0x8000);
+            c::cmsSetHeaderManufacturer(prof, 0x12345678);
+            c::cmsSetHeaderModel(prof, 0x9ABCDEF0);
+            // cmsSetHeaderCreator not in FFI
+            let mut attrs = 0u64;
+            c::cmsGetHeaderAttributes(prof,
+                &mut attrs as *mut u64);
+            let cls2 = c::cmsGetDeviceClass(prof);
+            let cs2 = c::cmsGetColorSpace(prof);
+            let pcs2 = c::cmsGetPCS(prof);
+            let ver = c::cmsGetProfileVersion(prof);
+            let ri = c::cmsGetHeaderRenderingIntent(prof);
+            let mut fl = 0u32;
+            c::cmsGetHeaderFlags(prof,
+                &mut fl as *mut u32);
+            let mf = c::cmsGetHeaderManufacturer(prof);
+            let md = c::cmsGetHeaderModel(prof);
+            let cr = c::cmsGetHeaderCreator(prof);
+            let eic = c::cmsGetEncodedICCversion(prof);
+            let _ = cr;
+            eprintln!("{name} cls={cls2:#x} cs={cs2:#x} \
+                pcs={pcs2:#x} ver={ver} ri={ri} fl={fl:#x} \
+                mf={mf:#x} md={md:#x} cr={cr:#x} \
+                eic={eic:#x} attrs={attrs:#x}");
+            c::cmsCloseProfile(prof);
+        }
+        // unusual pipeline stage combos
+        for (stages, name) in [
+            (0u32, "mat-clut-mat"),
+            (1, "cv-clut-cv-clut-cv"),
+            (2, "clut-cv-clut"),
+            (3, "idn-mat-idn"),
+        ] {
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let mat = [0.9f64, 0.05, 0.0, 0.0, 0.9, 0.05,
+                0.0, 0.0, 0.9];
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            match stages {
+                0 => {
+                    c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocMatrix(
+                            std::ptr::null_mut(), 3, 3,
+                            mat.as_ptr(), std::ptr::null()));
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(), dims.as_ptr(),
+                            3, 3, grid.as_ptr()));
+                    c::cmsPipelineInsertStage(p, 2,
+                        c::cmsStageAllocMatrix(
+                            std::ptr::null_mut(), 3, 3,
+                            mat.as_ptr(), std::ptr::null()));
+                },
+                1 => {
+                    for i in 0..5u32 {
+                        if i % 2 == 0 {
+                            c::cmsPipelineInsertStage(p, 0,
+                                c::cmsStageAllocToneCurves(
+                                    std::ptr::null_mut(), 3,
+                                    [g, g, g].as_ptr()
+                                        as *mut _));
+                        } else {
+                            c::cmsPipelineInsertStage(p, 0,
+                                c::cmsStageAllocCLut16bitGranular(
+                                    std::ptr::null_mut(),
+                                    dims.as_ptr(), 3, 3,
+                                    grid.as_ptr()));
+                        }
+                    }
+                },
+                2 => {
+                    c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(), dims.as_ptr(),
+                            3, 3, grid.as_ptr()));
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            [g, g, g].as_ptr() as *mut _));
+                    c::cmsPipelineInsertStage(p, 2,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(), dims.as_ptr(),
+                            3, 3, grid.as_ptr()));
+                },
+                _ => {
+                    c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocIdentity(
+                            std::ptr::null_mut(), 3));
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(
+                            std::ptr::null_mut(), 3, 3,
+                            mat.as_ptr(), std::ptr::null()));
+                    c::cmsPipelineInsertStage(p, 2,
+                        c::cmsStageAllocIdentity(
+                            std::ptr::null_mut(), 3));
+                },
+            }
+            let inp = [0x4000u16; 3];
+            let mut out = [0u16; 3];
+            c::cmsPipelineEval16(inp.as_ptr(),
+                out.as_mut_ptr(), p);
+            let inpf = [0.5f32; 3];
+            let mut outf = [0.0f32; 3];
+            c::cmsPipelineEvalFloat(inpf.as_ptr(),
+                outf.as_mut_ptr(), p);
+            let dup = c::cmsPipelineDup(p);
+            eprintln!("{name} out={out:?} outf={outf:?} \
+                dup={}", !dup.is_null());
+            if !dup.is_null() { c::cmsPipelineFree(dup); }
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
