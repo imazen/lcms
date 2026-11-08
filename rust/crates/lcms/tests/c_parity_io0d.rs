@@ -2026,3 +2026,33 @@ fn intent_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// DeviceClass-sig bounds — mutate the deviceClass field
+/// then open (the class validation machinery).
+#[test]
+fn deviceclass_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // deviceClass is a u32be at offset 12
+        for (name, val) in [
+            ("mntr", 0x6d6e7472u32), ("prtr", 0x70727472),
+            ("scnr", 0x73636e72), ("link", 0x6c696e6b),
+            ("abst", 0x61627374), ("nmcl", 0x6e6d636c),
+            ("junk", 0x12345678), ("zero", 0),
+            ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[12..16].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} cls={val:#x} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
