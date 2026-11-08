@@ -3547,3 +3547,46 @@ fn lut_reader_error_paths() {
         }
     }
 }
+
+/// mAB reader error paths — corrupt mAB/mBA offset tables ->
+/// Type_LUTA2B_Read/LUTB2A_Read validation branches.
+#[test]
+fn mab_reader_error_paths() {
+    unsafe {
+        let mab: [u8; 4] = *b"mAB ";
+        let mba: [u8; 4] = *b"mBA ";
+        let mut v1 = Vec::from(mab);
+        // mAB header: reserved(4) inch(1) outch(1) pad(2)
+        //           bCurve(4) matrix(4) mCurve(4) clut(4) aCurve(4)
+        v1.extend_from_slice(&[0,0,0,0, 0xFF,3, 0,0]); // inch=255 invalid
+        v1.extend_from_slice(&[0u8; 20]);
+        let mut v2 = Vec::from(mab);
+        v2.extend_from_slice(&[0,0,0,0, 3,3, 0,0]);
+        // offsets all pointing past tag end
+        v2.extend_from_slice(&[0xFF,0xFF,0xFF,0xF0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]);
+        let mut v3 = Vec::from(mba);
+        v3.extend_from_slice(&[0,0,0,0, 3,3, 0,0]);
+        v3.extend_from_slice(&[0u8; 20]);
+        for (payload, name) in [
+            (v1.as_slice(), "mab-badch"),
+            (v2.as_slice(), "mab-badoff"),
+            (v3.as_slice(), "mba-zeros"),
+        ] {
+            let hlen = 128 + 4 + 12 + payload.len();
+            let mut hdr = vec![0u8; hlen];
+            hdr[0..4].copy_from_slice(&(hlen as u32).to_be_bytes());
+            hdr[36..40].copy_from_slice(b"acsp");
+            hdr[128..132].copy_from_slice(&1u32.to_be_bytes());
+            hdr[132..136].copy_from_slice(&0x41324230u32.to_be_bytes());
+            hdr[136..140].copy_from_slice(&144u32.to_be_bytes());
+            hdr[140..144].copy_from_slice(&(payload.len() as u32).to_be_bytes());
+            hdr[144..].copy_from_slice(payload);
+            let p = c::cmsOpenProfileFromMem(
+                hdr.as_ptr() as *const _, hlen as u32);
+            if p.is_null() { eprintln!("{name} open=null"); continue; }
+            let tag = c::cmsReadTag(p, 0x41324230);
+            eprintln!("{name} tag={}", !tag.is_null());
+            c::cmsCloseProfile(p);
+        }
+    }
+}
