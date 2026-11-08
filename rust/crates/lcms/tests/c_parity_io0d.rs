@@ -3508,3 +3508,42 @@ fn malformed_tag_reads() {
         }
     }
 }
+
+/// LUT-reader error paths — corrupt mft1/mft2 structures (bad
+/// channel counts, bad CLUT sizes, bad offsets) -> reader
+/// validation branches in cmstypes.
+#[test]
+fn lut_reader_error_paths() {
+    unsafe {
+        let mft2: [u8; 4] = *b"mft2";
+        let mft1: [u8; 4] = *b"mft1";
+        let mut v1 = Vec::from(mft2);
+        v1.extend_from_slice(&[0,0,0,0, 0,0,0,0]);
+        let mut v2 = Vec::from(mft2);
+        v2.extend_from_slice(&[0,0,0,0, 20,3,17,0]);
+        let mut v3 = Vec::from(mft1);
+        v3.extend_from_slice(&[0,0,0,0, 3,3,2,0]);
+        for (payload, name) in [
+            (v1.as_slice(), "mft2-zeros"),
+            (v2.as_slice(), "mft2-badch"),
+            (v3.as_slice(), "mft1-min"),
+            (mft2.as_slice(), "mft2-trunc"),
+        ] {
+            let hlen = 128 + 4 + 12 + payload.len();
+            let mut hdr = vec![0u8; hlen];
+            hdr[0..4].copy_from_slice(&(hlen as u32).to_be_bytes());
+            hdr[36..40].copy_from_slice(b"acsp");
+            hdr[128..132].copy_from_slice(&1u32.to_be_bytes());
+            hdr[132..136].copy_from_slice(&0x41324230u32.to_be_bytes()); // A2B0
+            hdr[136..140].copy_from_slice(&144u32.to_be_bytes());
+            hdr[140..144].copy_from_slice(&(payload.len() as u32).to_be_bytes());
+            hdr[144..].copy_from_slice(payload);
+            let p = c::cmsOpenProfileFromMem(
+                hdr.as_ptr() as *const _, hlen as u32);
+            if p.is_null() { eprintln!("{name} open=null"); continue; }
+            let tag = c::cmsReadTag(p, 0x41324230);
+            eprintln!("{name} tag={}", !tag.is_null());
+            c::cmsCloseProfile(p);
+        }
+    }
+}
