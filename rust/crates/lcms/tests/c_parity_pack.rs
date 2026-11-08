@@ -6120,3 +6120,74 @@ fn fixcolorspaces_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsio1 residual — _cmsReadFloat{Input,Output,Devicelink}
+///   Tag arms: Lab/XYZ normalize-stage inserts (float xform
+///   on abst profiles), named-color class arm, float-tag
+///   precedence + perceptual fallback.
+#[test]
+fn float_read_tails() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let xyz = open("xyzlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let ff = |pt: u32, ch: u32| -> u32 {
+            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        // abst profiles (Lab/XYZ colorspace) + float fmt ->
+        //   NormalizeTo/From{Lab,Xyz}Float stage inserts
+        for (a, b, fa, fb, nm) in [
+            (lab4, srgb, ff(10, 3), ff(4, 3), "lab>rgb"),
+            (xyz, srgb, ff(9, 3), ff(4, 3), "xyz>rgb"),
+            (srgb, lab4, ff(4, 3), ff(10, 3), "rgb>lab"),
+            (srgb, xyz, ff(4, 3), ff(9, 3), "rgb>xyz"),
+            (lab4, xyz, ff(10, 3), ff(9, 3), "lab>xyz"),
+            (cmyk, lab4, ff(6, 4), ff(10, 3), "cmyk>lab"),
+            (lab4, cmyk, ff(10, 3), ff(6, 4), "lab>cmyk"),
+        ] {
+            for int in 0..4u32 {
+                let t = c::cmsCreateTransform(a, fa,
+                    b, fb, int, 0);
+                eprintln!("{nm} i{int}: {}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let ib = [0.5f32; 8];
+                    let mut ob = [0.0f32; 8];
+                    c::cmsDoTransform(t,
+                        ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t); } } }
+        // named-color class + no ncl2 -> nc==NULL arm
+        let nm = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(nm, 0x6E6D636C);
+        c::cmsSetColorSpace(nm, 0x31434C52);
+        c::cmsSetPCS(nm, 0x4C616220);
+        c::cmsSetProfileVersion(nm, 4.4);
+        let t = c::cmsCreateTransform(nm,
+            ff(0x31434C52, 1), srgb, ff(4, 3), 0, 0);
+        eprintln!("nmcl-nofncl2: {}", !t.is_null());
+        if !t.is_null() {
+            c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(nm);
+        // perceptual-fallback: intent>ABST, no float tag ->
+        //   falls back to u16 tag read
+        for int in 0..6u32 {
+            let t = c::cmsCreateTransform(srgb,
+                ff(4, 3), cmyk, ff(6, 4), int, 0);
+            eprintln!("srgb>cmyk f i{int}: {}",
+                !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); } }
+        for p in [srgb, lab4, xyz, cmyk] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
