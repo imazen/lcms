@@ -25830,3 +25830,76 @@ fn internal_io_stream_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0 residual — ReadHeader/SanityCheck/
+///   ReadTagDirectory arms: bad magic, size mismatches,
+///   bogus colorspace/class/PCS, tag-table edges.
+#[test]
+fn internal_hdr_parse_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let base = buf[..n as usize].to_vec();
+        c::cmsCloseProfile(srgb);
+        // header mutation sweep: flip each field
+        let fields: Vec<(usize, u32, &str)> = vec![
+            (0, 0xFFFFFFFF, "sz-huge"),
+            (0, 64, "sz-small"),
+            (4, 0x61626364, "bad-cmm"),
+            (8, 0x00000000, "ver0"),
+            (12, 0x7A7A7A7A, "bad-class"),
+            (16, 0x7A7A7A7A, "bad-cs"),
+            (20, 0x7A7A7A7A, "bad-pcs"),
+            (36, 0x00000000, "sig0"),
+            (128, 0xFFFFFFFF, "count-huge"),
+            (128, 0, "count0"),
+            (128, 1, "count1"),
+        ];
+        for (off, val, name) in fields {
+            let mut b = base.clone();
+            b[off..off + 4].copy_from_slice(
+                &val.to_be_bytes());
+            let p = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *const _, b.len() as u32);
+            eprintln!("{name} prof={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsCloseProfile(p); }
+        }
+        // truncated-tagtable: count says 5 tags but
+        //   buffer ends
+        for keep in [132usize, 136, 140, 200, 300] {
+            let mut b = base.clone();
+            b[128..132].copy_from_slice(
+                &5u32.to_be_bytes());
+            let p = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *const _, keep as u32);
+            eprintln!("keep{keep} prof={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsCloseProfile(p); }
+        }
+        // tag-table entry offset/size corruption
+        for (ent, off, sz, name) in [
+            (0u32, 0u32, 0u32, "ent0-00"),
+            (0, 0xFFFFFF00, 100, "ent0-bad"),
+            (1, 132, 0, "ent1-sz0"),
+            (0, 132, 0xFFFFFFFF, "ent0-szhuge"),
+        ] {
+            let mut b = base.clone();
+            let eoff = 132 + ent as usize * 12 + 4;
+            if eoff + 8 <= b.len() {
+                b[eoff..eoff + 4].copy_from_slice(
+                    &off.to_be_bytes());
+                b[eoff + 4..eoff + 8].copy_from_slice(
+                    &sz.to_be_bytes());
+            }
+            let p = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *const _, b.len() as u32);
+            eprintln!("{name} prof={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsCloseProfile(p); }
+        }
+    }
+}
