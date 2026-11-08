@@ -1342,3 +1342,50 @@ float-format, matrix-shaper builder, black-preserve, header-plugin,
 pseq/psid, file-open, tag-internal arms, plus pack_float_lab_xyz/
 pack_skip1_planar/pack_fmt_dup_dbl, cgats file/cube/lexer/num-bin,
 named UTF-8 dup)
+
+## run12 (2026-11-08, invalid)
+
+`TOTAL: 81.58% lines / 95.59% fns / 88.50% regions / 75.39% branches`
+— INVALID: the types4 binary crashed mid-run on a latent
+heap-layout-dependent upstream OOB (corrupt-desc `0xFF 0xFE 0xFD
+0x00` text payload → Type_Text_Description_Read), losing its
+profraw; cmstypes reads understated. Payloads removed; see run13.
+
+## run13 (2026-11-08)
+
+`TOTAL: 82.02% lines / 95.59% fns / 88.71% regions / 75.95% branches`
+(up from run11's 81.81/95.59/88.40/75.49 — lines +0.21, regions
++0.31, branches +0.46; all test binaries completed)
+
+| file | lines | fns | regions | branches |
+|---|---|---|---|---|
+| cmsalpha.c | 86.61% | 85.37% | 86.85% | 77.68% |
+| cmscam02.c | 91.26% | 100% | 98.05% | 84.00% |
+| cmscgats.c | 86.61% | 98.99% | 90.39% | 80.32% |
+| cmscnvrt.c | 82.66% | 100% | 91.14% | 75.67% |
+| cmserr.c | 87.50% | 100% | 92.90% | 74.26% |
+| cmsgamma.c | 88.15% | 100% | 92.09% | 81.34% |
+| cmsgmt.c | 86.35% | 100% | 89.94% | 68.49% |
+| cmshalf.c | 100% | 100% | 100% | — |
+| cmsintrp.c | 98.50% | 100% | 98.85% | 96.90% |
+| cmsio0.c | 85.25% | 100% | 91.32% | 79.14% |
+| cmsio1.c | 81.00% | 100% | 79.48% | 69.23% |
+| cmslut.c | 84.15% | 100% | 92.76% | 76.12% |
+| cmsmd5.c | 94.59% | 100% | 97.06% | 63.64% |
+| cmsmtrx.c | 100% | 100% | 100% | 100% |
+| cmsnamed.c | 82.70% | 100% | 95.24% | 76.33% |
+| cmsopt.c | 85.46% | 95.45% | 88.80% | 77.89% |
+| cmspack.c | 72.33% | 95.65% | 75.38% | 72.40% |
+| cmspcs.c | 97.17% | 100% | 98.67% | 94.84% |
+| cmsplugin.c | 81.60% | 100% | 91.65% | 74.52% |
+| cmsps2.c | 89.41% | 100% | 92.69% | 79.13% |
+| cmssamp.c | 86.01% | 100% | 87.89% | 67.12% |
+| cmssm.c | 90.70% | 100% | 96.05% | 85.71% |
+| cmstypes.c | 74.63% | 99.07% | 86.97% | 71.18% |
+| cmsvirt.c | 73.43% | 100% | 85.43% | 57.25% |
+| cmswtpnt.c | 93.55% | 100% | 99.33% | 86.67% |
+| cmsxform.c | 88.57% | 100% | 91.46% | 81.12% |
+
+(~20 gates landed since run11: type_read32-39, internal_final60-74,
+pack_chgfmt_float16, cgats num/bin, plugin-dup verification; plus
+the corrupt-desc crash fix unblocking types4 under coverage)
