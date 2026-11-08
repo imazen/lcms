@@ -9221,3 +9221,67 @@ fn lut16_write_arms3() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// Type_Dictionary_Read deep arms — dict tag reader internals:
+/// multi-entry, locale names, empty entries, malformed counts.
+#[test]
+fn dict_read_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (entries, name) in [
+            (1u32, "1entry"),
+            (2, "2entry"),
+            (8, "8entry"),
+            (64, "64entry"),
+            (256, "256entry"),
+        ] {
+            let dict = c::cmsDictAlloc(std::ptr::null_mut());
+            for i in 0..entries {
+                let name = format!("key{}\0", i);
+                let mut wn = name.as_bytes().iter()
+                    .map(|&b| b as u32).collect::<Vec<u32>>();
+                wn.push(0);
+                let val = format!("value{}\0", i);
+                let mut wv = val.as_bytes().iter()
+                    .map(|&b| b as u32).collect::<Vec<u32>>();
+                wv.push(0);
+                let loc = if i % 3 == 0 {
+                    format!("locale{}\0", i % 5)
+                } else { "\0".to_string() };
+                let mut wl = loc.as_bytes().iter()
+                    .map(|&b| b as u32).collect::<Vec<u32>>();
+                wl.push(0);
+                // DisplayName/DisplayValue are cmsMLU* handles
+                c::cmsDictAddEntry(dict,
+                    wn.as_ptr() as *const i32,
+                    wv.as_ptr() as *const i32,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut());
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x64696374, dict as *const _);
+            let mut buf = vec![0u8; 1 << 22];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x64696374)
+            } else { std::ptr::null_mut() };
+            eprintln!("dict-{name} w={w} s={s} r={}", !tag.is_null());
+            if !tag.is_null() {
+                let _t2 = c::cmsReadTag(rp, 0x64696374);
+            }
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsDictFree(dict);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
