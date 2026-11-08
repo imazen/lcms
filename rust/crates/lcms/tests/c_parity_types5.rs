@@ -2585,3 +2585,39 @@ fn mlu_machinery() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Type_Text internals — 'text' bodies on the text-accepting
+/// sigs.
+#[test]
+fn text_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [(0x63707274u32, "cprt"),
+                            (0x74656368u32, "tech"),
+                            (0x73637264u32, "scrd"),
+                            (0x63696973u32, "ciis"),
+                            (0x76756564u32, "vued"),
+                            (0x76756574u32, "vuet")] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"text");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(b"sample-text\0");
+            while b.len() % 4 != 0 { b.push(0); }
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
