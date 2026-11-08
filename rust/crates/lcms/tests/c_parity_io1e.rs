@@ -2600,3 +2600,16 @@ fn xyz_sig_resave() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'targ' with an IT8 handle — the charTarget machinery.
+#[test]
+fn targ_it8_payload() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        let ok = c::cmsWriteTag(h, 0x74617267,
+            it8 as *mut std::ffi::c_void);
+        eprintln!("targ write={ok}");
+        c::cmsCloseProfile(h);
+    }
+}
