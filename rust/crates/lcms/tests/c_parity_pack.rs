@@ -894,3 +894,38 @@ fn unusual_colorspace_formats() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// PT_ANY on more format combos — the format machinery
+/// without profile gating.
+#[test]
+fn any_format_combos() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("any-8", (0 << 16) | (3 << 3) | 1u32),
+            ("any-16", (0 << 16) | (3 << 3) | 2),
+            ("any-4b", (0 << 16) | (3 << 3) | 4),
+            ("any-8b", (0 << 16) | (3 << 3) | 8),
+            ("any-flt", (1 << 22) | (0 << 16) | (3 << 3) | 4),
+            ("any-dbl", (1 << 22) | (0 << 16) | (3 << 3) | 0),
+            ("any-half", (1 << 22) | (0 << 16) | (3 << 3) | 2),
+            ("any-1ch", (0 << 16) | (1 << 3) | 2),
+            ("any-2ch", (0 << 16) | (2 << 3) | 2),
+            ("any-4ch", (0 << 16) | (4 << 3) | 2),
+            ("any-6ch", (0 << 16) | (6 << 3) | 2),
+            ("any-8ch", (0 << 16) | (8 << 3) | 2),
+            ("any-15ch", (0 << 16) | (15 << 3) | 2),
+            ("any-planar", (0 << 16) | (1 << 12) | (3 << 3) | 2),
+            ("any-doswap", (0 << 16) | (1 << 10) | (3 << 3) | 2),
+            ("any-extra", (0 << 16) | (1 << 7) | (3 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
