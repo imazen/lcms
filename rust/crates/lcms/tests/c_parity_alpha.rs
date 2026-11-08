@@ -395,3 +395,38 @@ fn half_alpha() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Alpha-format variants — alpha-first/alpha-last/premul/
+/// packed alpha positions.
+#[test]
+fn alpha_format_variants() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // alpha-last RGBA + alpha-first ARGB + premul variants
+        for (name, in_fmt) in [
+            ("rgba-al", (4 << 16) | (4 << 3) | 2),      // RGBA
+            ("argb-al", (4 << 16) | (4 << 3) | 2
+                | (1 << 10)),                          // swapfirst
+            ("rgba-pm", (4 << 16) | (4 << 3) | 2
+                | (1 << 14)),                          // premul
+            ("rgba-pkd", (4 << 16) | (4 << 3) | 0),     // packed
+            ("rgba-8",  (4 << 16) | (4 << 3) | 1),      // 8-bit
+            ("rgba-fl", (4 << 16) | (4 << 3) | 6),      // float
+        ] {
+            let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let ct = c::cmsCreateTransform(h, in_fmt, lab4,
+                lab_fmt, 0, 0);
+            eprintln!("{name} null={}", ct.is_null());
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000, 0xFFFF];
+                let mut out = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(h);
+    }
+}
