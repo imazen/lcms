@@ -411,3 +411,35 @@ fn postscript_shapes2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// CSA/CRD write bodies — real buffers through the
+/// writers (not just size queries).
+#[test]
+fn postscript_write_bodies() {
+    let _g = PS_LOCK.lock().unwrap();
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (pname, h) in [
+            ("srgb", srgb), ("lab4", lab)] {
+            let n = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(), h, 0, 0,
+                std::ptr::null_mut(), 0);
+            let mut buf = vec![0u8; n as usize];
+            let n2 = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(), h, 0, 0,
+                buf.as_mut_ptr() as *mut _, n);
+            let head = String::from_utf8_lossy(&buf[..8.min(n2 as usize)]);
+            eprintln!("{pname} csa n={n2} head={head:?}");
+            let n3 = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(), h, 0, 0,
+                std::ptr::null_mut(), 0);
+            let mut buf2 = vec![0u8; n3 as usize];
+            let n4 = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(), h, 0, 0,
+                buf2.as_mut_ptr() as *mut _, n3);
+            eprintln!("{pname} crd n={n4}");
+        }
+        let _ = (srgb, lab);
+    }
+}
