@@ -1450,3 +1450,35 @@ fn multichannel_formats() {
         }
     }
 }
+
+/// Multi-channel modifier matrix on the devicelinks.
+#[test]
+fn multichannel_modifier_matrix2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 6];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x36434C52,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("6ch-doswap", (0 << 16) | (1 << 10) | (6 << 3) | 1),
+            ("6ch-swapf", (0 << 16) | (1 << 14) | (6 << 3) | 1),
+            ("6ch-end16", (0 << 16) | (1 << 11) | (6 << 3) | 1),
+            ("6ch-flavor", (0 << 16) | (1 << 13) | (6 << 3) | 1),
+            ("6ch-x1", (0 << 16) | (1 << 7) | (6 << 3) | 1),
+            ("6ch-x2", (0 << 16) | (2 << 7) | (6 << 3) | 1),
+            ("6ch-x3", (0 << 16) | (3 << 7) | (6 << 3) | 1),
+            ("6ch-x4", (0 << 16) | (4 << 7) | (6 << 3) | 1),
+            ("6ch-premul", (0 << 16) | (1 << 23) | (1 << 7)
+             | (6 << 3) | 1),
+            ("6ch-dbl", (1 << 22) | (0 << 16) | (6 << 3) | 0),
+            ("6ch-hlf", (1 << 22) | (0 << 16) | (6 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
