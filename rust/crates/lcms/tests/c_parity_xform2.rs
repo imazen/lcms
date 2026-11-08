@@ -2516,3 +2516,63 @@ fn opt_prelin_rgb() {
         if !link.is_null() { c::cmsCloseProfile(link); }
     }
 }
+
+/// DefaultICCintents/AddConversion deep arms — 4+ profile chains,
+/// input/abstract/devicelink mid-chains, preview profiles.
+#[test]
+fn conversion_arms4() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let abs = std::fs::read(dir.join("brightness.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for (profs, intent, name) in [
+            // 4-profile chains
+            (vec![srgb, lab, gray, srgb], 0, "4p-slab-g-sr"),
+            (vec![srgb, cmyk, srgb, lab], 0, "4p-sr-cmyk-sr-lab"),
+            (vec![lab, srgb, abs, lab], 0, "4p-lab-sr-abs-lab"),
+            (vec![srgb, abs, lab, cmyk], 0, "4p-sr-abs-lab-cmyk"),
+            (vec![xyz, srgb, lab, srgb], 0, "4p-x-sr-lab-sr"),
+            (vec![srgb, gray, lab, srgb], 1, "4p-sr-g-lab-sr"),
+            // 5-profile
+            (vec![srgb, lab, srgb, lab, srgb], 0, "5p"),
+            // abstract mid-chain in different positions
+            (vec![srgb, lab, abs, srgb], 0, "abs-end-mid"),
+            (vec![abs, lab, srgb, lab], 0, "abs-start"),
+        ] {
+            if profs.iter().any(|p| p.is_null()) { continue; }
+            let mut ps = profs;
+            let t = c::cmsCreateMultiprofileTransform(
+                ps.as_mut_ptr(), ps.len() as i32, r16, l16,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 8];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !abs.is_null() { c::cmsCloseProfile(abs); }
+        c::cmsFreeToneCurve(g);
+    }
+}
