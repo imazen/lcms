@@ -3663,3 +3663,64 @@ fn matshaper_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// OptimizeByJoiningCurves — all-curves pipelines (gray/lab pairs),
+/// float reject, non-curveset reject, linear-curve skip, 8bit path.
+#[test]
+fn joincurves_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gl = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let graylin = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), gl);
+        let xyz = c::cmsCreateXYZProfile();
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let gf = (3u32 << 16) | (1 << 3) | 5;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lf = (10u32 << 16) | (3 << 3) | 5;
+        let x8 = (9u32 << 16) | (3 << 3) | 1;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        for (inp, outp, if_, of_, name) in [
+            (gray, gray, g8, g8, "gray->gray"),
+            (gray, gray, g16, g16, "gray16"),
+            (gray, gray, gf, gf, "grayf"),
+            (graylin, gray, g8, g8, "graylin->gray"),
+            (gray, graylin, g8, g8, "gray->graylin"),
+            (graylin, graylin, g8, g8, "graylin->graylin"),
+            (gray, lab, g8, l8, "gray->lab"),
+            (lab, gray, l8, g8, "lab->gray"),
+            (gray, lab, g16, l16, "gray->lab16"),
+            (gray, lab, gf, lf, "gray->labf"),
+            (gray, xyz, g8, x8, "gray->xyz"),
+            (xyz, gray, x8, g8, "xyz->gray"),
+            (lab, lab, l8, l8, "lab->lab"),
+            (lab, lab, lf, lf, "lab->labf"),
+            (srgb, srgb, r8, r8, "srgb->srgb"),
+        ] {
+            for intent in [0u32, 1] {
+                let t = c::cmsCreateTransform(inp, if_, outp,
+                    of_, intent, 0);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let inp_b = [0x55u8; 8];
+                    let mut out = [0u8; 8];
+                    c::cmsDoTransform(t, inp_b.as_ptr() as *const _,
+                        out.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(graylin);
+        c::cmsCloseProfile(xyz);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(gl);
+    }
+}
