@@ -1327,3 +1327,44 @@ fn named_info_grow_arms() {
         c::cmsFreeNamedColorList(nl);
     }
 }
+
+/// cmsnamed residual — MLUtranslationsCount/
+///   translationsAre/getTranslation on multi-lang +
+///   empty MLUs.
+#[test]
+fn named_mlu_trans_arms() {
+    unsafe {
+        for n in [0u32, 1, 3, 8] {
+            let mlu = c::cmsMLUalloc(
+                std::ptr::null_mut(), n);
+            for i in 0..n {
+                let lang = [b'e' + i as u8, b'n', 0];
+                let cty = [b'U', b'S' + i as u8, 0];
+                let s = format!("t{i}\0");
+                c::cmsMLUsetASCII(mlu,
+                    lang.as_ptr() as *const _,
+                    cty.as_ptr() as *const _,
+                    s.as_ptr() as *const _);
+            }
+            let cnt = c::cmsMLUtranslationsCount(mlu);
+            eprintln!("mlu{n} count={cnt}");
+            // get codes + translation at each index
+            for i in 0..(cnt + 1) {
+                let mut lang = [0u8; 3];
+                let mut ctry = [0u8; 3];
+                let ok = c::cmsMLUtranslationsCodes(mlu,
+                    i, lang.as_mut_ptr(),
+                    ctry.as_mut_ptr());
+                let mut ol = [0u8; 3];
+                let mut oc = [0u8; 3];
+                let g = c::cmsMLUgetTranslation(mlu,
+                    lang.as_ptr(),
+                    ctry.as_ptr(),
+                    ol.as_mut_ptr(),
+                    oc.as_mut_ptr());
+                eprintln!("  tr[{i}] codes={ok}                     get={g}");
+            }
+            c::cmsMLUfree(mlu);
+        }
+    }
+}
