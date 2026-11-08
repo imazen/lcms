@@ -2698,3 +2698,39 @@ fn mpe_readback_cycles() {
         }
     }
 }
+
+/// Pipeline accessors + eval-reverse — StageCount/GetPtrToFirst-
+/// Stage/NextStage/StageType/EstimatedTableEntries + EvalReverse-
+/// Float on an invertible pipeline.
+#[test]
+fn pipeline_accessors_reverse() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        let cnt = c::cmsPipelineStageCount(p);
+        eprintln!("stages={cnt}");
+        let mut st = c::cmsPipelineGetPtrToFirstStage(p);
+        let mut i = 0;
+        while !st.is_null() {
+            let ty = c::cmsStageType(st);
+            eprintln!("  stage{i} type={ty:#x}");
+            st = c::cmsStageNext(st);
+            i += 1;
+        }
+        // reverse eval (inverts matrix + curves)
+        let mut fi = [0.5f32, 0.3, 0.7];
+        let mut fo = [0f32; 3];
+        let mut hint = [0f32; 3];
+        let r = c::cmsPipelineEvalReverseFloat(
+            fi.as_mut_ptr(), fo.as_mut_ptr(), hint.as_mut_ptr(), p);
+        eprintln!("reverse r={r} fo={fo:?}");
+        c::cmsPipelineFree(p);
+    }
+}
