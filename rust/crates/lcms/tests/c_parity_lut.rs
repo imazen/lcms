@@ -2039,3 +2039,75 @@ fn mpet_element_writes() {
         }
     }
 }
+
+/// Float-LUT tag reads — a profile carrying 'mpet' tags gets its
+/// LUT through _cmsReadFloatInputTag/_cmsReadFloatOutputTag/
+/// _cmsReadFloatDevicelinkTag (Device2PCSFloat=D2B*, PCS2DeviceFloat=
+/// B2D*). Pipeline: segmented curves + matrix + float CLUT.
+#[test]
+fn float_lut_reads() {
+    unsafe {
+        let mat: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        let mut ftab = [0f32; 8 * 3];
+        for (i, v) in ftab.iter_mut().enumerate() {
+            *v = i as f32 / 24.0;
+        }
+        let mut samp = [0f32; 256];
+        for (i, v) in samp.iter_mut().enumerate() {
+            *v = i as f32 / 255.0;
+        }
+        let mk_pipe = |segs: &[c::CurveSegment]| {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            let cc = [
+                c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &segs[0]),
+                c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &segs[0]),
+                c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &segs[0])];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3, cc.as_ptr()));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                    3, 3, mat.as_ptr(), std::ptr::null()));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLutFloat(
+                    std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()));
+            p
+        };
+        let cseg = c::CurveSegment {
+            x0: 0.0, x1: 1.0, r#type: 0,
+            params: [0.0; 10],
+            n_grid_points: 256,
+            sampled_points: samp.as_ptr(),
+        };
+        // output side: sRGB with B2D0 (PCS2DeviceFloat)
+        let outp = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(outp, 0x42324430, mk_pipe(&[cseg]) as *const _);
+        // input side: sRGB with D2B0 (Device2PCSFloat)
+        let inp = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(inp, 0x44324230, mk_pipe(&[cseg]) as *const _);
+        // devicelink: link class + D2B0
+        let dlk = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(dlk, 0x6C696E6B); // 'link'
+        c::cmsSetColorSpace(dlk, 0x52474220); // 'RGB '
+        c::cmsSetPCS(dlk, 0x4C616220); // 'Lab '
+        c::cmsWriteTag(dlk, 0x44324230, mk_pipe(&[cseg]) as *const _);
+        // transforms — srgb->outp(B2D0), inp(D2B0)->srgb, dlk xform
+        let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
+        let srgb = c::cmsCreate_sRGBProfile();
+        for (name, a, b) in [
+            ("out-B2D0", srgb, outp),
+            ("in-D2B0", inp, srgb),
+            ("link-D2B0", dlk, srgb)] {
+            let t = c::cmsCreateTransform(a, rgb8, b, rgb8, 0, 0);
+            eprintln!("{name} xform={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(outp);
+        c::cmsCloseProfile(inp);
+        c::cmsCloseProfile(dlk);
+    }
+}
