@@ -16324,3 +16324,85 @@ fn cmstypes_residual_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio1/cmslut/cmsintrp residual — LUT-builder internals on
+/// unusual profile combos + stage/internals on edge cases.
+#[test]
+fn lut_builder_residual_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // named-color + abstract + devicelink + colorspace
+        //   profile classes
+        for (cls, cs, pcs, name) in [
+            (0x6E6D636Cu32, 0x4E434C20, 0x4C616220,
+                "namedcolor"),
+            (0x61627374, 0x4C616220, 0x4C616220, "abstract"),
+            (0x6C696E6B, 0x52474220, 0x58595A20, "link"),
+            (0x73706163, 0x4C616220, 0x58595A20, "space"),
+            (0x70727472, 0x434D594B, 0x4C616220, "printer"),
+            (0x73636E72, 0x52474220, 0x58595A20, "scanner"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            // write a cv-clut-cv pipeline to A2B0 + B2A0
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    grid.as_ptr()));
+            c::cmsPipelineInsertStage(p, 2,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let w1 = c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            let w2 = c::cmsWriteTag(prof, 0x42324130,
+                p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            let t = if !rp.is_null() {
+                let t_ = c::cmsCreateTransform(rp, r8, srgb,
+                    r8, 0, 0);
+                c::cmsCloseProfile(rp);
+                t_
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w1={w1} w2={w2} s={s} t={}",
+                !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        // multiprofile + proofing on unusual combos
+        let mut profs = [srgb, lab, srgb];
+        for intent in 0..4u32 {
+            let t = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 3, r8, r8, intent, 0);
+            eprintln!("multi i{intent}={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
