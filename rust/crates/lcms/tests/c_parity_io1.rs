@@ -409,3 +409,38 @@ fn float_devicelink_tag() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Profile-capability helpers — cmsIsCLUT/IsIntentSupported/
+/// IsMatrixShaper across profile classes x intents.
+#[test]
+fn profile_capability_helpers() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let mut profs = vec![
+            ("srgb", c::cmsCreate_sRGBProfile()),
+            ("lab", c::cmsCreateLab4Profile(std::ptr::null_mut())),
+        ];
+        for f in ["lcms2cmyk.icc", "lcms2link.icc", "graylcms2.icc"] {
+            if let Ok(d) = std::fs::read(dir.join(f)) {
+                let p = c::cmsOpenProfileFromMem(
+                    d.as_ptr() as *const _, d.len() as u32);
+                if !p.is_null() { profs.push((f, p)); }
+            }
+        }
+        for (name, p) in &profs {
+            let ms = c::cmsIsMatrixShaper(*p);
+            let mut clut = String::new();
+            for intent in [0u32, 1, 2] {
+                for dir in [0u32, 1] {
+                    if c::cmsIsCLUT(*p, intent, dir) != 0 {
+                        clut.push_str(&format!("i{intent}d{dir} "));
+                    }
+                }
+            }
+            let sup = c::cmsIsIntentSupported(*p, 0, 0);
+            eprintln!("{name} mxs={ms} clut=[{clut}] sup={sup}");
+            c::cmsCloseProfile(*p);
+        }
+    }
+}
