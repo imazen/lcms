@@ -537,3 +537,26 @@ cmspack ~73%, cmsps2 ~68%, cmsvirt ~73%, cmsio1 ~80%,
 cmsxform ~76%, cmsnamed ~83%, cmsopt ~85%, cmscnvrt ~83%,
 cmsio0 ~85%, cmsplugin ~85%, cmscgats ~88%, cmslut ~85%,
 cmsgmt ~81%, cmssamp ~86%.
+
+## cmstypes residual map (run19, through fad65191)
+
+Biggest missed functions (regions-missed / %):
+- Type_MHC2_Write 47/51% — CurveEntries + offset-table +
+  min-peak-lum arm variants
+- Type_LUT8_Write 36/73%, Type_LUT16_Write 34/80%,
+  Type_LUT16_Read 23/77%, Type_LUT8_Read 21/79%,
+  Type_LUTA2B_Write 14/87%, Type_LUTB2A_Read 15/78%,
+  Type_LUTA2B_Read 14/79%
+- Type_Text_Description_Read 22/71% — 'desc' reader arms
+- Type_vcgt_Write 19/67%, Type_vcgt_Read 14/81%
+- Type_MPE_Write 18/75%, Type_MPEclut_Write,
+  WriteSegmentedCurve 14/78%, ReadSegmentedCurve 15/84%
+- Type_ProfileSequenceDesc_Write 16/54%
+- _cmsReadWCharArray 16/30% — wide-char reader internals
+- Type_UcrBg_Read 14/74%, Type_UcrBg_Free
+- Type_NamedColor_Read 14/67%
+- Type_Dictionary_Read 14/82%
+- Type_MHC2_Read 14/74%
+
+Correct per-fn query sort: column 3 = regions-MISSED
+(sort -k3 -rn), column 4 = regions-%.
