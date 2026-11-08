@@ -811,3 +811,28 @@ fn transform_getters() {
         let _ = (rgb, lab, rgb2);
     }
 }
+
+/// Flag-combo machinery — cmsCreateTransform with
+/// BPC/gamut/linearize/nowhitepoint flags.
+#[test]
+fn flag_combos() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let rgb2 = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let fmt = (4 << 16) | (3 << 3) | 1u32;
+        let lfmt = (10 << 16) | (3 << 3) | 2u32;
+        for (name, flags) in [
+            ("none", 0u32), ("bpc0", 1 << 0),
+            ("bpc1", 1 << 1), ("gamut", 1 << 10),
+            ("linear", 1 << 4), ("nowhite", 1 << 21),
+            ("highprec", 1 << 9), ("nocache", 1 << 22)] {
+            let t = c::cmsCreateTransform(rgb, fmt,
+                rgb2, fmt, 0, flags);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        let _ = lab;
+        let _ = (rgb, rgb2, lab);
+    }
+}
