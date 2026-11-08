@@ -4135,3 +4135,35 @@ fn parametric_curve_handlers() {
         }
     }
 }
+
+/// Multi-format desc handlers — 'desc' with MLU (v4) and 'desc'
+/// tag structure (v2) variants.
+#[test]
+fn desc_format_variants() {
+    unsafe {
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(m, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, b"description\0".as_ptr());
+        for ver in [2.1f64, 4.4] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            let w = c::cmsWriteTag(prof, 0x64657363, m as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x64657363)
+            } else { std::ptr::null_mut() };
+            eprintln!("v{ver} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsMLUfree(m);
+    }
+}
