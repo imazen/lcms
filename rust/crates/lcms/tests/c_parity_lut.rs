@@ -1581,3 +1581,51 @@ fn stage_dup() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Stage channel-count machinery — input/output channels
+/// on more stage types.
+#[test]
+fn stage_channels2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c3 = [g, g, g];
+        for (name, st) in [
+            ("id-3", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 3)),
+            ("id-1", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 1)),
+            ("id-4", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 4)),
+            ("id-15", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 15)),
+            ("curves3", c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, c3.as_ptr())),
+            ("matrix33", c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0]
+                    .as_ptr(), std::ptr::null())),
+            ("matrix34", c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 4,
+                [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0,
+                 0.0,0.0,0.0].as_ptr(), std::ptr::null())),
+            ("clut33", c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), 2, 3, 3,
+                std::ptr::null())),
+            ("clut43", c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), 2, 4, 3,
+                std::ptr::null())),
+            ("clut34", c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), 2, 3, 4,
+                std::ptr::null()))] {
+            if st.is_null() {
+                eprintln!("{name} NULL");
+                continue;
+            }
+            let i = c::cmsStageInputChannels(st);
+            let o = c::cmsStageOutputChannels(st);
+            eprintln!("{name} in={i} out={o}");
+            c::cmsStageFree(st);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
