@@ -2967,3 +2967,73 @@ fn opt_resample_deep() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// OptimizeBy* remaining internals — flag combos on every
+/// pipeline shape + intents.
+#[test]
+fn opt_arms3() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let gray2 = c::cmsCreateGrayProfile(std::ptr::null_mut(), g2);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let combos = [
+            // gray joins curves; every flag combination
+            (gray, gray2, g16, g16, 0x0010|0x0001, "gray pre+post"),
+            (gray, gray2, g16, g16, 0x0400|0x0010, "gray hi+pre"),
+            (gray, gray2, g16, g16, 0x0800|0x0001, "gray lo+post"),
+            (gray, gray2, g16, g16, 0x0400|(3u32<<16), "gray hi+g3"),
+            (gray, gray2, g16, g16, 0x0800|(9u32<<16), "gray lo+g9"),
+            (gray, gray2, g16, g16, 0x0010|0x0001|0x0400, "gray lin+hi"),
+            // cmyk CLUT pipelines x all flags
+            (cmyk, srgb, k16, r16, 0x0010, "cmyk->srgb prelin"),
+            (cmyk, srgb, k16, r16, 0x0001, "cmyk->srgb postlin"),
+            (cmyk, srgb, k16, r16, 0x0400, "cmyk->srgb hiprec"),
+            (cmyk, srgb, k16, r16, 0x0800, "cmyk->srgb lowprec"),
+            (cmyk, srgb, k16, r16, 0x0400|0x0010, "cmyk->srgb hi+pre"),
+            (cmyk, lab, k16, l16, 0x0400|(17u32<<16), "cmyk hi+g17"),
+            (cmyk, lab, k16, l16, 0x0800|(255u32<<16), "cmyk lo+g255"),
+            // srgb->lab (matrix-shaper) x flags
+            (srgb, lab, r16, l16, 0x0010, "srgb->lab prelin"),
+            (srgb, lab, r16, l16, 0x0001, "srgb->lab postlin"),
+            (srgb, lab, r16, l16, 0x0400, "srgb->lab hiprec"),
+            (lab, srgb, l16, r16, 0x0010, "lab->srgb prelin"),
+            // intents on CLUT pipelines
+            (cmyk, srgb, k16, r16, 0x0010, "cmyk i-prelin"),
+        ];
+        for (inp, outp, if_, of_, fl, name) in combos {
+            if inp.is_null() || outp.is_null() { continue; }
+            for intent in 0..4u32 {
+                let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                    intent, fl);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x80u8; 64];
+                    let mut ob = [0x8000u16; 8];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(gray2);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
