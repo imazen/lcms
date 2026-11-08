@@ -538,3 +538,31 @@ fn input_lut_intent_dispatch() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// _cmsReadOutputLUT per-intent dispatch — output profiles with
+/// B2A0/1/2 tags selected by intent + gamut/preview fallbacks.
+#[test]
+fn output_lut_intent_dispatch() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for f in ["lcms2cmyk.icc", "lcms2link.icc", "labv2lcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(lab, l16, p,
+                    (6u32 << 16) | (4 << 3) | 2, intent, 0);
+                if !t.is_null() {
+                    eprintln!("{f} i{intent} ok");
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
