@@ -1831,3 +1831,75 @@ fn chad_temp_internals() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Optimizer deep arms — all-curves pipeline (OptimizeByJoining
+/// Curves), CLUT resample (OptimizeByResampling), linearization.
+#[test]
+fn optimizer_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        // flag variants that force different optimizers
+        for (inp, outp, if_, of_, fl, name) in [
+            // pure-curves pipeline: gray->gray joins curves
+            (gray, gray, g16, g16, 0, "gray->gray"),
+            (gray, gray, g16, g16, 0x0002, "gray->gray lpc"),
+            (gray, gray, g16, g16, 0x0040, "gray->gray nocache"),
+            // CLUT-resample on a CLUT profile
+            (cmyk, lab, k16, l16, 0, "cmyk->lab"),
+            (cmyk, lab, k16, l16, 0x0002, "cmyk->lab lpc"),
+            (srgb, srgb, r8, r8, 0x0002, "srgb lpc"),
+            (srgb, lab, r8, l16, 0x0002, "srgb->lab lpc"),
+            (srgb, lab, r16, l16, 0x0400, "srgb->lab hiprec"),
+            (srgb, lab, r16, l16, 0x0800, "srgb->lab lowprec"),
+            // black-preserving intents (8-11) on CMYK
+            (cmyk, cmyk, k16, k16, 0x4000, "cmyk->cmyk intent8"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let intent = if name.contains("intent8") { 8 } else { 0 };
+            let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                intent, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 64];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // black-preserving intents 8-11 on CMYK->CMYK
+        if !cmyk.is_null() {
+            for intent in [8u32, 9, 10, 11] {
+                let t = c::cmsCreateTransform(cmyk, k16, cmyk, k16,
+                    intent, 0);
+                eprintln!("cmyk-i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x8000u16; 8];
+                    let mut ob = [0x8000u16; 8];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
