@@ -622,3 +622,32 @@ fn quadratic_bp_clut() {
         c::cmsMLUfree(ml);
     }
 }
+
+/// Intent-1 source black point on input-CLUT profiles — the
+/// quadratic-fit path needs a non-straight round-trip curve.
+#[test]
+fn quadratic_bp_intent1() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2link2.icc", "lcms2link.icc", "labv2lcms2.icc",
+                  "labv4lcms2.icc", "brightness.icc", "xyzlcms2.icc",
+                  "bchslcms2.icc", "limitlcms2.icc", "linlcms2.icc",
+                  "glablcms2.icc", "nullcms2.icc", "lcms2cmyk.icc",
+                  "gray3lcms2.icc", "graylcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in [1u32, 3] {
+                let mut bp = [0.0f64; 3];
+                let r = c::cmsDetectBlackPoint(
+                    bp.as_mut_ptr() as *mut _, p, intent, 0);
+                eprintln!("{f} i{intent} r={r} bp=({:.4},{:.4},{:.4})",
+                    bp[0], bp[1], bp[2]);
+            }
+            c::cmsCloseProfile(p);
+        }
+    }
+}
