@@ -1219,3 +1219,32 @@ fn clut_float2() {
         }
     }
 }
+
+/// Tone-curve internals on more combos — the tone-curve
+/// machinery.
+#[test]
+fn tone_curves2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c1 = [g];
+        let c3 = [g, g, g];
+        let c4 = [g, g, g, g];
+        let c15 = [g; 15];
+        for (name, n, curves) in [
+            ("1ch", 1u32, c1.as_ptr()),
+            ("3ch", 3, c3.as_ptr()),
+            ("4ch", 4, c4.as_ptr()),
+            ("15ch", 15, c15.as_ptr())] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), n, n);
+            let stage = c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), n, curves);
+            eprintln!("{name} alloc={}", !stage.is_null());
+            if !stage.is_null() {
+                c::cmsPipelineInsertStage(pl, 1, stage);
+            }
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
