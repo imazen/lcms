@@ -711,4 +711,6 @@ unsafe extern "C" {
     pub fn cref_seg_param(curve: *mut ToneCurve, seg: i32, p: i32) -> f64;
     pub fn cref_seg_type(curve: *mut ToneCurve, seg: i32) -> i32;
     pub fn cref_seg_ngrid(curve: *mut ToneCurve, seg: i32) -> u32;
+    pub fn cmsPlugin(plugin: *mut c_void) -> i32;
+    pub fn cmsPluginTHR(ctx: *mut c_void, plugin: *mut c_void) -> i32;
 }

@@ -170,3 +170,63 @@ fn desaturate_and_gbd_edges() {
         c::cmsGBDFree(cg);
     }
 }
+
+/// cmsplugin registration machinery: ParametricCurves plugin base-struct
+/// registration + context dup preserving the registration.
+#[repr(C)]
+struct CPluginBase {
+    magic: u32,
+    expected_version: u32,
+    type_: u32,
+    next: *mut c_void,
+}
+#[repr(C)]
+struct CPluginParametricCurves {
+    base: CPluginBase,
+    n_functions: u32,
+    function_types: [u32; 20],
+    parameter_count: [u32; 20],
+    evaluator: *mut c_void,
+}
+
+unsafe extern "C" fn nop_eval(_t: i32, _p: *const f64, _r: f64) -> f64 { 0.0 }
+
+#[test]
+fn plugin_registration() {
+    // C: register a ParametricCurves plugin (new curve type 999) into the
+    // default context; status must be true.
+    let mut cp = CPluginParametricCurves {
+        base: CPluginBase {
+            magic: 0x61637070, // 'acpp'
+            expected_version: 2200,
+            type_: 0x70617248, // 'parH'
+            next: std::ptr::null_mut(),
+        },
+        n_functions: 1,
+        function_types: {
+            let mut a = [0u32; 20];
+            a[0] = 999;
+            a
+        },
+        parameter_count: {
+            let mut a = [0u32; 20];
+            a[0] = 3;
+            a
+        },
+        evaluator: nop_eval as *mut c_void,
+    };
+    let c_ok = unsafe { c::cmsPlugin(&mut cp as *mut CPluginParametricCurves as *mut _) };
+    assert!(c_ok != 0, "C plugin registration");
+
+    // Rust: same registration into a context
+    fn r_eval(_t: i32, _p: &[f64; 10], _r: f64) -> f64 { 0.0 }
+    let mut ctx = lcms::context::create_context(None, 0);
+    let r_ok = ctx.plugin(&[lcms::context::Plugin::ParametricCurve(
+        lcms::gamma::ParametricCurves {
+            function_types: vec![999],
+            parameter_count: vec![3],
+            evaluator: r_eval,
+        },
+    )]);
+    assert!(r_ok, "rust plugin registration");
+}
