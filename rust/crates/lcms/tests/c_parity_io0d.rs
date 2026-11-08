@@ -1851,3 +1851,41 @@ fn corpus_iohandler() {
         }
     }
 }
+
+/// Corpus class tag walk — enumerate + read every stored
+/// tag on class-specific profiles.
+#[test]
+fn corpus_class_tag_walk() {
+    unsafe {
+        for (name, path) in [
+            ("argb", "../../aRGBlcms2.icc"),
+            ("bchs", "../../bchslcms2.icc"),
+            ("glab", "../../glablcms2.icc"),
+            ("cmyk", "../../lcms2cmyk.icc"),
+            ("link2", "../../lcms2link2.icc"),
+            ("limit", "../../limitlcms2.icc"),
+            ("null", "../../nullcms2.icc"),
+            ("srgb", "../../sRGBlcms2.icc")] {
+            let mut p = [0u8; 256];
+            let pb = path.as_bytes();
+            p[..pb.len()].copy_from_slice(pb);
+            let h = c::cmsOpenProfileFromFile(
+                p.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let n = c::cmsGetTagCount(h);
+            let mut ok = 0;
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                let v = c::cmsReadTag(h, sig);
+                if !v.is_null() { ok += 1; }
+                eprintln!("{name}[{i}] {sig:#x}={}",
+                    !v.is_null());
+            }
+            eprintln!("{name} {ok}/{n} read");
+            c::cmsCloseProfile(h);
+        }
+    }
+}
