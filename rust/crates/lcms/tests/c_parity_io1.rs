@@ -938,3 +938,32 @@ fn float_devicelink_reader() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadPreviewLUT — pre0-2 tagged profile via proofing
+/// transform.
+#[test]
+fn preview_lut_reader() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsWriteTag(prof, 0x70726530, p as *const _); // 'pre0'
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // proofing transform — the preview path
+        let pt = c::cmsCreateProofingTransform(prof, r16,
+            lab, l16, prof, 0, 0, 0);
+        eprintln!("proof t={}", !pt.is_null());
+        if !pt.is_null() { c::cmsDeleteTransform(pt); }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
