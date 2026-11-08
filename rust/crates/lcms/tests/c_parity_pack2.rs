@@ -725,3 +725,42 @@ fn exhaustive_format_matrix() {
         eprintln!("accepted {count} format combos");
     }
 }
+
+/// More format combos — all bytes 0-8 x nch 1-16 x more
+/// modifier bits on same-PCS transforms.
+#[test]
+fn format_matrix_round2() {
+    unsafe {
+        let pts = [1u32, 2, 3, 4, 10, 6, 18];
+        let byteses = [1u32, 2, 4, 8];
+        let mods = [0u32, 1 << 9, 1 << 10, 1 << 11, 1 << 12,
+                    1 << 13, 1 << 17, 1 << 18];
+        let mut count = 0u32;
+        for pt in pts {
+            for nch in 1..=8u32 {
+                for bytes in byteses {
+                    for m in mods {
+                        let fmt: u32 = (pt << 16) | (nch << 3)
+                            | bytes | m;
+                        let hi = c::cmsCreate_sRGBProfile();
+                        let ho = c::cmsCreate_sRGBProfile();
+                        let ct = c::cmsCreateTransform(hi, fmt,
+                            ho, fmt, 0, 0);
+                        let _ = c::cmsCloseProfile(hi);
+                        let _ = c::cmsCloseProfile(ho);
+                        if ct.is_null() { continue; }
+                        count += 1;
+                        let nbytes = (bytes.max(1) as usize)
+                            * nch.min(8) as usize;
+                        let inp = vec![0x55u8; nbytes];
+                        let mut co = vec![0u8; nbytes];
+                        c::cmsDoTransform(ct, inp.as_ptr() as _,
+                            co.as_mut_ptr() as *mut _, 1);
+                        c::cmsDeleteTransform(ct);
+                    }
+                }
+            }
+        }
+        eprintln!("accepted {count} combos");
+    }
+}
