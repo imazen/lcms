@@ -791,3 +791,31 @@ fn mab_serialization() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// cmsWriteTag on a file-loaded profile — the different
+/// tag-table path vs built profiles.
+#[test]
+fn write_on_loaded() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            // write a tag to the loaded profile — hits the
+            // loaded-profile tag-table machinery (lazily-parsed
+            // tags + write-dispatch)
+            let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+            let ok1 = c::cmsWriteTag(h, 0x626B7074,
+                &xyz as *const _ as *mut std::ffi::c_void);
+            // overwrite an existing tag
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+            let ok2 = c::cmsWriteTag(h, 0x72545243,
+                g as *mut std::ffi::c_void);
+            let _ = (ok1, ok2);
+            // resave — exercises save-on-loaded
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            c::cmsCloseProfile(h);
+        }
+    }
+}
