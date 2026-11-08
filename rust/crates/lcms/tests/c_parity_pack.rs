@@ -2110,3 +2110,30 @@ fn dotransform_multich2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Planar packers — PLANAR with u8/u16/float bytes on the
+/// devicelinks.
+#[test]
+fn planar_packers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        for (name, bits, bytes) in [
+            ("planar-u8", 1u32 << 19, 1u32),
+            ("planar-u16", 1 << 19, 2),
+            ("planar-flt", (1 << 19) | (1 << 22), 4),
+            ("planar-dbl", (1 << 19) | (1 << 22), 8),
+            ("planar-half", (1 << 19) | (1 << 22), 2)] {
+            let fmt = (0 << 16) | (3 << 3) | bytes | bits;
+            let t = c::cmsCreateTransform(dl, fmt,
+                dl, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(dl);
+        c::cmsFreeToneCurve(g);
+    }
+}
