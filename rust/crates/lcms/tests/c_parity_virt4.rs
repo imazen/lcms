@@ -1,7 +1,7 @@
 //! cmsvirt parameterized builders + linearization/ink-limiting/BCHSW
 //! device links — the deeper virt machinery.
 
-use lcms::{virt, named, gamma, xform, types::{CiexyY, CiexyYTriple}};
+use lcms::{virt, named, gamma, xform, profile, types::{CiexyY, CiexyYTriple}};
 use lcms_cref as c;
 use std::ffi::c_void;
 
@@ -182,5 +182,29 @@ fn device_link_channels() {
             assert_eq!(ch.is_null(), rp.is_none(), "inklimit cs{cs}");
             if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
         }
+    }
+}
+
+/// cmsCreate_OkLabProfile — the MPE-pipeline OkLab colorspace
+/// profile (deepest uncovered cmsvirt surface).
+#[test]
+fn oklab_profile() {
+    unsafe {
+        let ch = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
+        assert!(!ch.is_null());
+        // two-pass save — NULL query returns the needed size
+        let mut csize = 0u32;
+        c::cmsSaveProfileToMem(ch, std::ptr::null_mut(), &mut csize);
+        let mut cbytes = vec![0u8; csize as usize];
+        let c_ok = c::cmsSaveProfileToMem(ch,
+            cbytes.as_mut_ptr() as *mut _, &mut csize);
+        eprintln!("oklab c_ok={c_ok} csize={csize}");
+        let _ = c::cmsCloseProfile(ch);
+        let mut rp = virt::create_oklab_profile(None).unwrap();
+        let rbytes = profile::save_profile_to_mem(&mut rp);
+        // the OkLab MPE-pipeline profile doesn't serialize on either
+        // side — parity is csize==0 <-> rbytes==None
+        assert_eq!(csize > 0 && c_ok != 0, rbytes.is_some(),
+            "oklab save parity");
     }
 }

@@ -335,6 +335,7 @@ unsafe extern "C" {
     pub fn cmsCreateLab2Profile(wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateLab4Profile(wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateXYZProfile() -> *mut c_void;
+    pub fn cmsCreate_OkLabProfile(ctx: *mut c_void) -> *mut c_void;
     pub fn _cmsReadUInt8Number(io: Handle, n: *mut U8) -> i32;
     pub fn _cmsReadUInt16Number(io: Handle, n: *mut U16) -> i32;
     pub fn _cmsReadUInt32Number(io: Handle, n: *mut U32) -> i32;
