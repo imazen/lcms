@@ -1559,3 +1559,38 @@ fn corpus_mem_roundtrip() {
         }
     }
 }
+
+/// Corpus tag walk — enumerate + read every stored tag on
+/// real profiles.
+#[test]
+fn corpus_tag_walk() {
+    unsafe {
+        for (name, path) in [
+            ("lcms2link", b"../../lcms2link.icc\0" as &[u8]),
+            ("gray", b"../../graylcms2.icc\0"),
+            ("labv2", b"../../labv2lcms2.icc\0"),
+            ("labv4", b"../../labv4lcms2.icc\0"),
+            ("xyz", b"../../xyzlcms2.icc\0"),
+            ("lin", b"../../linlcms2.icc\0"),
+            ("bright", b"../../brightness.icc\0"),
+            ("gray3", b"../../gray3lcms2.icc\0")] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let n = c::cmsGetTagCount(h);
+            let mut ok = 0;
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                let v = c::cmsReadTag(h, sig);
+                eprintln!("{name}[{i}] {sig:#x}={}",
+                    !v.is_null());
+                if !v.is_null() { ok += 1; }
+            }
+            eprintln!("{name} {ok}/{n} read");
+            c::cmsCloseProfile(h);
+        }
+    }
+}
