@@ -1069,3 +1069,37 @@ fn identity_stages() {
         }
     }
 }
+
+/// CLUT-stage internals — AllocCLut16bit/Float on more grid
+/// combos (the CLUT-stage machinery).
+#[test]
+fn clut_stage_machinery() {
+    unsafe {
+        for (name, npts, nch) in [
+            ("2pt-3ch", 2u32, 3u32),
+            ("4pt-3ch", 4, 3),
+            ("8pt-4ch", 8, 4),
+            ("17pt-4ch", 17, 4),
+            ("33pt-3ch", 33, 3),
+        ] {
+            let mut n = 1usize;
+            for _ in 0..nch { n *= npts as usize; }
+            let mut tab = vec![0x4000u16; n * nch as usize];
+            let st = c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), npts, nch, nch,
+                tab.as_mut_ptr());
+            eprintln!("{name} null={}", st.is_null());
+            if !st.is_null() {
+                let pl = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), nch, nch);
+                c::cmsPipelineInsertStage(pl, 1, st);
+                let mut inp = [0.5f32; 16];
+                let mut out = [0.0f32; 16];
+                c::cmsPipelineEvalFloat(inp.as_ptr(),
+                    out.as_mut_ptr(), pl);
+                let _ = (inp, out);
+                c::cmsPipelineFree(pl);
+            }
+        }
+    }
+}
