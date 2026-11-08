@@ -2518,3 +2518,38 @@ fn tagtable_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Tag-read bounds — open a profile whose tag points past EOF, then read
+/// (the lazy tag-read-bounds machinery).
+#[test]
+fn tagread_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // tag[0] offset at 132+4=136, size at 140; point it past EOF
+        for (name, off) in [
+            ("real", u32::from_be_bytes(
+                buf[136..140].try_into().unwrap())),
+            ("eof", n), ("past", n + 100),
+            ("huge", 0x7fffffff), ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[136..140].copy_from_slice(&off.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            let sig = u32::from_be_bytes(
+                buf[132..136].try_into().unwrap());
+            let t = if h.is_null() { std::ptr::null() }
+                else { c::cmsReadTag(h, sig) };
+            eprintln!(
+                "{name} off={off} h={} t={}",
+                !h.is_null(), !t.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
