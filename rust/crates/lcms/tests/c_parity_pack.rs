@@ -6275,3 +6275,71 @@ fn xform_tails() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsvirt residual — CreateNamedColorDevicelink output-
+///   space arms (ColorantCount/ExitColorSpace/formatter
+///   per target) + SetTextTags/SetSeqDescTag tails.
+#[test]
+fn ncl2dl_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let gray = open("graylcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        // named-color input profile: nmcl class + 1CLR +
+        //   ncl2 tag
+        let np = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(np, 0x6E6D636C);
+        c::cmsSetColorSpace(np, 0x31434C52);
+        c::cmsSetPCS(np, 0x4C616220);
+        c::cmsSetProfileVersion(np, 4.4);
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 3,
+            b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        for i in 0..4u32 {
+            let nm = format!("col{i}\0");
+            let mut root = [0u8; 32];
+            root[..nm.len()-1].copy_from_slice(
+                &nm.as_bytes()[..nm.len()-1]);
+            let pcs = [0x4000u16 + i as u16 * 100; 3];
+            let dev = [0u16; 16];
+            c::cmsAppendNamedColor(ncl,
+                root.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr()); }
+        c::cmsWriteTag(np, 0x6E636C32, ncl as *const _);
+        // named-color index fmt: ch1, no colorspace field
+        let ncix = (1 << 3) | 2;
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        for (o, fb, nm) in [
+            (srgb, f16(4, 3), "rgb"),
+            (cmyk, f16(6, 4), "cmyk"),
+            (gray, f16(3, 1), "gray"),
+            (lab4, f16(10, 3), "lab"),
+        ] {
+            let t = c::cmsCreateTransform(np, ncix,
+                o, fb, 0, 0);
+            if t.is_null() {
+                eprintln!("{nm}: null xform"); continue; }
+            for flags in [0x0020u32, 0] {
+                let dl = c::cmsTransform2DeviceLink(
+                    t, 4.4, flags);
+                eprintln!("{nm} f{flags:#x}: {}",
+                    !dl.is_null());
+                if !dl.is_null() {
+                    c::cmsCloseProfile(dl); } }
+            c::cmsDeleteTransform(t); }
+        c::cmsFreeNamedColorList(ncl);
+        for p in [np, srgb, cmyk, gray, lab4] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
