@@ -3643,3 +3643,24 @@ fn write_dispatch_mpe() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a named-color payload on 'resp'/'rcs2'.
+#[test]
+fn write_dispatch_named3() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 3,
+            b"P\0".as_ptr() as _,
+            b"S\0".as_ptr() as _);
+        for (sig, name) in [
+            (0x72657370u32, "resp"), (0x72637332u32, "rcs2"),
+            (0x636C7274u32, "clrt"), (0x6E636C32u32, "ncl2")] {
+            let ok = c::cmsWriteTag(h, sig,
+                ncl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsFreeNamedColorList(ncl);
+        c::cmsCloseProfile(h);
+    }
+}
