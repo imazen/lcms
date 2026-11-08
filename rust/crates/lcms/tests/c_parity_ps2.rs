@@ -266,3 +266,36 @@ fn ps2_all_intents() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// PostScript machinery — cmsGetPostScriptCSA/CRD on more
+/// shapes.
+#[test]
+fn postscript_shapes() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (pname, h) in [
+            ("devlink", dl), ("srgb", srgb),
+            ("lab4", lab)] {
+            let n = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(), h, 0, 0,
+                std::ptr::null_mut(), 0);
+            let mut buf = vec![0u8; n as usize];
+            let n2 = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(), h, 0, 0,
+                buf.as_mut_ptr() as *mut _, n);
+            eprintln!("{pname} csa={n} n2={n2}");
+            let n3 = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(), h, 0, 0,
+                std::ptr::null_mut(), 0);
+            eprintln!("{pname} crd={n3}");
+        }
+        let _ = (dl, srgb, lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
