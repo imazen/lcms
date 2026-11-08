@@ -3938,3 +3938,104 @@ fn cgats_getdata_arms() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// cmscgats residual — HeaderSection/AllocateDataSet/
+///   ParseCube malformed variants: bad sheet types,
+///   missing sections, cube edge inputs.
+#[test]
+fn cgats_hdr_cube_arms() {
+    unsafe {
+        // malformed header/sheet/doc variants
+        for (doc, name) in [
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 0\n\
+              BEGIN_DATA_FORMAT\n\
+              END_DATA_FORMAT\n\
+              NUMBER_OF_SETS 0\n\
+              BEGIN_DATA\n\
+              END_DATA\n", "empty-fields"),
+            ("NOTCGATS\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n",
+                "bad-magic"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n",
+                "missing-arg"),
+            ("CGATS.17\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              BEGIN_DATA\n1\nEND_DATA\n",
+                "no-fields"),
+            ("CGATS.17\r\n\
+              NUMBER_OF_FIELDS 1\r\n\
+              BEGIN_DATA_FORMAT\r\nA\r\n\
+              END_DATA_FORMAT\r\n\
+              NUMBER_OF_SETS 1\r\n\
+              BEGIN_DATA\r\n1\r\nEND_DATA\r\n",
+                "crlf"),
+            ("CGATS.17\n\
+              # comment only\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n", "comments"),
+            ("CGATS.17\n\
+              PROP_STR \"quoted value\"\n\
+              PROP_INT 42\n\
+              PROP_DBL 3.14\n\
+              PROP_NEG -7\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n", "props"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 3\n\
+              BEGIN_DATA_FORMAT\n\
+              A B C\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\n\
+              BEGIN_DATA\n\
+              1 2\nEND_DATA\n", "short-rows"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 3\n\
+              BEGIN_DATA\n\
+              1 2 3\nEND_DATA\n", "long-rows"),
+        ] {
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} it8={}", !it8.is_null());
+            if !it8.is_null() {
+                c::cmsIT8Free(it8); }
+        }
+        // cube: more edge inputs via devicelink
+        for (n, name) in [
+            (1u32, "s1"), (2, "s2"), (4, "s4"),
+            (9, "s9"), (33, "s33"), (255, "s255"),
+        ] {
+            let mut s = String::from(
+                "TITLE \"t\"\n\
+                 DOMAIN_MIN 0 0 0\n\
+                 DOMAIN_MAX 1 1 1\n\
+                 LUT_3D_SIZE ");
+            s.push_str(&format!("{n}\n"));
+            let nn = n * n * n;
+            for _ in 0..nn.min(8192) {
+                s.push_str("0.1 0.2 0.3\n"); }
+            s.push('\0');
+            let path = format!("/tmp/lcms_cube2_{}.cube", n);
+            std::fs::write(&path, s.trim_end_matches('\0'))
+                .unwrap();
+            let cp = std::ffi::CString::new(
+                path.as_str()).unwrap();
+            let prof = c::cmsCreateDeviceLinkFromCubeFileTHR(
+                std::ptr::null_mut(), cp.as_ptr());
+            eprintln!("cube {name} prof={}",
+                !prof.is_null());
+            if !prof.is_null() {
+                c::cmsCloseProfile(prof); }
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
