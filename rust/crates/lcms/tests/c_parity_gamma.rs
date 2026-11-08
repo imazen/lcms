@@ -189,3 +189,55 @@ fn reverse_join_smooth() {
         c::cmsFreeToneCurve(c_g);
     }
 }
+
+/// `cmsDupToneCurve`/`cmsJoinToneCurve`/`cmsSmoothToneCurve` variants —
+/// dup preserves eval + params; join on more curve pairs; smooth on
+/// parametric curves.
+#[test]
+fn dup_join_smooth_variants() {
+    unsafe {
+        // dup: eval16 parity on every parametric type
+        for ty in [1i32, 2, 4, 5, 7] {
+            let params: [f64; 10] = match ty {
+                1 => { let mut p = [0.0;10]; p[0]=2.2; p }
+                2 => { let mut p = [0.0;10]; p[0]=2.2; p[1]=1.0; p }
+                4 => { let mut p = [0.0;10]; p[0]=2.4; p[1]=1.0/1.055; p[2]=0.055/1.055; p[3]=1.0/12.92; p[4]=0.04045; p }
+                5 => { let mut p = [0.0;10]; p[0]=1.5; p[1]=1.0; p[3]=1.0; p }
+                _ => { let mut p = [0.0;10]; p[0]=1.5; p[1]=1.0; p[3]=1.0; p }
+            };
+            let ct = c::cmsBuildParametricToneCurve(std::ptr::null_mut(), ty, params.as_ptr());
+            let rt = gamma::build_parametric_tone_curve(None, ty, &params).unwrap();
+            let cd = c::cmsDupToneCurve(ct);
+            let rd = gamma::dup_tone_curve(&rt, None).unwrap();
+            for v in (0..=65535u16).step_by(4099) {
+                assert_eq!(c::cmsEvalToneCurve16(cd, v), rd.eval16(v), "dup ty{ty} {v}");
+            }
+            c::cmsFreeToneCurve(cd);
+            c::cmsFreeToneCurve(ct);
+        }
+        // join combos: gamma x parametric, parametric x tabulated
+        let c_g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c_t = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 256,
+            (0..256u16).map(|i| (i*257).wrapping_add(i%3)).collect::<Vec<u16>>().as_ptr());
+        let r_g = gamma::build_gamma(None, 2.2).unwrap();
+        let r_t = gamma::build_tabulated_tone_curve16(None, 256,
+            Some(&(0..256u16).map(|i| (i*257).wrapping_add(i%3)).collect::<Vec<u16>>())).unwrap();
+        let cj = c::cmsJoinToneCurve(std::ptr::null_mut(), c_g, c_t, 256);
+        let rj = gamma::join_tone_curve(None, &r_g, &r_t, 256).unwrap();
+        for v in (0..=65535u16).step_by(2053) {
+            assert_eq!(c::cmsEvalToneCurve16(cj, v), rj.eval16(v), "join g*t {v}");
+        }
+        c::cmsFreeToneCurve(cj);
+        // smooth parametric
+        let mut cs = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut rs = gamma::build_gamma(None, 2.2).unwrap();
+        assert_eq!(c::cmsSmoothToneCurve(cs, 2.0) != 0,
+            gamma::smooth_tone_curve(None, &mut rs, 2.0), "smooth status");
+        for v in (0..=65535u16).step_by(2053) {
+            assert_eq!(c::cmsEvalToneCurve16(cs, v), rs.eval16(v), "smooth {v}");
+        }
+        c::cmsFreeToneCurve(cs);
+        c::cmsFreeToneCurve(c_g);
+        c::cmsFreeToneCurve(c_t);
+    }
+}
