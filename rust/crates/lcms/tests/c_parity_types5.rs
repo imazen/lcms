@@ -892,3 +892,99 @@ fn remaining_simple_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// More crafted sig/type combos — the decideType + Type_*_Read
+/// dispatch on unusual stored types per sig.
+#[test]
+fn more_crafted_type_reads() {
+    unsafe {
+        let mut cases: Vec<(u32, Vec<u8>)> = Vec::new();
+        // 'XYZ ' on the colorant sigs
+        for sig in [0x7258595Au32, 0x6758595A, 0x6258595A] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"XYZ ");
+            b.extend_from_slice(&[0; 4]);
+            for v in [0x0000F6D6u32, 0x00010000, 0x0000D32D] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((sig, b));
+        }
+        // 'curv'/'para' on kTRC/gTRC/bTRC
+        for sig in [0x6B545243u32, 0x67545243, 0x62545243] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"curv");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&4u32.to_be_bytes());
+            for v in [0u16, 0x4000, 0x8000, 0xFFFF] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((sig, b));
+        }
+        // 'mluc' on cprt/dmnd/dmdd/dscm
+        for sig in [0x63707274u32, 0x646D6E64, 0x646D6464,
+                    0x6473636D] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"mluc");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u32.to_be_bytes());
+            b.extend_from_slice(&12u32.to_be_bytes());
+            b.extend_from_slice(b"en");
+            b.extend_from_slice(b"US");
+            b.extend_from_slice(&8u32.to_be_bytes());
+            b.extend_from_slice(&28u32.to_be_bytes());
+            b.extend_from_slice(&[0, b't', 0, b'e', 0, b's',
+                                  0, b't']);
+            cases.push((sig, b));
+        }
+        // 'text'/'desc' variants on dmnd/dmdd/dscm (v2 types)
+        for sig in [0x646D6E64u32, 0x646D6464] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"text");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(b"desc\0");
+            cases.push((sig, b));
+        }
+        // 'para' on kTRC/gTRC/bTRC
+        for sig in [0x6B545243u32, 0x67545243, 0x62545243] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"para");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u16.to_be_bytes());
+            b.extend_from_slice(&0u16.to_be_bytes());
+            for v in [0x00023333u32, 0x00010000, 0x00000000] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((sig, b));
+        }
+        // 'sig ' on rig0/rigs/tech/ciis
+        for sig in [0x72696730u32, 0x72696773, 0x74656368,
+                    0x63696973] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"sig ");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(b"fota");
+            cases.push((sig, b));
+        }
+        for (i, (sig, bytes)) in cases.iter().enumerate() {
+            let h2 = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(h2, *sig,
+                bytes.as_ptr() as *const std::ffi::c_void,
+                bytes.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h2, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h2,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = if !h3.is_null() {
+                c::cmsReadTag(h3, *sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("case {i} sig={sig:#x} read={}",
+                r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+            c::cmsCloseProfile(h2);
+        }
+    }
+}
