@@ -413,3 +413,33 @@ fn it8_get_set_machinery() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// IT8 table/enum machinery — EnumDataFormat + GetDataRowCol
+/// + table switching.
+#[test]
+fn it8_table_enum() {
+    unsafe {
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        // set a sheet type + data formats — the table machinery
+        c::cmsIT8SetSheetType(it8, b"TEST\0".as_ptr() as _);
+        for fmt in [b"FIELD_A\0" as &[u8], b"FIELD_B\0",
+                    b"FIELD_C\0"] {
+            let _ = c::cmsIT8SetDataFormat(it8, 0,
+                fmt.as_ptr() as _);
+        }
+        // enum the data formats — the out-param version
+        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let n = c::cmsIT8EnumDataFormat(it8, &mut names);
+        // set data + read it back — the cell machinery
+        c::cmsIT8SetDataDbl(it8,
+            b"P1\0".as_ptr() as _,
+            b"FIELD_A\0".as_ptr() as _, 1.5);
+        let d = c::cmsIT8GetDataDbl(it8,
+            b"P1\0".as_ptr() as _,
+            b"FIELD_A\0".as_ptr() as _);
+        // row/col access — the row machinery
+        let rc = c::cmsIT8GetDataRowCol(it8, 0, 0);
+        eprintln!("enum={n} data={d} rc={}", rc.is_null());
+        c::cmsIT8Free(it8);
+    }
+}
