@@ -1300,3 +1300,45 @@ blackpreserve_intent, utf8_decode, cgats_errpath, virt_opt_residual)
 (~35 gates landed since run9: type_write14-36, type_read12-31,
 internal_final46-59 incl. linked-tag, supported-intent, IsCLUT,
 profile-info, save-path, malformed-open arms, seg9/10 SIGSEGV child)
+
+## run11 (2026-11-05)
+
+`TOTAL: 81.81% lines / 95.59% fns / 88.40% regions / 75.49% branches`
+(up from run10's 81.14/95.59/87.91/74.68 — lines +0.67, regions
++0.49, branches +0.81)
+
+| file | lines | fns | regions | branches |
+|---|---|---|---|---|
+| cmsalpha.c | 86.61% | 85.37% | 86.85% | 77.68% |
+| cmscam02.c | 91.26% | 100% | 98.05% | 84.00% |
+| cmscgats.c | 86.68% | 98.99% | 90.44% | 80.11% |
+| cmscnvrt.c | 82.66% | 100% | 91.14% | 75.67% |
+| cmserr.c | 87.50% | 100% | 92.90% | 73.53% |
+| cmsgamma.c | 88.01% | 100% | 91.87% | 81.11% |
+| cmsgmt.c | 86.35% | 100% | 89.94% | 67.81% |
+| cmshalf.c | 100% | 100% | 100% | — |
+| cmsintrp.c | 98.50% | 100% | 98.85% | 96.90% |
+| cmsio0.c | 84.84% | 100% | 90.65% | 79.14% |
+| cmsio1.c | 81.00% | 100% | 79.48% | 69.23% |
+| cmslut.c | 84.15% | 100% | 92.76% | 76.12% |
+| cmsmd5.c | 94.59% | 100% | 97.06% | 63.64% |
+| cmsmtrx.c | 100% | 100% | 100% | 100% |
+| cmsnamed.c | 82.20% | 100% | 94.81% | 75.00% |
+| cmsopt.c | 85.46% | 95.45% | 88.80% | 77.89% |
+| cmspack.c | 71.37% | 95.65% | 74.41% | 69.56% |
+| cmspcs.c | 97.17% | 100% | 98.67% | 94.84% |
+| cmsplugin.c | 81.60% | 100% | 91.65% | 74.52% |
+| cmsps2.c | 89.41% | 100% | 92.69% | 79.13% |
+| cmssamp.c | 86.01% | 100% | 87.89% | 67.12% |
+| cmssm.c | 90.70% | 100% | 96.05% | 85.71% |
+| cmstypes.c | 74.28% | 99.07% | 86.09% | 70.52% |
+| cmsvirt.c | 73.43% | 100% | 85.43% | 57.25% |
+| cmswtpnt.c | 93.55% | 100% | 99.33% | 83.33% |
+| cmsxform.c | 88.57% | 100% | 91.46% | 81.12% |
+
+(~25 gates landed since run10: type_write37-38, type_read32-34,
+internal_final60-71 incl. plugin-dup, optimizer-dispatch, devicelink+
+float-format, matrix-shaper builder, black-preserve, header-plugin,
+pseq/psid, file-open, tag-internal arms, plus pack_float_lab_xyz/
+pack_skip1_planar/pack_fmt_dup_dbl, cgats file/cube/lexer/num-bin,
+named UTF-8 dup)
