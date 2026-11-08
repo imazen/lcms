@@ -562,3 +562,33 @@ fn it8_parse_arms() {
         }
     }
 }
+
+/// CGATS property-type detection + SetData/FindInTable internals —
+/// the value-type inference (dbl/hex/str) + data-set allocation.
+#[test]
+fn cgats_type_detection() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        let keep: Vec<String> = ["P1","P2","P3","P4","SF","DF",
+            "SAMPLE_ID","V1","p0"]
+            .iter().map(|x| format!("{x}\0")).collect();
+        let k = |x: &str| keep.iter().find(|s|
+            s.trim_end_matches('\0') == x).unwrap().as_ptr() as *const i8;
+        // SetProperty parses the value to detect type
+        c::cmsIT8SetPropertyDbl(h, k("P1"), 1.5);
+        c::cmsIT8SetPropertyHex(h, k("P2"), 0xABCD);
+        c::cmsIT8SetPropertyStr(h, k("P3"), b"str\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyUncooked(h, k("P4"),
+            b"raw data\0".as_ptr() as *const i8);
+        // data-format + data-set
+        c::cmsIT8SetDataFormat(h, 0, k("SAMPLE_ID"));
+        c::cmsIT8SetDataFormat(h, 1, k("V1"));
+        let _ = c::cmsIT8SetDataDbl(h, k("p0"), k("V1"), 42.0);
+        let mut nm: *mut *mut i8 = std::ptr::null_mut();
+        let n = c::cmsIT8EnumDataFormat(h, &mut nm);
+        let mut pm: *mut *mut i8 = std::ptr::null_mut();
+        let props = c::cmsIT8EnumProperties(h, &mut pm);
+        eprintln!("fmt={n} props={props}");
+        c::cmsIT8Free(h);
+    }
+}
