@@ -548,3 +548,50 @@ fn mlu_serialization_blocks() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Dictionary tag — cmsDictAddEntry entries -> dict tag
+/// write->read -> Type_Dictionary serializers + entry enumeration.
+#[test]
+fn dict_tag_cycle() {
+    unsafe {
+        let d = c::cmsDictAlloc(std::ptr::null_mut());
+        let w = |x: &str| {
+            let mut v: Vec<i32> = x.chars().map(|c| c as i32).collect();
+            v.push(0);
+            v
+        };
+        for (name, val) in [("k1", "v1"), ("key2", "longer-value"),
+                            ("a", "b")] {
+            let nz = w(name);
+            let vz = w(val);
+            c::cmsDictAddEntry(d, nz.as_ptr(),
+                vz.as_ptr(),
+                std::ptr::null_mut(), std::ptr::null_mut());
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(prof, 0x6d657461, d as *const _); // 'pimc'
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x6d657461)
+        } else { std::ptr::null_mut() };
+        eprintln!("dict w s={s} read={}", !tag.is_null());
+        if !tag.is_null() {
+            let mut e = c::cmsDictGetEntryList(tag);
+            let mut cnt = 0;
+            while !e.is_null() {
+                cnt += 1;
+                e = c::cmsDictNextEntry(e);
+            }
+            eprintln!("  entries={cnt}");
+        }
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsDictFree(d);
+    }
+}
