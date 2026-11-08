@@ -73,3 +73,39 @@ fn pseq_machinery() {
         c::cmsFreeProfileSequenceDescription(cd);
     }
 }
+
+/// Named-color machinery on transforms + ncl2 tag reads.
+#[test]
+fn named_color_machinery() {
+    unsafe {
+        // a named-color profile — devicelink to named
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3,
+            b"pre\0".as_ptr() as *const _,
+            b"suf\0".as_ptr() as *const _);
+        let mut buf32 = [0u8; 32];
+        let mut pcs = [0u16; 3];
+        let mut dev = [0u16; 16];
+        let ok1 = c::cmsAppendNamedColor(ncl,
+            b"color1\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        let ok2 = c::cmsAppendNamedColor(ncl,
+            b"color2\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        // named-color getters
+        let n = c::cmsNamedColorCount(ncl);
+        let idx = c::cmsNamedColorIndex(ncl,
+            b"color1\0".as_ptr() as *const u8);
+        let nm = c::cmsNamedColorInfo(ncl, 0,
+            buf32.as_mut_ptr(), std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            pcs.as_mut_ptr(), dev.as_mut_ptr());
+        eprintln!("append={ok1}/{ok2} n={n} idx={idx} info={nm}");
+        // dup + free
+        let d = c::cmsDupNamedColorList(ncl);
+        let dn = c::cmsNamedColorCount(d);
+        eprintln!("dup count={dn}");
+        c::cmsFreeNamedColorList(d);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
