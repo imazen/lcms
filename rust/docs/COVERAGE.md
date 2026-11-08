@@ -843,3 +843,44 @@ hundreds exist but the reachable set is bounded by the public
 format-word table), cmscgats 364 (IT8 lexer value arms, uncommon
 property/data formats), cmsopt 179, cmsio0 154, cmscnvrt 149,
 cmsio1 134, cmssamp 122, cmsvirt 118, cmsgamma 106.
+
+### round 20 — packer cell sweeps + IT8/cube arms + mAB offsets + ps2 lock fix
+
+76.29% lines / 95.03% fns / 84.60% regions / 68.45% branches.
+
+| file | lines | fns | delta vs r19 |
+|---|---|---|---|
+| cmsps2.c | 83.86% | 93.75% | +15.6 (ps2_emitters PS_LOCK fix) |
+| cmscgats.c | 82.22% | 98.99% | +2.44 (cube/lexer/writer/table arms) |
+| cmsio0.c | 89.04% | 100% | +0.37 |
+| cmsopt.c | 84.61% | 95.45% | +0.91 |
+| cmsnamed.c | 94.66% | 100% | +0.58 |
+| cmstypes.c | 83.23% | 99.07% | +0.09 |
+| cmspack.c | 73.49% | 95.65% | +0.19 |
+
+~15 gates landed since round 19: unroll_cell_sweep (32 format
+cells), pack_cell_sweep (32 output cells), float_packers2 (20
+FLOAT_SH arms), labv2_premul_packers (10 LabV2/premul), float_
+pack_out_sweep (14 float-out), mch_channel_count_sweep (12 MCH
+counts), cube_parse_arms (12 .cube docs), it8_writer_modes,
+it8_table_api_arms, io0_linked_headers, mab_blob_dump + mab_
+element_offset_arms (raw mAB element-offset combos), mpe_*_
+diagnostics, cnvt_class_intent_matrix (16 class x intent
+transforms), optimizer_internals3, tac_detection_internals,
+io1_lut_reader_chains.
+
+cmspack only moved +0.19pts despite 100+ transform cells — the
+uncovered lines are per-branch detail inside covered bodies
+(nDoSwap/nExtra variants) and colorspace cells not reachable
+through public profiles, not whole functions. Function coverage
+hit 95.03% — the remaining ~62 uncovered fns are unreachable-
+by-API internals (plugin shims, reserved paths, dead branches).
+
+Remaining mass (uncovered lines): cmstypes 574 (MPE element deep
+arms, wchar embedded text, mAB readback details), cmspack 574
+(per-branch packer detail), cmscgats 320 (IT8 value-form arms,
+uncommon write paths), cmsopt 169, cmsio0 149, cmscnvrt 148,
+cmsio1 134, cmssamp 122, cmsvirt 118, cmsgamma 106. Only 3
+targets fail under the instrumented build now (cam02/pcs/xform2
+— the documented clang-codegen last-ulp class; ps2 recovered
+after the lock fix).
