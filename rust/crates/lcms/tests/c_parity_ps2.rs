@@ -249,3 +249,20 @@ fn named_csa_crd() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// cmsGetPostScriptCSA on all intents — the WritePSA internals
+/// vary by intent.
+#[test]
+fn ps2_all_intents() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        let mut rp = virt::create_srgb_profile(None).unwrap();
+        for intent in 0..4u32 {
+            let cout = c_ps(c::cmsGetPostScriptCSA, prof,
+                intent, 0);
+            let rout = r_ps(true, &mut rp, intent, 0);
+            assert_eq!(cout, rout, "intent {intent} CSA");
+        }
+        c::cmsCloseProfile(prof);
+    }
+}
