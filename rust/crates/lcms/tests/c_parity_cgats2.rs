@@ -3251,3 +3251,85 @@ fn cgats_num_bin_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmscgats residual — SetTableByLabel LABEL-field
+///   "name nTable type" parse path + WRITE_PAIR write
+///   (WEIGHTING_FUNCTION subkey) + uncooked write.
+#[test]
+fn cgats_label_pair_arms() {
+    unsafe {
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(it8,
+            b"CGATS.17\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyDbl(it8,
+            b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, 3.0);
+        c::cmsIT8SetPropertyDbl(it8,
+            b"NUMBER_OF_SETS\0".as_ptr() as *const _, 2.0);
+        // declare data format columns incl LABEL, then
+        //   write rows whose LABEL cell is
+        //   "name nTable type" -> sscanf parse path
+        c::cmsIT8SetDataFormat(it8, 0,
+            b"SAMPLE_ID\0".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 1,
+            b"LABEL\0".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 2,
+            b"CMYK_C\0".as_ptr() as *const _);
+        for (row, id, lbl) in [
+            (0i32, b"R1\0".as_slice(), b"L1 0 SAMPLE\0".as_slice()),
+            (1, b"R2\0".as_slice(), b"L2 1 OTHER\0".as_slice()),
+        ] {
+            c::cmsIT8SetDataRowCol(it8, row, 0,
+                id.as_ptr() as *const _);
+            c::cmsIT8SetDataRowCol(it8, row, 1,
+                lbl.as_ptr() as *const _);
+            c::cmsIT8SetDataRowCol(it8, row, 2,
+                b"0.5\0".as_ptr() as *const _);
+        }
+        // SetTableByLabel against the LABEL column
+        // cSet = patch name (SAMPLE_ID), cField = data col
+        for (set, fld, exp, name) in [
+            (b"R1\0".as_ptr(), b"LABEL\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(), "lbl-match"),
+            (b"R2\0".as_ptr(), b"LABEL\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(), "lbl-type-mis"),
+            (b"R1\0".as_ptr(), b"LABEL\0".as_ptr(),
+                b"\0".as_ptr(), "lbl-exp-empty"),
+            (b"R1\0".as_ptr(), b"\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(), "lbl-fld-empty"),
+            (b"R1\0".as_ptr(), std::ptr::null(),
+                b"SAMPLE\0".as_ptr(), "lbl-fld-null"),
+            (b"NOPE\0".as_ptr(), b"LABEL\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(), "lbl-no-patch"),
+            (b"R1\0".as_ptr(), b"CMYK_C\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(), "lbl-wrong-fld"),
+        ] {
+            let r = c::cmsIT8SetTableByLabel(it8,
+                set as *const _,
+                fld as *const _,
+                exp as *const _);
+            eprintln!("{name} r={r}");
+        }
+        // WRITE_PAIR: WEIGHTING_FUNCTION predefined pair
+        let r = c::cmsIT8SetPropertyMulti(it8,
+            b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
+            b"CIE_D65\0".as_ptr() as *const _,
+            b"0.5\0".as_ptr() as *const _);
+        eprintln!("pair-prop r={r}");
+        let mut buf = vec![0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        let s = c::cmsIT8SaveToMem(it8,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("save-mem={s} n={n}");
+        if s != 0 {
+            let txt = String::from_utf8_lossy(
+                &buf[..n as usize]);
+            for line in txt.lines() {
+                if line.contains("WEIGHT")
+                    || line.contains("LABEL") {
+                    eprintln!("  out: {line}");
+                }
+            }
+        }
+        c::cmsIT8Free(it8);
+    }
+}
