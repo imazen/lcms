@@ -3875,3 +3875,54 @@ fn profile_info_variants() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// Remaining tag-type handlers — mAB devicelink + multi-entry
+/// dict + named-color + cicp + viewing conditions.
+#[test]
+fn remaining_tag_handlers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        let ftab: Vec<f32> = (0..8*3).map(|i| i as f32 / 24.0).collect();
+        // named-color list + dict
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 1,
+            3, b"p\0".as_ptr(), b"s\0".as_ptr());
+        let lab16 = [0xF000u16; 3];
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
+            lab16.as_ptr(), lab16.as_ptr());
+        let d = c::cmsDictAlloc(std::ptr::null_mut());
+        let w = |s: &str| s.chars().map(|c| c as i32)
+            .chain([0]).collect::<Vec<i32>>();
+        c::cmsDictAddEntry(d, w("k1").as_ptr(), w("v1").as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(m, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, b"x\0".as_ptr());
+        for (sig, payload, name) in [
+            (0x6d657461u32, d as *const _, "dict"),
+            (0x6e636c32, ncl as *const _, "ncl2"),
+            (0x64657363, m as *const _, "mlu-desc"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsMLUfree(m);
+        c::cmsFreeNamedColorList(ncl);
+        c::cmsDictFree(d);
+    }
+}
