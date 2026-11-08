@@ -2734,3 +2734,40 @@ fn pipeline_accessors_reverse() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Stage-dup + insert-position arms — dup a multi-stage pipeline
+/// (per-type dup callbacks), insert at BEGIN/END/middle, eval the
+/// re-ordered pipeline.
+#[test]
+fn stage_dup_insert_positions() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        // dup -> per-type stage dup callbacks
+        let dp = c::cmsPipelineDup(p);
+        eprintln!("dup={}", !dp.is_null());
+        if !dp.is_null() {
+            let fi = [0.5f32, 0.3, 0.7];
+            let mut fo = [0f32; 3];
+            c::cmsPipelineEvalFloat(fi.as_ptr(), fo.as_mut_ptr(), dp);
+            eprintln!("  dup-eval={fo:?}");
+            // insert at begin + middle positions
+            c::cmsPipelineInsertStage(dp, 0,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                    mat.as_ptr(), std::ptr::null()));
+            c::cmsPipelineEvalFloat(fi.as_ptr(), fo.as_mut_ptr(), dp);
+            eprintln!("  post-insert={fo:?}");
+            c::cmsPipelineFree(dp);
+        }
+        c::cmsPipelineFree(p);
+    }
+}
