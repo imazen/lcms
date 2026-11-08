@@ -2037,3 +2037,38 @@ fn multich_extra_packers() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Swap/endian packers — DO_SWAP/SWAP_FIRST/ENDIAN16 on
+/// odd channel counts via linearization devicelinks.
+#[test]
+fn multich_swap_packers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for n in [3u32, 5, 7] {
+            let mut curves = vec![g; n as usize];
+            let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(),
+                match n {
+                    3 => 0x52474220, 5 => 0x35434C52,
+                    _ => 0x37434C52,
+                },
+                curves.as_mut_ptr());
+            // DO_SWAP=10, SWAP_FIRST=14, ENDIAN16=9,
+            // PLANAR=19, FLAVOR=21
+            for (name, bits, bytes) in [
+                ("swap", 1u32 << 10, 1u32),
+                ("swapf", 1 << 14, 1),
+                ("end16", 1 << 9, 2),
+                ("planar", 1 << 19, 1),
+                ("flavor", 1 << 21, 1)] {
+                let fmt = (0 << 16) | (n << 3) | bytes | bits;
+                let t = c::cmsCreateTransform(dl, fmt,
+                    dl, fmt, 0, 0);
+                eprintln!("{n}ch-{name} t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(dl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
