@@ -443,3 +443,65 @@ fn internal_floatlut_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsio1 residual — BuildGrayInput/Output pipelines:
+///   gray->lab, lab->gray, gray->srgb, srgb->gray,
+///   gray->gray at intents + curve-gamma variants.
+#[test]
+fn internal_graypipe_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        for (gamma, name) in [
+            (1.0f64, "g10"), (1.8, "g18"), (2.2, "g22"),
+            (0.6, "g06"), (4.5, "g45"),
+        ] {
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), gamma);
+            let gray = c::cmsCreateGrayProfileTHR(
+                std::ptr::null_mut(), std::ptr::null(),
+                g as *const std::ffi::c_void);
+            eprintln!("{name} gray={}", !gray.is_null());
+            let fgray = (3u32 << 16) | (1 << 3) | 2;
+            let flab = (10u32 << 16) | (3 << 3) | 2;
+            let frgb = (4u32 << 16) | (3 << 3) | 2;
+            for (a, af, b, bf, n) in [
+                (gray, fgray, lab4, flab, "g->l"),
+                (lab4, flab, gray, fgray, "l->g"),
+                (gray, fgray, srgb, frgb, "g->r"),
+                (srgb, frgb, gray, fgray, "r->g"),
+                (gray, fgray, gray, fgray, "g->g"),
+                (gray, fgray, xyz, flab, "g->x"),
+                (xyz, flab, gray, fgray, "x->g"),
+            ] {
+                let t = c::cmsCreateTransform(a, af,
+                    b, bf, 0, 0);
+                if !t.is_null() {
+                    let src = [0x8000u16; 4];
+                    let mut dst = [0u16; 4];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    if gamma == 2.2 {
+                        eprintln!("  {n} {src:?}->{dst:?}"); }
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            // intents on the gray dirs
+            for i in 0..4u32 {
+                let t = c::cmsCreateTransform(gray, fgray,
+                    srgb, frgb, i, 0);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            if !gray.is_null() {
+                c::cmsCloseProfile(gray); }
+            c::cmsFreeToneCurve(g);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(xyz);
+    }
+}
