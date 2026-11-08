@@ -929,3 +929,32 @@ fn any_format_combos() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// u16-format modifier matrix — the u16 packer bodies.
+#[test]
+fn u16_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("u16-planar", (4 << 16) | (1 << 12) | (3 << 3) | 2u32),
+            ("u16-doswap", (4 << 16) | (1 << 10) | (3 << 3) | 2),
+            ("u16-swapf", (4 << 16) | (1 << 14) | (3 << 3) | 2),
+            ("u16-end16", (4 << 16) | (1 << 11) | (3 << 3) | 2),
+            ("u16-flavor", (4 << 16) | (1 << 13) | (3 << 3) | 2),
+            ("u16-x1", (4 << 16) | (1 << 7) | (3 << 3) | 2),
+            ("u16-x2", (4 << 16) | (2 << 7) | (3 << 3) | 2),
+            ("u16-x3", (4 << 16) | (3 << 7) | (3 << 3) | 2),
+            ("u16-x4", (4 << 16) | (4 << 7) | (3 << 3) | 2),
+            ("u16-premul", (4 << 16) | (1 << 23) | (1 << 7)
+             | (3 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
