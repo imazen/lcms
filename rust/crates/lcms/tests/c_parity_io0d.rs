@@ -846,3 +846,38 @@ fn stream_iohandler_variants() {
         }
     }
 }
+
+/// Colorspace sig mutations — the colorspace-validation
+/// internals.
+#[test]
+fn colorspace_mutations() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // colorspace @16-20, PCS @20-24
+        for (name, off, val) in [
+            ("cs-rgb", 16usize, 0x52474220u32), // 'RGB '
+            ("cs-cmyk", 16, 0x434D594Bu32), // 'CMYK'
+            ("cs-lab", 16, 0x4C616220u32), // 'Lab '
+            ("cs-xyz", 16, 0x58595A20u32), // 'XYZ '
+            ("cs-nmcl", 16, 0x6E6D636Cu32), // 'nmcl'
+            ("cs-zero", 16, 0u32),
+            ("cs-huge", 16, 0xFFFFFFFFu32),
+            ("pcs-xyz", 20, 0x58595A20u32),
+            ("pcs-lab", 20, 0x4C616220u32),
+            ("pcs-zero", 20, 0u32),
+        ] {
+            let mut dd = d.clone();
+            dd[off..off + 4].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
