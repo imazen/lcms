@@ -1663,3 +1663,38 @@ fn corpus_class_transforms() {
         let _ = (srgb, lab);
     }
 }
+
+/// Corpus intent transforms — all 4 intents on real
+/// profiles (the intent-pipeline machinery).
+#[test]
+fn corpus_intent_transforms() {
+    unsafe {
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab_fmt = (10 << 16) | (3 << 3) | 1u32;
+        for (name, path, in_fmt) in [
+            ("argb", b"../../aRGBlcms2.icc\0" as &[u8],
+             (4 << 16) | (3 << 3) | 1),
+            ("cmyk", b"../../lcms2cmyk.icc\0" as &[u8],
+             (6 << 16) | (4 << 3) | 1),
+            ("glab", b"../../glablcms2.icc\0" as &[u8],
+             (3 << 16) | (1 << 3) | 1),
+            ("srgb", b"../../sRGBlcms2.icc\0" as &[u8],
+             (4 << 16) | (3 << 3) | 1)] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            for intent in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(h, in_fmt,
+                    lab, lab_fmt, intent, 0);
+                eprintln!("{name} i{intent}={}",
+                    !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(h);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
