@@ -12052,3 +12052,131 @@ fn vcgt_read_arms2() {
         }
     }
 }
+
+/// Type_LUT8_Write reject arms — SaveAs8Bits pipelines with
+/// matrix>3ch, mismatched nSamples, leftover stages, NULL clut.
+#[test]
+fn lut8_write_arms2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.6);
+        let g3: *const *mut c::ToneCurve =
+            [g, g, g].as_ptr() as *const *mut c::ToneCurve;
+        let mut grid2 = vec![0u16; 2 * 2 * 2 * 3];
+        let mut grid4 = vec![0u16; 2u32.pow(4) as usize * 4];
+        for (i, v) in grid2.iter_mut().enumerate() {
+            *v = (i * 111) as u16;
+        }
+        for (i, v) in grid4.iter_mut().enumerate() {
+            *v = (i * 71) as u16;
+        }
+        let dims3 = [2u32; 3];
+        let dims4 = [2u32; 4];
+        let dims_mix = [2u32, 3, 2];
+        let mat9 = [1.0f64, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mat16 = [1.0f64; 16];
+        // shape, name — each (stages, expected)
+        let cases: Vec<(Vec<*mut std::ffi::c_void>, &str)> = vec![
+            (vec![c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims3.as_ptr(), 3, 3,
+                grid2.as_ptr())], "clut"),
+            (vec![c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, g3),
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims3.as_ptr(), 3, 3,
+                    grid2.as_ptr())], "cv-clut"),
+            (vec![c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, g3),
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims3.as_ptr(), 3, 3,
+                    grid2.as_ptr()),
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3, g3)], "cv-clut-cv"),
+            (vec![c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                mat9.as_ptr(), std::ptr::null()),
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims3.as_ptr(), 3, 3,
+                    grid2.as_ptr())], "mat-clut"),
+            // 4ch matrix → reject
+            (vec![c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 4, 4,
+                mat16.as_ptr(), std::ptr::null()),
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims4.as_ptr(), 4, 4,
+                    grid4.as_ptr())], "mat4"),
+            // mismatched nSamples → reject
+            (vec![c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims_mix.as_ptr(), 3, 3,
+                grid2.as_ptr())], "mix"),
+            // extra stage → not-suitable reject
+            (vec![c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, g3),
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3, g3),
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims3.as_ptr(), 3, 3,
+                    grid2.as_ptr())], "cv-cv-clut"),
+            // clut-only 4ch
+            (vec![c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims4.as_ptr(), 4, 4,
+                grid4.as_ptr())], "clut4"),
+            // empty pipeline → empty-LUT8 reject
+            (vec![], "empty"),
+        ];
+        for sig in [0x41324230u32, 0x42324130] {
+            for (stages, name) in &cases {
+                // upstream can double-free on rejected mBA writes —
+                // isolate each case in a forked child
+                unsafe extern "C" { fn fork() -> i32;
+                    fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+                    fn _exit(code: i32) -> !;
+                    fn dlsym(h: *mut std::ffi::c_void,
+                        n: *const i8) -> *mut std::ffi::c_void; }
+                let flush: Option<unsafe extern "C" fn() -> i32> =
+                    unsafe {
+                        let f = dlsym(std::ptr::null_mut(),
+                            b"__llvm_profile_write_file ".as_ptr()
+                                as *const i8);
+                        if f.is_null() { None }
+                        else { Some(std::mem::transmute(f)) }
+                    };
+                let pid = fork();
+                if pid == 0 {
+                    unsafe {
+                        let prof = c::cmsCreate_sRGBProfile();
+                        c::cmsSetProfileVersion(prof, 4.4);
+                        let p = c::cmsPipelineAlloc(
+                            std::ptr::null_mut(), 3, 3);
+                        for st in stages {
+                            if !st.is_null() {
+                                c::cmsPipelineInsertStage(p, 1, *st);
+                            }
+                        }
+                        c::cmsPipelineSetSaveAs8bitsFlag(p, 1);
+                        let w = c::cmsWriteTag(prof, sig,
+                            p as *const _);
+                        let mut buf = vec![0u8; 1 << 20];
+                        let mut n = buf.len() as u32;
+                        let s = if w != 0 {
+                            c::cmsSaveProfileToMem(prof,
+                                buf.as_mut_ptr() as *mut _, &mut n)
+                        } else { 0 };
+                        if let Some(f) = flush { f(); }
+                        _exit(if w == 0 { 0 }
+                            else if s == 0 { 2 } else { 1 });
+                    }
+                }
+                let mut st = 0i32;
+                unsafe { waitpid(pid, &mut st, 0); }
+                let rc = if st & 0x7f == 0 {
+                    (st >> 8) & 0xff
+                } else {
+                    128 + (st & 0x7f)
+                };
+                eprintln!("{sig:#x}/{name} rc={rc}");
+            }
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
