@@ -1746,3 +1746,43 @@ fn xyz_array_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_ParametricCurve internals — 'para' bodies on all
+/// parametric types 0-8.
+#[test]
+fn parametric_curve_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // parametric types: 0=g (1 param), 1=Cg+f (2),
+        // 2=Cg+af+b (3), 3=Cg+ac+f+d (4), 4=Cg+abcdefg (7),
+        // 5-8 more complex
+        for ptype in [0u16, 1, 2, 3, 4, 5, 6, 7, 8] {
+            let nparams = [1u16, 2, 4, 5, 7, 3, 4, 5, 5]
+                [ptype as usize];
+            let mut b = Vec::new();
+            b.extend_from_slice(b"para");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&ptype.to_be_bytes());
+            b.extend_from_slice(&[0; 2]);
+            for _ in 0..nparams {
+                b.extend_from_slice(&0x00019999i32.to_be_bytes());
+            }
+            let ok = c::cmsWriteRawTag(h, 0x72545243,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x72545243);
+            eprintln!("para type={ptype} write={ok} read={}",
+                r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
