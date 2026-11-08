@@ -688,3 +688,49 @@ file (was relying on the buggy accept-all parse). Function coverage
 plateaued at 94.87% — the remaining 64 uncovered fns are largely
 unreachable-by-API internals (reserved/dead branches, plugin-shim
 paths, WriteBinary/satob dead enum). Line coverage is now the axis.
+### round 17 — io0/tag serializers + lut internals + named/dict/virt
+
+75.20% lines / 94.79% fns / 83.74% regions / 66.79% branches.
+
+| file | lines | fns |
+|---|---|---|
+| cmstypes.c | 64.14% | 99.07% |
+| cmspack.c | 70.03% | 94.93% |
+| cmscgats.c | ~78% | ~96% |
+| cmsvirt.c | 69.97% | 100% |
+| cmsopt.c | 81.27% | 95.45% |
+| cmsio0.c | ~81% | ~100% |
+| cmsio1.c | 76.80% | 100% |
+| cmsplugin.c | 77.83% | 100% |
+| cmsnamed.c | 80.70% | 100% |
+| cmsps2.c | 77.34% | 93.75% |
+| cmslut.c | 81.89% | 100% |
+| cmsxform.c | 85.18% | 98.21% |
+| cmspcs.c | 83.80% | 100% |
+| cmssamp.c | 68.22% | 85.71% |
+
+Gates added: gamut_preview_lut_readers, float_lut_lab_normalization,
+linearization_devicelink, lab_profile_variants, xyz_null_profiles,
+dict_tag_cycle, ucrbg_screening_tags, screening_tag, parametric_curve_
+reader, tag_types_2, header_setters_getters, header_datetime,
+profile_info_getters, corpus_all_tags, malformed_tag_reads,
+lut_reader_error_paths, mab_reader_error_paths, raw_tag_io,
+file_open_offset_array, save_two_phase_multiprofile,
+tag_search_linked_null, iohandler_internals, mch_pack_arms,
+pipeline_accessors_reverse, save_as_8bits_flag, stage_internals,
+stage_dup_insert_positions, granular_clut_accessors, mpe_readback_
+cycles, slice_space_tac, named_color_crd, transform_accessors_
+strides, it8_api_bodies, it8_writer_arms, media_white_chad,
+mlu_serialization_blocks, nonegatives_abstract_devicelink,
+pcs_conversions, pcs_delta_e_xyz.
+
+cmspcs.c jumped to 100% fns / 83.80% lines on the pcs conversion +
+delta-e sweep. cmsio1 100% fns, cmsnamed 100% fns, cmsvirt 100% fns,
+cmslut 100% fns, cmsio0 ~100% fns, cmsplugin 100% fns — function
+coverage is effectively saturated; the remaining 65 uncovered fns are
+unreachable-by-API internals (plugin-shim dead ends, reserved enum
+bodies, the WriteBinary/satob dead helpers). Line coverage is the
+remaining axis — the mass is cmstypes LUT-reader/writer internals and
+the cmspack pack-table variants. The total dipped slightly vs round-16
+(one instrumented binary's coverage lost to the known clang
+codegen failures).
