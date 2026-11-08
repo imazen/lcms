@@ -2335,3 +2335,66 @@ fn chad_temp_adapt() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Optimizer deep arms — all flag combos on CLUT transforms:
+/// PRE/POST lin + resample + precalc + gamut check.
+#[test]
+fn opt_flag_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        for fl in [
+            0x0010u32,           // CLUT_PRE_LINEARIZATION
+            0x0001,              // CLUT_POST_LINEARIZATION
+            0x0011,              // both
+            0x0010 | 0x0400,     // pre + highres
+            0x0001 | 0x0800,     // post + lowres
+            0x0011 | 0x0400,     // both + highres
+            0x0011 | 0x0800,     // both + lowres
+            0x0011 | (17u32<<16), // both + grid17
+            0x0010 | 0x0040,     // pre + nocache
+            0x0002,              // GUESSDEVICECLASS-ish
+            0x0100,              // NOOPTIMIZE
+            0x0010 | 0x0100,     // pre + noopt
+            0x0800 | 0x0100,     // lowres + noopt
+            0x0004,              // NOWHITEONWHITEFIXUP
+            0x0010 | 0x0004,
+            0x2000,              // BLACKPOINTCOMPENSATION
+            0x0010 | 0x2000,
+        ] {
+            for (inp, outp, if_, of_, name) in [
+                (cmyk, lab, k16, l16, "cmyk"),
+                (srgb, lab, r16, l16, "srgb"),
+                (gray, lab, (3u32<<16)|(1<<3)|2, l16, "gray"),
+            ] {
+                if inp.is_null() || outp.is_null() { continue; }
+                let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                    0, fl);
+                eprintln!("{name} fl={fl:#x} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x80u8; 64];
+                    let mut ob = [0x8000u16; 8];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
