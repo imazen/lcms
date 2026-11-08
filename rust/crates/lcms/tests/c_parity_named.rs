@@ -422,3 +422,38 @@ fn named_color_tag_cycle() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Named-color MPE stage — _cmsStageAllocNamedColor (bAcs/eAcs
+/// element) through pipeline eval + transform position.
+#[test]
+fn named_color_stage() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
+            b"suf\0".as_ptr());
+        for (name, pcs) in [
+            ("Spot1\0", [0x9000u16, 0x5500, 0x5500]),
+            ("Spot2\0", [0x3000, 0x2000, 0x9000]),
+        ] {
+            let col = [0xFFFFu16; 4];
+            c::cmsAppendNamedColor(ncl, name.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        for use_pcs in [0i32, 1] {
+            let st = c::_cmsStageAllocNamedColor(ncl, use_pcs);
+            eprintln!("nstage pcs={use_pcs} = {}", !st.is_null());
+            if !st.is_null() {
+                let p = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 1, 3);
+                c::cmsPipelineInsertStage(p, 1, st);
+                let fi = [0.5f32];
+                let mut fo = [0f32; 3];
+                c::cmsPipelineEvalFloat(fi.as_ptr(),
+                    fo.as_mut_ptr(), p);
+                eprintln!("  eval={fo:?}");
+                c::cmsPipelineFree(p);
+            }
+        }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
