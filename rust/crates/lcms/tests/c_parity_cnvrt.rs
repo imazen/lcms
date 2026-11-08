@@ -243,3 +243,44 @@ fn null_profile_link() {
         }
     }
 }
+
+/// cmsCreateMultiprofileTransform — the simpler multiprofile entry
+/// (vs create_extended_transform).
+#[test]
+fn multiprofile_transform() {
+    unsafe {
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        for n in [2i32, 3, 4] {
+            let mut c_profs: Vec<*mut c_void> = (0..n)
+                .map(|_| c::cmsCreate_sRGBProfile()).collect();
+            let ct = c::cmsCreateMultiprofileTransform(
+                c_profs.as_mut_ptr(), n, in_fmt, out_fmt, 0, 0);
+            let mut ps: Vec<_> = (0..n)
+                .map(|_| virt::create_srgb_profile(None).unwrap()).collect();
+            let mut bpc = vec![false; n as usize];
+            let intents = vec![0u32; n as usize];
+            let adapt = vec![1.0f64; n as usize];
+            let rt = xform::create_extended_transform(
+                None, &mut ps, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, out_fmt, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "n{n}");
+            if !ct.is_null() && rt.is_some() {
+                let mut rt = rt.unwrap();
+                let inp = [0x1234u16, 0x5678, 0x9abc];
+                let inb: Vec<u8> = inp.iter()
+                    .flat_map(|v| v.to_be_bytes()).collect();
+                let mut co = [0u16; 3];
+                let mut ro = vec![0u8; 6];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                rt.do_transform(&inb, &mut ro, 1);
+                let ro16: Vec<u16> = ro.chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                assert_eq!(co, ro16[..3], "n{n} eval");
+                c::cmsDeleteTransform(ct);
+            }
+            for h in c_profs { let _ = c::cmsCloseProfile(h); }
+        }
+    }
+}
