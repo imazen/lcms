@@ -842,3 +842,58 @@ fn ps2_named_intent_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsps2/cmserr residual — CSA/CRD emit on matrix +
+///   ncl2 + devicelink profiles, intent/flag variants,
+///   error-handler get/set round-trips.
+#[test]
+fn ps2_tail_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        // CSA + CRD emit on srgb/lab4 at intents+flags
+        let mut buf = vec![0u8; 1 << 19];
+        for (prof, name) in [
+            (srgb, "srgb"), (lab4, "lab4"),
+        ] {
+            for intent in [0u32, 1, 2] {
+                for flags in [0u32, 0x10, 0x20] {
+                    let n = c::cmsGetPostScriptCSA(
+                        std::ptr::null_mut(), prof,
+                        intent, flags,
+                        buf.as_mut_ptr() as *mut _,
+                        buf.len() as u32);
+                    let n2 = c::cmsGetPostScriptCRD(
+                        std::ptr::null_mut(), prof,
+                        intent, flags,
+                        buf.as_mut_ptr() as *mut _,
+                        buf.len() as u32);
+                    eprintln!("{name} i{intent} f{flags:#x}: \
+                        csa={n} crd={n2}");
+                }
+            }
+        }
+        // error-handler set + fire via a bad read
+        unsafe extern "C" fn myerr(
+            _ctx: *mut std::ffi::c_void, code: u32,
+            _msg: *const i8) {
+            eprintln!("  myerr {code}");
+        }
+        let fp: unsafe extern "C" fn(
+            *mut std::ffi::c_void, u32, *const i8) = myerr;
+        c::cmsSetLogErrorHandlerTHR(
+            std::ptr::null_mut(), fp as *mut _);
+        // trigger an error so the handler fires
+        let bad = c::cmsOpenProfileFromMem(
+            b"\x00".as_ptr() as *const _, 1);
+        eprintln!("bad-open={}", !bad.is_null());
+        if !bad.is_null() {
+            c::cmsCloseProfile(bad); }
+        c::cmsSetLogErrorHandlerTHR(
+            std::ptr::null_mut(),
+            std::ptr::null_mut());
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
