@@ -1573,3 +1573,104 @@ fn gamma_negseg_write_arms() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// cmsnamed/cmsgamma residual — DictDup/NextEntry/
+///   GetEntryList walk, DupNamedColorList on xform,
+///   DupToneCurve on parametric/tabulated, Reverse on
+///   non-monotonic, Join combos, GetNamedColorList.
+#[test]
+fn gamma_named_tail_arms() {
+    unsafe {
+        // dict entry-list walk + dup
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        for (k, v) in [("a\0", "1\0"), ("b\0", "2\0"),
+                       ("c\0", "3\0"), ("d\0", "4\0")] {
+            let e = c::cmsDictAddEntry(dict,
+                k.as_ptr() as *const _,
+                v.as_ptr() as *const _,
+                std::ptr::null_mut(),
+                std::ptr::null_mut());
+            eprintln!("add {k:?} ok={e}");
+        }
+        let dd = c::cmsDictDup(dict);
+        eprintln!("dictdup={}", !dd.is_null());
+        // walk entry list
+        let mut e = c::cmsDictGetEntryList(dd);
+        let mut cnt = 0;
+        while !e.is_null() && cnt < 16 {
+            eprintln!("  entry {cnt}");
+            e = c::cmsDictNextEntry(e);
+            cnt += 1;
+        }
+        eprintln!("entries={cnt}");
+        c::cmsDictFree(dd);
+        c::cmsDictFree(dict);
+        // GetNamedColorList on a named-color xform
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let pcs = [0x1000u16; 16];
+        let dev = [0x2000u16; 16];
+        c::cmsAppendNamedColor(nl,
+            b"c0\0".as_ptr() as *const _,
+            pcs.as_ptr(), dev.as_ptr());
+        let np = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(np, 0x6E6D636C);
+        c::cmsSetColorSpace(np, 0x4D434834);
+        c::cmsSetPCS(np, 0x4C616220);
+        c::cmsSetProfileVersion(np, 4.4);
+        c::cmsWriteTag(np, 0x6E636C32,
+            nl as *const _);
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let fnc = (0u32 << 16) | (1 << 3) | 2;
+        let t = c::cmsCreateTransform(np, fnc,
+            lab4, flab, 0, 0);
+        if !t.is_null() {
+            let lst = c::cmsGetNamedColorList(t);
+            eprintln!("xform-ncl={}", !lst.is_null());
+            if !lst.is_null() {
+                let d = c::cmsDupNamedColorList(lst);
+                eprintln!("ncl-dup={}", !d.is_null());
+                if !d.is_null() {
+                    c::cmsFreeNamedColorList(d); }
+            }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(np);
+        c::cmsFreeNamedColorList(nl);
+        c::cmsCloseProfile(lab4);
+        // DupToneCurve on parametric/tabulated/joined
+        let g22 = c::cmsBuildGamma(
+            std::ptr::null_mut(), 2.2);
+        let tab = [0u16, 0x4000, 0x8000, 0xC000, 0xFFFF];
+        let gtab = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5, tab.as_ptr());
+        let gdesc = [0xFFFFu16, 0x8000, 0x2000, 0x0000];
+        let gdsc = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 4, gdesc.as_ptr());
+        for (g, name) in [
+            (g22, "g22"), (gtab, "tab"), (gdsc, "desc"),
+        ] {
+            let d = c::cmsDupToneCurve(g);
+            eprintln!("dup {name}={}", !d.is_null());
+            let r = c::cmsReverseToneCurve(g);
+            eprintln!("  rev={}", !r.is_null());
+            let j = c::cmsJoinToneCurve(
+                std::ptr::null_mut(), g, g, 256);
+            eprintln!("  join={}", !j.is_null());
+            if !d.is_null() {
+                c::cmsFreeToneCurve(d); }
+            if !r.is_null() {
+                c::cmsFreeToneCurve(r); }
+            if !j.is_null() {
+                c::cmsFreeToneCurve(j); }
+        }
+        c::cmsFreeToneCurve(g22);
+        c::cmsFreeToneCurve(gtab);
+        c::cmsFreeToneCurve(gdsc);
+    }
+}
