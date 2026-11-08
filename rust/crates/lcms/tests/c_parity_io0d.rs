@@ -183,3 +183,39 @@ fn profile_info_sweep() {
         }
     }
 }
+
+/// Version-dispatch machinery — profiles with unusual version
+/// fields through the parser.
+#[test]
+fn version_dispatch() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // patch the version field (offset 8) — v2/v3/v4/v5/
+        // sub-class dispatch
+        for (name, v) in [
+            ("v21", 0x02100000u32),
+            ("v30", 0x03000000),
+            ("v43", 0x04300000),
+            ("v50", 0x05000000),  // v5.x — probably rejects
+            ("v10", 0x01000000),  // v1.0 — probably rejects
+            ("v99", 0x09900000),  // v9.9 — rejects
+            ("zero", 0x00000000), // v0 — rejects
+        ] {
+            let mut dd = d.clone();
+            dd[8..12].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() {
+                let _ = c::cmsReadTag(h2, 0x77747074);
+                c::cmsCloseProfile(h2);
+            }
+        }
+    }
+}
