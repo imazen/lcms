@@ -6343,3 +6343,121 @@ fn ncl2dl_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+
+/// cmsio1 residual — BuildRGBOutputMatrixShaper arms:
+///   missing colorants, singular matrix, missing/non-
+///   monotonic TRCs, Lab-PCS Lab2XYZ insert.
+#[test]
+fn rgb_shaper_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let srgb = {
+            let p = format!("{}/../../sRGBlcms2.icc",
+                env!("CARGO_MANIFEST_DIR"));
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let g = c::cmsBuildGamma(ctx, 2.2);
+        let red = c::CieXyz { X: 0.64, Y: 0.33, Z: 0.03 };
+        let grn = c::CieXyz { X: 0.30, Y: 0.60, Z: 0.10 };
+        let blu = c::CieXyz { X: 0.15, Y: 0.06, Z: 0.79 };
+        let wt = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let one = c::CieXyz { X: 1.0, Y: 1.0, Z: 1.0 };
+        let write_shaper = |p: *mut c_void,
+                            r: &c::CieXyz,
+                            gg: &c::CieXyz,
+                            b: &c::CieXyz,
+                            trc: *const c_void| {
+            let w1 = c::cmsWriteTag(p, 0x7258595A,
+                r as *const _ as *const _);
+            let w2 = c::cmsWriteTag(p, 0x6758595A,
+                gg as *const _ as *const _);
+            let w3 = c::cmsWriteTag(p, 0x6258595A,
+                b as *const _ as *const _);
+            let mut w4 = 0; let mut w5 = 0; let mut w6 = 0;
+            if !trc.is_null() {
+                w4 = c::cmsWriteTag(p, 0x72545243,
+                    trc as *const _);
+                w5 = c::cmsWriteTag(p, 0x67545243,
+                    trc as *const _);
+                w6 = c::cmsWriteTag(p, 0x62545243,
+                    trc as *const _); }
+            let w7 = c::cmsWriteTag(p, 0x77747074,
+                &wt as *const _ as *const _);
+            let w8 = c::cmsWriteTag(p, 0x626B7074,
+                &wt as *const _ as *const _);
+            let w9 = c::cmsWriteTag(p, 0x6C756D69,
+                &wt as *const _ as *const _);
+            eprintln!("  writes: {w1}{w2}{w3} trc{w4}{w5}{w6} {w7}{w8}{w9}"); };
+        let try_out = |pcs: u32,
+                       build: &dyn Fn(*mut c_void),
+                       nm: &str| {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, pcs);
+            c::cmsSetProfileVersion(p, 4.4);
+            build(p);
+            // round-trip so the profile is validated
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                sb.as_mut_ptr() as *mut _, &mut sn);
+            let p2 = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn)
+            } else { p };
+            let i0 = c::cmsIsIntentSupported(p2, 0, 0);
+            let i1 = c::cmsIsIntentSupported(p2, 0, 1);
+            let cs = c::cmsGetColorSpace(p2);
+            eprintln!(
+                "{nm} sv={sv} intent in={i0} out={i1} cs={cs:#x}");
+            let t = c::cmsCreateTransform(srgb,
+                f16(4, 3), p2, f16(4, 3), 0, 0);
+            eprintln!("{nm}: {}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(p2);
+            c::cmsCloseProfile(p); };
+        // 1. valid
+        try_out(0x58595A20,
+            &|p| write_shaper(p, &red, &grn, &blu,
+                g as *const _), "valid");
+        // 2. missing colorants -> ReadICCMatrix NULL
+        try_out(0x58595A20,
+            &|p| {
+                if !g.is_null() {
+                    c::cmsWriteTag(p, 0x72545243,
+                        g as *const _); }
+                c::cmsWriteTag(p, 0x77747074,
+                    &wt as *const _ as *const _); },
+            "no-clr");
+        // 3. singular colorants -> MAT3inverse NULL
+        try_out(0x58595A20,
+            &|p| write_shaper(p, &one, &one, &one,
+                g as *const _), "sing-clr");
+        // 4. missing TRC -> Shapes NULL
+        try_out(0x58595A20,
+            &|p| write_shaper(p, &red, &grn, &blu,
+                std::ptr::null()), "no-trc");
+        // 5. descending TRC -> ReverseToneCurve NULL
+        let vals = [0xFFFFu16, 0x4000, 0x0000];
+        let dg = c::cmsBuildTabulatedToneCurve16(
+            ctx, 3, vals.as_ptr());
+        try_out(0x58595A20,
+            &|p| write_shaper(p, &red, &grn, &blu,
+                dg as *const _), "desc-trc");
+        // 6. Lab PCS -> Lab2XYZ insert
+        try_out(0x4C616220,
+            &|p| write_shaper(p, &red, &grn, &blu,
+                g as *const _), "lab-pcs");
+        if !g.is_null() { c::cmsFreeToneCurve(g); }
+        if !dg.is_null() { c::cmsFreeToneCurve(dg); }
+        if !srgb.is_null() {
+            c::cmsCloseProfile(srgb); }
+    }
+}
