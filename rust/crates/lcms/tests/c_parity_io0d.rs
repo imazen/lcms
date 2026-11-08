@@ -8040,3 +8040,59 @@ fn lut_builder_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// SaveTags raw-copy path — saving a mem-opened profile without
+/// parsing all tags copies un-parsed tags raw from the original
+/// IOhandler.
+#[test]
+fn save_raw_copy_arms() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2cmyk.icc", "labv4lcms2.icc", "sRGBlcms2.icc",
+                  "nullcms2.icc", "xyzlcms2.icc", "bchslcms2.icc",
+                  "limitlcms2.icc", "linlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            // read only the FIRST tag — the rest stay raw
+            let sig = c::cmsGetTagSignature(p, 0);
+            let _ = c::cmsReadTag(p, sig);
+            let mut buf = vec![0u8; 1 << 21];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("{f} rawcopy={s}");
+            // variant: read NO tags -> all raw-copy
+            let p2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if !p2.is_null() {
+                let mut buf2 = vec![0u8; 1 << 21];
+                let mut n2 = buf2.len() as u32;
+                let s2 = c::cmsSaveProfileToMem(p2,
+                    buf2.as_mut_ptr() as *mut _, &mut n2);
+                eprintln!("{f} allraw={s2}");
+                c::cmsCloseProfile(p2);
+            }
+            c::cmsCloseProfile(p);
+        }
+        // TagSaveAsRaw path: WriteRawTag then save
+        let prof = c::cmsCreate_sRGBProfile();
+        let raw = {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x74657874u32.to_be_bytes());
+            v.extend_from_slice(&[0; 4]);
+            v.extend_from_slice(b"hello\0");
+            v
+        };
+        c::cmsWriteRawTag(prof, 0x63707274,
+            raw.as_ptr() as *const _, raw.len() as u32);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("rawtag-save={s}");
+        c::cmsCloseProfile(prof);
+    }
+}
