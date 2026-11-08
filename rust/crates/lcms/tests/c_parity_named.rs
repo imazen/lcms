@@ -1093,3 +1093,72 @@ fn named_utf8_dup_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmsnamed residual — surrogate-pair decode paths in
+///   decodeUTF8/strFrom16 via MLUsetWide on surrogate
+///   and astral-plane sequences.
+#[test]
+fn named_surrogate_arms() {
+    unsafe {
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 4);
+        // astral chars as surrogate pairs + bare codepoints
+        for (seq, name) in [
+            (&[0x0041i32, 0xD83D, 0xDE00, 0x0042, 0][..],
+                "pair-smile"),
+            (&[0xD800i32, 0xDC00, 0][..], "pair-min"),
+            (&[0xDBFFi32, 0xDFFF, 0][..], "pair-max"),
+            (&[0x10437i32, 0][..], "astral-direct"),
+            (&[0xD800i32, 0][..], "lone-hi"),
+            (&[0xDC00i32, 0][..], "lone-lo"),
+            (&[0xD7FFi32, 0xE000, 0][..], "edge-ok"),
+        ] {
+            let ok = c::cmsMLUsetWide(mlu,
+                b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                seq.as_ptr());
+            let mut buf = [0i32; 64];
+            let n = c::cmsMLUgetWide(mlu,
+                b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                buf.as_mut_ptr(), 64 * 2);
+            let mut abuf = [0u8; 128];
+            let na = c::cmsMLUgetUTF8(mlu,
+                b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                abuf.as_mut_ptr(), 128);
+            eprintln!("{name} set={ok} w={n} u8={na}");
+        }
+        c::cmsMLUfree(mlu);
+        // NamedColorInfo with surrogate names
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 3,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let pcs = [0x1000u16, 0x2000, 0x3000];
+        let dev = [0x4000u16, 0x5000, 0x6000];
+        // isolate: ASCII name first
+        let ascii = b"plain\0";
+        let oka = c::cmsAppendNamedColor(nl,
+            ascii.as_ptr() as *const _,
+            pcs.as_ptr(), dev.as_ptr());
+        eprintln!("nc-ascii={oka}");
+        let sur = [0xF0u8, 0x9F, 0x98, 0x80, 0]; // 😀 utf8
+        let ok = c::cmsAppendNamedColor(nl,
+            sur.as_ptr() as *const _,
+            pcs.as_ptr(), dev.as_ptr());
+        let mut nm = [0u8; 64];
+        let mut pfx = [0u8; 8];
+        let mut sfx = [0u8; 8];
+        let mut pc = [0u16; 3];
+        let mut dv = [0u16; 16];
+        let r = if ok != 0 {
+            c::cmsNamedColorInfo(nl, 0,
+                nm.as_mut_ptr(), pfx.as_mut_ptr(),
+                sfx.as_mut_ptr(), pc.as_mut_ptr(),
+                dv.as_mut_ptr())
+        } else { -1 };
+        eprintln!("nc-sur append={ok} info={r} \
+            nm0={:#x}", nm[0]);
+        c::cmsFreeNamedColorList(nl);
+    }
+}
