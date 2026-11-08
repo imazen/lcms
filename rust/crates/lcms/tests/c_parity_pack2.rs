@@ -443,3 +443,48 @@ fn eval_matrix() {
         }
     }
 }
+
+/// cmsChangeBuffersFormat — in-place formatter swap.
+#[test]
+fn change_buffers_format() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        assert!(!ct.is_null());
+        // swap input to u8, keep u16 out
+        let in8: u32 = (4 << 16) | (3 << 3) | 1;
+        let cok = c::cmsChangeBuffersFormat(ct, in8, out_fmt);
+        eprintln!("change to u8 cok={cok}");
+        // rust side
+        let mut rp1 = virt::create_srgb_profile(None).unwrap();
+        let mut rp2 = virt::create_lab4_profile(None, None)
+            .unwrap();
+        let mut profs = vec![rp1.clone(), rp2.clone()];
+        let mut bpc = [false; 2];
+        let intents = [0u32; 2];
+        let adapt = [1.0f64; 2];
+        let mut rt = xform::create_extended_transform(
+            None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+            in_fmt, out_fmt, 0).unwrap();
+        let rok = rt.change_buffers_format(in8, out_fmt);
+        assert_eq!(cok != 0, rok, "change status");
+        // eval through the swapped transform
+        let inp8 = [120u8, 160, 200];
+        let mut co = [0u16; 3];
+        let mut ro = vec![0u8; 6];
+        c::cmsDoTransform(ct, inp8.as_ptr() as _,
+            co.as_mut_ptr() as *mut _, 1);
+        rt.do_transform(&inp8, &mut ro, 1);
+        let ro16: Vec<u16> = ro.chunks_exact(2)
+            .map(|b| u16::from_ne_bytes([b[0], b[1]]))
+            .collect();
+        assert_eq!(co, ro16.as_slice(), "post-change eval");
+        c::cmsDeleteTransform(ct);
+    }
+}
