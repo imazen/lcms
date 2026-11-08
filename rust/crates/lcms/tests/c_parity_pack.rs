@@ -2137,3 +2137,31 @@ fn planar_packers() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Premult-alpha packers — PREMUL with/without extra
+/// alpha on the devicelinks.
+#[test]
+fn premul_packers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        for (name, bits, bytes) in [
+            ("premul", 1u32 << 23, 1u32),
+            ("premul-x1", (1 << 23) | (1 << 7), 1),
+            ("premul-x1-u16", (1 << 23) | (1 << 7), 2),
+            ("premul-flt", (1 << 23) | (1 << 22), 4),
+            ("premul-x1-flt", (1 << 23) | (1 << 7)
+                | (1 << 22), 4)] {
+            let fmt = (0 << 16) | (3 << 3) | bytes | bits;
+            let t = c::cmsCreateTransform(dl, fmt,
+                dl, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(dl);
+        c::cmsFreeToneCurve(g);
+    }
+}
