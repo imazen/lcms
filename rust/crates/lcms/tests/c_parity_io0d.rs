@@ -2467,3 +2467,31 @@ fn tagsize_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// File-size bounds — mutate the size field then open
+/// (the size validation machinery).
+#[test]
+fn filesize_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // file size is a u32be at offset 0
+        for (name, val) in [
+            ("real", n), ("zero", 0), ("small", 128),
+            ("half", n / 2), ("big", n + 100),
+            ("huge", 0x7fffffff), ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[0..4].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} sz={val} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
