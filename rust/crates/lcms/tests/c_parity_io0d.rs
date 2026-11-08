@@ -4167,3 +4167,37 @@ fn desc_format_variants() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Signature/technology/viewing tags — Type_Signature + Type_
+/// ViewingConditions + Type_Measurement handlers.
+#[test]
+fn signature_viewing_tags() {
+    unsafe {
+        #[repr(C)] struct Viewing { x: f64, y: f64, z: f64,
+            a: u32, b: u32, c: f64 }
+        let v = Viewing { x: 0.95, y: 1.0, z: 1.09,
+            a: 2, b: 0, c: 0.5 };
+        for (sig, payload, name) in [
+            (0x74656368u32, &(0x72676762u32) as *const _ as *const _, "tech"),
+            (0x76696577, &v as *const _ as *const _, "view"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
