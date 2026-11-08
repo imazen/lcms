@@ -3532,3 +3532,28 @@ fn write_dispatch_text() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a datetime-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_dtim() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct Tm {
+            tm_sec: i32, tm_min: i32, tm_hour: i32,
+            tm_mday: i32, tm_mon: i32, tm_year: i32,
+            tm_wday: i32, tm_yday: i32, tm_isdst: i32,
+        }
+        let tm = Tm { tm_sec: 0, tm_min: 0, tm_hour: 12,
+            tm_mday: 1, tm_mon: 0, tm_year: 126,
+            tm_wday: 4, tm_yday: 0, tm_isdst: 0 };
+        for (sig, name) in [
+            (0x63616C74u32, "calt"), (0x6474696Du32, "dtim")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &tm as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
