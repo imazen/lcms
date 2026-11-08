@@ -2538,3 +2538,68 @@ fn mab_readback_cycles() {
         }
     }
 }
+
+/// CLUT sampler + slice machinery — cmsStageSampleCLut16bit/Float
+/// with a callback, cmsSliceSpace16/Float slice evals.
+#[test]
+fn clut_sampler_slice() {
+    unsafe {
+        // StageSample callbacks write Out; SliceSpace callbacks get
+        // Out=NULL (enumeration only) — separate fn shapes.
+        unsafe extern "C" fn s16(
+            i: *const u16, o: *mut u16, _c: *mut std::ffi::c_void) -> i32 {
+            unsafe {
+                *o.add(0) = *i.add(0);
+                *o.add(1) = *i.add(1);
+                *o.add(2) = *i.add(2);
+            }
+            1
+        }
+        unsafe extern "C" fn s32(
+            i: *const f32, o: *mut f32, _c: *mut std::ffi::c_void) -> i32 {
+            unsafe {
+                *o.add(0) = *i.add(0) * 0.5;
+                *o.add(1) = *i.add(1);
+                *o.add(2) = *i.add(2);
+            }
+            1
+        }
+        unsafe extern "C" fn e16(
+            _i: *const u16, _o: *mut u16, _c: *mut std::ffi::c_void)
+            -> i32 { 1 }
+        unsafe extern "C" fn e32(
+            _i: *const f32, _o: *mut f32, _c: *mut std::ffi::c_void)
+            -> i32 { 1 }
+        // sample a 16bit clut via callback — alloc with a real table
+        let tab: Vec<u16> = vec![0; 2 * 2 * 2 * 3];
+        let st = c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+            2, 3, 3, tab.as_ptr());
+        eprintln!("st={}", !st.is_null());
+        if !st.is_null() {
+            let r = c::cmsStageSampleCLut16bit(st,
+                s16 as unsafe extern "C" fn(_, _, _) -> i32,
+                std::ptr::null_mut(), 0);
+            eprintln!("sample16={r}");
+        }
+        // sample a float clut
+        let ftab: Vec<f32> = vec![0.0; 2 * 2 * 2 * 3];
+        let st2 = c::cmsStageAllocCLutFloat(std::ptr::null_mut(),
+            2, 3, 3, ftab.as_ptr());
+        eprintln!("st2={}", !st2.is_null());
+        if !st2.is_null() {
+            let r2 = c::cmsStageSampleCLutFloat(st2,
+                s32 as unsafe extern "C" fn(_, _, _) -> i32,
+                std::ptr::null_mut(), 0);
+            eprintln!("sampleflt={r2}");
+        }
+        // SliceSpace16/Float — grid slice evals
+        let dims = [2u32; 3];
+        let r3 = c::cmsSliceSpace16(3, dims.as_ptr(),
+            e16 as unsafe extern "C" fn(_, _, _) -> i32,
+            std::ptr::null_mut());
+        let r4 = c::cmsSliceSpaceFloat(3, dims.as_ptr(),
+            e32 as unsafe extern "C" fn(_, _, _) -> i32,
+            std::ptr::null_mut());
+        eprintln!("slice16={r3} sliceflt={r4}");
+    }
+}
