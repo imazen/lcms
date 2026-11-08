@@ -11022,3 +11022,325 @@ fn lut16_write_arms19() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// Type_*_Write error arms — every `Write fail -> return FALSE`
+/// branch. MemoryWrite truncates rather than failing (colord#147)
+/// so cmsSaveProfileToMem never hits these; we patch a real memory
+/// IOhandler's Write slot (offset 312 in _cms_io_handler) with a
+/// counter-gated stub and sweep the fail-at-call threshold.
+static WRITE_CALLS: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+static WRITE_LIMIT: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::MAX);
+static REAL_WRITE: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+type WriteFn = unsafe extern "C" fn(*mut std::ffi::c_void, u32,
+    *const std::ffi::c_void) -> i32;
+
+unsafe extern "C" fn gated_write(io: *mut std::ffi::c_void,
+    size: u32, buf: *const std::ffi::c_void) -> i32 {
+    use std::sync::atomic::Ordering::Relaxed;
+    let n = WRITE_CALLS.fetch_add(1, Relaxed);
+    if n >= WRITE_LIMIT.load(Relaxed) {
+        return 0;
+    }
+    let real: WriteFn = std::mem::transmute(
+        REAL_WRITE.load(Relaxed));
+    real(io, size, buf)
+}
+
+unsafe fn save_with_write_limit(prof: *mut std::ffi::c_void,
+    buf: &mut [u8], limit: u32) -> i32 {
+    use std::sync::atomic::Ordering::Relaxed;
+    let io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+        buf.as_mut_ptr(), buf.len() as u32, b"w\0".as_ptr());
+    assert!(!io.is_null());
+    WRITE_CALLS.store(0, Relaxed);
+    WRITE_LIMIT.store(limit, Relaxed);
+    let real = *(io as *const usize).add(312 / 8);
+    REAL_WRITE.store(real, Relaxed);
+    *(io as *mut usize).add(312 / 8) = gated_write as usize;
+    let r = c::cmsSaveProfileToIOhandler(prof, io);
+    *(io as *mut usize).add(312 / 8) = real;
+    c::cmsCloseIOhandler(io);
+    r
+}
+
+#[test]
+fn write_fail_arms() {
+    unsafe {
+        // small tabulated curves — Write16bitTables emits one
+        // Write per entry so gamma (4096-entry) curves blow the
+        // sweep range; 2-entry tables keep call counts low while
+        // still crossing every `Write fail` arm.
+        let t2 = [0u16, 0xFFFF];
+        let t3 = [0u16, 0x8000, 0xFFFF];
+        let t4 = [0u16, 0x5555, 0xAAAA, 0xFFFF];
+        let g = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            2, t2.as_ptr());
+        let g2 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            3, t3.as_ptr());
+        let g3 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            4, t4.as_ptr());
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mut grid = vec![0u16; 5 * 5 * 5 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 17) * 3855) as u16;
+        }
+        // profile carrying mft2 + mAB + mBA + curves so the sweep
+        // hits LUT16/A2B/B2A/curve/XYZ/text writers' fail arms
+        for (ver, lut_sig, order, name) in [
+            (2.1f64, 0x41324230u32, "mat-cv-clut-cv", "mft2"),
+            (4.4, 0x41324230, "cv-clut-cv-mat-cv", "mab"),
+            (4.4, 0x42324130, "cv-mat-cv-clut-cv", "mba"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            for st in order.split('-') {
+                let s = match st {
+                    "cv" => c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        [g, g2, g3].as_ptr() as *mut _),
+                    "mat" => c::cmsStageAllocMatrix(
+                        std::ptr::null_mut(), 3, 3,
+                        mat.as_ptr(), std::ptr::null()),
+                    "clut" => c::cmsStageAllocCLut16bit(
+                        std::ptr::null_mut(), 5, 3, 3,
+                        grid.as_ptr()),
+                    _ => continue,
+                };
+                c::cmsPipelineInsertStage(p, 1, s);
+            }
+            let w = c::cmsWriteTag(prof, lut_sig, p as *const _);
+            c::cmsWriteTag(prof, 0x72545243, g as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n_ok = 0u32;
+            let mut n_fail = 0u32;
+            for limit in 0..900u32 {
+                let r = save_with_write_limit(prof,
+                    &mut buf, limit);
+                if r == 0 { n_fail += 1; } else { n_ok += 1; }
+            }
+            eprintln!("{name} w={w} ok={n_ok} fail={n_fail}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
+
+/// Second sweep payload — every writable struct-tag type on one
+/// profile so the fail-at-N sweep covers their Type_*_Write arms.
+#[test]
+fn write_fail_arms2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        // calt — DateTime
+        #[repr(C)] struct Dt {
+            y: u16, mo: u16, d: u16, h: u16, mi: u16, s: u16,
+        }
+        let dt = Dt { y: 2026, mo: 1, d: 1, h: 0, mi: 0, s: 0 };
+        let w_calt = c::cmsWriteTag(prof, 0x63616c74,
+            &dt as *const _ as *const _);
+        // chad — S15Fixed16Array (9 doubles)
+        let chad = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let w_chad = c::cmsWriteTag(prof, 0x63686164,
+            chad.as_ptr() as *const _);
+        // chrm — Chromaticity
+        #[repr(C)] struct XyY { x: f64, y: f64, yy: f64 }
+        #[repr(C)] struct Chrm {
+            n: u32, ty: u16, _pad: u16,
+            c: [XyY; 3],
+        }
+        let chrm = Chrm { n: 3, ty: 0, _pad: 0, c: [
+            XyY { x: 0.64, y: 0.33, yy: 1.0 },
+            XyY { x: 0.30, y: 0.60, yy: 1.0 },
+            XyY { x: 0.15, y: 0.06, yy: 1.0 }] };
+        let w_chrm = c::cmsWriteTag(prof, 0x6368726d,
+            &chrm as *const _ as *const _);
+        // meas — Measurement
+        #[repr(C)] struct Meas {
+            flare: u32, illum: u32, obs: u32,
+            geo: u32, back: u32, meas: u32,
+        }
+        let meas = Meas { flare: 0, illum: 1, obs: 1,
+            geo: 1, back: 1, meas: 1 };
+        let w_meas = c::cmsWriteTag(prof, 0x6d656173,
+            &meas as *const _ as *const _);
+        // tech — signature
+        let tech: u32 = 0x66747970u32;
+        let w_tech = c::cmsWriteTag(prof, 0x74656368,
+            &tech as *const _ as *const _);
+        // view — ViewingConditions
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        #[repr(C)] struct View {
+            o: Xyz, b: Xyz, la: f64, yb: f64, dd: f64,
+        }
+        let view = View {
+            o: Xyz { x: 0.9642, y: 1.0, z: 0.8249 },
+            b: Xyz { x: 0.9642, y: 1.0, z: 0.8249 },
+            la: 20.0, yb: 20.0, dd: 1.0 };
+        let w_view = c::cmsWriteTag(prof, 0x76696577,
+            &view as *const _ as *const _);
+        // scrn — Screening
+        #[repr(C)] #[derive(Copy, Clone)]
+        struct ScrnCh { freq: f64, ang: f64, spot: u32 }
+        #[repr(C)] struct Scrn {
+            flag: u32, nch: u32, _p: u32,
+            ch: [ScrnCh; 16],
+        }
+        let mut ch = [ScrnCh { freq: 0.0, ang: 0.0, spot: 0 }; 16];
+        ch[0].freq = 60.0;
+        let scrn = Scrn { flag: 0, nch: 1, _p: 0, ch };
+        let w_scrn = c::cmsWriteTag(prof, 0x7363726e,
+            &scrn as *const _ as *const _);
+        // ucbg — UcrBg {ToneCurve*, ToneCurve*, MLU*}
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"ucbg\0".as_ptr());
+        #[repr(C)] struct Ucbg {
+            u: *mut std::ffi::c_void,
+            b: *mut std::ffi::c_void,
+            d: *mut std::ffi::c_void,
+        }
+        let ucbg = Ucbg { u: g as *mut _, b: g as *mut _, d: mlu };
+        let w_ucbg = c::cmsWriteTag(prof, 0x62666420,
+            &ucbg as *const _ as *const _);
+        // psd0 — ICCData {len,flag,data}
+        #[repr(C)] struct IccData {
+            len: u32, flag: u32, data: [u8; 16],
+        }
+        let psd = IccData { len: 16, flag: 0, data: *b"Hello, world!!!!" };
+        let w_psd = c::cmsWriteTag(prof, 0x70736430,
+            &psd as *const _ as *const _);
+        // meta — dict
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        let name: [i32; 3] = [b'n' as i32, b'1' as i32, 0];
+        let val: [i32; 3] = [b'v' as i32, b'1' as i32, 0];
+        c::cmsDictAddEntry(dict, name.as_ptr(), val.as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let w_meta = c::cmsWriteTag(prof, 0x6d657461,
+            dict as *const _);
+        // ncl2 — named color list
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
+            b"suf\0".as_ptr());
+        let w_ncl = if !ncl.is_null() {
+            let mut nm = [0u16; 32];
+            nm[0] = b'C' as u16;
+            nm[1] = b'1' as u16;
+            let pcs = [0u16; 3];
+            let dev = [0u16; 16];
+            c::cmsAppendNamedColor(ncl, nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+            c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _)
+        } else { 0 };
+        eprintln!("calt={w_calt} chad={w_chad} chrm={w_chrm} \
+            meas={w_meas} tech={w_tech} view={w_view} \
+            scrn={w_scrn} ucbg={w_ucbg} psd={w_psd} \
+            meta={w_meta} ncl={w_ncl}");
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n_ok = 0u32;
+        let mut n_fail = 0u32;
+        // measure total write calls first
+        WRITE_LIMIT.store(u32::MAX, std::sync::atomic::Ordering::Relaxed);
+        let r = save_with_write_limit(prof, &mut buf, u32::MAX);
+        let total = WRITE_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+        eprintln!("struct-tags total writes={total} r={r}");
+        for limit in 0..total + 2 {
+            let r = save_with_write_limit(prof, &mut buf, limit);
+            if r == 0 { n_fail += 1; } else { n_ok += 1; }
+        }
+        eprintln!("struct-tags ok={n_ok} fail={n_fail}");
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(g);
+    }
+}
+
+/// Third sweep — MHC2 + vcgt + segmented-curve MPE (cvst) so
+/// Type_MHC2_Write/Type_vcgt_Write/Type_MPE_Write/
+/// WriteSegmentedCurve fail arms fire.
+#[test]
+fn write_fail_arms3() {
+    unsafe {
+        // segmented curve → cvst element inside v4 mAB
+        let t2 = [0.0f32, 0.5, 1.0];
+        let segs = [
+            c::CurveSegment { x0: 0.0, x1: 0.5, r#type: 1,
+                params: [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                n_grid_points: 0, sampled_points: std::ptr::null() },
+            c::CurveSegment { x0: 0.5, x1: 1.0, r#type: 0,
+                params: [0.0; 10],
+                n_grid_points: 3, sampled_points: t2.as_ptr() },
+        ];
+        let seg = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 2, segs.as_ptr());
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        let mut grid = vec![0u16; 3 * 3 * 3 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 9) * 7281) as u16;
+        }
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [seg, seg, seg].as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                3, 3, 3, grid.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [seg, seg, seg].as_ptr() as *mut _));
+        // seg-curve MPE rejects in pass-1 on a throwaway profile —
+        // keep it off the sweep profile so mhc2/vcgt still save.
+        let profx = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(profx, 4.4);
+        let w1 = c::cmsWriteTag(profx, 0x41324230, p as *const _);
+        let mut tbuf = vec![0u8; 1 << 18];
+        let mut tn = tbuf.len() as u32;
+        let tr = c::cmsSaveProfileToMem(profx,
+            tbuf.as_mut_ptr() as *mut _, &mut tn);
+        eprintln!("seg-mpe throwaway w={w1} save={tr}");
+        c::cmsCloseProfile(profx);
+        // mhc2
+        #[repr(C)] struct Mhc2 { n: u32, r: *mut f64,
+            g: *mut f64, b: *mut f64, minl: f64, peakl: f64,
+            m: [[f64; 4]; 3] }
+        let mut rc = [0.0f64, 0.5, 1.0, 2.0];
+        let mut gc = [0.0f64, 0.5, 1.0, 2.0];
+        let mut bc = [0.0f64, 0.5, 1.0, 2.0];
+        let mut mhc = Mhc2 { n: 4,
+            r: rc.as_mut_ptr(), g: gc.as_mut_ptr(), b: bc.as_mut_ptr(),
+            minl: 0.0001, peakl: 1000.0,
+            m: [[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0]] };
+        let w2 = c::cmsWriteTag(prof, 0x4D484332,
+            &mut mhc as *mut _ as *const _);
+        // vcgt — payload is cmsToneCurve*[3]
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let w3 = c::cmsWriteTag(prof, 0x76636774,
+            curves.as_mut_ptr() as *const _);
+        eprintln!("seg-mpe={w1} mhc2={w2} vcgt={w3}");
+        let mut buf = vec![0u8; 1 << 20];
+        let r = save_with_write_limit(prof, &mut buf, u32::MAX);
+        let total = WRITE_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+        eprintln!("writes={total} r={r}");
+        let mut n_ok = 0u32;
+        let mut n_fail = 0u32;
+        for limit in 0..total + 2 {
+            let rr = save_with_write_limit(prof, &mut buf, limit);
+            if rr == 0 { n_fail += 1; } else { n_ok += 1; }
+        }
+        eprintln!("mpe/mhc2/vcgt ok={n_ok} fail={n_fail}");
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(seg);
+    }
+}
