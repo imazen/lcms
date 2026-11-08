@@ -2228,3 +2228,33 @@ fn remaining_object_resave() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Named-color sig resave+read — 'clot'/'clrt'/'ndin'
+/// serialization.
+#[test]
+fn named_sig_resave() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let list = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3, b"P\0".as_ptr() as _,
+            b"S\0".as_ptr() as _);
+        for (sig, name) in [
+            (0x636C6F74u32, "clot"), (0x636C7274u32, "clrt"),
+            (0x6E64696Eu32, "ndin")] {
+            let ok = c::cmsWriteTag(h, sig,
+                list as *mut std::ffi::c_void);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
