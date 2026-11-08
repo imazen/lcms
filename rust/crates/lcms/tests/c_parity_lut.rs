@@ -3497,3 +3497,32 @@ fn pipeline_ptr_accessors() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// cmsPipelineCat internals — concatenating pipelines adjusts
+/// input/output channels + stage chain.
+#[test]
+fn pipeline_cat() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        // p1: curves (3->3); p2: matrix (3->3) + clut
+        let p1 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p1, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g; 3].as_ptr() as *mut _));
+        let p2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        let n0 = c::cmsPipelineStageCount(p1);
+        let r = c::cmsPipelineCat(p1, p2);
+        let n1 = c::cmsPipelineStageCount(p1);
+        eprintln!("cat r={r} n={n0}->{n1}");
+        // eval the concatenated pipeline
+        let ib = [0x4000u16; 3];
+        let mut ob = [0u16; 3];
+        c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p1);
+        eprintln!("ob={ob:?}");
+        c::cmsPipelineFree(p1);
+    }
+}
