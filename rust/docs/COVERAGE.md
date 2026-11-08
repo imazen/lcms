@@ -107,12 +107,16 @@ Rust `lcms` through **`cargo test`**: 60.6% lines / 66.6% fns.
    C's unroll/pack leaves extra output bytes untouched without
    `cmsFLAGS_COPY_ALPHA` (RGBA8→RGBA8: C writes 0, Rust wrote input
    alpha). Fast path now gated on `t_extra == 0`.
-10. Upstream-oracle quirks pinned (not parity paths): `cmsIT8Free` and
-    `cmsIT8GetPatchName` corrupt the oracle heap on setter-built docs;
-    `cmsIT8LoadFromMem` asserts `len != 0`; C's IT8 parse is lossy (drops
-    comments, collapses multi-props, normalizes hex) so roundtrip parity
-    compares resave-of-same-input; `pseq`/`psid` header `created` field is
+10. Upstream-oracle quirks pinned (not parity paths): `cmsIT8LoadFromMem`
+    asserts `len != 0`; C's IT8 parse is lossy (drops comments, collapses
+    multi-props, normalizes hex) so roundtrip parity compares
+    resave-of-same-input; `pseq`/`psid` header `created` field is
     `time(0)`-nondeterministic — masked in compares.
+    (Retracted: an earlier version of this list claimed `cmsIT8Free` /
+    `cmsIT8GetPatchName` corrupt the oracle heap on setter-built docs —
+    that was TEST misuse: `cmsIT8GetPatchName` unconditionally writes
+    `MAXSTR` (1024) bytes into the caller's buffer via `strncpy`, and the
+    gate passed 64. With a 1024-byte buffer both calls are clean.)
 
 ## ICC spec references
 

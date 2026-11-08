@@ -96,8 +96,8 @@ unsafe fn c_getstr(p: *const i8) -> Option<String> {
     Some(std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned())
 }
 
-/// Lean build without multi/uncooked/rowcol — those paths corrupt the C
-/// oracle's heap (teardown SIGSEGV upstream quirk, not a parity path).
+/// Lean build for the getter matrix (multi/uncooked aren't getter-visible
+/// through the calls exercised below — covered by writer_byte_exact).
 unsafe fn c_build_lean() -> *mut std::ffi::c_void {
     let h = c::cmsIT8Alloc(std::ptr::null_mut());
     assert!(c::cmsIT8SetSheetType(h, cstr("TESTDOC")) != 0);
@@ -183,7 +183,12 @@ fn writer_getters() {
             it8.find_data_format("LAB_A"),
             "find data format"
         );
-        // cmsIT8Free on setter-built docs corrupts the oracle heap — leak.
+        // patch name — buffer MUST be >= MAXSTR (1024); C strncpys that
+        // many bytes regardless of name length.
+        let mut buf = [0i8; 1024];
+        c::cmsIT8GetPatchName(ch, 2, buf.as_mut_ptr());
+        assert_eq!(c_getstr(buf.as_ptr()), it8.get_patch_name(2), "patch name");
+        c::cmsIT8Free(ch);
     }
 }
 
@@ -201,6 +206,7 @@ fn writer_roundtrip() {
         );
         assert!(!h.is_null(), "C re-parse its own output");
         let s = c_save(h);
+        c::cmsIT8Free(h);
         s
     };
     let r_re = It8::load_from_mem(None, c_out.as_bytes())
@@ -215,6 +221,7 @@ fn writer_roundtrip() {
         );
         assert!(!h.is_null(), "C parse rust output");
         let s = c_save(h);
+        c::cmsIT8Free(h);
         s
     };
     let r_re2 = It8::load_from_mem(None, r_out.as_bytes())
