@@ -1062,3 +1062,62 @@ fn dup_curves_plugin_arms() {
     unsafe { waitpid(pid, &mut st, 0); }
     eprintln!("curvdup child st={st}");
 }
+
+/// cmsIsToneCurveMonotonic + cmsCIE94DeltaE + cmsJoinToneCurve +
+/// cmsBuildTabulatedToneCurveFloat arms.
+#[test]
+fn monotonic_join_arms() {
+    unsafe {
+        // monotonic + non-monotonic curves
+        for (vals, name) in [
+            (vec![0u16, 0x4000, 0x8000, 0xc000, 0xffff],
+                "mono-up"),
+            (vec![0xffffu16, 0xc000, 0x8000, 0x4000, 0],
+                "mono-dn"),
+            (vec![0u16, 0x8000, 0x4000, 0xffff, 0x2000],
+                "non-mono"),
+            (vec![0x1234u16, 0x1234, 0x1234], "flat"),
+            (vec![0u16, 0xffff], "2pt"),
+        ] {
+            let tc = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), vals.len() as u32,
+                vals.as_ptr());
+            let m = c::cmsIsToneCurveMonotonic(tc);
+            eprintln!("{name} mono={m}");
+            c::cmsFreeToneCurve(tc);
+        }
+        // float curve
+        let vf = [0.0f32, 0.5, 1.0];
+        let cf = c::cmsBuildTabulatedToneCurveFloat(
+            std::ptr::null_mut(), 3, vf.as_ptr());
+        let mf = c::cmsIsToneCurveMonotonic(cf);
+        eprintln!("float mono={mf}");
+        c::cmsFreeToneCurve(cf);
+        // CIE94
+        for (l1, l2) in [
+            ([50.0f64, 2.6772, -79.7751, 0.0],
+                [50.0, 0.0, -82.7485, 0.0]),
+            ([50.0, -1.3802, -84.2814, 0.0],
+                [50.0, 0.0, -82.7485, 0.0]),
+            ([50.0, 2.49, -0.001, 0.0],
+                [50.0, -2.49, 0.0009, 0.0]),
+        ] {
+            let l1v = c::CieLab { L: l1[0], a: l1[1], b: l1[2] };
+            let l2v = c::CieLab { L: l2[0], a: l2[1], b: l2[2] };
+            let de = c::cmsCIE94DeltaE(&l1v as *const _,
+                &l2v as *const _);
+            eprintln!("de94={de:.4}");
+        }
+        // join curves
+        let g1 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 0.4545);
+        for rev in [0i32, 1] {
+            let j = c::cmsJoinToneCurve(
+                std::ptr::null_mut(), g1, g2, 256);
+            eprintln!("join{rev}={}", !j.is_null());
+            if !j.is_null() { c::cmsFreeToneCurve(j); }
+        }
+        c::cmsFreeToneCurve(g1);
+        c::cmsFreeToneCurve(g2);
+    }
+}
