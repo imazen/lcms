@@ -134,3 +134,39 @@ fn context_lifecycle() {
         "rust dup user data"
     );
 }
+
+/// cmssamp desaturate + GBD edge cases (empty hull, check-before-compute,
+/// boundary points).
+#[test]
+fn desaturate_and_gbd_edges() {
+    use lcms::types::CieLab;
+    // out-of-gamut points get clamped into the box [amin..amax]x[bmin..bmax]
+    for &(l, a, b) in &[(50.0f64, 200.0f64, -200.0f64), (10.0, -50.0, 80.0), (0.0, 0.0, 0.0)] {
+        let mut cl = CieLab { L: l, a, b };
+        let mut rl = cl;
+        unsafe {
+            c::cmsDesaturateLab(&mut cl as *mut CieLab as *mut _, 80.0, -80.0, 80.0, -80.0)
+        };
+        lcms::sm::desaturate_lab(&mut rl, 80.0, -80.0, 80.0, -80.0);
+        assert_eq!((cl.L, cl.a, cl.b), (rl.L, rl.a, rl.b), "desaturate {l},{a},{b}");
+    }
+    // GBD edge cases — empty compute, check-before-compute
+    unsafe {
+        let cg = c::cmsGBDAlloc(std::ptr::null_mut());
+        let mut rg = lcms::gbd::Gbd::alloc(None);
+        let p = CieLab { L: 50.0, a: 0.0, b: 0.0 };
+        // check before any add — both should agree (probably false/not-in-gamut)
+        assert_eq!(
+            c::cmsGDBCheckPoint(cg, &p as *const CieLab as *const _) != 0,
+            rg.check_point(&p),
+            "check on empty GBD"
+        );
+        // compute empty — status parity
+        assert_eq!(
+            c::cmsGDBCompute(cg, 0) != 0,
+            rg.compute(0),
+            "compute empty"
+        );
+        c::cmsGBDFree(cg);
+    }
+}
