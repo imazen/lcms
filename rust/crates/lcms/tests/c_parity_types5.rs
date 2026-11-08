@@ -1378,3 +1378,47 @@ fn vcgt_type() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// Type_Screening internals — 'scrn' takes a cmsScreening
+/// payload (flag + channels).
+#[test]
+fn screening_type() {
+    unsafe {
+        #[repr(C)]
+        #[derive(Copy, Clone)]
+        struct ScrCh {
+            frequency: f64,
+            screen_angle: f64,
+            spot_shape: u32,
+        }
+        #[repr(C)]
+        struct Screening {
+            flag: u32,
+            n_channels: u32,
+            channels: [ScrCh; 16],
+        }
+        let mut sc = Screening {
+            flag: 0, n_channels: 3,
+            channels: [ScrCh { frequency: 0.0,
+                screen_angle: 0.0, spot_shape: 0 }; 16],
+        };
+        for i in 0..3 {
+            sc.channels[i].frequency = 150.0;
+            sc.channels[i].screen_angle = 45.0 * (i as f64);
+            sc.channels[i].spot_shape = 1;
+        }
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x7363726E,
+            &sc as *const _ as *mut std::ffi::c_void); // 'scrn'
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x7363726E);
+        eprintln!("scrn write={ok} read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
