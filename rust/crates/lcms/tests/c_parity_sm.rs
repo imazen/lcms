@@ -651,3 +651,68 @@ fn quadratic_bp_intent1() {
         }
     }
 }
+
+/// Quadratic-fit attempt — prtr profile with a strongly
+/// non-linear midrange CLUT fails NearlyStraightMidrange.
+#[test]
+fn quadratic_bp_clut2() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x70727472);
+        c::cmsSetColorSpace(prof, 0x434d594b);
+        c::cmsSetPCS(prof, 0x4c616220);
+        c::cmsSetProfileVersion(prof, 4.4);
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        c::cmsWriteTag(prof, 0x64657363, ml as *const _);
+        let wp = [0.9642f64, 1.0, 0.8249];
+        c::cmsWriteTag(prof, 0x77747074, wp.as_ptr() as *const _);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let curves4 = [g, g, g, g];
+        let curves3 = [g, g, g];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 4, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 4,
+                curves4.as_ptr() as *mut _));
+        // strongly non-linear CLUT — midrange oscillation breaks
+        // the straight-line check
+        let mut grid = vec![0u16; 17 * 17 * 17 * 17 * 3];
+        let n = 17 * 17 * 17 * 17 * 3;
+        for (i, v) in grid.iter_mut().enumerate() {
+            let t = i as f64 / (n - 1) as f64;
+            let shaped = t + 0.45 * (t * 6.28 * 3.0).sin().abs()
+                * (1.0 - t) * t * 4.0;
+            *v = (shaped.clamp(0.0, 1.0) * 65535.0) as u16;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 4, 3,
+                grid.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves3.as_ptr() as *mut _));
+        let w = c::cmsWriteTag(prof, 0x42324130, p as *const _);
+        eprintln!("b2a0 w={w}");
+        let mut bp = [0.0f64; 3];
+        for intent in 0..4u32 {
+            let r = c::cmsDetectDestinationBlackPoint(
+                bp.as_mut_ptr() as *mut _, prof, intent, 0);
+            eprintln!("i{intent} r={r} bp=({:.4},{:.4},{:.4})",
+                bp[0], bp[1], bp[2]);
+        }
+        // also the source-side on the same profile
+        for intent in [1u32] {
+            let mut bp2 = [0.0f64; 3];
+            let r = c::cmsDetectBlackPoint(
+                bp2.as_mut_ptr() as *mut _, prof, intent, 0);
+            eprintln!("src i{intent} r={r} bp=({:.4},{:.4},{:.4})",
+                bp2[0], bp2[1], bp2[2]);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        c::cmsMLUfree(ml);
+    }
+}
