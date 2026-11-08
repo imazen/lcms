@@ -712,3 +712,41 @@ fn devicelink_combinations() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmsCreateRGBProfile/GrayProfile/LabProfile internals —
+/// different primaries/temp/white-point combos.
+#[test]
+fn virt_builders() {
+    unsafe {
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut trc = [g; 3];
+        #[repr(C)] struct Prim { r: c::CiexyY, g: c::CiexyY,
+            b: c::CiexyY }
+        // RGB profile — explicit primaries
+        let prim = Prim {
+            r: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            g: c::CiexyY { x: 0.3, y: 0.6, Y: 1.0 },
+            b: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        };
+        let rgb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            &wp as *const _ as *const _,
+            &prim as *const _ as *const _,
+            trc.as_mut_ptr() as *mut _);
+        // Gray profile
+        let g2 = c::cmsCreateGrayProfileTHR(std::ptr::null_mut(),
+            &wp as *const _ as *const _, g as *const _);
+        // Lab profile
+        let lab = c::cmsCreateLab4Profile(
+            &wp as *const _ as *const _);
+        // XYZ profile
+        let xyz = c::cmsCreateXYZProfile();
+        // NULL profile
+        let nul = c::cmsCreateNULLProfile();
+        for (p, name) in [(rgb, "rgb"), (g2, "gray"), (lab, "lab"),
+                          (xyz, "xyz"), (nul, "null")] {
+            eprintln!("{name}={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+    }
+}
