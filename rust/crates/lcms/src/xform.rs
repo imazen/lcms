@@ -2552,43 +2552,32 @@ impl Transform {
             );
             return false;
         }
-        // C's `IsFloat` = `T_FLOAT(in) || T_FLOAT(out)` — bit 22 only. DBL
-        // formats set FLOAT_SH, so `t_bytes==0` is redundant and wrongly
-        // routes BYTES_SH(0) 16-bit formats (e.g. TYPE_RGB_565) to float.
-        let is_float = crate::pack::t_float(input_format) != 0
-            || crate::pack::t_float(output_format) != 0;
-        let flags = if is_float {
-            CMS_PACK_FLAGS_FLOAT
-        } else {
-            CMS_PACK_FLAGS_16BITS
-        };
-        let dir_in = get_formatter_ctx(self.ctx.as_ref(), input_format, FormatterDir::Input, flags);
-        let dir_out = get_formatter_ctx(self.ctx.as_ref(), output_format, FormatterDir::Output, flags);
-        let fmt = match (is_float, dir_in, dir_out) {
-            (true, Formatter::UnpackF32(u), Formatter::PackF32(p)) => {
-                Fmt::F32 { unroll: u, pack: p }
-            }
-            (false, Formatter::Unpack16(u), Formatter::Pack16(p)) => {
+        // C cmsxform.c:1482-1494 — always the 16-bit formatter table,
+        // even for FLOAT-bit formats (UnrollFloatTo16/PackFloatFrom16
+        // are only reachable this way); the xform worker is untouched.
+        let dir_in = get_formatter_ctx(self.ctx.as_ref(), input_format, FormatterDir::Input, CMS_PACK_FLAGS_16BITS);
+        let dir_out = get_formatter_ctx(self.ctx.as_ref(), output_format, FormatterDir::Output, CMS_PACK_FLAGS_16BITS);
+        let fmt = match (dir_in, dir_out) {
+            (Formatter::Unpack16(u), Formatter::Pack16(p)) => {
                 Fmt::F16 { unroll: u, pack: p }
             }
-            _ => return false,
+            _ => {
+                crate::err::signal_error(
+                    self.ctx.as_ref(),
+                    crate::types::ERROR_UNKNOWN_EXTENSION,
+                    "Unsupported raster format",
+                );
+                return false;
+            }
         };
         self.input_format = input_format;
         self.output_format = output_format;
-        self.fmt = fmt;
-        // rebind worker for float/16-bit switch
-        self.worker = if is_float {
-            if self.worker == Worker::NullFloat {
-                Worker::NullFloat
-            } else {
-                Worker::Float
-            }
-        } else {
-            match self.worker {
-                Worker::Null => Worker::Null,
-                _ => Worker::Precalculated,
-            }
-        };
+        // C writes only the 16-bit FromInput/ToOutput slots — on a float
+        // transform (FloatXFORM uses FromInputFloat) the swap is stored
+        // but never read by the worker, so keep the F32 pair here.
+        if !matches!(self.fmt, Fmt::F32 { .. }) {
+            self.fmt = fmt;
+        }
         true
     }
 }

@@ -2192,3 +2192,131 @@ fn flavor_packers() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+const fn pm(f: u32) -> u32 {
+    f | 1 << 23
+}
+
+/// format-(0,0) transform + ChangeBuffersFormat — the 16-table
+/// formatter swap for FLOAT formats (Unroll*To16 / Pack*From16
+/// are unreachable through normal creation: a FLOAT-bit format
+/// takes the float-table instead).
+#[test]
+fn pack_chgbuf_sweep() {
+    let cs = unsafe { c::cmsCreate_sRGBProfile() };
+    let rs = virt::create_srgb_profile(None).unwrap();
+    let cl = unsafe { c::cmsCreateLab4Profile(std::ptr::null_mut()) };
+    let rl = virt::create_lab4_profile(None, None).unwrap();
+    let cx = unsafe { c::cmsCreateXYZProfile() };
+    let rx = virt::create_xyz_profile(None).unwrap();
+    let cg = unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        c::cmsCreateGrayProfile(std::ptr::null_mut(), g)
+    };
+    let tg = gamma::build_gamma(None, 2.2).unwrap();
+    let rg = virt::create_gray_profile(None, None, Some(&tg)).unwrap();
+
+    // (name, c_in, r_in, c_out, r_out, in_fmt, out_fmt)
+    let rgb_flt = fl(f(PT_RGB, 3, 0, 4));
+    let rgb_dbl = fl(f(PT_RGB, 3, 0, 0));
+    let rgb_hlf = fl(f(PT_RGB, 3, 0, 2));
+    let rgb_16 = f(PT_RGB, 3, 0, 2);
+    let lab_flt = fl(f(PT_LAB, 3, 0, 4));
+    let lab_dbl = fl(f(PT_LAB, 3, 0, 0));
+    let lab_16 = f(PT_LAB, 3, 0, 2);
+    let xyz_flt = fl(f(PT_XYZ, 3, 0, 4));
+    let xyz_dbl = fl(f(PT_XYZ, 3, 0, 0));
+    let xyz_16 = f(PT_XYZ, 3, 0, 2);
+    let gry_dbl = fl(f(PT_GRAY, 1, 0, 0));
+    let gry_16 = f(PT_GRAY, 1, 0, 2);
+
+    struct Pair<'a> {
+        cp: *mut c_void,
+        rp: &'a lcms::profile::IccProfile,
+    }
+    for (name, p, fi, fo) in [
+        ("flt>16", Pair { cp: cs, rp: &rs }, rgb_flt, rgb_16),
+        ("dbl>16", Pair { cp: cs, rp: &rs }, rgb_dbl, rgb_16),
+        ("hlf>16", Pair { cp: cs, rp: &rs }, rgb_hlf, rgb_16),
+        ("16>flt", Pair { cp: cs, rp: &rs }, rgb_16, rgb_flt),
+        ("16>dbl", Pair { cp: cs, rp: &rs }, rgb_16, rgb_dbl),
+        ("16>hlf", Pair { cp: cs, rp: &rs }, rgb_16, rgb_hlf),
+        ("lflt>16", Pair { cp: cl, rp: &rl }, lab_flt, lab_16),
+        ("ldbl>16", Pair { cp: cl, rp: &rl }, lab_dbl, lab_16),
+        ("16>lflt", Pair { cp: cl, rp: &rl }, lab_16, lab_flt),
+        ("16>ldbl", Pair { cp: cl, rp: &rl }, lab_16, lab_dbl),
+        ("xflt>16", Pair { cp: cx, rp: &rx }, xyz_flt, xyz_16),
+        ("xdbl>16", Pair { cp: cx, rp: &rx }, xyz_dbl, xyz_16),
+        ("16>xflt", Pair { cp: cx, rp: &rx }, xyz_16, xyz_flt),
+        ("16>xdbl", Pair { cp: cx, rp: &rx }, xyz_16, xyz_dbl),
+        ("gdbl>16", Pair { cp: cg, rp: &rg }, gry_dbl, gry_16),
+        ("16>gdbl", Pair { cp: cg, rp: &rg }, gry_16, gry_dbl),
+    ] {
+        // C: create (0,0), change, eval
+        unsafe {
+            let ct = c::cmsCreateTransform(p.cp, 0, p.cp, 0, 0, 0);
+            assert!(!ct.is_null(), "{name}: C (0,0) create failed");
+            let ok = c::cmsChangeBuffersFormat(ct, fi, fo);
+            assert_eq!(ok, 1, "{name}: C change_buffers failed");
+            let n = 8usize;
+            let in_sz = pixel_size(fi) * n;
+            let out_sz = pixel_size(fo) * n;
+            let inp = rng_bytes(in_sz, 0xDEAD ^ fi as u64);
+            let mut co = vec![0u8; out_sz];
+            c::cmsDoTransform(ct, inp.as_ptr() as *const c_void,
+                co.as_mut_ptr() as *mut c_void, n as u32);
+            c::cmsDeleteTransform(ct);
+
+            // Rust side
+            let mut v: Vec<Box<lcms::profile::IccProfile>> =
+                vec![Box::new(p.rp.clone()), Box::new(p.rp.clone())];
+            let mut bpc = [false, false];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let mut rt = xform::create_extended_transform(
+                None, &mut v, &mut bpc, &intents, &adapt,
+                None, 0, 0, 0, 0)
+                .unwrap_or_else(|| panic!("{name}: R (0,0) create"));
+            assert!(rt.change_buffers_format(fi, fo),
+                "{name}: R change_buffers");
+            let mut ro = vec![0u8; out_sz];
+            rt.do_transform(&inp, &mut ro, n as u32);
+            if fo & (1 << 22) != 0 {
+                // float out — tolerance compare like check()
+                let lanew = if fo & 7 == 0 { 8 } else { 4 };
+                for (i, (cb, rb)) in co.chunks_exact(lanew)
+                    .zip(ro.chunks_exact(lanew)).enumerate() {
+                    let (cf, rf) = if lanew == 4 {
+                        (f32::from_bits(u32::from_le_bytes(
+                            cb.try_into().unwrap())) as f64,
+                         f32::from_bits(u32::from_le_bytes(
+                            rb.try_into().unwrap())) as f64)
+                    } else {
+                        (f64::from_bits(u64::from_le_bytes(
+                            cb.try_into().unwrap())),
+                         f64::from_bits(u64::from_le_bytes(
+                            rb.try_into().unwrap())))
+                    };
+                    if !cf.is_finite() || !rf.is_finite() {
+                        assert_eq!(cb, rb,
+                            "{name} lane {i} non-finite");
+                        continue;
+                    }
+                    let tol = (5e-5 * cf.abs()).max(1e-5);
+                    assert!((cf - rf).abs() <= tol,
+                        "{name} lane {i}: {cf} vs {rf}");
+                }
+            } else {
+                if co != ro {
+                    eprintln!("{name} C={:?}", &co[..24.min(out_sz)]);
+                    eprintln!("{name} R={:?}", &ro[..24.min(out_sz)]);
+                }
+                assert_eq!(co, ro, "{name} fi={fi:#x} fo={fo:#x}");
+            }
+        }
+    }
+    unsafe {
+        c::cmsCloseProfile(cs); c::cmsCloseProfile(cl);
+        c::cmsCloseProfile(cx); c::cmsCloseProfile(cg);
+    }
+}
