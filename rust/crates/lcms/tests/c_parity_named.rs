@@ -120,3 +120,60 @@ fn mlu_paths() {
         c::cmsMLUfree(cm);
     }
 }
+
+/// MLU utf8/wide/translation/dup variants — the non-ascii paths.
+#[test]
+fn mlu_variants() {
+    unsafe {
+        let cm = c::cmsMLUalloc(std::ptr::null_mut(), 2);
+        let mut rm = named::mlu_alloc(None, 2).unwrap();
+        // utf8 path
+        for (lang, cntry, txt) in [
+            ("en", "US", "Café"),
+            ("fr", "FR", "àéîöü"),
+            ("de", "DE", "Grüße"),
+        ] {
+            assert_eq!(
+                c::cmsMLUsetUTF8(cm, cs8(lang), cs8(cntry), cs8(txt)) != 0,
+                named::mlu_set_utf8(&mut rm, lang.as_bytes(), cntry.as_bytes(),
+                    txt.as_bytes()),
+                "set_utf8 {lang}");
+        }
+        // get_utf8 parity
+        for (lang, cntry) in [("en","US"),("fr","FR"),("de","DE"),("es","ES")] {
+            let mut buf = [0u8; 256];
+            let cn = c::cmsMLUgetUTF8(cm, cs8(lang), cs8(cntry),
+                buf.as_mut_ptr(), 256);
+            let (rn, rbytes) = named::mlu_get_utf8(
+                &rm, lang.as_bytes(), cntry.as_bytes(), Some(256));
+            let cstr = if cn > 0 {
+                Some(std::ffi::CStr::from_ptr(buf.as_ptr() as *const i8)
+                    .to_bytes().to_vec())
+            } else { None };
+            let rstr = if rn > 0 { Some(rbytes[..rn as usize - 1].to_vec()) } else { None };
+            assert_eq!(cstr, rstr, "get_utf8 {lang}-{cntry}");
+        }
+        // translation lookup parity
+        for (lang, cntry) in [("en","US"),("fr","FR"),("de","DE"),("zz","ZZ")] {
+            let mut cl = [0u8; 3];
+            let mut cc = [0u8; 3];
+            let cn = c::cmsMLUgetTranslation(cm, cs8(lang), cs8(cntry),
+                cl.as_mut_ptr(), cc.as_mut_ptr());
+            let r = named::mlu_get_translation(&rm, lang.as_bytes(), cntry.as_bytes());
+            assert_eq!(cn != 0, r.is_some(), "trans {lang}-{cntry} presence");
+            if cn != 0 {
+                let (rl, rc) = r.unwrap();
+                assert_eq!(cl, rl, "trans lang {lang}-{cntry}");
+                assert_eq!(cc, rc, "trans cntry {lang}-{cntry}");
+            }
+        }
+        // dup parity
+        let cd = c::cmsMLUdup(cm);
+        let rd = named::mlu_dup(&rm).unwrap();
+        assert_eq!(
+            c::cmsMLUtranslationsCount(cd),
+            named::mlu_translations_count(&rd), "dup count");
+        c::cmsMLUfree(cm);
+        c::cmsMLUfree(cd);
+    }
+}
