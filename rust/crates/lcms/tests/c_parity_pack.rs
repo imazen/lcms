@@ -1246,3 +1246,32 @@ fn multichannel_modifier_matrix() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// 3-channel format on a 3-channel profile — the matching
+/// channel-count formats.
+#[test]
+fn matching_channel_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("3ch-u8", (0 << 16) | (3 << 3) | 1u32),
+            ("3ch-u16", (0 << 16) | (3 << 3) | 2),
+            ("3ch-flt", (1 << 22) | (0 << 16) | (3 << 3) | 4),
+            ("3ch-dbl", (1 << 22) | (0 << 16) | (3 << 3) | 0),
+            ("3ch-hlf", (1 << 22) | (0 << 16) | (3 << 3) | 2),
+            ("3ch-planar", (0 << 16) | (1 << 12) | (3 << 3) | 1),
+            ("3ch-doswap", (0 << 16) | (1 << 10) | (3 << 3) | 1),
+            ("3ch-swapf", (0 << 16) | (1 << 14) | (3 << 3) | 1),
+            ("3ch-end16", (0 << 16) | (1 << 11) | (3 << 3) | 1),
+            ("3ch-flavor", (0 << 16) | (1 << 13) | (3 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
