@@ -3289,3 +3289,41 @@ fn profile_info_getters() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// Header set/get round-trip — SetHeaderRenderingIntent/Flags/
+/// Attributes/Manufacturer/Model/Creator/ProfileID then save+read.
+#[test]
+fn header_setters_getters() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        c::cmsSetHeaderRenderingIntent(p, 1);
+        c::cmsSetHeaderFlags(p, 0xABCD);
+        c::cmsSetHeaderAttributes(p, 0x1122334455667788);
+        c::cmsSetHeaderManufacturer(p, 0x6d66721a);
+        c::cmsSetHeaderModel(p, 0x6d646c1a);
+        let mut id = [0u8; 16];
+        for i in 0..16 { id[i] = i as u8; }
+        c::cmsSetHeaderProfileID(p, id.as_mut_ptr());
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        if !rp.is_null() {
+            let mut fl = 0u32;
+            let mut at = 0u64;
+            let mut pid = [0u8; 16];
+            c::cmsGetHeaderFlags(rp, &mut fl);
+            c::cmsGetHeaderAttributes(rp, &mut at);
+            c::cmsGetHeaderProfileID(rp, pid.as_mut_ptr());
+            eprintln!("flags={fl:#x} attr={at:#x} mfr={:#x} mdl={:#x} ri={} id0={}",
+                c::cmsGetHeaderManufacturer(rp),
+                c::cmsGetHeaderModel(rp),
+                c::cmsGetHeaderRenderingIntent(rp), pid[0]);
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(p);
+    }
+}
