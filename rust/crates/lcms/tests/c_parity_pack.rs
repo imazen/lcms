@@ -5624,3 +5624,96 @@ fn opt_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmssamp/cmsgmt residual — cmsDetectBlackPoint/DestBP/TAC
+///   on every profile class x intent x flags ->
+///   isInkColorspace per-space arms, BlackPointAsDarkerColorant,
+///   BlackPointUsingPerceptualBlack, RootOfLeastSquaresFit-
+///   QuadraticCurve, GamutSampler, ComputeKToLstar, EstimateTAC.
+#[test]
+fn blackpoint_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!(
+                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                b"r\0".as_ptr() as *const _)
+        };
+        #[repr(C)]
+        struct Xyz { x: f64, y: f64, z: f64 }
+        for nm in ["sRGBlcms2.icc", "aRGBlcms2.icc",
+                   "lcms2cmyk.icc", "lcms2link.icc",
+                   "limitlcms2.icc", "linlcms2.icc",
+                   "gray3lcms2.icc", "nullcms2.icc",
+                   "glablcms2.icc", "xyzlcms2.icc",
+                   "labv2lcms2.icc", "labv4lcms2.icc",
+                   "bchslcms2.icc", "brightness.icc",
+                   "graylcms2.icc"] {
+            let p = open(nm);
+            if p.is_null() {
+                eprintln!("{nm}: null"); continue; }
+            for intent in 0u32..4 {
+                for flags in [0u32, 0x0040, 0x0008] {
+                    // 0x0040 = cmsFlagsBlackPreserving?
+                    // sweep raw bits
+                    let mut bp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                    let r = c::cmsDetectBlackPoint(
+                        &mut bp as *mut _ as *mut c_void,
+                        p, intent, flags);
+                    let mut bp2 = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                    let r2 = c::cmsDetectDestinationBlackPoint(
+                        &mut bp2 as *mut _ as *mut c_void,
+                        p, intent, flags);
+                    if intent == 0 && flags == 0 {
+                        let tac = c::cmsDetectTAC(p);
+                        eprintln!(
+                            "{nm}: bp={r}({:.3},{:.3},{:.3}) dbp={r2} tac={tac:.1}",
+                            bp.x, bp.y, bp.z); } } }
+            c::cmsCloseProfile(p); }
+        // DesaturateLab + GBD point checks
+        #[repr(C)]
+        struct Lab { l: f64, a: f64, b: f64 }
+        let mut lab = Lab { l: 50.0, a: 80.0, b: -90.0 };
+        let ds = c::cmsDesaturateLab(
+            &mut lab as *mut _ as *mut c_void,
+            50.0, -50.0, 50.0, -50.0);
+        eprintln!("desat={ds} -> L{} a{} b{}",
+            lab.l, lab.a, lab.b);
+        let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
+        eprintln!("gbd={}", !gbd.is_null());
+        if !gbd.is_null() {
+            for (l, a, b) in [
+                (0.0f64, 0.0, 0.0), (50.0, 50.0, 50.0),
+                (100.0, 0.0, 0.0), (50.0, -80.0, -80.0),
+                (25.0, 100.0, -100.0), (75.0, -60.0, 90.0),
+            ] {
+                let pt = Lab { l, a, b };
+                let add = c::cmsGDBAddPoint(gbd,
+                    &pt as *const _ as *const c_void);
+                eprintln!("  add L{l}: {add}"); }
+            let cmp = c::cmsGDBCompute(gbd, 0);
+            eprintln!("  compute={cmp}");
+            for (l, a, b) in [
+                (50.0f64, 0.0, 0.0), (50.0, 90.0, 90.0),
+                (10.0, -20.0, 10.0), (95.0, 0.0, -5.0),
+            ] {
+                let pt = Lab { l, a, b };
+                let chk = c::cmsGDBCheckPoint(gbd,
+                    &pt as *const _ as *const c_void);
+                eprintln!("  chk L{l}: {chk}"); }
+            c::cmsGBDFree(gbd); }
+        // IsCLUT per profile x intent x direction
+        for nm in ["lcms2cmyk.icc", "sRGBlcms2.icc",
+                   "lcms2link.icc", "labv4lcms2.icc",
+                   "nullcms2.icc"] {
+            let p = open(nm);
+            if p.is_null() { continue; }
+            for intent in 0u32..4 {
+                for dir in 0u32..2 {
+                    let r = c::cmsIsCLUT(p, intent, dir);
+                    eprintln!("{nm} i{intent} d{dir}: {r}"); } }
+            c::cmsCloseProfile(p); }
+    }
+}
