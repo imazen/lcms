@@ -18439,3 +18439,78 @@ fn internal_final9_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals.
+#[test]
+fn internal_final10_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // multiprofile with proofing profile slots
+        let mut profs = [srgb, lab, srgb];
+        for intent in 0..8u32 {
+            for pc in [0u32, 1, 2, 3] {
+                let mut bpc = [0i32; 4];
+                let mut intents = [intent; 4];
+                let mut adapt = [0.5f64; 4];
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), 3,
+                    profs.as_mut_ptr(), bpc.as_mut_ptr(),
+                    intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    std::ptr::null_mut(), 0, r8, r8, pc << 20);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("ext i{intent} done");
+        }
+        // transform on profiles with all-zero/all-max TRCs
+        for (gn, name) in [
+            (0u32, "identity"), (1, "flat"), (2, "invert"),
+            (3, "step"), (4, "saw"),
+        ] {
+            let vals: Vec<u16> = (0..256).map(|i| match gn {
+                0 => (i * 257) as u16,
+                1 => 32768,
+                2 => 65535 - (i * 257) as u16,
+                3 => if i < 128 { 0 } else { 65535 },
+                _ => ((i % 16) * 4096) as u16,
+            }).collect();
+            let tc = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 256, vals.as_ptr());
+            if tc.is_null() { continue; }
+            let prof = c::cmsCreateGrayProfile(
+                std::ptr::null_mut(), tc);
+            let t = if !prof.is_null() {
+                c::cmsCreateTransform(prof,
+                    (3u32 << 16) | (1 << 3) | 1, srgb, r8,
+                    0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} gray t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !prof.is_null() { c::cmsCloseProfile(prof); }
+            c::cmsFreeToneCurve(tc);
+        }
+        // context dup chains on deep nests
+        let ctx0 = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        if !ctx0.is_null() {
+            let mut chain = vec![ctx0];
+            for _ in 0..8 {
+                let d = c::cmsDupContext(
+                    *chain.last().unwrap(),
+                    std::ptr::null_mut());
+                if !d.is_null() { chain.push(d); }
+            }
+            for c_ in chain.iter().rev() {
+                c::cmsDeleteContext(*c_); }
+            eprintln!("ctxchain depth={}", chain.len());
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
