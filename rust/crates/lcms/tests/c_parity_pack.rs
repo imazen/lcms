@@ -6534,3 +6534,85 @@ fn gray_pipeline_arms() {
             c::cmsCloseProfile(srgb); }
     }
 }
+
+/// cmspack residual — systematic format-word sweep:
+///   every (PT, channels, BYTES, flag-combo) through a
+///   transform hits its Unroll*/Pack* formatter variant.
+#[test]
+fn formatter_matrix() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let gray = open("graylcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let xyz = open("xyzlcms2.icc");
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let ok = |a: *mut c_void, fa: u32,
+                  b: *mut c_void, fb: u32| -> i32 {
+            let t = c::cmsCreateTransform(a, fa, b, fb, 0, 0);
+            if t.is_null() { return 0; }
+            let ib = [0x4000u16; 64];
+            let mut ob = [0u16; 128];
+            c::cmsDoTransform(t,
+                ib.as_ptr() as *const _,
+                ob.as_mut_ptr() as *mut _, 1);
+            c::cmsDeleteTransform(t);
+            1
+        };
+        // flag combos: name -> extra bits
+        let combos: [(u32, &str); 14] = [
+            (0, "base"),
+            (1 << 10, "doswap"),
+            (1 << 11, "end16"),
+            (1 << 12, "planar"),
+            (1 << 13, "flavor"),
+            (1 << 14, "swap1st"),
+            (1 << 7, "extra1"),
+            (1 << 23, "premul"),
+            ((1 << 23) | (1 << 7), "prem+ext"),
+            ((1 << 10) | (1 << 14), "ds+sf"),
+            ((1 << 12) | (1 << 10), "pl+ds"),
+            ((1 << 13) | (1 << 12), "fl+pl"),
+            ((1 << 14) | (1 << 13), "sf+fl"),
+            ((1 << 11) | (1 << 10), "e16+ds"),
+        ];
+        // (PT, ch, profile) — colorspace match
+        for (pt, ch, prof, nm) in [
+            (3u32, 1, gray, "gray"),
+            (4, 3, srgb, "rgb"),
+            (6, 4, cmyk, "cmyk"),
+            (9, 3, xyz, "xyz"),
+            (10, 3, lab4, "lab"),
+            (30, 3, lab4, "labv2"),
+        ] {
+            if prof.is_null() {
+                eprintln!("{nm}: null"); continue; }
+            for bytes in [1u32, 2, 4] {
+                for (fl, fnm) in &combos {
+                    // bytes=4 -> float bit (bare 4 rejects)
+                    let fb = if bytes == 4 {
+                        bytes | fl | (1 << 22)
+                    } else { bytes | fl };
+                    // input side: PT-fmt -> srgb u16
+                    let fi = (pt << 16) | (ch << 3) | fb;
+                    let ri = ok(prof, fi,
+                        srgb, f16(4, 3));
+                    // output side: srgb u16 -> PT-fmt
+                    let fo = (pt << 16) | (ch << 3) | fb;
+                    let ro = ok(srgb, f16(4, 3),
+                        prof, fo);
+                    if ri == 0 && ro == 0 {
+                        eprintln!("{nm} b{bytes} {fnm}: -"); } } } }
+        for p in [srgb, gray, cmyk, lab4, xyz] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
