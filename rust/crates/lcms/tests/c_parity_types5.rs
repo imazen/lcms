@@ -3937,3 +3937,125 @@ fn dict_cooked_write() {
         c::cmsCloseProfile(ch);
     }
 }
+
+/// Type_LUT8_Dup — a SaveAs8bits pipeline written to A2B0 on a
+/// v2 profile (DecideLUTtypeA2B returns cmsSigLut8Type only for
+/// ICCVersion < 4.0 && Lut->SaveAs8Bits).
+#[test]
+fn lut8_dup_write() {
+    unsafe {
+        let ch = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(ch, 2.1);
+        let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+        lcms::profile::set_profile_version(&mut rp, 2.1);
+        let mut tab = [0u16; 8 * 3];
+        for (i, v) in tab.iter_mut().enumerate() {
+            *v = (i * 2730) as u16;
+        }
+        let cpipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let cur = [g; 3];
+        c::cmsPipelineInsertStage(cpipe, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, cur.as_ptr()));
+        c::cmsPipelineInsertStage(cpipe, 1,
+            c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), 2, 3, 3, tab.as_ptr()));
+        c::cmsPipelineSetSaveAs8bitsFlag(cpipe, 1);
+        let rg = lcms::gamma::build_gamma(None, 2.2).unwrap();
+        let mut rpipe = lcms::lut::pipeline_alloc(None, 3, 3).unwrap();
+        rpipe.insert_stage(lcms::lut::StageLoc::AtEnd,
+            lcms::lut::stage_alloc_tone_curves(
+                None, 3, Some(&[&rg; 3])).unwrap());
+        rpipe.insert_stage(lcms::lut::StageLoc::AtEnd,
+            lcms::lut::stage_alloc_clut16bit(None, 2, 3, 3,
+                Some(&tab)).unwrap());
+        rpipe.set_save_as_8bits(true);
+        let c_ok = c::cmsWriteTag(ch, 0x41324230, cpipe as *const _);
+        let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x41324230,
+            Some(lcms::tagtypes::TagObject::Mpe(rpipe)));
+        assert_eq!(c_ok != 0, r_ok, "lut8 write");
+        let mut c_out = vec![0u8; 1 << 20];
+        let mut n = c_out.len() as u32;
+        let s_ok = c::cmsSaveProfileToMem(ch,
+            c_out.as_mut_ptr() as *mut _, &mut n);
+        let r_out = lcms::profile::save_profile_to_mem(&mut rp);
+        assert_eq!(s_ok != 0, r_out.is_some(), "lut8 save status");
+        if s_ok != 0 {
+            c_out.truncate(n as usize);
+            let mut r_out = r_out.unwrap();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "lut8 resave");
+        }
+        c::cmsCloseProfile(ch);
+    }
+}
+
+/// Cooked reads — save→reopen→cmsReadTag for mhc2 + a dict with
+/// MLU display names (ReadOneMLUC only runs for entries carrying
+/// DisplayName/DisplayValue MLUs). Hits Type_MHC2_Read +
+/// ReadDoublesAt + Type_Dictionary_Read + ReadOneMLUC.
+#[test]
+fn cooked_reads_mhc2_dict() {
+    unsafe {
+        let ch = c::cmsCreate_sRGBProfile();
+        // mhc2
+        let red: Vec<f64> = (0..64).map(|i| i as f64 / 63.0).collect();
+        let mat: [[f64; 4]; 3] = [
+            [1.1, 0.0, 0.0, 0.01],
+            [0.0, 0.9, 0.0, 0.0],
+            [0.0, 0.0, 0.8, 0.02]];
+        #[repr(C)]
+        struct CMhc2 {
+            curve_entries: u32,
+            _pad: u32,
+            red: *const f64,
+            green: *const f64,
+            blue: *const f64,
+            min_lum: f64,
+            peak_lum: f64,
+            matrix: [[f64; 4]; 3],
+        }
+        let cm = CMhc2 {
+            curve_entries: 64, _pad: 0,
+            red: red.as_ptr(), green: red.as_ptr(), blue: red.as_ptr(),
+            min_lum: 0.005, peak_lum: 500.0, matrix: mat,
+        };
+        c::cmsWriteTag(ch, 0x4D484332, &cm as *const _ as *const _);
+        // dict with MLU display names
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        let n1: [i32; 6] = [0x4e, 0x61, 0x6d, 0x65, 0x31, 0];
+        let v1: [i32; 4] = [0x56, 0x61, 0x6c, 0];
+        let dn = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(dn, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            b"DisplayOne\0".as_ptr());
+        let dv = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(dv, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            b"ValueOne\0".as_ptr());
+        c::cmsDictAddEntry(dict, n1.as_ptr(), v1.as_ptr(), dn, dv);
+        c::cmsWriteTag(ch, 0x6D657461, dict as *const _);
+        // save + reopen + cooked reads
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s_ok = c::cmsSaveProfileToMem(ch,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        assert_ne!(s_ok, 0);
+        buf.truncate(n as usize);
+        let h2 = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, buf.len() as u32);
+        assert!(!h2.is_null());
+        let t1 = c::cmsReadTag(h2, 0x4D484332); // 'MHC2' -> Type_MHC2_Read
+        let t2 = c::cmsReadTag(h2, 0x6D657461); // 'meta' -> dict+ReadOneMLUC
+        eprintln!("mhc2={} dict={}", !t1.is_null(), !t2.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsMLUfree(dn);
+        c::cmsMLUfree(dv);
+        c::cmsDictFree(dict);
+        c::cmsCloseProfile(ch);
+    }
+}
