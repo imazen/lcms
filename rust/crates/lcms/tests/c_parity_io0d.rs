@@ -2143,3 +2143,37 @@ fn attributes_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Illuminant-field bounds — mutate the illuminant XYZ
+/// then open (the illuminant validation machinery).
+#[test]
+fn illuminant_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // illuminant is 3 s15f16be at offset 68 (12 bytes)
+        for (name, vals) in [
+            ("d50", [0x0000f6d6i32, 0x00010000,
+             0x0000d32d] as [i32; 3]),
+            ("zero", [0; 3]),
+            ("one", [1, 1, 1]),
+            ("neg", [-1, -1, -1]),
+            ("huge", [0x7fffffff; 3])] {
+            let mut b = buf.clone();
+            for (i, v) in vals.iter().enumerate() {
+                b[68 + i*4..72 + i*4]
+                    .copy_from_slice(&v.to_be_bytes());
+            }
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
