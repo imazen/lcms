@@ -55,3 +55,19 @@ fn log_error_handler() {
     }
 }
 
+
+/// cmsSetAlarmCodesTHR + cmsGetAlarmCodesTHR — the alarm-code
+/// machinery.
+#[test]
+fn alarm_codes() {
+    unsafe {
+        let ctx = c::cmsDupContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let codes = [0xABCDu16; 16];
+        c::cmsSetAlarmCodesTHR(ctx, codes.as_ptr());
+        let mut got = [0u16; 16];
+        c::cmsGetAlarmCodesTHR(ctx, got.as_mut_ptr());
+        assert_eq!(got, codes, "alarm codes set/get");
+        c::cmsDeleteContext(ctx);
+    }
+}
