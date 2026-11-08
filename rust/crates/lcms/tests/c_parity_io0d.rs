@@ -13049,3 +13049,124 @@ fn mlu_ncl2_scr_read_arms() {
         }
     }
 }
+
+/// Type_MPEclut_Read + Type_MPEmatrix_Read — mpet elements
+/// (clut/matf) through d2b0/b2d0: valid + malformed variants.
+#[test]
+fn mpe_elem_read_arms() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    fn f32be(v: f32) -> [u8; 4] { v.to_be_bytes() }
+    // element: sig u32, rsv u32, payload
+    fn clut_elem(ich: u8, och: u8, dims: &[u8],
+        fill: u8) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x636C7574));   // 'clut'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be16(ich as u16));
+        t.extend_from_slice(&be16(och as u16));
+        let mut d8 = [0u8; 16];
+        for (i, v) in dims.iter().enumerate() {
+            d8[i] = *v;
+        }
+        t.extend_from_slice(&d8);
+        let mut n = och as usize;
+        for v in dims { n *= *v as usize; }
+        for i in 0..n.min(1 << 20) {
+            t.extend_from_slice(&f32be(
+                (i % 13) as f32 / 13.0 + fill as f32 * 0.01));
+        }
+        t
+    }
+    fn matf_elem(ich: u8, och: u8) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x6D617466));   // 'matf'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be16(ich as u16));
+        t.extend_from_slice(&be16(och as u16));
+        let n = (ich as usize) * (och as usize);
+        for i in 0..n + och as usize {
+            let v = if i % (ich as usize + 1) == 0 { 1.0f32 }
+                else { 0.0 };
+            t.extend_from_slice(&f32be(v));
+        }
+        t
+    }
+    // mpet: 'mpet' + rsv + u32 nElements + [off u32, size u32]*n
+    // offsets relative to tag-data base (after the 12-byte hdr?
+    // actually position table base = tag start)
+    fn mpet(elems: &[Vec<u8>]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x6D706574));   // 'mpet'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be16(3));            // nIn
+        t.extend_from_slice(&be16(3));            // nOut
+        t.extend_from_slice(&be32(elems.len() as u32));
+        let mut off = 16 + elems.len() as u32 * 8;
+        for e in elems {
+            t.extend_from_slice(&be32(off));
+            t.extend_from_slice(&be32(e.len() as u32));
+            off += e.len() as u32;
+        }
+        for e in elems { t.extend_from_slice(e); }
+        t
+    }
+    unsafe {
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (mpet(&[clut_elem(3, 3, &[2, 2, 2], 0)]),
+                "clut-3ch"),
+            (mpet(&[clut_elem(4, 3, &[2, 2, 2, 2], 0)]),
+                "clut-4in"),
+            (mpet(&[clut_elem(3, 4, &[3, 3, 3], 0)]),
+                "clut-4out"),
+            (mpet(&[clut_elem(1, 1, &[5], 0)]), "clut-1ch"),
+            (mpet(&[clut_elem(0, 3, &[2, 2, 2], 0)]),
+                "clut-ich0"),
+            (mpet(&[clut_elem(3, 0, &[2, 2, 2], 0)]),
+                "clut-och0"),
+            (mpet(&[clut_elem(3, 3, &[1, 2, 2], 0)]),
+                "clut-dim1"),
+            (mpet(&[clut_elem(3, 3, &[0, 2, 2], 0)]),
+                "clut-dim0"),
+            (mpet(&[matf_elem(3, 3)]), "matf-3x3"),
+            (mpet(&[matf_elem(3, 4)]), "matf-3x4"),
+            (mpet(&[matf_elem(1, 3)]), "matf-1x3"),
+            (mpet(&[matf_elem(0, 3)]), "matf-ich0"),
+            (mpet(&[clut_elem(3, 3, &[2, 2, 2], 0),
+                matf_elem(3, 3)]), "clut+matf"),
+            (mpet(&[clut_elem(3, 3, &[2, 2, 2], 0),
+                clut_elem(3, 3, &[3, 3, 3], 1)]), "clut+clut"),
+            ({ let mut t = mpet(&[clut_elem(3, 3, &[2, 2, 2],
+                0)]); t.truncate(20); t }, "trunc"),
+        ];
+        for sig in [0x44324230u32, 0x42324430] {
+            for (blob, name) in &variants {
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                c::cmsSetColorSpace(prof, 0x4C616220);
+                c::cmsSetPCS(prof, 0x58595A20);
+                c::cmsSetProfileVersion(prof, 4.4);
+                let w = c::cmsWriteRawTag(prof, sig,
+                    blob.as_ptr() as *const _, blob.len() as u32);
+                let mut buf = vec![0u8; 1 << 22];
+                let mut n = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                let rd = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{sig:#x}/{name} w={w} s={s} rd={}",
+                    !rd.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+            }
+        }
+    }
+}
