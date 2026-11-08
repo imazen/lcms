@@ -3557,3 +3557,29 @@ fn write_dispatch_dtim() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a chromaticity-typed payload — the
+/// write machinery on different object types.
+#[test]
+fn write_dispatch_chrm() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct Chrm {
+            r_x: f64, r_y: f64, r_Y: f64,
+            g_x: f64, g_y: f64, g_Y: f64,
+            b_x: f64, b_y: f64, b_Y: f64,
+        }
+        let chrm = Chrm {
+            r_x: 0.64, r_y: 0.33, r_Y: 0.21,
+            g_x: 0.30, g_y: 0.60, g_Y: 0.71,
+            b_x: 0.15, b_y: 0.06, b_Y: 0.08 };
+        for (sig, name) in [
+            (0x6368726Du32, "chrm"), (0x63616C74u32, "calt")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &chrm as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
