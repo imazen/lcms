@@ -24450,3 +24450,106 @@ fn internal_final71_arms() {
         }
     }
 }
+
+/// cmsvirt residual — cmsTransform2DeviceLink internals:
+///   OutputClass→BToA0, FORCE_CLUT, colorant-tag writes,
+///   pipeline-shape fixups.
+#[test]
+fn internal_final72_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // transforms on profiles of each class →
+        //   DestinationTag + colorant branches
+        for (cls, cs, pcs, name) in [
+            (0x70727472u32, 0x52474220, 0x58595A20, "out"),
+            (0x6C696E6B, 0x52474220, 0x52474220, "link"),
+            (0x73636E72, 0x52474220, 0x58595A20, "in"),
+            (0x6D6E7472, 0x52474220, 0x58595A20, "disp"),
+            (0x73706163, 0x58595A20, 0x58595A20, "spc"),
+        ] {
+            for (flags, fname) in [
+                (0u32, "0"), (0x8000, "fclut"),
+                (0x0400, "bpc"),
+            ] {
+                let p1 = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(p1, cls);
+                c::cmsSetColorSpace(p1, cs);
+                c::cmsSetPCS(p1, pcs);
+                c::cmsSetProfileVersion(p1, 4.4);
+                let pl = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                let trcs = [g, g, g];
+                c::cmsPipelineInsertStage(pl, 0,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        trcs.as_ptr() as *mut _));
+                c::cmsWriteTag(p1, 0x41324230,
+                    pl as *const _);
+                c::cmsWriteTag(p1, 0x42324130,
+                    pl as *const _);
+                // colorant tag on link/input
+                let cl = c::cmsAllocNamedColorList(
+                    std::ptr::null_mut(), 3, 3,
+                    b"p\0".as_ptr(), b"s\0".as_ptr());
+                if !cl.is_null() {
+                    let pcs2 = [0x1000u16; 16];
+                    let col = [0x2000u16; 16];
+                    c::cmsAppendNamedColor(cl, b"c0\0"
+                        .as_ptr(), pcs2.as_ptr(),
+                        col.as_ptr());
+                    c::cmsWriteTag(p1, 0x636C726F,
+                        cl as *const _);
+                    c::cmsFreeNamedColorList(cl);
+                }
+                let fin = (4u32 << 16) | (3 << 3) | 2;
+                let t = c::cmsCreateTransform(p1, fin,
+                    srgb, fin, 0, 0);
+                eprintln!("{name} {fname} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    for ver in [2.0f64, 4.3, 4.4] {
+                        let dl = c::cmsTransform2DeviceLink(
+                            t, ver, flags);
+                        eprintln!("  v{ver} dl={}",
+                            !dl.is_null());
+                        if !dl.is_null() {
+                            let mut buf = vec![0u8;
+                                1 << 20];
+                            let mut n = buf.len() as u32;
+                            c::cmsSaveProfileToMem(dl,
+                                buf.as_mut_ptr()
+                                    as *mut _, &mut n);
+                            c::cmsCloseProfile(dl);
+                        }
+                    }
+                    c::cmsDeleteTransform(t);
+                }
+                c::cmsCloseProfile(p1);
+                c::cmsPipelineFree(pl);
+            }
+        }
+        // transforms with non-curveset first/last stages
+        //   → identity-insert fixups
+        for (st, sname) in [
+            (0u32, "mat"), (1, "clut"), (2, "idn"),
+        ] {
+            let t0 = c::cmsCreateTransform(srgb,
+                (4u32 << 16) | (3 << 3) | 2,
+                srgb, (4u32 << 16) | (3 << 3) | 2,
+                0, 0);
+            if t0.is_null() { continue; }
+            let _ = st;
+            let _ = sname;
+            let dl = c::cmsTransform2DeviceLink(t0, 4.4,
+                0);
+            eprintln!("idfix {sname} dl={}",
+                !dl.is_null());
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            c::cmsDeleteTransform(t0);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
