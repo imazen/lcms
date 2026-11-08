@@ -1270,3 +1270,28 @@ fn clut_sample2() {
         }
     }
 }
+
+/// Pipeline eval internals on more combos — the pipeline
+/// eval machinery.
+#[test]
+fn pipeline_eval2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (name, n) in [
+            ("1ch", 1u32), ("3ch", 3), ("4ch", 4), ("15ch", 15)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), n, n);
+            let curves = vec![g; n as usize];
+            c::cmsPipelineInsertStage(pl, 1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), n, curves.as_ptr()));
+            let mut inp = [0.5f32; 15];
+            let mut out = [0.0f32; 15];
+            c::cmsPipelineEvalFloat(
+                inp.as_ptr(), out.as_mut_ptr(), pl);
+            eprintln!("{name} eval={:.4}", out[0]);
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
