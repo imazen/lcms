@@ -12905,3 +12905,147 @@ fn mhc2_read_arms2() {
         }
     }
 }
+
+/// Type_MLU_Read + Type_NamedColor_Read + Type_Screening_Read —
+/// raw blobs through write-raw + save + reopen.
+#[test]
+fn mlu_ncl2_scr_read_arms() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    // mlu: recSize u32, nRecs u32, [lang u16, country u16,
+    //   len u32, off u32]*nRecs, text
+    fn mlu(recs: &[(u16, u16, &[u8])]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x6D6C7563));   // 'mluc'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(12));
+        t.extend_from_slice(&be32(recs.len() as u32));
+        let mut off = 16 + recs.len() * 12;
+        let mut text = Vec::new();
+        for (_, _, txt) in recs {
+            t.extend_from_slice(&be16(0x656E));
+            t.extend_from_slice(&be16(0x5553));
+            t.extend_from_slice(&be32(txt.len() as u32));
+            t.extend_from_slice(&be32(off as u32));
+            text.extend_from_slice(txt);
+            off += txt.len();
+        }
+        t.extend_from_slice(&text);
+        t
+    }
+    // ncl2: vendor u32, nColors u32, nCoord u32,
+    //   [name 32, pcs u16*3, dev u16*nCoord]*n
+    fn ncl2(ncoord: u32, entries: &[u32]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x6E636C32));   // 'ncl2'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(0x6C636D73));   // vendor
+        t.extend_from_slice(&be32(entries.len() as u32));
+        t.extend_from_slice(&be32(ncoord));
+        for i in entries {
+            let mut name = [0u8; 32];
+            let nm = format!("c{i}");
+            name[..nm.len()].copy_from_slice(nm.as_bytes());
+            t.extend_from_slice(&name);
+            for v in [0x1000u16, 0x2000, 0x3000] {
+                t.extend_from_slice(&be16(v));
+            }
+            for _ in 0..ncoord {
+                t.extend_from_slice(&be16(*i as u16 * 100));
+            }
+        }
+        t
+    }
+    // screening/scr : channels u32, [freq f64, angle f64,
+    //   shape u32]*n
+    fn scr(n: u32, shapes: &[u32]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x7363726E));   // 'scrn'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(0x00010000));   // flag
+        t.extend_from_slice(&be32(n));
+        for i in 0..n {
+            let sh = shapes.get(i as usize).copied()
+                .unwrap_or(0);
+            t.extend_from_slice(&((30.0f64 + i as f64)
+                .to_bits() as u64).to_be_bytes());
+            t.extend_from_slice(&((45.0f64).to_bits() as u64)
+                .to_be_bytes());
+            t.extend_from_slice(&be32(sh));
+        }
+        t
+    }
+    unsafe {
+        let variants: Vec<(u32, Vec<u8>, &str)> = vec![
+            (0x64657363, mlu(&[(0x656E, 0x5553, b"hello\0")]),
+                "mlu-1"),
+            (0x64657363, mlu(&[(0x656E, 0x5553, b"a"),
+                (0x6465, 0x4445, b"deutsch")]), "mlu-2"),
+            (0x64657363, mlu(&[]), "mlu-empty"),
+            (0x6E636C32, ncl2(4, &[1, 2, 3]), "ncl2-3"),
+            (0x6E636C32, ncl2(4, &[0; 300]), "ncl2-300"),
+            (0x6E636C32, ncl2(0, &[1]), "ncl2-nocolorant"),
+            (0x7363726E, scr(3, &[0, 1, 2]), "scr-3"),
+            (0x7363726E, scr(1, &[0]), "scr-1"),
+            (0x7363726E, scr(4, &[0, 1, 2, 3]), "scr-4"),
+            (0x7363726E, scr(3, &[99, 0, 1]), "scr-badshape"),
+            (0x64657363, {
+                let mut t = mlu(&[(0x656E, 0x5553, b"x")]);
+                t.truncate(20); t }, "mlu-trunc"),
+            (0x6E636C32, {
+                let mut t = ncl2(4, &[1, 2, 3]);
+                t.truncate(30); t }, "ncl2-trunc"),
+        ];
+        // valid MLU via API — covers the mluc success path
+        {
+            let m = c::cmsMLUalloc(std::ptr::null_mut(), 2);
+            c::cmsMLUsetASCII(m, b"en\0".as_ptr(),
+                b"US\0".as_ptr(), b"sample desc\0".as_ptr());
+            c::cmsMLUsetASCII(m, b"de\0".as_ptr(),
+                b"DE\0".as_ptr(), b"deutsch\0".as_ptr());
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x64657363,
+                m as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x64657363)
+            } else { std::ptr::null_mut() };
+            eprintln!("mlu-api w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsMLUfree(m);
+        }
+        for (sig, blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, *sig,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, *sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
