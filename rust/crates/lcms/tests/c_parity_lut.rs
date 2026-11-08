@@ -1743,3 +1743,32 @@ fn float_granular() {
         }
     }
 }
+
+/// Pipeline eval on multi-channel shapes — the eval
+/// machinery on more channel counts.
+#[test]
+fn pipeline_eval_multich() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (name, n) in [
+            ("2ch", 2u32), ("6ch", 6), ("8ch", 8), ("15ch", 15)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), n, n);
+            let curves = vec![g; n as usize];
+            c::cmsPipelineInsertStage(pl, 1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), n, curves.as_ptr()));
+            let inp = [0x8000u16; 15];
+            let mut out = [0u16; 15];
+            c::cmsPipelineEval16(
+                inp.as_ptr(), out.as_mut_ptr(), pl);
+            let inpf = [0.5f32; 15];
+            let mut outf = [0.0f32; 15];
+            c::cmsPipelineEvalFloat(
+                inpf.as_ptr(), outf.as_mut_ptr(), pl);
+            eprintln!("{name} u16={} f={:.3}", out[0], outf[0]);
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
