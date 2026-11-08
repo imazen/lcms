@@ -4813,3 +4813,80 @@ fn pack_variant_tail_arms() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmspack residual — u8 fast-path *Optimized packers
+///   (chunky/skip1/swap/swapfirst) + remaining float/
+///   double in-variants.
+#[test]
+fn pack_optimized_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // u8 fast path: lab->srgb with chunky u8 outs
+        //   at skip1/swap variants
+        for (fout, name) in [
+            ((4u32 << 16) | (3 << 3) | 1, "rgb8"),
+            ((4u32 << 16) | (1 << 10) | (3 << 3) | 1,
+                "rgb8-ds"),
+            ((4u32 << 16) | (1 << 14) | (3 << 3) | 1,
+                "rgb8-sf"),
+            ((4u32 << 16) | (1 << 10) | (1 << 14)
+                | (3 << 3) | 1, "rgb8-both"),
+            ((4u32 << 16) | (4 << 3) | 1, "rgbx8"),
+            ((4u32 << 16) | (1 << 10) | (4 << 3) | 1,
+                "xrgb8-ds"),
+            ((4u32 << 16) | (1 << 14) | (4 << 3) | 1,
+                "xrgb8-sf"),
+            ((4u32 << 16) | (1 << 10) | (1 << 14)
+                | (4 << 3) | 1, "xrgb-both"),
+        ] {
+            for fl in [0u32, 0x0100] {
+                let t = c::cmsCreateTransform(lab4, flab,
+                    srgb, fout, 0, fl);
+                if !t.is_null() {
+                    let src = [0x8000u16; 3];
+                    let mut dst = [0u8; 8];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 4);
+                    if fl == 0 {
+                        eprintln!("{name} {dst:?}"); }
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        // float/double in variants: xyz/lab float +
+        //   double -> srgb
+        for (in_prof, fin, name) in [
+            (lab4, (1u32 << 22) | (10 << 16)
+                | (3 << 3) | 4, "labf"),
+            (lab4, (1u32 << 22) | (10 << 16)
+                | (3 << 3) | 8, "labd"),
+            (lab4, (1u32 << 22) | (10 << 16)
+                | (1 << 10) | (3 << 3) | 4, "labf-ds"),
+            (lab4, (1u32 << 22) | (10 << 16)
+                | (1 << 14) | (3 << 3) | 4, "labf-sf"),
+            (lab4, (1u32 << 22) | (10 << 16)
+                | (1 << 12) | (3 << 3) | 4, "labf-plan"),
+            (lab4, (1u32 << 22) | (10 << 16)
+                | (1 << 10) | (1 << 14) | (3 << 3) | 4,
+                "labf-both"),
+        ] {
+            let t = c::cmsCreateTransform(in_prof, fin,
+                srgb, (4u32 << 16) | (3 << 3) | 1, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0.5f64; 8];
+                let mut dst = [0u8; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
