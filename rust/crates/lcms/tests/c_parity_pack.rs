@@ -698,3 +698,43 @@ fn float_byte_order() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// CMYK + Lab + gray-alpha byte-order variants — the
+/// remaining pixel-type packers.
+#[test]
+fn cmyk_lab_byte_order() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            c::cmsD50_xyY() as *const std::ffi::c_void, gg);
+        for (name, in_fmt, out_fmt, p2) in [
+            ("lab-bgr-16", (4 << 16) | (1 << 10) | (3 << 3) | 2u32,
+             (10 << 16) | (1 << 10) | (3 << 3) | 2, lab4),
+            ("lab-rgba", (4 << 16) | (1 << 7) | (3 << 3) | 2,
+             (10 << 16) | (1 << 7) | (3 << 3) | 2, lab4),
+            ("lab-doswap", (4 << 16) | (3 << 3) | 2,
+             (10 << 16) | (1 << 10) | (3 << 3) | 2, lab4),
+            ("gray-alpha", (4 << 16) | (3 << 3) | 2,
+             (3 << 16) | (1 << 7) | (1 << 3) | 2, gray),
+            ("gray-alpha-f", (1 << 22) | (4 << 16) | (3 << 3) | 4,
+             (1 << 22) | (3 << 16) | (1 << 7) | (1 << 3) | 4,
+             gray),
+        ] {
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x8000u16, 0x6000, 0x4000, 0xFFFF];
+                let mut out = [0u16; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(gray);
+    }
+}
