@@ -967,3 +967,36 @@ fn preview_lut_reader() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadInputLUT/_cmsReadOutputLUT internals — matrix-shaper,
+/// gamut, preview, named-color, devicelink profile classes.
+#[test]
+fn lut_reader_dispatch_all() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        // every corpus profile in input + output positions
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "aRGBlcms2.icc",
+                  "lcms2link.icc", "labv2lcms2.icc", "graylcms2.icc",
+                  "lcms2mtsh.icc", "lcms2matrix.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for (inp, outp, if_, of) in [
+                (p, lab, r16, l16),      // input
+                (lab, p, l16, r16),      // output
+            ] {
+                let t = c::cmsCreateTransform(inp, if_, outp, of,
+                    0, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{f} ok");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
