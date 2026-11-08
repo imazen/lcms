@@ -683,3 +683,45 @@ fn modifier_format_evals() {
         }
     }
 }
+
+/// Exhaustive formatter matrix — (pt x nch x bytes x modifiers)
+/// on same-PCS srgb->srgb transforms; hits every Unroll*/Pack*
+/// variant C accepts.
+#[test]
+fn exhaustive_format_matrix() {
+    unsafe {
+        // pixel-type sigs: gray=1, 2ch=2, xyz=3, lab=4, rgb=4?,
+        // the TYPE bits select the formatter family
+        let pts = [1u32, 2, 3, 4, 10, 6, 18, 15];
+        let byteses = [1u32, 2, 4, 8];
+        let mods = [0u32, 1 << 9, 1 << 10, 1 << 11, 1 << 12,
+                    1 << 13, 1 << 17, 1 << 18];
+        let mut count = 0u32;
+        for pt in pts {
+            for nch in 1..=8u32 {
+                for bytes in byteses {
+                    for m in mods {
+                        let fmt: u32 = (pt << 16) | (nch << 3)
+                            | bytes | m;
+                        let hi = c::cmsCreate_sRGBProfile();
+                        let ho = c::cmsCreate_sRGBProfile();
+                        let ct = c::cmsCreateTransform(hi, fmt,
+                            ho, fmt, 0, 0);
+                        let _ = c::cmsCloseProfile(hi);
+                        let _ = c::cmsCloseProfile(ho);
+                        if ct.is_null() { continue; }
+                        count += 1;
+                        let nbytes = (bytes.max(1) as usize)
+                            * nch as usize;
+                        let inp = vec![0x77u8; nbytes];
+                        let mut co = vec![0u8; nbytes];
+                        c::cmsDoTransform(ct, inp.as_ptr() as _,
+                            co.as_mut_ptr() as *mut _, 1);
+                        c::cmsDeleteTransform(ct);
+                    }
+                }
+            }
+        }
+        eprintln!("accepted {count} format combos");
+    }
+}
