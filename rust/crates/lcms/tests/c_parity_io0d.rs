@@ -1301,3 +1301,32 @@ fn platform_fields() {
         }
     }
 }
+
+/// Tag-table machinery — unusual tag-table structures.
+#[test]
+fn tag_table_structures() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the first tag's sig/offset/size (offset 132)
+        for (name, off, v) in [
+            ("sig0-0", 132, 0u32),
+            ("sig0-huge", 132, 0xFFFFFFFFu32),
+            ("off0-0", 136, 0u32),
+            ("off0-huge", 136, 0xFFFFFFFFu32),
+            ("size0-0", 140, 0u32),
+            ("size0-huge", 140, 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
