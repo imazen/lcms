@@ -612,3 +612,31 @@ fn pipeline_introspection() {
         }
     }
 }
+
+/// cmsStageType + cmsStageDup — stage introspection + dup.
+#[test]
+fn stage_type_dup() {
+    unsafe {
+        // each stage type — alloc, query type, dup, free
+        let stages: Vec<(*mut c_void, u32)> = vec![
+            (c::cmsStageAllocIdentity(std::ptr::null_mut(), 3),
+                0x6964656E), // 'iden'
+            (c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0].as_ptr(),
+                std::ptr::null()), 0x6D617466), // 'matf'
+        ];
+        for (st, _sig) in &stages {
+            if !st.is_null() {
+                let ct = c::cmsStageType(*st);
+                eprintln!("stage type {ct:#x}");
+                let dup = c::cmsStageDup(*st);
+                assert!(!dup.is_null(), "dup");
+                c::cmsStageFree(dup);
+                c::cmsStageFree(*st);
+            }
+        }
+        // rust side — stage_type on the Stage objects
+        let rid = lut::stage_alloc_identity(None, 3);
+        assert_eq!(rid.stage_type(), 0x69646e20, "identity type");
+    }
+}
