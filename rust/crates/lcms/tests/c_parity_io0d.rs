@@ -19411,3 +19411,85 @@ fn internal_final19_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final20_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // multiprofile on all profile mixes incl same-profile
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), g);
+        for (profs_, name) in [
+            (vec![srgb], "1p"),
+            (vec![srgb, srgb, srgb, srgb], "4s"),
+            (vec![lab, lab, lab], "3l"),
+            (vec![gray, gray, gray, gray], "4g"),
+            (vec![srgb, lab, srgb, lab, srgb], "5mix"),
+            (vec![gray, lab, gray, lab], "4alt"),
+        ] {
+            let mut profs = profs_;
+            let n_ = profs.len() as i32;
+            for intent in 0..4u32 {
+                let mut bpc = [0i32; 8];
+                let mut intents = [intent; 8];
+                let mut adapt = [0.5f64; 8];
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), n_ as u32,
+                    profs.as_mut_ptr(), bpc.as_mut_ptr(),
+                    intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    std::ptr::null_mut(), 0, r8, r8, 0);
+                eprintln!("{name} i{intent}={}",
+                    !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+        }
+        // transforms on profiles with unusual data
+        for (w, name) in [
+            (0.0f64, "d0"), (0.5, "d05"), (1.0, "d10"),
+            (2.0, "d20"), (0.3457, "d35"),
+            (1e-6, "dtiny"), (1e6, "dhuge"), (-1.0, "dneg"),
+        ] {
+            let wp = c::CiexyY { x: w, y: w * 0.9 + 0.05,
+                Y: 1.0 };
+            let prim = c::CiexyYTriple {
+                Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+                Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+                Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+            };
+            let trcs = [g, g, g];
+            let prof = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _,
+                &prim as *const c::CiexyYTriple as *const _,
+                trcs.as_ptr() as *const *mut std::ffi::c_void);
+            let t = if !prof.is_null() {
+                c::cmsCreateTransform(prof, r8, lab,
+                    l8, 0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} prof={} t={}",
+                !prof.is_null(), !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !prof.is_null() { c::cmsCloseProfile(prof); }
+        }
+        // transform with proofing on unusual gamut flags
+        for gc in [0u32, 1, 2, 3, 0x10, 0x20, 0x40, 0x80,
+            0x100, 0x200, 0x400, 0x800, 0x1000, 0xFFFF] {
+            let t = c::cmsCreateProofingTransform(srgb, r8,
+                lab, l8, srgb, 0, 0, gc << 16);
+            eprintln!("gc {gc:#x}={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
