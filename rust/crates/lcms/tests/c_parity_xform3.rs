@@ -77,3 +77,48 @@ fn adaptation_state() {
         }
     }
 }
+
+/// cmsChangeBuffersFormat on exotic format bits — the format-dispatch
+/// validation + CAN_CHANGE_FORMATTER machinery. Status parity on each
+/// modifier bit + eval parity on the simple ones.
+#[test]
+fn change_buffers_format_matrix() {
+    unsafe {
+        let base: u32 = (4 << 16) | (3 << 3) | 2; // TYPE_RGB_16-ish
+        let mods: [(u32, &str); 6] = [
+            (0x400u32, "DOSWAP"),
+            (0x4000, "SWAPFIRST"),
+            (0x2000, "FLAVOR"),
+            (0x1000, "PLANAR"),
+            (0x800, "ENDIAN16"),
+            (0x800000, "PREMUL"),
+        ];
+        let h1 = c::cmsCreate_sRGBProfile();
+        let h2 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let cs: u32 = (4 << 16) | (3 << 3) | 2;  // TYPE_RGB_16
+        let co_fmt: u32 = (10 << 16) | (3 << 3) | 2; // TYPE_Lab_16
+        let ct = c::cmsCreateTransform(h1, cs, h2, co_fmt, 0, 0);
+        let _ = c::cmsCloseProfile(h1);
+        let _ = c::cmsCloseProfile(h2);
+        assert!(!ct.is_null());
+        for (bit, name) in mods {
+            let ok = c::cmsChangeBuffersFormat(ct, base | bit, co_fmt | bit);
+            // rust side — fresh transform each time (change is
+            // destructive)
+            let mut rp1 = virt::create_srgb_profile(None).unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let fi: u32 = (4 << 16) | (3 << 3) | 2;
+            let fo: u32 = (10 << 16) | (3 << 3) | 2;
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let mut rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                fi, fo, 0).unwrap();
+            let rok = rt.change_buffers_format(base | bit, fo | bit);
+            assert_eq!(ok != 0, rok, "{name} change status");
+        }
+        c::cmsDeleteTransform(ct);
+    }
+}
