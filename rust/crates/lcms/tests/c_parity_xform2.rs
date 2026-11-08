@@ -4279,3 +4279,91 @@ fn plugin_real_arms() {
         eprintln!("hdrH r={r}");
     }
 }
+
+/// RootOfLeastSquaresFitQuadraticCurve — DetectBlackPoint/Dest
+/// intent-1 + 0/2 on varied profile shapes (CLUT + mat-shaper +
+/// gray + deviating ramps).
+#[test]
+fn blackpoint_fit_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gl = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        let gs = c::cmsBuildGamma(std::ptr::null_mut(), 0.5);
+        let gh = c::cmsBuildGamma(std::ptr::null_mut(), 5.0);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let graylin = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), gl);
+        let graysoft = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), gs);
+        let grayhard = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), gh);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        // deviating-CLUT profile — offset midrange so the
+        // fitting band sees non-linear points
+        let dev = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(dev, 0x6D6E7472);       // mntr
+        c::cmsSetColorSpace(dev, 0x52474220);        // RGB
+        c::cmsSetPCS(dev, 0x4C616220);               // Lab
+        c::cmsSetProfileVersion(dev, 4.4);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let mut grid = vec![0u16; 3 * 27];
+        // midrange L* offset (deviates the 20-100% band)
+        for i in 0..27 {
+            let l = ((i % 9) * 4096 + (i / 9) * 8192) as u16;
+            grid[i * 3] = l;
+            grid[i * 3 + 1] = (l / 2) + 4096;
+            grid[i * 3 + 2] = l % 65535;
+        }
+        let dims = [3u32; 3];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                grid.as_ptr()));
+        c::cmsWriteTag(dev, 0x41324231, p as *const _); // a2b1
+        let mut bp = c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 };
+        for (prof, name) in [
+            (srgb, "srgb"), (lab, "lab"), (xyz, "xyz"),
+            (gray, "gray"), (graylin, "graylin"),
+            (graysoft, "graysoft"), (grayhard, "grayhard"),
+            (cmyk, "cmyk"), (dev, "dev"),
+        ] {
+            if prof.is_null() { continue; }
+            for intent in [0u32, 1, 2, 3] {
+                let mut bp1 = bp;
+                let r1 = c::cmsDetectBlackPoint(
+                    &mut bp1 as *mut c::CieXyz as *mut _,
+                    prof, intent, 0);
+                let mut bp2 = bp;
+                let r2 = c::cmsDetectDestinationBlackPoint(
+                    &mut bp2 as *mut c::CieXyz as *mut _,
+                    prof, intent, 0);
+                let mut bp3 = bp;
+                let r3 = c::cmsDetectDestinationBlackPoint(
+                    &mut bp3 as *mut c::CieXyz as *mut _,
+                    prof, intent, 0x2000);   // BPC
+                eprintln!("{name} i{intent} bp={r1} dbp={r2} \
+                    dbpb={r3}");
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(graylin);
+        c::cmsCloseProfile(graysoft);
+        c::cmsCloseProfile(grayhard);
+        c::cmsCloseProfile(dev);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsPipelineFree(p);
+        for tc in [g, gl, gs, gh] { c::cmsFreeToneCurve(tc); }
+    }
+}
