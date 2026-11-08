@@ -818,3 +818,34 @@ fn devicelink_output_remaining() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadInputLUT/_cmsReadOutputLUT remaining arms — named-color
+/// profile input + preview-profile + devicelink variations.
+#[test]
+fn lut_reader_remaining_arms() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        // named-color input (nmcl profile with ncl2 tag)
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 1,
+            3, b"p\0".as_ptr(), b"s\0".as_ptr());
+        let lab16 = [0xF000u16; 3];
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
+            lab16.as_ptr(), lab16.as_ptr());
+        let nclp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(nclp, 0x6e6d636c);
+        c::cmsSetColorSpace(nclp, 0x6e6d636c);
+        c::cmsSetPCS(nclp, 0x4C616220);
+        c::cmsWriteTag(nclp, 0x6e636c32, ncl as *const _);
+        let ncf = (0xFFu32 << 16) | (1 << 3) | 1;
+        let t = c::cmsCreateTransform(nclp, ncf, lab, l16, 0, 0);
+        eprintln!("ncl t={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(nclp);
+        c::cmsFreeNamedColorList(ncl);
+        c::cmsCloseProfile(lab);
+    }
+}
