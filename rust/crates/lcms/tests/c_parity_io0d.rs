@@ -16108,3 +16108,89 @@ fn io_internal_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio1 residual — BuildRGBInputMatrixShaper/
+/// BuildGrayInputPipeline/BuildGrayOutputPipeline on
+/// degenerate + varied-matrix profiles.
+#[test]
+fn matshaper_internal_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        // varied RGB xyY primaries/TRC profiles — degenerate
+        //   + valid matrix-shaper arms
+        for (rxy, gxy, bxy, wxy, name) in [
+            ((0.64f64, 0.33), (0.30, 0.60), (0.15, 0.06),
+                (0.3127, 0.3290), "srgb"),
+            ((0.50, 0.35), (0.25, 0.55), (0.15, 0.05),
+                (0.3127, 0.3290), "wide"),
+            ((0.64, 0.33), (0.64, 0.33), (0.64, 0.33),
+                (0.3127, 0.3290), "degenerate"),
+            ((0.99, 0.01), (0.01, 0.99), (0.50, 0.50),
+                (0.3127, 0.3290), "extreme"),
+            ((0.0, 0.0), (0.0, 0.0), (0.0, 0.0),
+                (0.3127, 0.3290), "zero"),
+            ((0.64, 0.33), (0.30, 0.60), (0.15, 0.06),
+                (0.3457, 0.3585), "d50"),
+            ((0.64, 0.33), (0.30, 0.60), (0.15, 0.06),
+                (0.0, 0.0), "zero-wp"),
+        ] {
+            let prim = c::CiexyYTriple {
+                Red: c::CiexyY { x: rxy.0, y: rxy.1, Y: 1.0 },
+                Green: c::CiexyY { x: gxy.0, y: gxy.1, Y: 1.0 },
+                Blue: c::CiexyY { x: bxy.0, y: bxy.1, Y: 1.0 },
+            };
+            let wp = c::CiexyY { x: wxy.0, y: wxy.1, Y: 1.0 };
+            let trcs = [g, g, g];
+            let prof = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _,
+                &prim as *const c::CiexyYTriple as *const _,
+                trcs.as_ptr() as *const *mut std::ffi::c_void);
+            eprintln!("{name} prof={}", !prof.is_null());
+            if !prof.is_null() {
+                for intent in [0u32, 1, 3] {
+                    let t = c::cmsCreateTransform(prof, r8,
+                        lab, l8, intent, 0);
+                    let t2 = c::cmsCreateTransform(lab, l8,
+                        prof, r8, intent, 0);
+                    eprintln!("  i{intent} in={} out={}",
+                        !t.is_null(), !t2.is_null());
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                    if !t2.is_null() {
+                        c::cmsDeleteTransform(t2); }
+                }
+                c::cmsCloseProfile(prof);
+            }
+        }
+        // gray profiles — kTRC variants
+        for (tg, name) in [
+            (1.0f64, "g10"), (2.2, "g22"), (0.5, "g05"),
+            (10.0, "g10x"), (0.01, "g001"),
+        ] {
+            let tgc = c::cmsBuildGamma(std::ptr::null_mut(), tg);
+            let gp = c::cmsCreateGrayProfile(
+                std::ptr::null_mut(), tgc);
+            for intent in [0u32, 1, 3] {
+                let t = c::cmsCreateTransform(gp, g8, lab, l8,
+                    intent, 0);
+                let t2 = c::cmsCreateTransform(lab, l8, gp, g8,
+                    intent, 0);
+                eprintln!("{name} i{intent} in={} out={}",
+                    !t.is_null(), !t2.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t2.is_null() { c::cmsDeleteTransform(t2); }
+            }
+            c::cmsCloseProfile(gp);
+            c::cmsFreeToneCurve(tgc);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
