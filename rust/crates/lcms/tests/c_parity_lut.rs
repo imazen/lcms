@@ -803,3 +803,26 @@ fn named_color_stage() {
         c::cmsFreeNamedColorList(cl);
     }
 }
+
+/// cmsStageAllocCLutFloatGranular — the float-CLUT-granular
+/// allocator.
+#[test]
+fn clut_float_granular() {
+    unsafe {
+        let grid: [u32; 3] = [2, 2, 2];
+        let tab = [0.5f32; 24];
+        let s = c::cmsStageAllocCLutFloatGranular(
+            std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+            tab.as_ptr());
+        assert!(!s.is_null(), "float-granular clut");
+        // eval through a pipeline
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(pl, 0, s);
+        let inp = [0.5f32, 0.5, 0.5];
+        let mut out = [0.0f32; 3];
+        c::cmsPipelineEvalFloat(inp.as_ptr(), out.as_mut_ptr(),
+            pl);
+        eprintln!("eval={:?}", out);
+        c::cmsPipelineFree(pl);
+    }
+}

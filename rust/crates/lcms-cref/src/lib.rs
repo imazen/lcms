@@ -490,6 +490,7 @@ unsafe extern "C" {
         output_chan: U32,
         table: *const F32,
     ) -> Handle;
+    pub fn cmsStageAllocCLutFloatGranular(ctx: *mut c_void, grid: *const u32, inch: u32, outch: u32, tab: *const f32) -> *mut c_void;
     pub fn cmsStageDup(mpe: Handle) -> Handle;
     pub fn cmsStageFree(mpe: Handle);
     pub fn cmsStageInputChannels(mpe: Handle) -> U32;
