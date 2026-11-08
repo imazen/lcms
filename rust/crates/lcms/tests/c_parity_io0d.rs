@@ -5354,3 +5354,40 @@ fn vcgt_tag() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Type_UcrBg_Read/Write — undercolor-removal/black-generation
+/// tag: {Ucr, Bg, Desc-MLU}.
+#[test]
+fn ucrbg_tag() {
+    unsafe {
+        #[repr(C)] struct UcrBg { ucr: *mut c::ToneCurve,
+            bg: *mut c::ToneCurve, desc: *mut std::ffi::c_void }
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 0.4);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 0.7);
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(m, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, b"ucrbg\0".as_ptr());
+        let mut u = UcrBg { ucr: g, bg: g2, desc: m as *mut _ };
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x62666420,
+            &mut u as *mut _ as *const _); // 'bfd '
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x62666420)
+        } else { std::ptr::null_mut() };
+        eprintln!("ucrbg w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+        c::cmsMLUfree(m);
+    }
+}
