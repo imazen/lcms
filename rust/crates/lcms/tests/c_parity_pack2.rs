@@ -537,3 +537,42 @@ fn planar_evals() {
         }
     }
 }
+
+/// PACKED evals — BYTES_SH(0) packed-pixel formats.
+#[test]
+fn packed_evals() {
+    unsafe {
+        // PACKED_SH formats — the any-packed formatter path
+        for (name, pt, nch, packed_bytes) in [
+            ("rgb332", 4u32, 3, 1u32),   // 1-byte packed RGB
+            ("rgb444", 4, 3, 2),          // 2-byte packed
+            ("rgb555", 4, 3, 2),
+            ("rgb565", 4, 3, 2),
+            ("rgb5551", 4, 4, 2),
+            ("rgb4444", 4, 4, 2),
+            ("rgb888", 4, 3, 3),
+            ("rgbx888", 4, 4, 4),
+        ] {
+            // PACKED_SH = the packed-color encoding flag; the
+            // channel/byte count comes from the pt+nch+bytes
+            let in_fmt: u32 = (pt << 16) | (nch << 3)
+                | packed_bytes;
+            let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let hi = c::cmsCreate_sRGBProfile();
+            let ho = c::cmsCreateLab4Profile(
+                std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
+                out_fmt, 0, 0);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            if ct.is_null() { continue; }
+            // eval one pixel — packed bytes
+            let inp = vec![0xABu8; packed_bytes as usize];
+            let mut co = [0u16; 3];
+            c::cmsDoTransform(ct, inp.as_ptr() as _,
+                co.as_mut_ptr() as *mut _, 1);
+            eprintln!("{name} eval={:?}", co);
+            c::cmsDeleteTransform(ct);
+        }
+    }
+}
