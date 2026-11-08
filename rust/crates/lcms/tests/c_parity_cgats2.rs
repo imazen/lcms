@@ -1620,3 +1620,47 @@ fn it8_deep_arms11() {
         }
     }
 }
+
+/// cmscgats remaining lexer/parser internals — every S* token
+/// arm + error propagation through InSymbol.
+#[test]
+fn it8_deep_arms12() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // EOF mid-token / mid-string / mid-comment
+            (b"IT8FILE\nP1 \"unterm".to_vec(), "eof-string"),
+            (b"IT8FILE\nP1".to_vec(), "eof-prop"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS".to_vec(), "eof-kw"),
+            (b"IT8FILE\n# unterminated comment".to_vec(), "eof-cmt"),
+            // null bytes in the stream
+            (b"IT8FILE\nP1 \x00\"v\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "null-byte"),
+            // high-byte UTF-8 sequences
+            (b"IT8FILE\nP1 \"\xc3\xa9\xc3\xa8\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "utf8-2"),
+            (b"IT8FILE\nP1 \"\xe2\x98\x83\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "utf8-3"),
+            (b"IT8FILE\nP1 \"\xf0\x9f\x98\x80\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "utf8-4"),
+            // invalid UTF-8 (lone high byte)
+            (b"IT8FILE\nP1 \"\x80\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "bad-utf8"),
+            // whitespace-only after signature
+            (b"IT8FILE\n   \n\t\n  \n".to_vec(), "ws-only"),
+            // carriage return alone (no LF)
+            (b"IT8FILE\rNUMBER_OF_FIELDS 1\rNUMBER_OF_SETS 1\rBEGIN_DATA_FORMAT\rA\rEND_DATA_FORMAT\rBEGIN_DATA\r1\rEND_DATA\r".to_vec(), "cr-only"),
+            // property = keyword-name (identifier)
+            (b"IT8FILE\nP1 ORIGINATOR\nP2 DESCRIPTOR\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "kw-values2"),
+            // very long property value
+            ({ let mut v = b"IT8FILE\nP1 \"".to_vec();
+                for _ in 0..1000 { v.push(b'x'); }
+                v.extend_from_slice(b"\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n");
+                v }, "very-long"),
+            // data rows with leading sign/whitespace
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 4\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n-1 +1\n.5 -.5\n1e-3 +1e3\n0xFF -0x1F\nEND_DATA\n".to_vec(), "signed-data"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
