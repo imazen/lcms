@@ -132,3 +132,29 @@ fn header_setters_individual() {
         }
     }
 }
+
+/// Header getters — cmsGetHeaderFlags/Attributes/Creator/Model/
+/// ProfileID/ProfileContextID on the corpus.
+#[test]
+fn header_getters() {
+    for data in corpus() {
+        let rp = profile::open_profile_from_mem(None, &data).unwrap();
+        unsafe {
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
+            let mut cflags = 0u32;
+            c::cmsGetHeaderFlags(h, &mut cflags);
+            assert_eq!(cflags, rp.flags, "flags");
+            let mut cattr = 0u64;
+            c::cmsGetHeaderAttributes(h, &mut cattr);
+            assert_eq!(cattr, rp.attributes, "attributes");
+            assert_eq!(c::cmsGetHeaderCreator(h), rp.creator, "creator");
+            assert_eq!(c::cmsGetHeaderModel(h), rp.model, "model");
+            let mut cid = [0u8; 16];
+            c::cmsGetHeaderProfileID(h, cid.as_mut_ptr());
+            assert_eq!(cid, rp.profile_id.id8, "profile_id");
+            assert!(c::cmsGetProfileContextID(h).is_null(),
+                "context_id");
+            c::cmsCloseProfile(h);
+        }
+    }
+}

@@ -54,3 +54,4 @@ fn log_error_handler() {
         c::cmsDeleteContext(ctx);
     }
 }
+
