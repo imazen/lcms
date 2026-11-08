@@ -2908,3 +2908,43 @@ fn mch6_packers() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// 8/9/10-channel MCH packers — NCLR devicelinks hit the generic
+/// MCH unroller/packer.
+#[test]
+fn mch_8_9_10_packers() {
+    unsafe {
+        for (nch, cssig, pt, name) in [
+            (8u32, 0x38434C52u32, 22u32, "8CLR"),
+            (9, 0x39434C52, 23, "9CLR"),
+            (10, 0x41434C52, 24, "ACLR"),
+            (15, 0x46434C52, 29, "FCLR"),
+        ] {
+            let ftab: Vec<f32> = (0..(2usize.pow(nch) * nch as usize))
+                .map(|i| (i % 64) as f32 / 64.0).collect();
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, nch);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2,
+                    nch, nch, ftab.as_ptr()));
+            let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(dl, 0x6c696e6b);
+            c::cmsSetColorSpace(dl, cssig);
+            c::cmsSetPCS(dl, cssig);
+            c::cmsSetProfileVersion(dl, 4.4);
+            c::cmsWriteTag(dl, 0x44324230, p as *const _);
+            let fmt = (pt << 16) | (nch << 3) | 2;
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = vec![0x4000u16; nch as usize];
+                let mut ob = vec![0u16; nch as usize];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                eprintln!("  ob[..4]={:?}", &ob[..4]);
+                c::cmsDeleteTransform(t);
+            }
+            c::cmsCloseProfile(dl);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
