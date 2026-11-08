@@ -2227,3 +2227,72 @@ fn opt_resample_arms() {
         if !link.is_null() { c::cmsCloseProfile(link); }
     }
 }
+
+/// DefaultICCintents/AddConversion/PatchLUT deep arms — float
+/// transforms, proofing variants, all-intents sweeps on the
+/// mixed class corpus.
+#[test]
+fn conversion_arms3() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let abs = std::fs::read(dir.join("brightness.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let link = std::fs::read(dir.join("lcms2link.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let fl = 1u32 << 22;
+        let rf = (4u32 << 16) | (3 << 3) | 4 | fl;
+        let lf = (10u32 << 16) | (3 << 3) | 4 | fl;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // float transforms across classes/intents
+        for (inp, outp, intent, name) in [
+            (srgb, lab, 0, "f-per"), (srgb, lab, 1, "f-rel"),
+            (srgb, lab, 2, "f-sat"), (srgb, lab, 3, "f-abs"),
+            (lab, srgb, 0, "f-lab->"), (gray, lab, 0, "f-gray"),
+            (cmyk, lab, 0, "f-cmyk"), (cmyk, lab, 3, "f-cmyk-abs"),
+            (abs, srgb, 0, "f-abs->"), (link, lab, 0, "f-link"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, rf, outp, lf,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0u8; 64];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // all-intents proofing sweep
+        if !cmyk.is_null() {
+            for intent in 0..4u32 {
+                let t = c::cmsCreateProofingTransform(
+                    srgb, r16, srgb, r16, cmyk, intent, 0, 0);
+                eprintln!("proof-i{intent} t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+        }
+        let _ = l16;
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !abs.is_null() { c::cmsCloseProfile(abs); }
+        if !link.is_null() { c::cmsCloseProfile(link); }
+        c::cmsFreeToneCurve(g);
+    }
+}
