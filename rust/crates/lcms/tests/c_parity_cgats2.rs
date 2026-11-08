@@ -592,3 +592,38 @@ fn cgats_type_detection() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 writer internals — populated doc -> SaveToMem hits
+/// WriteHeader/DataFormat/DataSection arms.
+#[test]
+fn it8_writer_internals() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        // populate header + data
+        c::cmsIT8SetPropertyStr(h, b"ORIGINATOR\0".as_ptr() as *const i8,
+            b"lcms\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyStr(h, b"CREATED\0".as_ptr() as *const i8,
+            b"2024\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8,
+            2.0);
+        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_SETS\0".as_ptr() as *const i8,
+            2.0);
+        c::cmsIT8SetSheetType(h, b"CGATS.5\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 1, b"VAL\0".as_ptr() as *const i8);
+        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
+            b"ID\0".as_ptr() as *const i8, b"r1\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataDbl(h, b"r1\0".as_ptr() as *const i8,
+            b"VAL\0".as_ptr() as *const i8, 42.0);
+        // write to memory -> the writer bodies
+        let mut buf = vec![0u8; 1 << 16];
+        let mut n = buf.len() as u32;
+        let s = c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("it8write s={s} n={n}");
+        if s != 0 {
+            eprintln!("{}", std::str::from_utf8(&buf[..n as usize])
+                .unwrap_or("?").chars().take(80).collect::<String>());
+        }
+        c::cmsIT8Free(h);
+    }
+}
