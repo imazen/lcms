@@ -2955,3 +2955,25 @@ fn raw_write_overwrite() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Header setters on a real profile — the mutation
+/// machinery.
+#[test]
+fn header_setters3() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        c::cmsSetHeaderRenderingIntent(h, 2);
+        let i = c::cmsGetHeaderRenderingIntent(h);
+        eprintln!("intent={i}");
+        c::cmsSetPCS(h, 0x4C616220);
+        let pcs = c::cmsGetPCS(h);
+        eprintln!("pcs={pcs:#x}");
+        c::cmsSetColorSpace(h, 0x434D594B);
+        let cs = c::cmsGetColorSpace(h);
+        eprintln!("cs={cs:#x}");
+        c::cmsSetDeviceClass(h, 0x6D6E7472);
+        let cls = c::cmsGetDeviceClass(h);
+        eprintln!("cls={cls:#x}");
+        c::cmsCloseProfile(h);
+    }
+}
