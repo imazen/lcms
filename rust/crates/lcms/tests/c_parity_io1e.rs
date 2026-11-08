@@ -174,3 +174,27 @@ fn header_setters2() {
         let _ = c::cmsCloseProfile(ch);
     }
 }
+
+/// cmsGetHeaderCreationDateTime — the DateTimeNumber field reader.
+#[test]
+fn creation_datetime() {
+    #[repr(C)]
+    #[derive(Default)]
+    struct Cdt { year: u16, month: u16, day: u16,
+        hours: u16, minutes: u16, seconds: u16 }
+    for data in corpus() {
+        let rp = profile::open_profile_from_mem(None, &data).unwrap();
+        unsafe {
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _,
+                data.len() as u32);
+            let mut cdt = Cdt::default();
+            let ok = c::cmsGetHeaderCreationDateTime(h,
+                &mut cdt as *mut _ as *mut _);
+            assert_ne!(ok, 0);
+            assert_eq!(cdt.year, rp.created.year, "year");
+            assert_eq!(cdt.month, rp.created.month, "month");
+            assert_eq!(cdt.day, rp.created.day, "day");
+            c::cmsCloseProfile(h);
+        }
+    }
+}
