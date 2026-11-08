@@ -14096,3 +14096,92 @@ fn misc_tag_ctx_arms() {
         c::cmsFreeToneCurve(tc);
     }
 }
+
+/// CAM02 init/forward/reverse + viewing-condition variants +
+/// named-color UTF-8 decode + gray pipeline builders.
+#[test]
+fn cam02_utf8_gray_arms() {
+    unsafe {
+        // CAM02 viewing conditions: XYZ white + surround +
+        // background/ambient params
+        for (la, yb, av, sname) in [
+            (20.0f64, 20.0, 1.0, "dim"),
+            (31.83, 20.0, 1.0, "avg"),
+            (318.3, 20.0, 1.0, "above"),
+            (637.0, 20.0, 1.0, "high"),
+        ] {
+            let vc = c::ViewingConditions {
+                white_point: c::CieXyz { X: 95.05, Y: 100.0,
+                    Z: 108.88 },
+                yb, la,
+                surround: av as u32,
+                d_value: 1.0,
+            };
+            let m = c::cmsCIECAM02Init(std::ptr::null_mut(),
+                &vc as *const _);
+            eprintln!("cam {sname} m={}", !m.is_null());
+            if !m.is_null() {
+                for xyz in [
+                    c::CieXyz { X: 20.0, Y: 20.0, Z: 20.0 },
+                    c::CieXyz { X: 95.05, Y: 100.0, Z: 108.88 },
+                    c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 },
+                    c::CieXyz { X: 50.0, Y: 80.0, Z: 10.0 },
+                ] {
+                    let mut jch = std::mem::zeroed::<c::JCh>();
+                    c::cmsCIECAM02Forward(m,
+                        &xyz as *const _, &mut jch);
+                    let mut back = c::CieXyz {
+                        X: 0.0, Y: 0.0, Z: 0.0 };
+                    c::cmsCIECAM02Reverse(m,
+                        &jch as *const _, &mut back);
+                }
+                c::cmsCIECAM02Done(m);
+            }
+        }
+        // named-color UTF-8 decode — non-ascii names
+        let nl = c::cmsAllocNamedColorList(std::ptr::null_mut(),
+            4, 4, b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        for name in [
+            "pantone\u{00e9}\u{4e2d}".as_bytes(),
+            "\u{00f1}\u{00fc}ml\u{00e4}ut".as_bytes(),
+            "plain".as_bytes(),
+            "\u{fffd}\u{fffe}".as_bytes(),
+        ] {
+            let r = c::cmsAppendNamedColor(nl,
+                name.as_ptr(), &[0x1000u16, 0x2000, 0x3000]
+                    as *const u16 as *const _,
+                std::ptr::null());
+            eprintln!("append {name:?}={r}");
+        }
+        let n = c::cmsNamedColorCount(nl);
+        eprintln!("ncl={n}");
+        c::cmsFreeNamedColorList(nl);
+        // gray profile transforms — BuildGrayInput/Output arms
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        for (i2, o2, f1, f2) in [
+            (gray, srgb, g8, r8), (srgb, gray, r8, g8),
+            (gray, lab, g8, l8), (lab, gray, l8, g8),
+            (gray, gray, g8, g8),
+        ] {
+            let t = c::cmsCreateTransform(i2, f1, o2, f2, 0, 0);
+            eprintln!("gray xform t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 8];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
