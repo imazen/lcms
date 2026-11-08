@@ -1179,3 +1179,61 @@ fn partial_adaptation_absolute() {
         xform::set_adaptation_state(None, 1.0);
     }
 }
+
+/// _cmsTransform2toTransformAdaptor — a transform plugin registered
+/// with ExpectedVersion < 2080 supplies a legacy _cmsTransformFn;
+/// cmsCreateTransform wraps it via the adaptor (cmsxform.c:902).
+#[test]
+fn transform2_adaptor() {
+    #[repr(C)]
+    struct Base { magic: u32, ver: u32, ty: u32, next: *mut std::ffi::c_void }
+    #[repr(C)]
+    struct PTransform {
+        base: Base,
+        factories: unsafe extern "C" fn(
+            *mut *const std::ffi::c_void, *mut *mut std::ffi::c_void,
+            *mut *mut std::ffi::c_void, *mut *mut std::ffi::c_void,
+            *mut u32, *mut u32, *mut u32) -> i32,
+    }
+    // old-style transform fn — passthrough via wIn/wOut
+    unsafe extern "C" fn legacy(
+        _p: *mut std::ffi::c_void,
+        _in: *const u16, _out: *mut u16, _size: u32) {
+        // body unused — the adaptor's dispatch is what matters
+    }
+    // factory — supplies the legacy fn, keeps the LUT
+    unsafe extern "C" fn factory(
+        xform: *mut *const std::ffi::c_void,
+        _ud: *mut *mut std::ffi::c_void,
+        _free: *mut *mut std::ffi::c_void,
+        _lut: *mut *mut std::ffi::c_void,
+        _fi: *mut u32, _fo: *mut u32, _fl: *mut u32) -> i32 {
+        *xform = legacy as *const _;
+        1
+    }
+    unsafe {
+        let i = c::cmsCreate_sRGBProfile();
+        let o = c::cmsCreate_sRGBProfile();
+        let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
+        let mut p = PTransform {
+            base: Base { magic: 0x61637070, ver: 2000,
+                ty: 0x7A666D48, next: std::ptr::null_mut() },
+            factories: factory,
+        };
+        let reg = c::cmsPlugin(&mut p as *mut PTransform as *mut _);
+        eprintln!("xfm plugin reg={reg}");
+        let t = c::cmsCreateTransform(i, rgb8, o, rgb8, 0, 0);
+        eprintln!("plugin xform={}", !t.is_null());
+        if !t.is_null() {
+            let inp = [1u8, 2, 3];
+            let mut out = [0u8; 3];
+            c::cmsDoTransform(t, inp.as_ptr() as _,
+                out.as_mut_ptr() as _, 1);
+            eprintln!("adaptor out={out:?}");
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(i);
+        c::cmsCloseProfile(o);
+        c::cmsUnregisterPlugins();
+    }
+}
