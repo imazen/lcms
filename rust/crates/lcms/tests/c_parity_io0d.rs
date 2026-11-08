@@ -7151,3 +7151,72 @@ fn ucrbg_read_arms() {
         }
     }
 }
+
+/// chrm/clrt read arms — raw tags with wrong channel counts,
+/// multiple entries and malformed names.
+#[test]
+fn chrm_clrt_read_arms() {
+    unsafe {
+        // chrm: 'chrm' + rsv + nCh(u16)+ColorantType(u16) + xyY x nCh
+        let mk_chrm = |nch: u16, ctyp: u16| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6368726Du32.to_be_bytes()); // 'chrm'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&nch.to_be_bytes());
+            t.extend_from_slice(&ctyp.to_be_bytes());
+            for _ in 0..nch {
+                for v in [0x0000A1B3u32, 0x0000B75Au32, 0x00010000u32] {
+                    t.extend_from_slice(&v.to_be_bytes());
+                }
+            }
+            t
+        };
+        // clrt: 'clrt' + rsv + vendor(u32) + count(u16) +
+        // per-entry {name[32], pcs[6], dev[u16 x nch]}
+        let mk_clrt = |nch: u8, count: u16| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x636C7274u32.to_be_bytes()); // 'clrt'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&0u32.to_be_bytes()); // vendor
+            t.extend_from_slice(&count.to_be_bytes());
+            t.push(nch);
+            t.push(0);
+            for _ in 0..count {
+                t.extend_from_slice(b"colorant-name-16bytes-pad-00\0\0");
+                for _ in 0..3 {
+                    t.extend_from_slice(&0x8000u16.to_be_bytes());
+                }
+                for _ in 0..nch {
+                    t.extend_from_slice(&0x4000u16.to_be_bytes());
+                }
+            }
+            t
+        };
+        for (raw, sig, name) in [
+            (mk_chrm(3, 1), 0x6368726Du32, "chrm-3"),
+            (mk_chrm(4, 1), 0x6368726Du32, "chrm-4"),
+            (mk_chrm(0, 1), 0x6368726Du32, "chrm-0"),
+            (mk_chrm(3, 3), 0x6368726Du32, "chrm-ct3"),
+            (mk_clrt(3, 1), 0x636C7274u32, "clrt-3-1"),
+            (mk_clrt(4, 2), 0x636C7274u32, "clrt-4-2"),
+            (mk_clrt(3, 0), 0x636C7274u32, "clrt-3-0"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, sig,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
