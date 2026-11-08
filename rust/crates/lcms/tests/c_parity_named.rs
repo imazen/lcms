@@ -1368,3 +1368,62 @@ fn named_mlu_trans_arms() {
         }
     }
 }
+
+/// cmsnamed residual — AddMLUBlock multi-grow (string bigger
+///   than pool), SearchMLUEntry lang/country wildcard arms,
+///   empty-string fallback, dup-lang reject, GrowMLUtable at
+///   entry-count boundary.
+#[test]
+fn named_growth_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let mlu = c::cmsMLUalloc(ctx, 1);
+        // multi-grow: a string way bigger than the initial pool
+        let big: Vec<u8> = std::iter::repeat(b'X')
+            .take(200000).chain(std::iter::once(0)).collect();
+        let r = c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), big.as_ptr() as *const _);
+        eprintln!("bigstr: {r}");
+        // GrowMLUtable at the boundary (alloc'd 1 entry)
+        for i in 0..10 {
+            let lang = format!("l{i}\0");
+            let s = format!("s{i}\0");
+            let r = c::cmsMLUsetASCII(mlu,
+                lang.as_ptr() as *const _,
+                b"US\0".as_ptr(), s.as_ptr() as *const _);
+            if r == 0 {
+                eprintln!("grow fail at {i}"); break; } }
+        // SearchMLUEntry wildcards
+        let mut wb = [0i32; 32];
+        let r1 = c::cmsMLUgetWide(mlu,
+            b"en\0".as_ptr(), b"US\0".as_ptr(),
+            wb.as_mut_ptr(), 32);
+        let r2 = c::cmsMLUgetWide(mlu,
+            b"\0\0".as_ptr(), b"US\0".as_ptr(), // wild lang
+            wb.as_mut_ptr(), 32);
+        let r3 = c::cmsMLUgetWide(mlu,
+            b"en\0".as_ptr(), b"\0\0".as_ptr(), // wild cntry
+            wb.as_mut_ptr(), 32);
+        let r4 = c::cmsMLUgetWide(mlu,
+            b"zz\0".as_ptr(), b"ZZ\0".as_ptr(), // no match
+            wb.as_mut_ptr(), 32);
+        eprintln!("get: {r1} {r2} {r3} {r4}");
+        // dup-lang reject (AddMLUBlock SearchMLUEntry arm)
+        let m2 = c::cmsMLUalloc(ctx, 4);
+        c::cmsMLUsetASCII(m2, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"first\0".as_ptr());
+        let d = c::cmsMLUsetASCII(m2, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"dup\0".as_ptr());
+        // same lang, different country = allowed
+        let ok = c::cmsMLUsetASCII(m2, b"en\0".as_ptr(),
+            b"GB\0".as_ptr(), b"brit\0".as_ptr());
+        eprintln!("dup={d} ok={ok}");
+        // empty-string fallback (getWide on absent entry
+        //   adds empty block)
+        let r5 = c::cmsMLUsetWide(m2, b"fr\0".as_ptr(),
+            b"FR\0".as_ptr(), std::ptr::null());
+        eprintln!("nullwide={r5}");
+        c::cmsMLUfree(mlu);
+        c::cmsMLUfree(m2);
+    }
+}
