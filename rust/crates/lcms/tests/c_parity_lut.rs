@@ -396,3 +396,81 @@ fn pipeline_manipulation() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+
+/// MPE element writers round 3: CLUT16 + CLUTfloat element pipelines
+/// written as mpet tags — the CLUT element writers inside MPE.
+#[test]
+fn mpe_clut_elements() {
+    unsafe {
+        let grid = 4u32;
+        let points = [grid; 3];
+        // CLUT16 element
+        let table16: Vec<u16> = (0..grid*grid*grid*3)
+            .map(|i| (i * 300) as u16).collect();
+        let c_pipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(c_pipe, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), grid, 3, 3,
+                table16.as_ptr()));
+        let mut r_pipe = lut::pipeline_alloc(None, 3, 3).unwrap();
+        r_pipe.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_clut16bit_granular(None, &points, 3, 3,
+                Some(&table16)).unwrap());
+        let ch = c::cmsCreateXYZProfile();
+        let mut rp = lcms::virt::create_xyz_profile(None).unwrap();
+        let c_ok = c::cmsWriteTag(ch, 0x41324230, c_pipe as *const _);
+        let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x41324230,
+            Some(lcms::tagtypes::TagObject::Mpe(r_pipe)));
+        assert_eq!(c_ok != 0, r_ok, "clut16 mpe write");
+        if c_ok != 0 {
+            let mut c_out = vec![0u8; 1 << 20];
+            let mut size = c_out.len() as u32;
+            c::cmsSaveProfileToMem(ch, c_out.as_mut_ptr() as *mut _, &mut size);
+            c_out.truncate(size as usize);
+            let mut r_out = lcms::profile::save_profile_to_mem(&mut rp)
+                .unwrap_or_default();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "clut16 mpe resave");
+        }
+        c::cmsCloseProfile(ch);
+
+        // CLUTfloat element
+        let tablef: Vec<f32> = (0..grid*grid*grid*3)
+            .map(|i| (i as f32) * 0.001).collect();
+        let c_pipe2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(c_pipe2, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), grid, 3, 3,
+                tablef.as_ptr()));
+        let mut r_pipe2 = lut::pipeline_alloc(None, 3, 3).unwrap();
+        r_pipe2.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_clut_float_granular(None, &points, 3, 3,
+                Some(&tablef)).unwrap());
+        let ch2 = c::cmsCreateXYZProfile();
+        let mut rp2 = lcms::virt::create_xyz_profile(None).unwrap();
+        let c_ok2 = c::cmsWriteTag(ch2, 0x41324230, c_pipe2 as *const _);
+        let r_ok2 = lcms::profile::cms_write_tag(&mut rp2, 0x41324230,
+            Some(lcms::tagtypes::TagObject::Mpe(r_pipe2)));
+        assert_eq!(c_ok2 != 0, r_ok2, "clutf mpe write");
+        if c_ok2 != 0 {
+            let mut c_out = vec![0u8; 1 << 20];
+            let mut size = c_out.len() as u32;
+            c::cmsSaveProfileToMem(ch2, c_out.as_mut_ptr() as *mut _, &mut size);
+            c_out.truncate(size as usize);
+            let mut r_out = lcms::profile::save_profile_to_mem(&mut rp2)
+                .unwrap_or_default();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "clutf mpe resave");
+        }
+        c::cmsCloseProfile(ch2);
+    }
+}
