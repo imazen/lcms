@@ -4059,3 +4059,41 @@ fn cooked_reads_mhc2_dict() {
         c::cmsCloseProfile(ch);
     }
 }
+
+/// crdInfo tag write — MLU payload -> Type_CrdInfo_Dup + writer.
+#[test]
+fn crdinfo_write() {
+    unsafe {
+        let ch = c::cmsCreate_sRGBProfile();
+        let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"PS\0".as_ptr(), b"model\0".as_ptr(),
+            b"PostScript product name\0".as_ptr());
+        let c_ok = c::cmsWriteTag(ch, 0x63726469, mlu as *const _);
+        let mut rmlu = lcms::named::mlu_alloc(None, 1).unwrap();
+        lcms::named::mlu_set_ascii(&mut rmlu, b"PS", b"model",
+            b"PostScript product name");
+        let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x63726469,
+            Some(lcms::tagtypes::TagObject::CrdInfo(rmlu)));
+        assert_eq!(c_ok != 0, r_ok, "crdinfo write");
+        let mut c_out = vec![0u8; 1 << 20];
+        let mut n = c_out.len() as u32;
+        let s_ok = c::cmsSaveProfileToMem(ch,
+            c_out.as_mut_ptr() as *mut _, &mut n);
+        let r_out = lcms::profile::save_profile_to_mem(&mut rp);
+        assert_eq!(s_ok != 0, r_out.is_some(), "crdinfo save");
+        if s_ok != 0 {
+            c_out.truncate(n as usize);
+            let mut r_out = r_out.unwrap();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "crdinfo resave");
+        }
+        c::cmsMLUfree(mlu);
+        c::cmsCloseProfile(ch);
+    }
+}
