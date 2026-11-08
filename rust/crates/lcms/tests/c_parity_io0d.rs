@@ -1625,3 +1625,41 @@ fn corpus_classes() {
         }
     }
 }
+
+/// Corpus class transforms — bchs/null/cmyk/argb
+/// profile-class paths.
+#[test]
+fn corpus_class_transforms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let rgb_fmt = (4 << 16) | (3 << 3) | 1u32;
+        let lab_fmt = (10 << 16) | (3 << 3) | 1u32;
+        for (name, path, in_fmt, out_fmt, prof_out) in [
+            ("argb", b"../../aRGBlcms2.icc\0" as &[u8],
+             rgb_fmt, lab_fmt, lab),
+            ("bchs", b"../../bchslcms2.icc\0" as &[u8],
+             lab_fmt, lab_fmt, lab),
+            ("glab", b"../../glablcms2.icc\0" as &[u8],
+             (3 << 16) | (1 << 3) | 1, lab_fmt, lab),
+            ("cmyk", b"../../lcms2cmyk.icc\0" as &[u8],
+             (6 << 16) | (4 << 3) | 1, lab_fmt, lab),
+            ("null", b"../../nullcms2.icc\0" as &[u8],
+             (3 << 16) | (1 << 3) | 1, lab_fmt, lab),
+            ("srgb", b"../../sRGBlcms2.icc\0" as &[u8],
+             rgb_fmt, lab_fmt, lab)] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let t = c::cmsCreateTransform(h, in_fmt,
+                prof_out, out_fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(h);
+        }
+        let _ = (srgb, lab);
+    }
+}
