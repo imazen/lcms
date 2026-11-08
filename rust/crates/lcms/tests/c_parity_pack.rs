@@ -2532,10 +2532,12 @@ fn format_sweep_pack_arms() {
         (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
             | (pl << 12) | (ds << 10) | (ex << 7) | (ch << 3) | by
     }
-    // NOTE: the float/double cases are pinned out — the Rust float
-    // transform fuses unroll->u16-tetra->pack (xform.rs:2238) where C
-    // evals the pipeline in float; systematic ~30-byte divergence. Real
-    // port defect to fix in its own change.
+    // NOTE: float/double cases pinned out — the Rust generic float
+    // eval (xform_f32 -> unroll_float_to_float + pipeline.eval_float +
+    // pack_float_to_float) produces a/b-channel values ~6e-6 off C's
+    // FloatXFORM (L is exact). ULP-level rounding-order difference in
+    // the Lab float eval, not a structural bug — pinned for a dedicated
+    // numeric-parity pass.
     let combos: &[(u32, u32, &str)] = &[
         // chunky u8/u16 with extras+swaps
         (f(4,3,1,1, 0,0,1,0,0), f(4,3,1,0, 0,0,0,0,0), "8ex1sf"),
