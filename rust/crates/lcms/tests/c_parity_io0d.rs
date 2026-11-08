@@ -14185,3 +14185,97 @@ fn cam02_utf8_gray_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsGDB* internals (gamut boundary descriptor) + float
+/// devicelink/output tags + parametric-curve writes.
+#[test]
+fn gdb_float_arms() {
+    unsafe {
+        // GBD — point cloud + compute + check
+        let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
+        for lab in [
+            [50.0f64, 0.0, 0.0], [90.0, 30.0, -40.0],
+            [10.0, -20.0, 50.0], [50.0, 60.0, -60.0],
+            [50.0, -60.0, 60.0], [70.0, 40.0, 40.0],
+            [30.0, -40.0, -40.0], [100.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0], [55.0, 5.0, -5.0],
+        ] {
+            c::cmsGDBAddPoint(gbd, lab.as_ptr() as *const _);
+        }
+        for flags in [0u32, 1] {
+            let ok = c::cmsGDBCompute(gbd, flags);
+            for lab in [
+                [50.0f64, 0.0, 0.0], [95.0, 100.0, 0.0],
+                [0.0, -127.0, -127.0], [50.0, 127.0, 127.0],
+            ] {
+                let chk = c::cmsGDBCheckPoint(gbd,
+                    lab.as_ptr() as *const _);
+                eprintln!("gdb f{flags} {lab:?}={chk}");
+            }
+            eprintln!("gdb compute f{flags}={ok}");
+        }
+        c::cmsGBDFree(gbd);
+        // float devicelink profile — _cmsReadFloatDevicelinkTag
+        let link = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(link, 0x6C696E6B);   // 'link'
+        c::cmsSetColorSpace(link, 0x4C616220);
+        c::cmsSetPCS(link, 0x58595A20);
+        c::cmsSetProfileVersion(link, 4.4);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        c::cmsWriteTag(link, 0x41324230, p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(link,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let rd = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x41324230)
+        } else { std::ptr::null_mut() };
+        // transform through the link — devicelink class
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let t = if !rp.is_null() {
+            c::cmsCreateTransform(rp,
+                (10u32 << 16) | (3 << 3) | 1,
+                lab, (9u32 << 16) | (3 << 3) | 1, 0, 0)
+        } else { std::ptr::null_mut() };
+        eprintln!("link s={s} rd={} t={}", !rd.is_null(),
+            !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(link);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        // parametric curve write via curv+para on 'rTRC'
+        let pc = c::cmsBuildParametricToneCurve(
+            std::ptr::null_mut(), 4,
+            [2.2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                .as_ptr());
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x72545243,
+            pc as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s2 = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp2 = if s2 != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let rd2 = if !rp2.is_null() {
+            c::cmsReadTag(rp2, 0x72545243)
+        } else { std::ptr::null_mut() };
+        eprintln!("param w={w} s={s2} rd={}", !rd2.is_null());
+        if !rp2.is_null() { c::cmsCloseProfile(rp2); }
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(pc);
+    }
+}
