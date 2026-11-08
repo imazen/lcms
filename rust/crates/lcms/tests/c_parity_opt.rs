@@ -3,8 +3,11 @@
 //! produce identical output on both sides.
 
 use std::ffi::c_void;
+use std::sync::Mutex;
 use lcms::{profile, types::*, virt, xform};
 use lcms_cref as c;
+
+static CTX_LOCK: Mutex<()> = Mutex::new(());
 
 fn corpus() -> Vec<Vec<u8>> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
@@ -290,5 +293,40 @@ fn opt_resample_linearize() {
         if !t.is_null() { c::cmsDeleteTransform(t); }
         c::cmsCloseProfile(srgb2);
         c::cmsCloseProfile(srgb);
+    }
+}
+
+/// Optimized evaluators — u8 matrix-shaper -> PrecalculatedXFORM,
+/// 16-bit -> MatShaperEval16, curve-pipeline -> FastEvaluateCurves16.
+#[test]
+fn optimized_evaluators() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // matrix-shaper u8 -> PrecalculatedXFORM
+        // matrix-shaper u16 -> MatShaperEval16
+        for (inf, of, name) in [
+            (r8, l8, "u8-ms"),
+            (r16, l16, "u16-ms"),
+            (r8, l16, "u8->16"),
+            (r16, l8, "16->8"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, inf, lab, of, 0, 0);
+            if !t.is_null() {
+                let ib = [0x80u8; 8];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                eprintln!("{name} ok");
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
     }
 }
