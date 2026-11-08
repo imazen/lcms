@@ -2,6 +2,7 @@
 //! FLAGS_NOOPTIMIZE — the optimizer's pipeline-reduction paths must
 //! produce identical output on both sides.
 
+use std::ffi::c_void;
 use lcms::{profile, types::*, virt, xform};
 use lcms_cref as c;
 
@@ -63,6 +64,63 @@ fn optimizer_on_off() {
                 rt.do_transform(&inp, &mut ro, 16);
                 assert_eq!(co, ro, "profile {i} flags {flags:#x} out");
                 unsafe { c::cmsDeleteTransform(ct) };
+            }
+        }
+    }
+}
+
+
+/// Optimizer internals: transforms whose links trigger each optimizer
+/// branch — sRGB->sRGB, sRGB->lab4, lab4->sRGB — NOOPTIMIZE off vs on.
+#[test]
+fn optimizer_branch_matrix() {
+    unsafe {
+        for name in ["srgb->srgb", "srgb->lab4", "lab4->srgb"] {
+            for flags in [0u32, FLAGS_NOOPTIMIZE] {
+                let h1 = if name == "lab4->srgb" {
+                    c::cmsCreateLab4Profile(std::ptr::null_mut())
+                } else { c::cmsCreate_sRGBProfile() };
+                let h2 = if name == "srgb->lab4" {
+                    c::cmsCreateLab4Profile(std::ptr::null_mut())
+                } else { c::cmsCreate_sRGBProfile() };
+                let cs_in = c::cmsGetColorSpace(h1) | 3 << 3 | 1;
+                let cs_out = c::cmsGetColorSpace(h2) | 3 << 3 | 1;
+                let ct = c::cmsCreateTransform(h1, cs_in, h2, cs_out, 0, flags);
+                let _ = c::cmsCloseProfile(h1);
+                let _ = c::cmsCloseProfile(h2);
+                let (mut rp1, mut rp2) = match name {
+                    "srgb->srgb" => (virt::create_srgb_profile(None).unwrap(),
+                                     virt::create_srgb_profile(None).unwrap()),
+                    "srgb->lab4" => (virt::create_srgb_profile(None).unwrap(),
+                                     virt::create_lab4_profile(None, None).unwrap()),
+                    _ => (virt::create_lab4_profile(None, None).unwrap(),
+                          virt::create_srgb_profile(None).unwrap()),
+                };
+                let fi = rp1.color_space | 3 << 3 | 1;
+                let fo = rp2.color_space | 3 << 3 | 1;
+                let mut profs = vec![rp1.clone(), rp2.clone()];
+                let mut bpc = [false; 2];
+                let intents = [0u32; 2];
+                let adapt = [1.0f64; 2];
+                let rt = xform::create_extended_transform(
+                    None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                    fi, fo, flags);
+                assert_eq!(ct.is_null(), rt.is_none(), "{name} f{flags:#x}");
+                if !ct.is_null() && rt.is_some() {
+                    let mut rt = rt.unwrap();
+                    let inp = [0x1234u16, 0x5678, 0x9abc];
+                    let inb: Vec<u8> = inp.iter()
+                        .flat_map(|v| v.to_be_bytes()).collect();
+                    let mut co = [0u16; 3];
+                    let mut ro = vec![0u8; 6];
+                    c::cmsDoTransform(ct, inp.as_ptr() as _,
+                        co.as_mut_ptr() as *mut _, 1);
+                    rt.do_transform(&inb, &mut ro, 1);
+                    let ro16: Vec<u16> = ro.chunks_exact(2)
+                        .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                    assert_eq!(co, ro16[..3], "{name} f{flags:#x} eval");
+                    c::cmsDeleteTransform(ct);
+                }
             }
         }
     }
