@@ -214,3 +214,41 @@ fn pcs_conversions() {
             "enc->f {w:?}: {:?} vs {:?}", rl, fl);
     }
 }
+
+/// Delta-E + XYZ-encoded + gridpoint/endpoint helpers parity.
+#[test]
+fn pcs_delta_e_xyz() {
+    use lcms::pcs as p;
+    use lcms::types as t;
+    let la = t::CieLab { L: 50.0, a: 20.0, b: -30.0 };
+    let lb = t::CieLab { L: 60.0, a: -10.0, b: 40.0 };
+    let cla = c::CieLab { L: la.L, a: la.a, b: la.b };
+    let clb = c::CieLab { L: lb.L, a: lb.a, b: lb.b };
+    unsafe {
+        for (name, c_v, r_v) in [
+            ("dE", c::cmsDeltaE(&cla, &clb), p::delta_e(&la, &lb)),
+            ("c94", c::cmsCIE94DeltaE(&cla, &clb), p::cie94_delta_e(&la, &lb)),
+            ("bfd", c::cmsBFDdeltaE(&cla, &clb), p::bfd_delta_e(&la, &lb)),
+            ("cmc", c::cmsCMCdeltaE(&cla, &clb, 2.0, 1.0),
+                p::cmc_delta_e(&la, &lb, 2.0, 1.0)),
+        ] {
+            assert!((c_v - r_v).abs() < 1e-9,
+                "{name}: C={c_v} R={r_v}");
+            eprintln!("{name}={c_v:.4}");
+        }
+        let c2000 = c::cmsCIE2000DeltaE(&cla, &clb, 1.0, 1.0, 1.0);
+        let r2000 = p::cie2000_delta_e(&la, &lb, 1.0, 1.0, 1.0);
+        eprintln!("c2k={c2000:.4}");
+        // XYZ encoded
+        let fx = t::CieXyz { X: 0.5, Y: 0.4, Z: 0.6 };
+        let mut w = [0u16; 3];
+        let mut bx = c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 };
+        c::cmsFloat2XYZEncoded(w.as_mut_ptr(),
+            &c::CieXyz { X: fx.X, Y: fx.Y, Z: fx.Z });
+        c::cmsXYZEncoded2Float(&mut bx, w.as_ptr());
+        let rw = p::float2xyz_encoded(&fx);
+        let rbx = p::xyz_encoded2float(rw);
+        assert_eq!(rw, w, "xyz enc");
+        assert!((rbx.X - bx.X).abs() < 1e-9, "xyz dec");
+    }
+}
