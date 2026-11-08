@@ -4100,3 +4100,91 @@ fn cgats_lexer2_arms() {
         }
     }
 }
+
+/// cmscgats residual — setter variants (Uncooked/Multi/
+///   Hex/Dbl/Comment), multi-table navigation, GetData/
+///   SetData internals, WriteHeader/WriteDataFormat emit
+///   arms, SetDataFormat bounds.
+#[test]
+fn it8_data_arms() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        eprintln!("alloc={}", !h.is_null());
+        if h.is_null() { return; }
+        // setter variants
+        let r1 = c::cmsIT8SetSheetType(h,
+            b"CGATS.17\0".as_ptr() as *const _);
+        let r2 = c::cmsIT8SetComment(h,
+            b"a comment\0".as_ptr() as *const _);
+        let r3 = c::cmsIT8SetPropertyStr(h,
+            b"ORIGINATOR\0".as_ptr() as *const _,
+            b"Devin\0".as_ptr() as *const _);
+        let r4 = c::cmsIT8SetPropertyDbl(h,
+            b"NUMBER_OF_FIELDS\0".as_ptr() as *const _,
+            4.0);
+        let r5 = c::cmsIT8SetPropertyHex(h,
+            b"HEXVAL\0".as_ptr() as *const _,
+            0xDEADBEEF);
+        let r6 = c::cmsIT8SetPropertyUncooked(h,
+            b"UNCOOKED\0".as_ptr() as *const _,
+            b"raw stuff ()[]\0".as_ptr() as *const _);
+        let r7 = c::cmsIT8SetPropertyMulti(h,
+            b"MULTI\0".as_ptr() as *const _,
+            b"SUB\0".as_ptr() as *const _,
+            b"sub-val\0".as_ptr() as *const _);
+        eprintln!(
+            "set: {r1}{r2}{r3}{r4}{r5}{r6}{r7}");
+        // data format + data set/get
+        for i in 0..4 {
+            let f = format!("F{i}\0");
+            c::cmsIT8SetDataFormat(h, i,
+                f.as_ptr() as *const _); }
+        // SetData via the public set-property on data fields
+        let d1 = c::cmsIT8SetData(h,
+            b"F0\0".as_ptr() as *const _,
+            b"F1\0".as_ptr() as *const _,
+            b"42\0".as_ptr() as *const _);
+        eprintln!("setdata={d1}");
+        // save to memory (WriteHeader + WriteDataFormat +
+        //   WriteData emit arms)
+        let mut buf = [0u8; 1 << 16];
+        let r8 = c::cmsIT8SaveToMem(h,
+            buf.as_mut_ptr() as *mut _,
+            &mut (buf.len() as u32) as *mut u32);
+        eprintln!("save={r8}");
+        // multi-table
+        let t0 = c::cmsIT8SetTable(h, 0);
+        let t1 = c::cmsIT8SetTable(h, 1);
+        let t9 = c::cmsIT8SetTable(h, 99);
+        eprintln!("tables: {t0} {t1} {t9}");
+        // enumerate sheets/properties
+        let ns = c::cmsIT8EnumDataFormat(h,
+            std::ptr::null_mut());
+        eprintln!("enum-df={ns}");
+        // GetData returns a C string ptr
+        let g = c::cmsIT8GetData(h,
+            b"F0\0".as_ptr() as *const _,
+            b"F1\0".as_ptr() as *const _);
+        eprintln!("getdata={}", !g.is_null());
+        // row/col accessors + dbl variants
+        let rc = c::cmsIT8GetDataRowCol(h, 0, 1);
+        let rd = c::cmsIT8GetDataRowColDbl(h, 0, 1);
+        let s1 = c::cmsIT8SetDataRowCol(h, 0, 2,
+            b"7\0".as_ptr() as *const _);
+        let s2 = c::cmsIT8SetDataRowColDbl(h, 1, 0, 3.5);
+        let s3 = c::cmsIT8SetDataDbl(h,
+            b"F0\0".as_ptr() as *const _,
+            b"F1\0".as_ptr() as *const _, 9.5);
+        let fd = c::cmsIT8FindDataFormat(h,
+            b"F2\0".as_ptr() as *const _);
+        eprintln!(
+            "rc={} rd={rd} s={s1}{s2}{s3} fd={fd}",
+            !rc.is_null());
+        // bad-property / out-of-range arms
+        let r9 = c::cmsIT8SetPropertyStr(h,
+            std::ptr::null(),
+            b"val\0".as_ptr() as *const _);
+        eprintln!("null-prop={r9}");
+        c::cmsIT8Free(h);
+    }
+}
