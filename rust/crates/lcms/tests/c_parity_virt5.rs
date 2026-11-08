@@ -187,3 +187,43 @@ fn rgb_builder_variants() {
         }
     }
 }
+
+/// Abstract-profile builder internals — BCHSW on more param
+/// combos + a transform through each.
+#[test]
+fn abstract_variants() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        for (name, lum, hue, sat, version) in [
+            ("bright", 2.0f64, 0.0, 0.0, 4.3),
+            ("dark", 0.5, 0.0, 0.0, 4.3),
+            ("hue90", 1.0, 90.0, 0.0, 4.3),
+            ("desat", 1.0, 0.0, 0.3, 4.3),
+            ("all", 1.5, 45.0, 0.7, 4.3),
+            ("v2", 1.2, 30.0, 0.8, 2.1),
+        ] {
+            let ab = c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 17, lum, hue, sat,
+                version, std::ptr::null(), std::ptr::null());
+            if ab.is_null() {
+                eprintln!("{name} NULL"); continue;
+            }
+            // transform through it — the abstract profile links
+            // in the middle
+            let mut profs = [srgb, ab, srgb];
+            let ct = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 3, in_fmt, in_fmt, 0, 0);
+            eprintln!("{name} transform={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+            c::cmsCloseProfile(ab);
+        }
+        let _ = c::cmsCloseProfile(srgb);
+    }
+}
