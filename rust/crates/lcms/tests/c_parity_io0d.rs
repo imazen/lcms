@@ -22733,3 +22733,84 @@ fn internal_final55_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio1 residual — cmsIsCLUT × classes × intents ×
+///   directions (CLUT-matrix internals).
+#[test]
+fn internal_final56_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // placeholders with cv+clut pipelines
+        for (cls, cname) in [
+            (0x6D6E7472u32, "mntr"), (0x70727472, "prtr"),
+            (0x7363616E, "scnr"), (0x73706163, "spac"),
+            (0x61627374, "abst"), (0x6C696E6B, "link"),
+            (0x6E6D636C, "nmcl"),
+        ] {
+            for (pipe, pname) in [
+                (0u32, "cv"), (1, "clut"), (2, "cvclut"),
+                (3, "empty"),
+            ] {
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, cls);
+                c::cmsSetColorSpace(prof, 0x52474220);
+                c::cmsSetPCS(prof, 0x58595A20);
+                c::cmsSetProfileVersion(prof, 2.0);
+                let g = c::cmsBuildGamma(
+                    std::ptr::null_mut(), 2.2);
+                let p = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                let trcs = [g, g, g];
+                let dims = [3u32; 3];
+                let grid = vec![0x4000u16; 81];
+                match pipe {
+                    0 => { c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            trcs.as_ptr() as *mut _)); },
+                    1 => { c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(),
+                            dims.as_ptr(), 3, 3,
+                            grid.as_ptr())); },
+                    2 => {
+                        c::cmsPipelineInsertStage(p, 0,
+                            c::cmsStageAllocToneCurves(
+                                std::ptr::null_mut(), 3,
+                                trcs.as_ptr() as *mut _));
+                        c::cmsPipelineInsertStage(p, 1,
+                            c::cmsStageAllocCLut16bitGranular(
+                                std::ptr::null_mut(),
+                                dims.as_ptr(), 3, 3,
+                                grid.as_ptr()));
+                    },
+                    _ => {},
+                }
+                c::cmsWriteTag(prof, 0x41324230,
+                    p as *const _);
+                c::cmsWriteTag(prof, 0x42324130,
+                    p as *const _);
+                let mut out = String::new();
+                for it in [0u32, 1, 2, 3, 10, 11, 12] {
+                    for dir in [0u32, 1] {
+                        let cl = c::cmsIsCLUT(prof, it, dir);
+                        out += &format!("{it}/{dir}={cl} ");
+                    }
+                }
+                eprintln!("{cname} {pname} {out}");
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+                c::cmsFreeToneCurve(g);
+            }
+        }
+        // srgb real profile — all intents × dirs
+        for it in 0..16u32 {
+            for dir in 0..3u32 {
+                let cl = c::cmsIsCLUT(srgb, it, dir);
+                eprintln!("srgb {it}/{dir}={cl}");
+            }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
