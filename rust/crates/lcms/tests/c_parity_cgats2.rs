@@ -924,3 +924,58 @@ fn it8_table_api_arms() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 lexer/parser deep arms — data-set edges, enum/data-format
+/// accessors, patch lookup, malformed structure arms.
+#[test]
+fn it8_deep_arms() {
+    unsafe {
+        // doc with mixed value forms in data section
+        let doc = b"CGATS.17\n\
+            NUMBER_OF_FIELDS 5\nNUMBER_OF_SETS 3\n\
+            BEGIN_DATA_FORMAT\nI D S H B\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n\
+            1 1.5 \"str\" 0xFF 0b101\n\
+            -2 -0.5e2 'q' 0x1A 0b0\n\
+            +3 0.5 \"x\\\"y\" 0x00 0b11\n\
+            END_DATA\n\
+            KEY1 val1\n\
+            KEY2 \"quoted val\"\n\
+            KEY3 0xAB\n\
+            KEY4 -1.5\n";
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("load={}", !h.is_null());
+        if !h.is_null() {
+            let mut names = [std::ptr::null_mut(); 8];
+            let nf = c::cmsIT8EnumDataFormat(h, names.as_mut_ptr());
+            eprintln!("nf={nf}");
+
+            let pn = c::cmsIT8GetPatchByName(h,
+                b"2\0".as_ptr() as *const i8);
+            eprintln!("patch={pn}");
+            let v = c::cmsIT8GetData(h, b"1\0".as_ptr() as *const i8,
+                b"S\0".as_ptr() as *const i8);
+            eprintln!("data={:?}", v);
+            let mut buf = vec![0u8; 1 << 16];
+            let mut n = buf.len() as u32;
+            c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
+            let txt = std::str::from_utf8(&buf[..n as usize])
+                .unwrap_or("");
+            eprintln!("saved:\n{txt}");
+            c::cmsIT8Free(h);
+        }
+        // malformed structure variants
+        for (i, doc) in [
+            b"CGATS.17\nNUMBER_OF_FIELDS x\n".as_slice(),
+            b"CGATS.17\nNUMBER_OF_SETS -1\n".as_slice(),
+            b"CGATS.17\nBEGIN_DATA\n1\nEND_DATA\n".as_slice(),
+            b"CGATS.17\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA\nEND_DATA\n".as_slice(),
+        ].iter().enumerate() {
+            let h2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("mal{i} load={}", !h2.is_null());
+            if !h2.is_null() { c::cmsIT8Free(h2); }
+        }
+    }
+}
