@@ -1119,3 +1119,34 @@ fn float_normalization_colorspaces() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadInputLUT/_cmsReadOutputLUT remaining arms — the
+/// devicelink + preview + gamut paths on built profiles.
+#[test]
+fn lut_reader_arms() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for sig in [0x41324230u32, 0x67616d74, 0x70726530] {
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6d6e7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x4C616220);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, sig, p as *const _);
+            let t = c::cmsCreateTransform(prof, r16, lab, l16, 0, 0);
+            eprintln!("sig{sig:#x} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
