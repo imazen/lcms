@@ -129,3 +129,55 @@ fn multiprofile_chains() {
         }
     }
 }
+
+/// cmsCreateExtendedTransform with a gamut-check profile — the
+/// gamut-check construction path.
+#[test]
+fn gamut_check_transform() {
+    unsafe {
+        let in_fmt: u32 = (6 << 16) | (3 << 3) | 1;
+        let out_fmt: u32 = in_fmt;
+        for pos in [0u32, 1] {
+            let mut c_profs = vec![
+                c::cmsCreate_sRGBProfile(),
+                c::cmsCreate_sRGBProfile(),
+            ];
+            let g = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let mut cbpc = [0i32; 2];
+            let mut cint = [0u32; 2];
+            let mut cad = [1.0f64; 2];
+            let ct = c::cmsCreateExtendedTransform(
+                std::ptr::null_mut(), 2, c_profs.as_mut_ptr(),
+                cbpc.as_mut_ptr(), cint.as_mut_ptr(), cad.as_mut_ptr(),
+                g, pos, in_fmt, out_fmt, 0);
+            let mut ps = vec![
+                virt::create_srgb_profile(None).unwrap(),
+                virt::create_srgb_profile(None).unwrap(),
+            ];
+            let mut gp = virt::create_lab4_profile(None, None).unwrap();
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let mut rt = xform::create_extended_transform(
+                None, &mut ps, &mut bpc, &intents, &adapt,
+                Some(&mut gp), pos, in_fmt, out_fmt, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "gamut pos{pos}");
+            if !ct.is_null() {
+                let inp = [0x8000u16; 3];
+                let inb: Vec<u8> = inp.iter()
+                    .flat_map(|v| v.to_be_bytes()).collect();
+                let mut co = [0u16; 3];
+                let mut ro = vec![0u8; 6];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                if let Some(rt) = &mut rt { rt.do_transform(&inb, &mut ro, 1) }
+                let ro16: Vec<u16> = ro.chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                assert_eq!(co, ro16[..3], "gamut eval pos{pos}");
+                c::cmsDeleteTransform(ct);
+            }
+            c::cmsCloseProfile(g);
+            for h in c_profs { let _ = c::cmsCloseProfile(h); }
+        }
+    }
+}

@@ -671,6 +671,7 @@ unsafe extern "C" {
     pub fn cmsCreateInkLimitingDeviceLinkTHR(ctx: *mut c_void, color_space: u32, limit: f64) -> *mut c_void;
     pub fn cmsTransform2DeviceLink(t: *mut c_void, version: f64, flags: u32) -> *mut c_void;
     // --- transforms, extended surface ---
+    pub fn cmsCreateExtendedTransform(ctx: *mut c_void, n_profiles: u32, profs: *mut *mut c_void, bpc: *mut i32, intents: *mut u32, adaptation: *mut f64, gamut: *mut c_void, gamut_pos: u32, in_fmt: u32, out_fmt: u32, flags: u32) -> *mut c_void;
     pub fn cmsCreateMultiprofileTransform(profs: *mut *mut c_void, n_profiles: i32, in_fmt: u32, out_fmt: u32, intent: u32, flags: u32) -> *mut c_void;
     pub fn cmsCreateProofingTransform(input: *mut c_void, in_fmt: u32, output: *mut c_void, out_fmt: u32, proof: *mut c_void, intent: u32, proofing_intent: u32, flags: u32) -> *mut c_void;
     pub fn cmsDoTransformStride(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32, stride: u32);
