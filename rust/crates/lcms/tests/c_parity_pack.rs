@@ -1840,3 +1840,29 @@ fn fclr_modifier_matrix() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Lab formats on a Lab devicelink — the Lab packer bodies.
+#[test]
+fn lab_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x4C616220,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("lab-u8", (0 << 16) | (3 << 3) | 1u32),
+            ("lab-u16", (0 << 16) | (3 << 3) | 2),
+            ("lab-flt", (1 << 22) | (0 << 16) | (3 << 3) | 4),
+            ("lab-dbl", (1 << 22) | (0 << 16) | (3 << 3) | 0),
+            ("lab-hlf", (1 << 22) | (0 << 16) | (3 << 3) | 2),
+            ("lab-planar", (0 << 16) | (1 << 12) | (3 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
