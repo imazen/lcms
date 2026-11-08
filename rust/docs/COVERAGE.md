@@ -1198,3 +1198,27 @@ vcgt_read_arms2; parametric_eval_arms2; it8_insymbol_arms;
 it8_header_pair_arms; cube_parse_arms2; fixwhite_arms;
 black_preserve_arms2; lut8_write_arms2 (fork-isolated rejects);
 matshaper_arms; joincurves_arms; default_icc_intents_arms.
+
+## Round 28 — ~290 gates, tag-reader/writer + optimizer + internals sweep
+
+C oracle re-measured through the parity suite: **80.43% lines /
+95.59% fns / 87.52% regions / 73.76% branches** (from round-27's
+80.09/95.51/87.07/72.99 — +0.34/+0.08/+0.45/+0.77, within run-to-run
+noise; ~19 more gates landed after this measurement).
+
+Notable since round-27:
+
+| area | gates |
+|---|---|
+| tag readers | mhc2_read_arms2, mlu_ncl2_scr_read_arms, mpe_elem_read_arms, lutab_read_arms (mft2/mAB/mBA raw blobs), wchar_dict_arms, clr_curve_text_arms (clrt/curv/text), cicp_crdi_mpecurve_arms |
+| tag writers | vcgt_write_arms, ucrbg_write_arms, lutba_write_arms, writematrix_matshaper_arms, savetags_arms (linked/dup tags) |
+| optimizer | prelin_opt_arms (planar/nonRGB/degen rejects), linearize_opt_arms (link-class cv-clut-cv RGB->RGB -> OptimizeByComputingLinearization), transform_alloc_arms (9 pairs x 10 flags x 4 intents) |
+| internals | misc_tag_ctx_arms (view/meas/para + linearization + ctx + MLUwide + unlink), gdb_float_arms (cmsGDB* + float-devicelink + para write), api_misc_arms (reversefloat/matrix/CLUTfloat/CIE2000/NULLio), ctx_dup_plugin_arms (dup with plugins), stream_io_arms, float_output_arms (normalize-stage insertion), intent_gamut_arms, csa_color_arms (CSA/CRD + colorspace getters), cam02_utf8_gray_arms (CIECAM02 + UTF8 + gray pipelines), half_fmt_arms/chunky_fmt_arms/float_fmt_arms/formatters |
+| IT8 | it8_struct_arms, it8_cookptr_arms (LABEL/$-refs), it8_setdata_arms (SetData/RowCol/Dbl) |
+
+Documented upstream behaviors confirmed: `cmsOpenProfileFromStream`
+frees the FILE* on parse failure; `cmsPipelineUnlinkStage` returns
+garbage for out-of-range locs; `mpet`-typed DToB/BToD saves reject
+API pipelines (Type_MPEclut/Matrix_Write + WriteSegmentedCurve stay
+dead-path); `MemoryWrite` truncates rather than failing (write-fail
+arms only reachable via a patched Write callback).
