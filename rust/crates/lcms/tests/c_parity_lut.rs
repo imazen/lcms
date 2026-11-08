@@ -3028,3 +3028,28 @@ fn segmented_curve_mpe() {
         }
     }
 }
+
+/// Internal stage allocators — Lab2XYZ/XYZ2Lab/LabV2ToV4/LabPrelin/
+/// IdentityCLut/NamedColor helpers (the ones behind the profile
+/// readers).
+#[test]
+fn internal_stage_allocators() {
+    unsafe {
+        let stages = [
+            ("lab2xyz", c::_cmsStageAllocLab2XYZ(std::ptr::null_mut())),
+            ("xyz2lab", c::_cmsStageAllocXYZ2Lab(std::ptr::null_mut())),
+            ("lv2v4", c::_cmsStageAllocLabV2ToV4(std::ptr::null_mut())),
+            ("lv4v2", c::_cmsStageAllocLabV4ToV2(std::ptr::null_mut())),
+            ("prelin", c::_cmsStageAllocLabPrelin(std::ptr::null_mut())),
+            ("idclut", c::_cmsStageAllocIdentityCLut(std::ptr::null_mut(), 3)),
+        ];
+        for (name, st) in stages {
+            eprintln!("{name}={}", !st.is_null());
+            if !st.is_null() { c::cmsStageFree(st); }
+        }
+        // Lab prelin curves variant
+        let s2 = c::_cmsStageAllocLabV2ToV4curves(std::ptr::null_mut());
+        eprintln!("v2v4curves={}", !s2.is_null());
+        if !s2.is_null() { c::cmsStageFree(s2); }
+    }
+}
