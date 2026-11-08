@@ -8537,3 +8537,47 @@ fn mba_write_orders() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// SaveTags linked-tag + dedup + unsupported-tag arms.
+#[test]
+fn save_tags_deep() {
+    unsafe {
+        // linked tags: two sigs pointing to the same serialized
+        // data — write the same object to multiple sigs
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let prof = c::cmsCreate_sRGBProfile();
+        // link rTRC/gTRC/bTRC to the same tone curve
+        c::cmsWriteTag(prof, 0x72545243, g as *const _);
+        c::cmsWriteTag(prof, 0x67545243, g as *const _);
+        c::cmsWriteTag(prof, 0x62545243, g as *const _);
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        // same MLU to several text sigs
+        for sig in [0x64657363u32, 0x63707274, 0x646d6464,
+                    0x646d6e64, 0x64657673] {
+            c::cmsWriteTag(prof, sig, ml as *const _);
+        }
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("linked save={s} n={n}");
+        // re-open + re-save (raw-copy + linked arms)
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        if !rp.is_null() {
+            let mut buf2 = vec![0u8; 1 << 20];
+            let mut n2 = buf2.len() as u32;
+            let s2 = c::cmsSaveProfileToMem(rp,
+                buf2.as_mut_ptr() as *mut _, &mut n2);
+            eprintln!("re-save={s2} n2={n2}");
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(g);
+        c::cmsMLUfree(ml);
+    }
+}
