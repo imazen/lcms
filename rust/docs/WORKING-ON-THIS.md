@@ -103,3 +103,15 @@ built profiles, cmslut stage evaluators, cmscgats multi-table rest,
 cmsio0 IOhandler edge cases, cmsgmt, cmscnvrt intent pipelines,
 cmsplugin (plugin struct registration — needs FFI struct construction;
 `cmsGetProfileInfo*`/`cmsGetSupportedIntents` are unported API gaps).
+
+## Open divergence — pinned (found by corpus_ps2_matrix, needs port fix)
+
+**`labv4lcms2.icc` CSA intent 0**: C emits `/Table [ 33 33 33 [` in
+`WriteInputLUT`, Rust emits `/Table [ 2 2 2 [`. Root cause located in
+`opt.rs::optimize_by_resampling`: `n_grid=2` is selected when
+`lut.stage_count()==0`, and Rust's `xform.lut` for the profile→Lab4 link
+has an empty `elements` list (opt_data-only pipeline) where C's
+`v->Lut` retains stages → C samples at `reasonable_gridpoints`=33.
+Divergence is in the transform/link path for Lab-input profiles, not ps2
+itself. The corpus_ps2_matrix extension was reverted pending the fix;
+the 4 pre-existing ps2 tests remain green.
