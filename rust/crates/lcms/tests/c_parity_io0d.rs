@@ -1152,3 +1152,32 @@ fn cmm_signature_fields() {
         }
     }
 }
+
+/// File-size machinery — unusual size fields.
+#[test]
+fn file_size_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the size field (offset 0)
+        for (name, v) in [
+            ("sz-0", 0u32),
+            ("sz-1", 1u32),
+            ("sz-real", cn),
+            ("sz-huge", 0xFFFFFFFFu32),
+            ("sz-128", 128u32),
+            ("sz-8k", 8192u32)] {
+            let mut d = cbuf.clone();
+            d[0..4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
