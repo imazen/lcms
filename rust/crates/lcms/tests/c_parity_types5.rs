@@ -2158,3 +2158,44 @@ fn full_type_sweep() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_ProfileSequenceDesc + Dup internals — read a devicelink's
+/// pseq/psid, dup the SEQ, write to another profile.
+#[test]
+fn pseq_dup() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        c::cmsDeleteTransform(ct);
+        if !dl.is_null() {
+            let pseq = c::cmsReadTag(dl, 0x70736571);
+            let psid = c::cmsReadTag(dl, 0x70736964);
+            if !pseq.is_null() {
+                let dup = c::cmsDupProfileSequenceDescription(
+                    pseq as *mut std::ffi::c_void);
+                eprintln!("pseq dup={}", dup.is_null());
+                if !dup.is_null() {
+                    c::cmsFreeProfileSequenceDescription(
+                        dup as *mut std::ffi::c_void);
+                }
+            }
+            if !psid.is_null() {
+                let dup2 = c::cmsDupProfileSequenceDescription(
+                    psid as *mut std::ffi::c_void);
+                eprintln!("psid dup={}", dup2.is_null());
+                if !dup2.is_null() {
+                    c::cmsFreeProfileSequenceDescription(
+                        dup2 as *mut std::ffi::c_void);
+                }
+            }
+            c::cmsCloseProfile(dl);
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
