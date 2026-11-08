@@ -391,3 +391,32 @@ fn io1_intent_support() {
         unsafe { c::cmsCloseProfile(ch) };
     }
 }
+
+/// cmsio0 IO-handler machinery: NULL-IOhandler dry-run, mem handler
+/// read/write modes, seek/read/write/tell surface.
+#[test]
+fn iohandler_variants() {
+    let data = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../linlcms2.icc"),
+    ).unwrap();
+    unsafe {
+        // NULL-IOhandler save: dry-run size query
+        let io_n = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+        assert!(!io_n.is_null(), "IOhandlerFromNULL");
+        let p = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsSaveProfileToIOhandler(p, io_n);
+        assert!(ok != 0, "save to NULL iohandler");
+        c::cmsCloseIOhandler(io_n);
+        c::cmsCloseProfile(p);
+
+        // mem-IOhandler read mode: open existing profile bytes
+        let mut buf = data.clone();
+        let io_r = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(), buf.as_mut_ptr(), buf.len() as u32, b"r\0".as_ptr());
+        assert!(!io_r.is_null(), "IOhandlerFromMem r");
+        let p2 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io_r);
+        assert!(!p2.is_null(), "open from mem iohandler");
+        assert_eq!(c::cmsGetTagCount(p2), lcms::profile::open_profile_from_mem(None, &data).unwrap().tag_count as i32);
+        c::cmsCloseProfile(p2);
+    }
+}
