@@ -1996,3 +1996,29 @@ fn lut_sig_resave() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'meta'/'dict'/'pseq'/'psid' — the remaining object-sig
+/// writes with proper payloads.
+#[test]
+fn object_sig_writes() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // a dict payload on 'meta'
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        let ok1 = c::cmsWriteTag(h, 0x6D657461,
+            dict as *mut std::ffi::c_void); // 'meta'
+        eprintln!("meta write={ok1}");
+        // a seq payload on 'pseq'/'psid'
+        let seq = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 2);
+        if !seq.is_null() {
+            for sig in [0x70736571u32, 0x70736964] {
+                let ok = c::cmsWriteTag(h, sig,
+                    seq as *mut std::ffi::c_void);
+                eprintln!("{sig:#x} write={ok}");
+            }
+        }
+        c::cmsCloseProfile(h);
+        c::cmsDictFree(dict);
+    }
+}
