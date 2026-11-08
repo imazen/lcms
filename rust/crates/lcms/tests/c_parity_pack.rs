@@ -1361,3 +1361,34 @@ fn gray_channel_formats() {
         let _ = c::cmsCloseProfile(gray);
     }
 }
+
+/// Gray modifier matrix on a gray profile — the 1-channel
+/// packer bodies.
+#[test]
+fn gray_modifier_matrix2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        for (name, fmt) in [
+            ("g-doswap", (0 << 16) | (1 << 10) | (1 << 3) | 1),
+            ("g-swapf", (0 << 16) | (1 << 14) | (1 << 3) | 1),
+            ("g-flavor", (0 << 16) | (1 << 13) | (1 << 3) | 1),
+            ("g-x2", (0 << 16) | (2 << 7) | (1 << 3) | 1),
+            ("g-x3", (0 << 16) | (3 << 7) | (1 << 3) | 1),
+            ("g-x4", (0 << 16) | (4 << 7) | (1 << 3) | 1),
+            ("g-premul", (0 << 16) | (1 << 23) | (1 << 7)
+             | (1 << 3) | 1),
+            ("g-flt-x1", (1 << 22) | (0 << 16) | (1 << 7)
+             | (1 << 3) | 4),
+            ("g-dbl-x1", (1 << 22) | (0 << 16) | (1 << 7)
+             | (1 << 3) | 0),
+        ] {
+            let ct = c::cmsCreateTransform(gray, fmt, gray,
+                fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(gray);
+    }
+}
