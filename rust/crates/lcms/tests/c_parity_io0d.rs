@@ -8402,3 +8402,75 @@ fn lut_write_deep() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// Type_LUTA2B/B2A_Write deep arms — all 4 valid mAB/mBA element
+/// orders x SaveAs8Bits.
+#[test]
+fn mab_mba_write_orders() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mut grid = vec![0u16; 17 * 17 * 17 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 17) * 3855) as u16;
+        }
+        let mk_cv = || {
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g2, g].as_ptr() as *mut _)
+        };
+        let mk_mat = || {
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null())
+        };
+        let mk_clut = || {
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 3, 3,
+                grid.as_ptr())
+        };
+        // mAB orders: B, B+M+mat, A+clut+B, A+clut+M+mat+B
+        for (stages, name) in [
+            (vec![mk_cv()], "B"),
+            (vec![mk_cv(), mk_cv(), mk_mat()], "B-M-mat"),
+            (vec![mk_cv(), mk_clut(), mk_cv()], "A-clut-B"),
+            (vec![mk_cv(), mk_clut(), mk_cv(), mk_mat(), mk_cv()],
+                "A-clut-M-mat-B"),
+        ] {
+            for (sig, save8, name2) in [
+                (0x41324230u32, false, "a2b0"),
+                (0x41324230u32, true, "a2b0-8"),
+                (0x42324130u32, false, "b2a0"),
+            ] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 4.4);
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+                for st in &stages {
+                    let d = c::cmsStageDup(*st);
+                    c::cmsPipelineInsertStage(p, 1, d);
+                }
+                if save8 { c::cmsPipelineSetSaveAs8bitsFlag(p, 1); }
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 22];
+                let mut nn = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut nn)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, nn)
+                } else { std::ptr::null_mut() };
+                let tag = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name}/{name2} w={w} s={s} r={}",
+                    !tag.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+            for st in &stages { c::cmsStageFree(*st); }
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
