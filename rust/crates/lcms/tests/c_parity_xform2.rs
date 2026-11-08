@@ -776,3 +776,38 @@ fn is_clut_machinery() {
         let _ = (dl, srgb, lab, ph);
     }
 }
+
+/// Transform getters on more shapes — the transform-getter
+/// machinery.
+#[test]
+fn transform_getters() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let rgb2 = c::cmsCreate_sRGBProfile();
+        let fmt = (4 << 16) | (3 << 3) | 2u32;
+        let lfmt = (10 << 16) | (3 << 3) | 2u32;
+        for (name, t) in [
+            ("rgb-rgb", c::cmsCreateTransform(rgb, fmt,
+                rgb2, fmt, 0, 0)),
+            ("rgb-lab", c::cmsCreateTransform(rgb, fmt,
+                lab, lfmt, 0, 0)),
+            ("lab-rgb", c::cmsCreateTransform(lab, lfmt,
+                rgb2, fmt, 0, 0))] {
+            if t.is_null() {
+                eprintln!("{name} NULL");
+                continue;
+            }
+            let inf = c::cmsGetTransformInputFormat(t);
+            let outf = c::cmsGetTransformOutputFormat(t);
+            let ctx = c::cmsGetTransformContextID(t);
+            let pl = c::cmsGetTransformPipeline(t);
+            let gpl = c::cmsGetTransformGamutCheckPipeline(t);
+            eprintln!("{name} in={inf:#x} out={outf:#x} \
+                ctx={} pl={} gpl={}",
+                !ctx.is_null(), !pl.is_null(), !gpl.is_null());
+            c::cmsDeleteTransform(t);
+        }
+        let _ = (rgb, lab, rgb2);
+    }
+}
