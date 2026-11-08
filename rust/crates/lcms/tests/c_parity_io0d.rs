@@ -11970,3 +11970,85 @@ fn desc_read_arms2() {
         }
     }
 }
+
+/// Type_vcgt_Read — raw `vcgt` tags: table 1B/2B, formula,
+/// Adobe quirk fixup, channel/bytes/TagType rejects.
+#[test]
+fn vcgt_read_arms2() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    fn table(nch: u16, nelems: u16, nbytes: u16,
+        data: Vec<u8>) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x76636774)); // 'vcgt'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(0));          // table type
+        t.extend_from_slice(&be16(nch));
+        t.extend_from_slice(&be16(nelems));
+        t.extend_from_slice(&be16(nbytes));
+        t.extend_from_slice(&data);
+        t
+    }
+    fn formula(gs: &[(f32, f32, f32); 3]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x76636774));
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(1));          // formula type
+        for (g, mn, mx) in gs {
+            let f = |v: f32| ((v * 65536.0) as i32).to_be_bytes();
+            t.extend_from_slice(&f(*g));
+            t.extend_from_slice(&f(*mn));
+            t.extend_from_slice(&f(*mx));
+        }
+        t
+    }
+    unsafe {
+        let d8 = vec![0x33u8; 4 * 3];
+        let d16 = vec![0x11u8; 4 * 2 * 3];
+        // Adobe quirk: nElems=256 nBytes=1 SizeOfTag=1576
+        let dq = vec![0x55u8; 1576 - 20];
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (table(3, 4, 1, d8.clone()), "tab-1B"),
+            (table(3, 4, 2, d16.clone()), "tab-2B"),
+            (table(3, 256, 1, dq), "tab-adobe"),
+            (table(3, 0, 1, vec![]), "tab-n0"),
+            (formula(&[(2.2, 0.0, 1.0), (2.2, 0.0, 1.0),
+                (2.2, 0.0, 1.0)]), "formula"),
+            (formula(&[(2.2, 0.1, 0.9), (1.8, 0.0, 1.0),
+                (2.4, 0.05, 0.95)]), "formula-vary"),
+            (table(2, 4, 1, d8.clone()), "nch2"),
+            (table(4, 4, 1, d8.clone()), "nch4"),
+            (table(3, 4, 3, d8.clone()), "nb3"),
+            (table(3, 4, 4, d8.clone()), "nb4"),
+            // bad TagType
+            ({ let mut t = Vec::new();
+                t.extend_from_slice(&be32(0x76636774u32));
+                t.extend_from_slice(&be32(0));
+                t.extend_from_slice(&be32(7));
+                t.extend_from_slice(&be32(0));
+                t }, "ttype7"),
+        ];
+        for (blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 2.1);
+            let w = c::cmsWriteRawTag(prof, 0x76636774,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x76636774)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
