@@ -2859,3 +2859,32 @@ fn profile_info_locales() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Profile-info on non-sRGB profiles — the info machinery.
+#[test]
+fn profile_info_shapes() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ph = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (pname, h) in [
+            ("devlink", dl), ("lab4", lab), ("ph", ph)] {
+            for (info, iname) in [
+                (0u32, "desc"), (1, "copy"), (2, "model"),
+                (3, "mfr")] {
+                let mut buf = [0u16; 64];
+                let n = c::cmsGetProfileInfo(h, info,
+                    b"en\0".as_ptr() as _,
+                    b"US\0".as_ptr() as _,
+                    buf.as_mut_ptr() as *mut _, 64);
+                eprintln!("{pname}.{iname} n={n}");
+            }
+        }
+        let _ = (dl, lab, ph);
+    }
+}
