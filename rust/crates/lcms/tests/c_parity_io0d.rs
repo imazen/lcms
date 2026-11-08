@@ -3045,3 +3045,49 @@ fn tag_reader_sweep() {
         }
     }
 }
+
+/// Remaining tag-type serializers — chrm (CIExyYTriple), dtim
+/// (DateTime), view (ViewingConditions), sig payloads through
+/// write->save->read.
+#[test]
+fn tag_types_2() {
+    unsafe {
+        #[repr(C)] struct XyY { x: f64, y: f64, yv: f64 }
+        #[repr(C)] struct Triple { r: XyY, g: XyY, b: XyY }
+        #[repr(C)] struct Dt { y: u16, mo: u16, d: u16,
+            h: u16, mi: u16, s: u16 }
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        #[repr(C)] struct View { illum: Xyz, surr: Xyz, it: u32 }
+        let prof = c::cmsCreate_sRGBProfile();
+        let chrm = Triple {
+            r: XyY { x: 0.64, y: 0.33, yv: 1.0 },
+            g: XyY { x: 0.30, y: 0.60, yv: 1.0 },
+            b: XyY { x: 0.15, y: 0.06, yv: 1.0 } };
+        let dt = Dt { y: 2026, mo: 11, d: 8, h: 12, mi: 0, s: 0 };
+        let view = View {
+            illum: Xyz { x: 0.96, y: 1.0, z: 0.82 },
+            surr: Xyz { x: 0.2, y: 0.2, z: 0.2 }, it: 1 };
+        for (sig, payload, name) in [
+            (0x6368726D, &chrm as *const _ as *const _, "chrm"),
+            (0x6474696D, &dt as *const _ as *const _, "dtim"),
+            (0x76696577, &view as *const _ as *const _, "view"),
+        ] {
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name}: w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+        }
+        c::cmsCloseProfile(prof);
+    }
+}
