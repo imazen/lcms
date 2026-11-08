@@ -383,3 +383,66 @@ fn version_getters() {
         }
     }
 }
+
+/// OkLab header regression — C `cmsCreate_OkLabProfile` vs
+/// Rust `create_oklab_profile`: the header rendering
+/// intent must be RELATIVE (1) on both sides and the
+/// serialized profile bytes must match.
+#[test]
+fn oklab_header_intent() {
+    unsafe {
+        let cp = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
+        assert!(!cp.is_null(), "C OkLab create failed");
+        let c_intent = c::cmsGetHeaderRenderingIntent(cp);
+        let c_b = c_save(cp);
+        c::cmsCloseProfile(cp);
+        let mut rp = virt::create_oklab_profile(None)
+            .expect("rust oklab");
+        assert_eq!(c_intent,
+            lcms::types::INTENT_RELATIVE_COLORIMETRIC,
+            "C OkLab header intent");
+        assert_eq!(rp.rendering_intent,
+            lcms::types::INTENT_RELATIVE_COLORIMETRIC,
+            "rust OkLab header intent");
+        cmp("oklab", c_b, r_save(&mut rp));
+    }
+}
+
+/// OkLab transform regression — OkLab→XYZ through both
+/// impls using the named RELATIVE constant, not a literal.
+#[test]
+fn oklab_transform_relative() {
+    const INFMT: u32 = (0 << 16) | (3 << 3) | 1;   // PT_ANY 3ch u8
+    const OUTFMT: u32 = (9 << 16) | (3 << 3) | 2;  // PT_XYZ 3ch u16
+    let inp = [64u8, 128, 192, 0, 255, 32];
+    let n_px = 2u32;
+    // C side
+    let mut c_out = vec![0u8; 2 * 3 * 2];
+    unsafe {
+        let oklab = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let t = c::cmsCreateTransform(oklab, INFMT, xyz,
+            OUTFMT, 1, 0);
+        assert!(!t.is_null(), "C transform failed");
+        c::cmsDoTransform(t, inp.as_ptr() as *const _,
+            c_out.as_mut_ptr() as *mut _, n_px);
+        c::cmsDeleteTransform(t);
+        c::cmsCloseProfile(oklab);
+        c::cmsCloseProfile(xyz);
+    }
+    // Rust side — the named constant, exercising the real
+    // INTENT_RELATIVE_COLORIMETRIC path end to end.
+    let p1 = virt::create_oklab_profile(None).expect("oklab");
+    let p2 = virt::create_xyz_profile(None).expect("xyz");
+    let mut profs = vec![p1, p2];
+    let mut bpc = [false, false];
+    let intents = [lcms::types::INTENT_RELATIVE_COLORIMETRIC; 2];
+    let adapt = [1.0f64, 1.0];
+    let mut t = lcms::xform::create_extended_transform(
+        None, &mut profs, &mut bpc, &intents, &adapt,
+        None, 0, INFMT, OUTFMT, 0)
+        .expect("rust transform");
+    let mut r_out = vec![0u8; 2 * 3 * 2];
+    t.do_transform(&inp, &mut r_out, n_px);
+    assert_eq!(c_out, r_out, "OkLab→XYZ output diverged");
+}

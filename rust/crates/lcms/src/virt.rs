@@ -20,8 +20,7 @@ use crate::tagtypes::TagObject;
 use crate::types::{CieXyz, CiexyY, CiexyYTriple, Mat3};
 use crate::wtpnt::{adaptation_matrix, build_rgb2xyz_transfer_matrix, d50_xyy, d50_xyz};
 
-pub const INTENT_PERCEPTUAL: u32 = 0;
-pub const INTENT_RELATIVE_COLORIMETRIC: u32 = 3;
+pub use crate::types::{INTENT_PERCEPTUAL, INTENT_RELATIVE_COLORIMETRIC};
 
 /// `SetTextTags` — desc + copyright MLU tags
 fn set_text_tags(icc: &mut IccProfile, desc: &[Wchar]) -> bool {
