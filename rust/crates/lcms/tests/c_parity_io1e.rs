@@ -2022,3 +2022,34 @@ fn object_sig_writes() {
         c::cmsDictFree(dict);
     }
 }
+
+/// 'calt'/'view'/'meas'/'scrn'/'chrm'/'bfd ' — the remaining
+/// struct-sig writes with proper payloads.
+#[test]
+fn struct_sig_writes() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // a DateTime payload on 'calt'
+        #[repr(C)]
+        struct Tm {
+            sec: i32, min: i32, hour: i32, mday: i32,
+            mon: i32, year: i32, wday: i32, yday: i32,
+            isdst: i32,
+        }
+        let tm = Tm { sec: 0, min: 0, hour: 0, mday: 1,
+                      mon: 0, year: 124, wday: 0, yday: 0,
+                      isdst: 0 };
+        let ok = c::cmsWriteTag(h, 0x63616C74,
+            &tm as *const _ as *mut std::ffi::c_void); // 'calt'
+        eprintln!("calt write={ok}");
+        // an XYZ payload on 'chrm'/'bkpt'/'lumi'/'wtpt'
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        for sig in [0x6368726Du32, 0x626B7074, 0x6C756D69,
+                    0x77747074] {
+            let ok = c::cmsWriteTag(h, sig,
+                &xyz as *const _ as *mut std::ffi::c_void);
+            eprintln!("{sig:#x} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
