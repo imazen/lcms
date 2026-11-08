@@ -400,3 +400,41 @@ fn u8_packed_formats() {
 }
 
 
+
+/// Packed 3-byte RGB (BYTES_SH(3)) + 4-byte (BYTES_SH(4)) formats —
+/// the packed-byte formatter paths.
+#[test]
+fn packed_byte_formats() {
+    unsafe {
+        // TYPE_RGB_8_PLANAR-ish / packed 3-byte = BYTES_SH(3)
+        // (3 bytes/pixel packed, not padded)
+        let lab8: u32 = (10 << 16) | (3 << 3) | 1;
+        let packed3: u32 = (4 << 16) | (3 << 3) | 3; // 3 bytes
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ct = c::cmsCreateTransform(hi, packed3, ho, lab8, 0, 0);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let mut rp1 = virt::create_srgb_profile(None).unwrap();
+        let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+        let mut profs = vec![rp1.clone(), rp2.clone()];
+        let mut bpc = [false; 2];
+        let intents = [0u32; 2];
+        let adapt = [1.0f64; 2];
+        let rt = xform::create_extended_transform(
+            None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+            packed3, lab8, 0);
+        assert_eq!(ct.is_null(), rt.is_none(), "packed3");
+        if !ct.is_null() && rt.is_some() {
+            let mut rt = rt.unwrap();
+            let inp = [0x80u8, 0x40, 0xC0];
+            let mut co = [0u8; 4];
+            let mut ro = [0u8; 4];
+            c::cmsDoTransform(ct, inp.as_ptr() as _,
+                co.as_mut_ptr() as *mut _, 1);
+            rt.do_transform(&inp, &mut ro[..3], 1);
+            assert_eq!(co[..3], ro[..3], "packed3 eval");
+            c::cmsDeleteTransform(ct);
+        }
+    }
+}
