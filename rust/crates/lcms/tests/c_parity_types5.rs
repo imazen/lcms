@@ -3318,3 +3318,25 @@ fn write_dispatch_pipeline() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a matrix-stage payload — the write
+/// machinery on different stage types.
+#[test]
+fn write_dispatch_matrix() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let stage = c::cmsStageAllocMatrix(
+            std::ptr::null_mut(), 3, 3,
+            [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0].as_ptr(),
+            std::ptr::null());
+        for (sig, name) in [
+            (0x41324230u32, "A2B0"), (0x42324130u32, "B2A0"),
+            (0x67616D74u32, "gamt"), (0x6D706574u32, "mpet")] {
+            let ok = c::cmsWriteTag(h, sig,
+                stage as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsStageFree(stage);
+        c::cmsCloseProfile(h);
+    }
+}
