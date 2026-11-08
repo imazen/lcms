@@ -319,7 +319,10 @@ unsafe extern "C" {
     pub fn cmsIsTag(p: *const c_void, sig: u32) -> i32;
     pub fn cmsReadTag(p: *mut c_void, sig: u32) -> *mut c_void;
     pub fn cmsWriteTag(p: *mut c_void, sig: u32, data: *const c_void) -> i32;
+    pub fn cmsReadRawTag(p: *mut c_void, sig: u32, buf: *mut c_void, size: u32) -> u32;
+    pub fn cmsWriteRawTag(p: *mut c_void, sig: u32, data: *const c_void, size: u32) -> i32;
     pub fn cmsSaveProfileToMem(p: *mut c_void, mem: *mut c_void, size: *mut u32) -> i32;
+    pub fn cmsCreateProfilePlaceholder(ctx: *mut c_void) -> *mut c_void;
     // --- cmsvirt ---
     pub fn cmsCreate_sRGBProfile() -> *mut c_void;
     pub fn cmsCreateRGBProfileTHR(ctx: Context, white: *const c_void, primaries: *const c_void, transfer: *const *mut c_void) -> *mut c_void;
