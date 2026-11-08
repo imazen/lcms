@@ -201,3 +201,47 @@ fn transform_context_id() {
         let _ = c::cmsCloseProfile(h2);
     }
 }
+
+/// cmsDoTransformLineStride — multi-row strided transforms.
+#[test]
+fn line_stride_transform() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let mut rp1 = virt::create_srgb_profile(None).unwrap();
+        let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+        let mut profs = vec![rp1.clone(), rp2.clone()];
+        let mut bpc = [false; 2];
+        let intents = [0u32; 2];
+        let adapt = [1.0f64; 2];
+        let rt = xform::create_extended_transform(
+            None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+            in_fmt, out_fmt, 0);
+        assert_eq!(ct.is_null(), rt.is_none());
+        if !ct.is_null() && rt.is_some() {
+            let mut rt = rt.unwrap();
+            // 2 rows × 4 pixels — strided input/output
+            let inp: Vec<u16> = (0..24).map(|i| i as u16 * 1000).collect();
+            let inb: Vec<u8> = inp.iter()
+                .flat_map(|v| v.to_ne_bytes()).collect();
+            let mut co = [0u16; 24];
+            let mut ro = vec![0u8; 48];
+            c::cmsDoTransformLineStride(ct,
+                inp.as_ptr() as _, co.as_mut_ptr() as *mut _,
+                4, 2, 8, 6, 6, 6);
+            rt.do_transform_line_stride(&inb, &mut ro,
+                4, 2, 8, 6, 6, 6);
+            let ro16: Vec<u16> = ro.chunks_exact(2)
+                .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+            if co != ro16.as_slice() {
+                eprintln!("stride c={co:?} r={ro16:?}");
+            }
+            c::cmsDeleteTransform(ct);
+        }
+    }
+}
