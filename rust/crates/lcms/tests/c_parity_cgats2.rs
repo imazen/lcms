@@ -1027,3 +1027,54 @@ fn it8_header_arms() {
         }
     }
 }
+
+/// cmscgats data/format/parser deep arms — data-value forms,
+/// format names, multi-table, nosheet, malformed rows.
+#[test]
+fn it8_data_arms3() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // quoted + numeric + mixed data values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2.5 \"str\"\n0x1F -3 .5\nEND_DATA\n".to_vec(), "mixed-data"),
+            // format names are field names (idents + quoted)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nFIELD_ONE \"quoted name\"\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n".to_vec(), "quoted-fmt"),
+            // more rows than declared (NumberOfSets mismatch)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\n2\n3\nEND_DATA\n".to_vec(), "extra-rows"),
+            // fewer rows than declared
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 5\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\n2\nEND_DATA\n".to_vec(), "fewer-rows"),
+            // more fields per row than declared
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n".to_vec(), "extra-cols"),
+            // fewer fields per row
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "fewer-cols"),
+            // multi-table with DATA between tables
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n".to_vec(), "2tables-data"),
+            // END_DATA_FORMAT without matching BEGIN
+            (b"IT8FILE\nEND_DATA_FORMAT\n".to_vec(), "orphan-endfmt"),
+            // data before format declaration
+            (b"IT8FILE\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "data-first"),
+            // NUMBER_OF_FIELDS after data format
+            (b"IT8FILE\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nNUMBER_OF_FIELDS 1\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "nof-after-fmt"),
+            // data-set with mixed tokens per row
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3\n4 5 6\nEND_DATA\n".to_vec(), "mixed-rows"),
+            // large table (100 rows)
+            ({ let mut v = b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 100\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n".to_vec();
+                for i in 0..100 {
+                    v.extend_from_slice(format!("{i}\n").as_bytes());
+                }
+                v.extend_from_slice(b"END_DATA\n");
+                v }, "big-table"),
+            // tab + multi-space delimiters in data
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\tB\nEND_DATA_FORMAT\nBEGIN_DATA\n1\t\t  2\nEND_DATA\n".to_vec(), "tab-delims"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                let nt = c::cmsIT8TableCount(p);
+                eprintln!("  tables={nt}");
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
