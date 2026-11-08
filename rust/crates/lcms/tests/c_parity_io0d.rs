@@ -2718,3 +2718,49 @@ fn xyztype_dispatch() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// LUT-type dispatch — mutate A2B0's type sig then read
+/// (mft1/mft2/mAB/mBA — the LUT accept set).
+#[test]
+fn luttype_dispatch() {
+    unsafe {
+        let dl = c::cmsCreateInkLimitingDeviceLink(0x434d594b, 300.0);
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(dl,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(dl,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // A2B0 = 0x41324230
+        let mut off = 0usize;
+        let ntags = u32::from_be_bytes(
+            buf[128..132].try_into().unwrap()) as usize;
+        for i in 0..ntags {
+            let e = 132 + i * 12;
+            if u32::from_be_bytes(
+                buf[e..e+4].try_into().unwrap()) == 0x41324230 {
+                off = u32::from_be_bytes(
+                    buf[e+4..e+8].try_into().unwrap()) as usize;
+            }
+        }
+        for (name, ty) in [
+            ("real", u32::from_be_bytes(
+                buf[off..off+4].try_into().unwrap())),
+            ("mft1", 0x6d667431), ("mft2", 0x6d667432),
+            ("mAB ", 0x6d414220), ("mBA ", 0x6d424120),
+            ("curv", 0x63757276), ("XYZ ", 0x58595a20),
+            ("junk", 0xdeadbeef), ("zero", 0)] {
+            let mut b = buf.clone();
+            b[off..off+4].copy_from_slice(&ty.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            let t = if h.is_null() { std::ptr::null() }
+                else { c::cmsReadTag(h, 0x41324230) };
+            eprintln!(
+                "{name} ty={ty:#x} h={} t={}",
+                !h.is_null(), !t.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(dl);
+    }
+}
