@@ -1116,3 +1116,31 @@ fn gray_modifier_matrix() {
         let _ = c::cmsCloseProfile(gray);
     }
 }
+
+/// XYZ-format modifier matrix — the XYZ packer bodies
+/// (XYZ profile as input).
+#[test]
+fn xyz_modifier_matrix() {
+    unsafe {
+        let xyz = c::cmsCreateXYZProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("x-planar", (9 << 16) | (1 << 12) | (3 << 3) | 2u32),
+            ("x-doswap", (9 << 16) | (1 << 10) | (3 << 3) | 2),
+            ("x-swapf", (9 << 16) | (1 << 14) | (3 << 3) | 2),
+            ("x-end16", (9 << 16) | (1 << 11) | (3 << 3) | 2),
+            ("x-flavor", (9 << 16) | (1 << 13) | (3 << 3) | 2),
+            ("x-8", (9 << 16) | (3 << 3) | 1),
+            ("x-flt", (1 << 22) | (9 << 16) | (3 << 3) | 4),
+            ("x-dbl", (1 << 22) | (9 << 16) | (3 << 3) | 0),
+            ("x-hlf", (1 << 22) | (9 << 16) | (3 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(xyz, fmt, ho,
+                (4 << 16) | (3 << 3) | 2, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(xyz);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
