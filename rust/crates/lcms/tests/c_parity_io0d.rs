@@ -7759,3 +7759,67 @@ fn mpe_cvst_write() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// Type_Signature_Write/Type_XYZ_Write/Type_NamedColor_* —
+/// multi-item write loops + ncl2 deep read/write arms.
+#[test]
+fn multi_item_tag_write_arms() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        // sig-type tags (tech/ciis/rig0/rig2 take signatureType)
+        for (sig, val, name) in [
+            (0x74656368u32, 0x66696c74, "tech"),
+            (0x63696973u32, 0x76657265, "ciis"),
+            (0x72696730u32, 0x70723030, "rig0"),
+            (0x72696732u32, 0x70723030, "rig2"),
+        ] {
+            let v = val as u32;
+            let w = c::cmsWriteTag(prof, sig, &v as *const _ as *const _);
+            eprintln!("{name} w={w}");
+        }
+        // XYZ multi-item via wtpt (single) + chrm (triple)
+        let wp = [0.9642f64, 1.0, 0.8249];
+        let w = c::cmsWriteTag(prof, 0x77747074,
+            wp.as_ptr() as *const _);
+        eprintln!("wtpt w={w}");
+        // ncl2 round-trip: write + read
+        let list = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 3, 3,
+            b"pre\0".as_ptr(), b"post\0".as_ptr());
+        for i in 0..3u32 {
+            let mut name = [0u8; 256];
+            let nm = format!("spot{}\0", i);
+            name[..nm.len()].copy_from_slice(nm.as_bytes());
+            let pcs = [100u16 * (i as u16 + 1), 200, 300];
+            let dev = [0u16; 15];
+            c::cmsAppendNamedColor(list,
+                name.as_ptr() as *mut _, pcs.as_ptr(), dev.as_ptr());
+        }
+        let w2 = c::cmsWriteTag(prof, 0x6e636c32, list as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w2 != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x6e636c32)
+        } else { std::ptr::null_mut() };
+        eprintln!("ncl2 w={w2} s={s} read={}", !tag.is_null());
+        // read every written tag twice -> dup arms
+        if !rp.is_null() {
+            for sig in [0x74656368u32, 0x63696973, 0x72696730,
+                        0x72696732, 0x77747074, 0x6e636c32] {
+                let t1 = c::cmsReadTag(rp, sig);
+                let t2 = c::cmsReadTag(rp, sig);
+                let _ = (t1, t2);
+            }
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsFreeNamedColorList(list);
+    }
+}
