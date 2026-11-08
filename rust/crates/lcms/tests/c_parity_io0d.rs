@@ -15796,3 +15796,100 @@ fn interp_internal_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// _cmsStageAllocPlaceholder internals — every stage type
+/// (identity/curve-set/matrix/CLUT/Lab2XYZ/XYZ2Lab/named-color/
+/// normalize) + eval/dup/free per type.
+#[test]
+fn stage_placeholder_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
+        let tc = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5, tv.as_ptr());
+        let nl = c::cmsAllocNamedColorList(std::ptr::null_mut(),
+            4, 4, b"p\0".as_ptr(), b"s\0".as_ptr());
+        for i in 0..4 {
+            let nm = format!("n{i}\0");
+            let pcs = [0x1000u16; 4];
+            let col = [0x2000u16; 4];
+            c::cmsAppendNamedColor(nl, nm.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        let mut stages: Vec<*mut std::ffi::c_void> = Vec::new();
+        // identity
+        stages.push(c::cmsStageAllocIdentity(
+            std::ptr::null_mut(), 3));
+        // curveset
+        stages.push(c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3,
+            [g, g, g].as_ptr() as *mut _));
+        // matrix
+        let mat = [1.0f64, 0.1, 0.0, 0.05, 1.0, 0.02,
+            0.0, 0.03, 1.0];
+        let matz = [0.0f64, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0];
+        stages.push(c::cmsStageAllocMatrix(
+            std::ptr::null_mut(), 3, 3, mat.as_ptr(),
+            std::ptr::null()));
+        stages.push(c::cmsStageAllocMatrix(
+            std::ptr::null_mut(), 3, 3, matz.as_ptr(),
+            [0.1f64, 0.2, 0.3].as_ptr()));
+        // clut variants
+        let dims = [3u32; 3];
+        let grid16 = vec![0x4000u16; 81];
+        stages.push(c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+            grid16.as_ptr()));
+        let gridf = vec![0.5f32; 81];
+        stages.push(c::cmsStageAllocCLutFloatGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+            gridf.as_ptr()));
+        let gridf2 = vec![0.5f32; 24];
+        stages.push(c::cmsStageAllocCLutFloat(
+            std::ptr::null_mut(), 2, 3, 3,
+            gridf2.as_ptr()));
+        // lab2xyz/xyz2lab
+        stages.push(c::_cmsStageAllocLab2XYZ(
+            std::ptr::null_mut()));
+        stages.push(c::_cmsStageAllocXYZ2Lab(
+            std::ptr::null_mut()));
+        // named color
+        stages.push(c::_cmsStageAllocNamedColor(nl, 0));
+        stages.push(c::_cmsStageAllocNamedColor(nl, 1));
+        // identity clut
+        stages.push(c::_cmsStageAllocIdentityCLut(
+            std::ptr::null_mut(), 3));
+        // eval each stage via a 1-stage pipeline
+        for (i, st) in stages.iter().enumerate() {
+            if st.is_null() {
+                eprintln!("stage{i} null");
+                continue;
+            }
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(),
+                c::cmsStageInputChannels(*st),
+                c::cmsStageOutputChannels(*st));
+            c::cmsPipelineInsertStage(p, 0, *st);
+            let nch_in = c::cmsStageInputChannels(*st) as usize;
+            let nch_out = c::cmsStageOutputChannels(*st)
+                as usize;
+            let inp = vec![0x4000u16; nch_in];
+            let mut out = vec![0u16; nch_out];
+            c::cmsPipelineEval16(
+                inp.as_ptr(), out.as_mut_ptr(), p);
+            let inpf = vec![0.5f32; nch_in];
+            let mut outf = vec![0.0f32; nch_out];
+            c::cmsPipelineEvalFloat(
+                inpf.as_ptr(), outf.as_mut_ptr(), p);
+            let dup = c::cmsStageDup(*st);
+            eprintln!("stage{i} ty={:#x} dup={}",
+                c::cmsStageType(*st), !dup.is_null());
+            if !dup.is_null() { c::cmsStageFree(dup); }
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeNamedColorList(nl);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(tc);
+    }
+}
