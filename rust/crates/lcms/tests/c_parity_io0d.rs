@@ -18620,3 +18620,89 @@ fn internal_final11_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final12_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // multiprofile with proofing-profile slots in all
+        //   positions
+        let mut profs = [srgb, lab, srgb, lab, srgb];
+        for (proof_pos, name) in [
+            (0usize, "p0"), (1, "p1"), (2, "p2"),
+            (3, "p3"), (4, "p4"),
+        ] {
+            for intent in 0..4u32 {
+                let mut bpc = [0i32; 5];
+                let mut intents = [intent; 5];
+                let mut adapt = [0.5f64; 5];
+                let mut proof_profs: [*mut std::ffi::c_void; 2] =
+                    [std::ptr::null_mut(); 2];
+                if proof_pos < profs.len() {
+                    proof_profs[0] = profs[proof_pos];
+                }
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), 5,
+                    profs.as_mut_ptr(), bpc.as_mut_ptr(),
+                    intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    if proof_pos < 5 { proof_profs[0] }
+                        else { std::ptr::null_mut() },
+                    0, r8, r8, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{name} done");
+        }
+        // transforms on gray profiles with all-white/black/
+        //   mid TRCs at all intents
+        for (gv, name) in [
+            (0.5f64, "g05"), (1.0, "g10"), (1.5, "g15"),
+            (2.2, "g22"), (3.0, "g30"), (5.0, "g50"),
+            (0.0, "g00"), (-1.0, "gm1"), (1e6, "ghuge"),
+        ] {
+            let tc = c::cmsBuildGamma(std::ptr::null_mut(), gv);
+            if tc.is_null() { continue; }
+            let prof = c::cmsCreateGrayProfile(
+                std::ptr::null_mut(), tc);
+            for intent in 0..4u32 {
+                let t = if !prof.is_null() {
+                    c::cmsCreateTransform(prof,
+                        (3u32 << 16) | (1 << 3) | 1, srgb,
+                        r8, intent, 0)
+                } else { std::ptr::null_mut() };
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{name} done");
+            if !prof.is_null() { c::cmsCloseProfile(prof); }
+            c::cmsFreeToneCurve(tc);
+        }
+        // profile-info on profile classes + locales
+        for (loc_l, loc_c, name) in [
+            (b"en\0".as_ptr(), b"US\0".as_ptr(), "en-US"),
+            (b"de\0".as_ptr(), b"DE\0".as_ptr(), "de-DE"),
+            (b"fr\0".as_ptr(), b"FR\0".as_ptr(), "fr-FR"),
+            (b"ja\0".as_ptr(), b"JP\0".as_ptr(), "ja-JP"),
+            (b"xx\0".as_ptr(), b"XX\0".as_ptr(), "xx-XX"),
+        ] {
+            let mut buf = [0u8; 512];
+            for info in 0..10u32 {
+                let r = c::cmsGetProfileInfo(srgb, info,
+                    loc_l as *const i8, loc_c as *const i8,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                if info == 0 {
+                    eprintln!("{name} desc={r}"); }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
