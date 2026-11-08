@@ -2204,3 +2204,30 @@ fn profileid_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Reserved-field bounds — mutate the reserved field
+/// then open (the reserved validation machinery).
+#[test]
+fn reserved_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // reserved is 28 bytes at offset 100
+        for (name, fill) in [
+            ("zero", 0u8), ("ones", 1), ("0xff", 0xff),
+            ("rand", 0x42)] {
+            let mut b = buf.clone();
+            for i in 0..28 { b[100 + i] = fill; }
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
