@@ -922,3 +922,36 @@ fn linestride_bitmap() {
         let _ = (rgb, lab);
     }
 }
+
+/// Precalc/clut-linearization flag machinery — highres/
+/// lowres/clut-pre/post flags.
+#[test]
+fn precalc_flags() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let fmt = (4 << 16) | (3 << 3) | 1u32;
+        let lfmt = (10 << 16) | (3 << 3) | 1;
+        for (name, flags) in [
+            ("highres", 1u32 << 7),
+            ("lowres", 1 << 8),
+            ("clutpre", 1 << 14),
+            ("clutpost", 1 << 2),
+            ("noneg", 1 << 12),
+            ("nocache", 1 << 16)] {
+            let t = c::cmsCreateTransform(rgb, fmt,
+                lab, lfmt, 0, flags);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let inp = [128u8; 3];
+                let mut out = [0u8; 3];
+                c::cmsDoTransform(t, inp.as_ptr() as _,
+                    out.as_mut_ptr() as _, 1);
+                eprintln!("  do out={},{},{}",
+                    out[0], out[1], out[2]);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        let _ = (rgb, lab);
+    }
+}
