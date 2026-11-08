@@ -2085,3 +2085,31 @@ fn pcs_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Flags-field bounds — mutate the flags field then open
+/// (the flags validation machinery).
+#[test]
+fn flags_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // flags is a u32be at offset 44
+        for (name, val) in [
+            ("f0", 0u32), ("f1", 1), ("embedded", 1 << 0),
+            ("nodataloss", 1 << 2), ("junk", 0x12345678),
+            ("max", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[44..48].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} f={val:#x} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
