@@ -2626,3 +2626,49 @@ fn typesig_dispatch() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Curve-type dispatch — mutate rTRC's type sig then read
+/// (TRC accepts curv+para; rejects others).
+#[test]
+fn curvetype_dispatch() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // find rTRC in the tag table (sig 'rTRC' = 0x72545243)
+        let mut off = 0usize;
+        let ntags = u32::from_be_bytes(
+            buf[128..132].try_into().unwrap()) as usize;
+        for i in 0..ntags {
+            let e = 132 + i * 12;
+            if u32::from_be_bytes(
+                buf[e..e+4].try_into().unwrap()) == 0x72545243 {
+                off = u32::from_be_bytes(
+                    buf[e+4..e+8].try_into().unwrap()) as usize;
+            }
+        }
+        for (name, ty) in [
+            ("real", u32::from_be_bytes(
+                buf[off..off+4].try_into().unwrap())),
+            ("curv", 0x63757276), ("para", 0x70617261),
+            ("XYZ ", 0x58595a20), ("text", 0x74657874),
+            ("mluc", 0x6d6c7563), ("mft2", 0x6d667432),
+            ("junk", 0xdeadbeef), ("zero", 0)] {
+            let mut b = buf.clone();
+            b[off..off+4].copy_from_slice(&ty.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            let t = if h.is_null() { std::ptr::null() }
+                else { c::cmsReadTag(h, 0x72545243) };
+            eprintln!(
+                "{name} ty={ty:#x} h={} t={}",
+                !h.is_null(), !t.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
