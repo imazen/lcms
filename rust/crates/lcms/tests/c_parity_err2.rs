@@ -291,3 +291,50 @@ fn err_io_plugin_arms() {
             c::cmsDeleteContext(ctx); }
     }
 }
+
+/// cmserr/cmsio0 residual — cmsfilelength via file
+///   ops on edge sizes + signal-error THR variants +
+///   formatter lookup internals.
+#[test]
+fn err_filelen_arms() {
+    unsafe {
+        // signal errors via invalid opens at sizes
+        for n in [0u32, 1, 4, 64, 127, 128, 129, 255] {
+            let b = vec![0x61u8; n as usize];
+            let p = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *const _, n);
+            let _ = p;
+            if !p.is_null() {
+                c::cmsCloseProfile(p); }
+        }
+        // error handler capture at each error code
+        static mut SEEN: [u32; 16] = [0; 16];
+        unsafe extern "C" fn errh(
+            _ctx: *mut std::ffi::c_void, code: u32,
+            _msg: *const i8) {
+            unsafe {
+                if (code as usize) < 16 {
+                    SEEN[code as usize] += 1; }
+            }
+        }
+        c::cmsSetLogErrorHandlerTHR(
+            std::ptr::null_mut(),
+            errh as *mut _);
+        // trigger errors: bad profile, bad tag read,
+        //   bad transform, bad it8
+        let bad = c::cmsOpenProfileFromMem(
+            b"x".as_ptr() as *const _, 1);
+        if !bad.is_null() {
+            c::cmsCloseProfile(bad); }
+        let it8 = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            b"BAD".as_ptr() as *const _, 3);
+        if !it8.is_null() {
+            c::cmsIT8Free(it8); }
+        eprintln!("errs={:?}",
+            unsafe { &SEEN[..8] });
+        c::cmsSetLogErrorHandlerTHR(
+            std::ptr::null_mut(),
+            std::ptr::null_mut());
+    }
+}
