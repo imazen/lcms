@@ -760,3 +760,46 @@ fn slice_space_float() {
         assert_eq!(c_bad != 0, r_bad, "0-input parity c={c_bad} r={r_bad}");
     }
 }
+
+/// _cmsStageAllocNamedColor — the named-color MPE element.
+#[test]
+fn named_color_stage() {
+    unsafe {
+        // build a named-color list on both sides
+        let cl = c::cmsAllocNamedColorList(std::ptr::null_mut(),
+            2, 3, b"RGB \0".as_ptr() as *const _, b"Pfx\0".as_ptr()
+                as *const _);
+        assert!(!cl.is_null());
+        for i in 0..2u32 {
+            let mut name = [0u8; 64];
+            let s = format!("c{i}\0");
+            name[..s.len()].copy_from_slice(s.as_bytes());
+            let pcs = [32768u16; 3];
+            let dev = [16384u16; 3];
+            c::cmsAppendNamedColor(cl, name.as_ptr(), pcs.as_ptr(),
+                dev.as_ptr());
+        }
+        let cst = c::_cmsStageAllocNamedColor(cl, 0);
+        assert!(!cst.is_null(), "C named-color stage");
+        let ct = c::cmsStageType(cst);
+        eprintln!("named stage type {ct:#x}");
+        let cin = c::cmsStageInputChannels(cst);
+        let cout = c::cmsStageOutputChannels(cst);
+        eprintln!("named stage ich={cin} och={cout}");
+        // rust side
+        let mut rl = lcms::named::alloc_named_color_list(None, 2, 3,
+            b"RGB ", b"Pfx").unwrap();
+        for i in 0..2u32 {
+            let name = format!("c{i}");
+            let mut dev = [0u16; 16];
+            dev[..3].copy_from_slice(&[16384u16; 3]);
+            let _ = lcms::named::append_named_color(&mut rl,
+                Some(name.as_bytes()), Some(&[32768u16; 3]),
+                Some(&dev));
+        }
+        let rst = lcms::named::stage_alloc_named_color(&rl, false);
+        assert!(rst.is_some(), "rust named-color stage");
+        c::cmsStageFree(cst);
+        c::cmsFreeNamedColorList(cl);
+    }
+}
