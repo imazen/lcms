@@ -14676,3 +14676,72 @@ fn float_output_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsPipelineEvalReverseFloat + cmsStageAllocMatrix +
+/// cmsCIE2000DeltaE + cmsOpenIOhandlerFromNULL/FromStream arms.
+#[test]
+fn api_misc_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        // matrix stage
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+            1.0];
+        let ms = c::cmsStageAllocMatrix(std::ptr::null_mut(),
+            3, 3, mat.as_ptr(), std::ptr::null());
+        c::cmsPipelineInsertStage(p, 0, ms);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        // reverse float eval
+        let mut out = [0f32; 3];
+        let inp = [0.5f32, 0.5, 0.5];
+        let mut hint = [0.5f32; 3];
+        let r = c::cmsPipelineEvalReverseFloat(
+            inp.as_ptr() as *mut f32, out.as_mut_ptr(),
+            hint.as_mut_ptr(), p);
+        eprintln!("reveval={r} {out:?}");
+        // CLUT float stage
+        let dims = [2u32; 3];
+        let grid = vec![0.5f32; 24];
+        let cf = c::cmsStageAllocCLutFloatGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+            grid.as_ptr());
+        let cf2 = c::cmsStageAllocCLutFloat(
+            std::ptr::null_mut(), 4, 3, 3, grid.as_ptr());
+        eprintln!("clutf={} cf2={}", !cf.is_null(),
+            !cf2.is_null());
+        if !cf.is_null() { c::cmsStageFree(cf); }
+        if !cf2.is_null() { c::cmsStageFree(cf2); }
+        c::cmsPipelineFree(p);
+        // CIE2000 deltaE
+        for (l1, l2) in [
+            ([50.0f64, 2.6772, -79.7751, 0.0],
+                [50.0, 0.0, -82.7485, 0.0]),
+            ([50.0, 3.1571, -77.2803, 0.0],
+                [50.0, 0.0, -82.7485, 0.0]),
+            ([50.0, 2.8367, -74.02, 0.0],
+                [50.0, 0.0, -82.7485, 0.0]),
+            ([50.0, -1.3802, -84.2814, 0.0],
+                [50.0, 0.0, -82.7485, 0.0]),
+            ([50.0, -1.1848, -84.8006, 0.0],
+                [50.0, -0.0009, -82.7485, 0.0]),
+        ] {
+            let de = c::cmsCIE2000DeltaE(
+                l1.as_ptr() as *const _, l2.as_ptr()
+                    as *const _, 1.0, 1.0, 1.0);
+            eprintln!("de={de:.4}");
+        }
+        // IOhandler from NULL — io that discards
+        let io = c::cmsOpenIOhandlerFromNULL(
+            std::ptr::null_mut());
+        eprintln!("nullio={}", !io.is_null());
+        if !io.is_null() {
+            let s = c::cmsSaveProfileToIOhandler(
+                c::cmsCreate_sRGBProfile(), io);
+            eprintln!("save-nullio={s}");
+            c::cmsCloseIOhandler(io);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
