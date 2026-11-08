@@ -6074,3 +6074,49 @@ fn preview_dir_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsvirt residual — FixColorSpaces arms via
+///   cmsTransform2DeviceLink + GUESSDEVICECLASS (0x0020):
+///   IsPCS(CS)xIsPCS(PCS) -> abstract/output/input/link.
+#[test]
+fn fixcolorspaces_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let xyz = open("xyzlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        // (in-prof, out-prof, in-fmt, out-fmt, name)
+        for (a, b, fa, fb, nm) in [
+            (lab4, lab4, f16(10, 3), f16(10, 3), "lab-lab"),
+            (lab4, xyz,  f16(10, 3), f16(9, 3),  "lab-xyz"),
+            (lab4, srgb, f16(10, 3), f16(4, 3),  "lab-rgb"),
+            (srgb, lab4, f16(4, 3),  f16(10, 3), "rgb-lab"),
+            (xyz, srgb,  f16(9, 3),  f16(4, 3),  "xyz-rgb"),
+            (srgb, srgb, f16(4, 3),  f16(4, 3),  "rgb-rgb"),
+            (srgb, cmyk, f16(4, 3),  f16(6, 4),  "rgb-cmyk"),
+        ] {
+            let t = c::cmsCreateTransform(a, fa, b, fb, 0, 0);
+            if t.is_null() {
+                eprintln!("{nm}: null xform"); continue; }
+            for flags in [0x0020u32, 0] {
+                let dl = c::cmsTransform2DeviceLink(
+                    t, 4.4, flags);
+                eprintln!("{nm} f{flags:#x}: {}",
+                    !dl.is_null());
+                if !dl.is_null() {
+                    c::cmsCloseProfile(dl); } }
+            c::cmsDeleteTransform(t); }
+        for p in [srgb, lab4, xyz, cmyk] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
