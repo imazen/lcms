@@ -1889,3 +1889,26 @@ fn corpus_class_tag_walk() {
         }
     }
 }
+
+/// Truncated-profile boundary — open a valid profile at
+/// decreasing lengths (the length-validation machinery).
+#[test]
+fn truncated_profile() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // try opening at various truncated lengths
+        for len in [n, n - 16, n / 2, 256, 128, 64, 32, 16, 8, 4, 0] {
+            let h = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *mut _, len);
+            eprintln!("len={len} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
