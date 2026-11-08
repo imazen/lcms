@@ -3425,3 +3425,39 @@ fn granular_clut_allocs() {
         }
     }
 }
+
+/// NamedColor + Identity + Lab stage eval internals — the
+/// remaining stage-type evaluators.
+#[test]
+fn named_identity_stage_evals() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 1,
+            3, b"p\0".as_ptr(), b"s\0".as_ptr());
+        let lab = [0xF000u16, 0x8000, 0x8000];
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
+            lab.as_ptr(), lab.as_ptr());
+        // named-color stage (1->3) in a 1-in pipeline
+        let st = c::_cmsStageAllocNamedColor(ncl, 1);
+        if !st.is_null() {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
+            c::cmsPipelineInsertStage(p, 1, st);
+            let ib = [0x8000u16];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            eprintln!("ncl ob={ob:?}");
+            c::cmsPipelineFree(p);
+        }
+        // identity stage
+        let si = c::cmsStageAllocIdentity(std::ptr::null_mut(), 3);
+        if !si.is_null() {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, si);
+            let ib = [0x4000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            eprintln!("id ob={ob:?}");
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
