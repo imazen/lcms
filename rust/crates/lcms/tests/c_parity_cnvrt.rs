@@ -627,3 +627,49 @@ fn optimizer_pipelines() {
         let _ = c::cmsCloseProfile(nullp);
     }
 }
+
+/// More intent-link internals — mixed chains (abstract-in-
+/// middle, devicelink-at-end, proofing, unusual classes).
+#[test]
+fn mixed_chains() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ab = c::cmsCreateBCHSWabstractProfileTHR(
+            std::ptr::null_mut(), 17, 1.5, 30.0, 0.8,
+            4.3, std::ptr::null(), std::ptr::null());
+        // mixed chains — different profile combinations
+        for (name, profs) in [
+            ("srgb+ab+srgb",
+             vec![srgb, ab, srgb]),
+            ("srgb+lab4+ab+srgb",
+             vec![srgb, lab4, ab, srgb]),
+            ("ab+srgb+lab4",
+             vec![ab, srgb, lab4]),
+            ("srgb+ab+lab4",
+             vec![srgb, ab, lab4]),
+            ("lab4+ab+srgb",
+             vec![lab4, ab, srgb]),
+            ("srgb+srgb+ab",
+             vec![srgb, srgb, ab]),
+        ] {
+            let mut p = profs;
+            let ct = c::cmsCreateMultiprofileTransform(
+                p.as_mut_ptr(), p.len() as i32,
+                in_fmt, in_fmt, 0, 0);
+            eprintln!("{name} null={}", ct.is_null());
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(srgb);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(ab);
+    }
+}
