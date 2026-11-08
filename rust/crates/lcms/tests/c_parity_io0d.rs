@@ -7097,3 +7097,57 @@ fn mhc2_read_arms() {
         }
     }
 }
+
+/// Type_UcrBg_Read arms — raw ucrbg tags with curve-count /
+/// text-length variants.
+#[test]
+fn ucrbg_read_arms() {
+    unsafe {
+        let mk = |ucr: &[u16], bg: &[u16], txt: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x75637242u32.to_be_bytes()); // 'ucrbg'... check sig
+            t
+        };
+        let _ = mk;
+        // real: 'ucrbg' sig is 'bfd '? check sig later; build raw
+        // {CountUcr:u32, u16[], CountBg:u32, u16[], text}
+        let mk2 = |ucr: &[u16], bg: &[u16], txt: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x62666420u32.to_be_bytes()); // 'bfd '
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&(ucr.len() as u32).to_be_bytes());
+            for &v in ucr {
+                t.extend_from_slice(&v.to_be_bytes());
+            }
+            t.extend_from_slice(&(bg.len() as u32).to_be_bytes());
+            for &v in bg {
+                t.extend_from_slice(&v.to_be_bytes());
+            }
+            t.extend_from_slice(txt.as_bytes());
+            t
+        };
+        for (raw, name) in [
+            (mk2(&[0, 65535], &[0, 65535], "desc"), "full"),
+            (mk2(&[], &[], "empty"), "0-curves"),
+            (mk2(&[0; 64], &[0; 64], "64e"), "64e"),
+            (mk2(&[0; 4], &[0; 4], ""), "no-txt"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x62666420,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x62666420)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
