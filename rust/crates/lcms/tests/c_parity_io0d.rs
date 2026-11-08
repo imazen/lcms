@@ -18108,3 +18108,101 @@ fn fileio_err_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — context internals +
+///   profile-info internals + tag internals + LUT-builder
+///   internals + transform internals.
+#[test]
+fn internal_final7_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // all profile-creation builders on varied args
+        let wp = c::CiexyY { x: 0.3457, y: 0.3585, Y: 1.0 };
+        let prim = c::CiexyYTriple {
+            Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+            Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        };
+        let trcs = [g, g, g];
+        for i in 0..4 {
+            let prof = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _,
+                &prim as *const c::CiexyYTriple as *const _,
+                trcs.as_ptr() as *const *mut std::ffi::c_void);
+            let g2 = c::cmsBuildGamma(std::ptr::null_mut(),
+                1.0 + i as f64 * 0.5);
+            let prof2 = c::cmsCreateGrayProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _,
+                g2 as *const _);
+            let prof3 = c::cmsCreateLab4ProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _);
+            let prof4 = c::cmsCreateLab2ProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _);
+            let prof5 = c::cmsCreateXYZProfileTHR(
+                std::ptr::null_mut());
+            let prof6 = c::cmsCreate_sRGBProfileTHR(
+                std::ptr::null_mut());
+            let prof7 = c::cmsCreateNULLProfileTHR(
+                std::ptr::null_mut());
+            for (p, nm) in [
+                (prof, "rgb"), (prof2, "gray"),
+                (prof3, "lab4"), (prof4, "lab2"),
+                (prof5, "xyz"), (prof6, "srgb"),
+                (prof7, "null")] {
+                if !p.is_null() {
+                    let t = c::cmsCreateTransform(p, r8,
+                        lab, l8, 0, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                    c::cmsCloseProfile(p);
+                }
+            }
+            if !g2.is_null() { c::cmsFreeToneCurve(g2); }
+            eprintln!("build{i} done");
+        }
+        // BCHSW abstract + ink-limiting + null
+        for (b, name) in [
+            (0.0f64, "zero"), (50.0, "mid"), (-50.0, "neg"),
+            (1e6, "huge"), (f64::NAN, "nan"),
+        ] {
+            let p = c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 17, b, b, b, b,
+                &wp as *const c::CiexyY as *const _,
+                &wp as *const c::CiexyY as *const _);
+            let p2 = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x434D594B, b);
+            eprintln!("{name} bchsw={} ink={}",
+                !p.is_null(), !p2.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !p2.is_null() { c::cmsCloseProfile(p2); }
+        }
+        // cmsCreateLinearizationDeviceLink on every cs
+        for cs in [3u32, 4, 6, 9, 10, 12, 15] {
+            for n in [2u32, 16, 255] {
+                let gv = c::cmsBuildGamma(
+                    std::ptr::null_mut(), 2.2);
+                if gv.is_null() { continue; }
+                let arr: Vec<*mut c::ToneCurve> =
+                    vec![gv; 16];
+                let p = c::cmsCreateLinearizationDeviceLinkTHR(
+                    std::ptr::null_mut(), cs << 16,
+                    arr.as_ptr());
+                let _ = n;
+                eprintln!("lin cs{cs}={}", !p.is_null());
+                if !p.is_null() { c::cmsCloseProfile(p); }
+                c::cmsFreeToneCurve(gv);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
