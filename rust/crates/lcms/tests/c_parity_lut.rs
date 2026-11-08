@@ -826,3 +826,47 @@ fn clut_float_granular() {
         c::cmsPipelineFree(pl);
     }
 }
+
+/// cmsDupPipeline on a multi-stage pipeline — the MPE
+/// Dup/Free internals on each element type.
+#[test]
+fn pipeline_dup_mpe() {
+    unsafe {
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        // build a 5-stage mAB-ish pipeline: Acurves + CLUT +
+        // matrix + Bcurves + identity
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let acurves = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3, curves.as_ptr());
+        let grid = [8u32; 3];
+        let tab = [0.5f32; 8 * 8 * 8 * 3];
+        let clut = c::cmsStageAllocCLutFloatGranular(
+            std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+            tab.as_ptr());
+        let mat_v = [1.0f64, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0];
+        let mat = c::cmsStageAllocMatrix(
+            std::ptr::null_mut(), 3, 3, mat_v.as_ptr(),
+            std::ptr::null());
+        let bcurves = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3, curves.as_ptr());
+        c::cmsPipelineInsertStage(pl, 0xFFFF, acurves);
+        c::cmsPipelineInsertStage(pl, 0xFFFF, clut);
+        c::cmsPipelineInsertStage(pl, 0xFFFF, mat);
+        c::cmsPipelineInsertStage(pl, 0xFFFF, bcurves);
+        // dup — exercises each element type's Dup
+        let pl2 = c::cmsPipelineDup(pl);
+        eprintln!("dup null={}", pl2.is_null());
+        if !pl2.is_null() {
+            let inp = [0.5f32; 3];
+            let mut out = [0.0f32; 3];
+            c::cmsPipelineEvalFloat(inp.as_ptr(),
+                out.as_mut_ptr(), pl2);
+            eprintln!("dup eval={:?}", out);
+            c::cmsPipelineFree(pl2);
+        }
+        c::cmsPipelineFree(pl);
+    }
+}
