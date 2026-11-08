@@ -3797,3 +3797,29 @@ fn lut_read_validation() {
         }
     }
 }
+
+/// Save-target variants — ToFile/ToIOhandler/ToStream +
+/// GetProfileIOhandler + CloseIOhandler.
+#[test]
+fn save_target_variants() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        // ToFile
+        let path = std::env::temp_dir().join("st-save.icc");
+        let ps = format!("{}\0", path.display());
+        let r1 = c::cmsSaveProfileToFile(p, ps.as_ptr() as *const i8);
+        // ToIOhandler — memory handler, write mode
+        let mut mem = vec![0u8; 1 << 20];
+        let io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+            mem.as_mut_ptr() as *mut _, mem.len() as u32,
+            b"w\0".as_ptr());
+        let r2 = if !io.is_null() {
+            c::cmsSaveProfileToIOhandler(p, io)
+        } else { 0 };
+        // GetProfileIOhandler — the profile's own handler
+        let gh = c::cmsGetProfileIOhandler(p);
+        eprintln!("file={r1} ioh={r2} getio={}", !gh.is_null());
+        if !io.is_null() { c::cmsCloseIOhandler(io); }
+        c::cmsCloseProfile(p);
+    }
+}
