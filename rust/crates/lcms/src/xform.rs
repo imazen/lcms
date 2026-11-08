@@ -2539,8 +2539,15 @@ impl Transform {
 
     /// `cmsChangeBuffersFormat` — swap input/output formatters in place
     pub fn change_buffers_format(&mut self, input_format: u32, output_format: u32) -> bool {
-        if self.ctx.is_none() && self.user_data.is_none() {
-            // dwFlags CAN_CHANGE_FORMATTER check happens at create; here just swap
+        // C cmsxform.c:1477 — requires CAN_CHANGE_FORMATTER in the original
+        // flags (auto-set at create only for >=2-byte inputs or 0/0 formats).
+        if self.dw_flags & FLAGS_CAN_CHANGE_FORMATTER == 0 {
+            crate::err::signal_error(
+                self.ctx.as_ref(),
+                crate::types::ERROR_NOT_SUITABLE,
+                "cmsChangeBuffersFormat works only on transforms created originally with 16 bits of precision",
+            );
+            return false;
         }
         // C's `IsFloat` = `T_FLOAT(in) || T_FLOAT(out)` — bit 22 only. DBL
         // formats set FLOAT_SH, so `t_bytes==0` is redundant and wrongly
