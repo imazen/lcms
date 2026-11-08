@@ -185,3 +185,12 @@ the corpus adds no new flag-path coverage.
   EXTRA_SH — the format-bit channel mapping in do_transform is
   incomplete; the u16 pack/unroll paths produce the same wrong
   output class regardless of the DOSWAP/EXTRA modifiers.
+
+- [finding] u16 srgb→Lab4 transform eval diverges broadly — C
+  [31826,31835,21909] vs Rust [21116,23420,38229] on
+  RGB[0x1234,0x5678,0x9abc]; the same wrong output appears
+  regardless of format modifier bits (extra/doswap/swapfirst/
+  endian16/flavor/planar). The u8 formats work — the u16-format
+  transform eval path is broken deeper than the channel mapping.
+  Also found: rd16 in pack.rs panics out-of-bounds on premul
+  formats with short inputs (bounds check missing).
