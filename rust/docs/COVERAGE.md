@@ -620,3 +620,31 @@ NullFloatXFORM, UnrollNothing/PackNothing).
 | cmslut.c | 81.36% | 98.68% |
 | cmsxform.c | 85.00% | 98.21% |
 | TOTAL | **73.61%** | **93.34%** |
+
+### round 15 — cube-parser parity fix + gray PS2 + LUT orders
+
+75.04% lines / 94.87% fns / 83.62% regions / 66.59% branches.
+
+| file | lines |
+|---|---|
+| cmstypes.c | 63.40% |
+| cmspack.c | 69.97% |
+| cmscnvrt.c | 70.05% |
+| cmsvirt.c | 69.97% |
+| cmscgats.c | 78.12% |
+| cmsio0.c | 80.64% |
+| cmsio1.c | 75.60% |
+| cmsplugin.c | 73.61% |
+| cmsnamed.c | 76.71% |
+| cmsps2.c | 77.34% |
+| cmsgamma.c | 83.67% |
+| cmslut.c | 81.89% |
+| cmsopt.c | 81.27% |
+| cmsxform.c | 83.93% |
+
+Real parity fixes this round: cgats.rs cube parser priming + binary-search
+keywords + unknown-symbol rejection; pack.rs planar premul + to_fixed_domain;
+xform.rs change_buffers_format 16-bit semantics. Failing targets under clang
+instrumentation: c_parity_cam02, c_parity_cube, c_parity_pcs, c_parity_xform2
+(the last was a parallel NULL-context race — now CTX_LOCK-serialized; the
+first three are the known instrumentation-codegen failures).
