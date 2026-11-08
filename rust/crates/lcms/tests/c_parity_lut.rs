@@ -1391,3 +1391,43 @@ fn slice_space2() {
         }
     }
 }
+
+/// CLUT sampling machinery — cmsStageSampleCLut16bit/Float
+/// on real stages.
+#[test]
+fn clut_sample_real() {
+    unsafe extern "C" fn samp16(
+        inp: *const u16, out: *mut u16, _c: *mut std::ffi::c_void)
+        -> i32 {
+        unsafe {
+            for i in 0..3 { *out.add(i) = *inp.add(i); }
+        }
+        1
+    }
+    unsafe extern "C" fn sampf(
+        inp: *const f32, out: *mut f32, _c: *mut std::ffi::c_void)
+        -> i32 {
+        unsafe {
+            for i in 0..3 { *out.add(i) = *inp.add(i); }
+        }
+        1
+    }
+    unsafe {
+        for (name, pts) in [("2pt", 2u32), ("5pt", 5)] {
+            let st16 = c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), pts, 3, 3,
+                std::ptr::null());
+            let r1 = c::cmsStageSampleCLut16bit(st16,
+                samp16, std::ptr::null_mut(), 0);
+            eprintln!("{name}-16={r1}");
+            let stf = c::cmsStageAllocCLutFloat(
+                std::ptr::null_mut(), pts, 3, 3,
+                std::ptr::null());
+            let r2 = c::cmsStageSampleCLutFloat(stf,
+                sampf, std::ptr::null_mut(), 0);
+            eprintln!("{name}-f={r2}");
+            c::cmsStageFree(st16);
+            c::cmsStageFree(stf);
+        }
+    }
+}
