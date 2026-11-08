@@ -544,6 +544,7 @@ fn named_color_crd() {
 /// profiles and intents.
 #[test]
 fn ps2_emitters() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
