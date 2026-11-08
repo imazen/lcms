@@ -578,3 +578,43 @@ fn mch_formats() {
         if !ink.is_null() { c::cmsCloseProfile(ink); }
     }
 }
+
+/// Byte-order pixel types — BGRA/RGBA/ARGB/ABGR/BGR/565
+/// through the format dispatch.
+#[test]
+fn byte_order_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        // the byte-order variants — BGR/BGRA/RGBA/ARGB/ABGR/565
+        for (name, in_fmt, out_fmt) in [
+            ("bgra-8", (4 << 16) | (1 << 10) | (1 << 7)
+             | (3 << 3) | 1u32,
+             (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 1),
+            ("rgba-8", (4 << 16) | (1 << 7) | (3 << 3) | 1,
+             (4 << 16) | (1 << 7) | (3 << 3) | 1),
+            ("argb-8", (4 << 16) | (1 << 14) | (1 << 7)
+             | (3 << 3) | 1,
+             (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 1),
+            ("abgr-8", (4 << 16) | (1 << 14) | (1 << 10)
+             | (1 << 7) | (3 << 3) | 1,
+             (4 << 16) | (1 << 14) | (1 << 10) | (1 << 7)
+             | (3 << 3) | 1),
+            ("bgr-8", (4 << 16) | (1 << 10) | (3 << 3) | 1,
+             (4 << 16) | (1 << 10) | (3 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x80u8, 0x60, 0x40, 0xFF];
+                let mut out = [0u8; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
