@@ -915,7 +915,16 @@ fn type_text_description_write(
 }
 
 /// `DecideTextDescType`
-pub fn decide_text_desc_type(ver: f64, _data: &TagObject) -> u32 {
+pub fn decide_text_desc_type(ver: f64, data: &TagObject) -> u32 {
+    // Type-mismatched payloads must be rejected — C's tag-descriptor
+    // table validates the object's type against the sig's allowed
+    // types; a non-text payload here returns 0 so is_type_supported
+    // fails and cms_write_tag rejects the write.
+    if !matches!(data,
+        TagObject::Mlu(_) | TagObject::Text(_) | TagObject::TextDescription(_))
+    {
+        return 0;
+    }
     if ver >= 4.0 {
         tsig::SigMultiLocalizedUnicodeType
     } else {
