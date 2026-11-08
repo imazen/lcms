@@ -1181,3 +1181,44 @@ fn float_tag_channel_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Float-tag reader internals — DToB/BToD on Lab-PCS + different
+/// device colorspaces -> the normalization insertion.
+#[test]
+fn float_reader_lab_arms() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // input + output + devicelink with Lab PCS
+        for (cls, sig, name) in [
+            (0x6d6e7472u32, 0x44324230, "in-lab"),
+            (0x6d6e7472, 0x42324430, "out-lab"),
+            (0x6c696e6b, 0x44324230, "link-lab"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x4C616220);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, sig, p as *const _);
+            let (inp, outp, if_, of) = if name.contains("out") {
+                (lab, prof, l16, r16)
+            } else {
+                (prof, lab, r16, l16)
+            };
+            let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
