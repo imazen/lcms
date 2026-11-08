@@ -1253,3 +1253,44 @@ fn multi_locale_mlu() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Type_Dictionary internals — the dict read/write/dup
+/// machinery via a 'meta'-type dict tag.
+#[test]
+fn dictionary_type() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        // add entries — Wchar* names/values
+        for i in 0..4u32 {
+            let name = [b'k' as i32 + i as i32, 0];
+            let val = [b'v' as i32 + i as i32, 0];
+            let ok = c::cmsDictAddEntry(dict,
+                name.as_ptr(), val.as_ptr(),
+                std::ptr::null_mut(), std::ptr::null_mut());
+            eprintln!("dict add={ok}");
+        }
+        // dict machinery
+        let mut e = c::cmsDictGetEntryList(dict);
+        let mut cnt = 0u32;
+        while !e.is_null() {
+            cnt += 1;
+            e = c::cmsDictNextEntry(e);
+        }
+        eprintln!("dict entries={cnt}");
+        // write + resave + read — Type_Dictionary Write/Read
+        let ok = c::cmsWriteTag(h, 0x6D657461,
+            dict as *mut std::ffi::c_void); // 'meta' takes dict
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x6D657461);
+        eprintln!("dict write={ok} read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsDictFree(dict);
+    }
+}
