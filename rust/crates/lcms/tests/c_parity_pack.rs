@@ -3446,3 +3446,50 @@ fn float_pack_out_sweep() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// MCH packer bodies — 2/5/7/11/12-channel devicelinks hit
+/// UnrollNBytes/PackNBytes for every channel count.
+#[test]
+fn mch_channel_count_sweep() {
+    unsafe {
+        for (n, sig, name) in [
+            (2usize, 0x32434C52u32, "2CLR"),
+            (3, 0x33434C52, "3CLR"),
+            (5, 0x35434C52, "5CLR"),
+            (7, 0x37434C52, "7CLR"),
+            (11, 0x42434C52, "BCLR"),
+            (12, 0x43434C52, "CCLR"),
+        ] {
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+            let curves = vec![g; n];
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(),
+                n as u32, n as u32);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                    n as u32, curves.as_ptr() as *mut _));
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6c696e6b); // 'link'
+            c::cmsSetColorSpace(prof, sig);
+            c::cmsSetPCS(prof, sig);
+            c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let pt = (n + 14) as u32; // PT_MCHn = n+14
+            for bytes in [1u32, 2] {
+                let fmt = (pt << 16) | ((n as u32) << 3) | bytes;
+                let t = c::cmsCreateTransform(prof, fmt, prof, fmt,
+                    0, 0);
+                eprintln!("{name}-b{bytes} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = vec![0x40u8; n * 2 * bytes as usize];
+                    let mut ob = vec![0u8; n * 2 * bytes as usize];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+            c::cmsFreeToneCurve(g);
+        }
+    }
+}
