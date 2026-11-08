@@ -1237,3 +1237,46 @@ fn transform2_adaptor() {
         c::cmsUnregisterPlugins();
     }
 }
+
+/// Black-preserving intents 10..15 — CMYK->CMYK transforms route
+/// through BlackPreservingKOnlyIntents (10-12) and
+/// BlackPreservingKPlaneIntents (13-15) in cmscnvrt.c.
+#[test]
+fn black_preserving_intents() {
+    unsafe {
+        let path = format!("{}/../../lcms2cmyk.icc\0",
+            env!("CARGO_MANIFEST_DIR"));
+        let ch = c::cmsOpenProfileFromFile(
+            path.as_ptr() as *const i8, b"r\0".as_ptr());
+        let data = std::fs::read(path.trim_end_matches('\0')).unwrap();
+        let cmyk8: u32 = (6 << 16) | (4 << 3) | 1; // PT_CMYK=6
+        let n = 33;
+        let inp = fill(n * 4);
+        for intent in [10u32, 11, 12, 13, 14, 15] {
+            let t = c::cmsCreateTransform(ch, cmyk8, ch, cmyk8, intent, 0);
+            let mut c_out = vec![0u8; n * 4];
+            if !t.is_null() {
+                c::cmsDoTransform(t, inp.as_ptr() as _,
+                    c_out.as_mut_ptr() as _, n as u32);
+            }
+            let mut profs: Vec<Box<lcms::profile::IccProfile>> =
+                vec![lcms::profile::open_profile_from_mem(None, &data).unwrap(),
+                     lcms::profile::open_profile_from_mem(None, &data).unwrap()];
+            let mut bpc = vec![false; 2];
+            let intents = vec![intent; 2];
+            let adapt = vec![1.0f64; 2];
+            let mut rt = lcms::xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt,
+                None, 0, cmyk8, cmyk8, 0);
+            let mut r_out = vec![0u8; n * 4];
+            if let Some(rt) = rt.as_mut() {
+                rt.do_transform(&inp, &mut r_out, n as u32);
+            }
+            assert_eq!(t.is_null(), rt.is_none(),
+                "intent {intent} create parity");
+            assert_eq!(c_out, r_out, "intent {intent} output");
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(ch);
+    }
+}
