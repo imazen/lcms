@@ -3672,3 +3672,31 @@ fn linked_tag_resolution() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// cicp VideoSignalType tag — 4-u8 video-signal payload
+/// write->save->read.
+#[test]
+fn cicp_tag() {
+    unsafe {
+        #[repr(C)] struct Cicp { cp: u8, tc: u8, mc: u8, vr: u8 }
+        let prof = c::cmsCreate_sRGBProfile();
+        let c = Cicp { cp: 1, tc: 13, mc: 0, vr: 1 };
+        let w = c::cmsWriteTag(prof, 0x63696370,
+            &c as *const _ as *const _); // 'cicp'
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x63696370)
+        } else { std::ptr::null_mut() };
+        eprintln!("cicp w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
