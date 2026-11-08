@@ -26165,3 +26165,73 @@ fn internal_filelen2_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — SearchTag binary-search on
+///   reordered/duplicate tag tables + text-tag reads
+///   on every text-type sig.
+#[test]
+fn internal_searchtag2_arms() {
+    unsafe {
+        // profile with tags written in scrambled order
+        //   (SearchTag does sorted binary search)
+        let sigs = [
+            0x77747074u32, 0x6258595A, 0x7258595A,
+            0x6758595A, 0x626B7074, 0x6C756D69,
+            0x63686164, 0x64657363, 0x63707274,
+            0x6B545243, 0x72545243, 0x67545243,
+            0x62545243,
+        ];
+        let orders: Vec<Vec<usize>> = vec![
+            (0..8).collect(),
+            vec![0, 7, 3, 1, 5, 2, 4, 6],
+            (0..13).collect(),
+            vec![12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+        ];
+        let xyz = [0x0000F6D6u32, 0x00010000, 0x0000D32D];
+        let g = c::cmsBuildGamma(
+            std::ptr::null_mut(), 1.0);
+        for (oi, order) in orders.iter().enumerate() {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x58595A20);
+            c::cmsSetProfileVersion(p, 4.4);
+            for &si in order {
+                let sig = sigs[si];
+                if sig == 0x6B545243
+                    || sig == 0x72545243
+                    || sig == 0x67545243
+                    || sig == 0x62545243 {
+                    c::cmsWriteTag(p, sig,
+                        g as *const _);
+                } else {
+                    c::cmsWriteTag(p, sig,
+                        xyz.as_ptr() as *const _);
+                }
+            }
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            if !pr.is_null() {
+                let cnt = c::cmsGetTagCount(pr);
+                eprintln!("order{oi} cnt={cnt}");
+                // probe every sig + neighbors
+                for si in 0..order.len() + 2 {
+                    let s = sigs.get(si)
+                        .copied().unwrap_or(0x7A7A7A7A);
+                    let it = c::cmsIsTag(pr, s);
+                    let _ = it;
+                }
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
