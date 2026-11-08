@@ -676,3 +676,51 @@ fn big_tag_table() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Save/reload on a fuller tag table — the serialization
+/// offset/alignment machinery.
+#[test]
+fn full_table_serialize() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // write ~15 more tags → ~26 total
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"x\0".as_ptr() as *const u8);
+        for (sig, kind) in [
+            (0x626B7074u32, 1u32), (0x6C756D69, 1),
+            (0x63686164, 1), (0x7258595A, 1), (0x6758595A, 1),
+            (0x6258595A, 1), (0x74656368, 2), (0x72696730, 2),
+            (0x646D6E64, 3), (0x646D6464, 3), (0x6473636D, 3),
+            (0x6B545243, 4), (0x67545243, 4), (0x62545243, 4),
+        ] {
+            let payload = match kind {
+                1 => &xyz as *const _ as *mut std::ffi::c_void,
+                2 => mlu as *mut std::ffi::c_void,
+                3 => mlu as *mut std::ffi::c_void,
+                _ => g as *mut std::ffi::c_void,
+            };
+            let _ = c::cmsWriteTag(h, sig, payload);
+        }
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        eprintln!("save n={cn}");
+        // reload + read every tag
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let n2 = c::cmsGetTagCount(h2);
+        for i in 0..n2 {
+            let s = c::cmsGetTagSignature(h2, i as u32);
+            let _ = c::cmsReadTag(h2, s);
+        }
+        eprintln!("reloaded tags={n2}");
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
