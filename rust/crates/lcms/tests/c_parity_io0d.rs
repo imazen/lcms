@@ -24361,3 +24361,92 @@ fn internal_final70_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmsio0 residual — ReadHeaderPlugin/WriteHeaderPlugin
+///   internals via registered cmsPluginHeader.
+#[test]
+fn internal_final71_arms() {
+    unsafe {
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct HdrPlugin {
+            base: PluginBase,
+            iccver: u32,
+            read: *const std::ffi::c_void,
+            write: *const std::ffi::c_void,
+        }
+        unsafe extern "C" fn hdr_read(
+            _ctx: *mut std::ffi::c_void,
+            _prof: *mut std::ffi::c_void,
+            io: *mut std::ffi::c_void) -> i32 {
+            eprintln!("  hdr_read io={}", !io.is_null());
+            1 // claim success → header stays as-is
+        }
+        unsafe extern "C" fn hdr_write(
+            _ctx: *mut std::ffi::c_void,
+            _prof: *mut std::ffi::c_void,
+            io: *mut std::ffi::c_void) -> i32 {
+            eprintln!("  hdr_write io={}", !io.is_null());
+            1
+        }
+        for (which, name) in [
+            (0u32, "read-only"), (1, "write-only"),
+            (2, "both"), (3, "ver-mismatch"),
+        ] {
+            let ctx = c::cmsCreateContext(
+                std::ptr::null_mut(), std::ptr::null_mut());
+            let mut hp = HdrPlugin {
+                base: PluginBase {
+                    magic: 0x61637070,
+                    ver: 2200,
+                    typ: 0x68647248,
+                    next: std::ptr::null_mut(),
+                },
+                iccver: if which == 3 { 0x7F000000 }
+                    else { 0 },
+                read: match which {
+                    0 | 2 => hdr_read
+                        as *const std::ffi::c_void,
+                    _ => std::ptr::null(),
+                },
+                write: match which {
+                    1 | 2 => hdr_write
+                        as *const std::ffi::c_void,
+                    _ => std::ptr::null(),
+                },
+            };
+            let r = c::cmsPluginTHR(ctx,
+                &mut hp as *mut _ as *mut _);
+            eprintln!("{name} reg={r}");
+            // profile on ctx → ReadHeaderPlugin
+            let srgb = c::cmsCreate_sRGBProfileTHR(ctx);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(srgb,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let io = c::cmsOpenIOhandlerFromMem(ctx,
+                buf.as_ptr() as *mut _, n,
+                b"r\0".as_ptr());
+            let prof = c::cmsOpenProfileFromIOhandlerTHR(
+                ctx, io);
+            eprintln!("  s={s} prof={}",
+                !prof.is_null());
+            if !prof.is_null() {
+                // re-save through IOhandler → WriteHeader
+                let io2 = c::cmsOpenIOhandlerFromMem(ctx,
+                    buf.as_mut_ptr() as *mut _, n,
+                    b"w\0".as_ptr());
+                let s2 = c::cmsSaveProfileToIOhandler(
+                    prof, io2);
+                eprintln!("  save2={s2}");
+                c::cmsCloseProfile(prof);
+            }
+            c::cmsCloseProfile(srgb);
+            c::cmsDeleteContext(ctx);
+        }
+    }
+}
