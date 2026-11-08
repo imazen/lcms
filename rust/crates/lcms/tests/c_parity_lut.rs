@@ -3053,3 +3053,28 @@ fn internal_stage_allocators() {
         if !s2.is_null() { c::cmsStageFree(s2); }
     }
 }
+
+/// EvaluateCurves/EvalStage channel-count internals — curve stages
+/// with 1/2/4/6/15 channels through eval16+float.
+#[test]
+fn eval_curves_channels() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for nch in [1u32, 2, 4, 6, 15] {
+            let mut cc = vec![g; nch as usize];
+            let st = c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                nch, cc.as_ptr());
+            if st.is_null() { continue; }
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, nch);
+            c::cmsPipelineInsertStage(p, 1, st);
+            let ib = vec![0x4000u16; nch as usize];
+            let mut ob = vec![0u16; nch as usize];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            let ibf = vec![0.5f32; nch as usize];
+            let mut obf = vec![0f32; nch as usize];
+            c::cmsPipelineEvalFloat(ibf.as_ptr(), obf.as_mut_ptr(), p);
+            eprintln!("nch{nch} ok");
+            c::cmsPipelineFree(p);
+        }
+    }
+}
