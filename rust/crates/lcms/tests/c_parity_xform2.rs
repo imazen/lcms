@@ -2457,3 +2457,62 @@ fn black_preserving_arms() {
         }
     }
 }
+
+/// OptimizeByComputingLinearization — RGB->RGB only (T_COLORSPACE
+/// in+out == PT_RGB); PRE_LINEARIZATION flag on 16-bit input.
+#[test]
+fn opt_prelin_rgb() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let argb = c::cmsCreateRGBProfileTHR(
+            std::ptr::null_mut(),
+            [0.3127f64, 0.3290, 1.0].as_ptr() as *const _,
+            [0.64f64, 0.33, 0.21,
+             0.30, 0.60, 0.10,
+             0.15, 0.06, 0.79].as_ptr() as *const _,
+            [c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+             c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+             c::cmsBuildGamma(std::ptr::null_mut(), 2.2)]
+                .as_mut_ptr() as *mut _);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let link = std::fs::read(dir.join("lcms2link2.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        for (inp, outp, if_, of_, fl, name) in [
+            (srgb, argb, r16, r16, 0x0010, "srgb->argb prelin"),
+            (argb, srgb, r16, r16, 0x0010, "argb->srgb prelin"),
+            (srgb, srgb, r16, r16, 0x0010, "srgb->srgb prelin"),
+            (srgb, argb, r8, r8, 0x0010, "srgb->argb8 prelin"),
+            (srgb, argb, r8, r8, 0, "srgb->argb8 noflag"),
+            (srgb, argb, r16, r16, 0x0010|0x0400, "prelin+hiprec"),
+            (srgb, argb, r16, r16, 0x0010|0x0800, "prelin+lowprec"),
+            (srgb, argb, r16, r16, 0x0010|0x0001, "pre+post"),
+            (link, argb, k16, r16, 0x0010, "link->argb prelin"),
+            (cmyk, srgb, k16, r16, 0x0010, "cmyk->srgb prelin"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 12];
+                let mut ob = [0x80u8; 12];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        if !argb.is_null() { c::cmsCloseProfile(argb); }
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !link.is_null() { c::cmsCloseProfile(link); }
+    }
+}
