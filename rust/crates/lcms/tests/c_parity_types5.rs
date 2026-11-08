@@ -3211,3 +3211,22 @@ fn write_dispatch_named() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a seq-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_seq() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let seq = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 1);
+        for (sig, name) in [
+            (0x70736571u32, "pseq"), (0x70736964u32, "psid")] {
+            let ok = c::cmsWriteTag(h, sig,
+                seq as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsFreeProfileSequenceDescription(seq);
+        c::cmsCloseProfile(h);
+    }
+}
