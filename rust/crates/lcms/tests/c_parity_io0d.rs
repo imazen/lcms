@@ -12664,3 +12664,96 @@ fn mpe_write_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Type_LUT8_Read — raw mft1 blobs: channel counts, CLUTpoints
+/// 0/1/2+/255, identity vs non-identity matrix, uipow overflow,
+/// short tags.
+#[test]
+fn lut8_read_arms2() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn f15(v: f64) -> [u8; 4] {
+        ((v * 65536.0) as i32).to_be_bytes()
+    }
+    // mft1 body: ich,oich,clutpts,pad, mat9xf15,
+    // 256x ich input-curves, clut pts^ich x oich, 256x oich out
+    fn mft1(ich: u8, och: u8, pts: u8, nonid: bool,
+        sig: u32, clut_override: Option<u32>) -> Vec<u8> {
+        let mut t = Vec::new();
+        let s = if sig == 0 { 0x6D667431u32 } else { sig };
+        t.extend_from_slice(&be32(s));          // 'mft1'
+        t.extend_from_slice(&be32(0));          // reserved
+        t.push(ich);
+        t.push(och);
+        t.push(pts);
+        t.push(0);
+        for i in 0..9 {
+            let v = if nonid && i == 0 { 1.5 }
+                else if i % 4 == 0 { 1.0 } else { 0.0 };
+            t.extend_from_slice(&f15(v));
+        }
+        for _ in 0..256usize {
+            for c in 0..ich {
+                t.push(c.wrapping_mul(40) as u8);
+            }
+        }
+        // uipow(och, pts, ich) — saturating count of CLUT bytes
+        let nclut = clut_override.unwrap_or_else(|| {
+            let mut n = och as u32;
+            for _ in 0..pts { n = n.saturating_mul(ich as u32); }
+            n
+        });
+        for i in 0..nclut.min(1 << 22) {
+            t.push((i % 251) as u8);
+        }
+        for _ in 0..256usize {
+            for c in 0..och {
+                t.push(c.wrapping_mul(60) as u8);
+            }
+        }
+        t
+    }
+    unsafe {
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (mft1(3, 3, 2, false, 0, None), "3ch-pts2-idmat"),
+            (mft1(3, 3, 2, true, 0, None), "3ch-pts2-mat"),
+            (mft1(3, 3, 17, false, 0, None), "3ch-pts17"),
+            (mft1(4, 3, 2, false, 0, None), "4->3-pts2"),
+            (mft1(3, 4, 2, false, 0, None), "3->4-pts2"),
+            (mft1(1, 1, 2, false, 0, None), "1ch-pts2"),
+            (mft1(3, 3, 0, false, 0, None), "pts0-noclut"),
+            (mft1(3, 3, 1, false, 0, None), "pts1-reject"),
+            (mft1(0, 3, 2, false, 0, None), "ich0"),
+            (mft1(3, 0, 2, false, 0, None), "och0"),
+            (mft1(17, 3, 2, false, 0, None), "ich17"),
+            (mft1(3, 17, 2, false, 0, None), "och17"),
+            // uipow overflow: 255^3 x 3 → nTabSize -1 arm
+            (mft1(3, 3, 255, false, 0, Some(0)),
+                "pts255-overflow"),
+            (mft1(3, 3, 2, false, 0x62616420, None), "badsig"),
+            ({ let mut t = mft1(3, 3, 2, false, 0, None);
+                t.truncate(24); t }, "truncated"),
+        ];
+        for (blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, 0x41324230,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 22];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x41324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
