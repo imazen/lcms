@@ -627,3 +627,59 @@ fn cross_format_evals() {
         }
     }
 }
+
+/// denser formatter matrix — unusual modifiers (endian16/premul/
+/// swapfirst) × pts × bytes on same-PCS transforms.
+#[test]
+fn modifier_format_evals() {
+    unsafe {
+        // FLOAT_SH=4, EXTRA_SH, PLANAR_SH=1<<9, DOSWAP_SH=1<<10,
+        // SWAPFIRST_SH=1<<11, ENDIAN16_SH=1<<12, FLAVOR_SH=1<<13,
+        // PREMUL_SH=1<<11? — check the actual shift constants
+        let variants: Vec<(u32, &str)> = vec![
+            ((4 << 16) | (3 << 3) | 2 | (1 << 10), "rgb doswap"),
+            ((4 << 16) | (3 << 3) | 2 | (1 << 11), "rgb swapfirst"),
+            ((4 << 16) | (3 << 3) | 2 | (1 << 12), "rgb endian16"),
+            ((4 << 16) | (3 << 3) | 4 | (1 << 13), "rgb flavor"),
+            ((4 << 16) | (4 << 3) | 2 | (1 << 14), "rgb premul?"),
+            ((1 << 16) | (1 << 3) | 1, "gray u8"),
+            ((1 << 16) | (1 << 3) | 2, "gray u16"),
+            ((1 << 16) | (1 << 3) | 4, "gray f32"),
+            ((2 << 16) | (2 << 3) | 2, "2ch u16"),
+            ((3 << 16) | (3 << 3) | 1, "xyz u8"),
+            ((3 << 16) | (3 << 3) | 2, "xyz u16"),
+            ((3 << 16) | (3 << 3) | 4, "xyz f32"),
+            ((6 << 16) | (4 << 3) | 1, "cmyk u8"),
+            ((6 << 16) | (4 << 3) | 2, "cmyk u16"),
+            ((6 << 16) | (4 << 3) | 4, "cmyk f32"),
+            ((10 << 16) | (3 << 3) | 1, "lab u8"),
+            ((10 << 16) | (3 << 3) | 2, "lab u16"),
+            ((10 << 16) | (3 << 3) | 4, "lab f32"),
+            ((18 << 16) | (5 << 3) | 2, "mch5 u16"),
+            ((18 << 16) | (6 << 3) | 2, "mch6 u16"),
+            ((18 << 16) | (8 << 3) | 2, "mch8 u16"),
+            ((4 << 16) | (3 << 3) | 8, "rgb f64"),
+            ((10 << 16) | (3 << 3) | 8, "lab f64"),
+        ];
+        for (in_fmt, name) in &variants {
+            for (out_fmt, oname) in &variants {
+                let hi = c::cmsCreate_sRGBProfile();
+                let ho = c::cmsCreate_sRGBProfile();
+                let ct = c::cmsCreateTransform(hi, *in_fmt, ho,
+                    *out_fmt, 0, 0);
+                let _ = c::cmsCloseProfile(hi);
+                let _ = c::cmsCloseProfile(ho);
+                if ct.is_null() { continue; }
+                let nbytes = ((in_fmt & 7).max(1) as usize)
+                    * ((in_fmt >> 3) & 0xF) as usize;
+                let inp = vec![0x66u8; nbytes.max(1)];
+                let obytes = ((out_fmt & 7).max(1) as usize)
+                    * ((out_fmt >> 3) & 0xF) as usize;
+                let mut co = vec![0u8; obytes.max(1)];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+    }
+}
