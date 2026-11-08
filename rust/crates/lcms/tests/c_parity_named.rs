@@ -876,3 +876,48 @@ fn mlu_dict_internals() {
         c::cmsMLUfree(dn);
     }
 }
+
+/// Type_NamedColor_Write arms — ncl2 with varying colorant
+/// counts, prefix/suffix strings and entry counts.
+#[test]
+fn named_color_write_arms() {
+    unsafe {
+        for (n_colorant, n_entries, pre, suf, name) in [
+            (3u32, 1, b"p\0".as_ptr(), b"s\0".as_ptr(), "c3-e1"),
+            (4, 2, b"pre\0".as_ptr(), b"suf\0".as_ptr(), "c4-e2"),
+            (0, 1, b"\0".as_ptr(), b"\0".as_ptr(), "c0-e1"),
+            (15, 3, b"long-prefix\0".as_ptr(),
+             b"long-suffix\0".as_ptr(), "c15-e3"),
+        ] {
+            let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(),
+                n_entries, n_colorant, pre, suf);
+            let mut pcs = [0x8000u16; 3];
+            let mut cols = [0x4000u16; 16];
+            for i in 0..n_entries {
+                let nm = format!("col{}\0", i);
+                pcs[0] = (i * 1000) as u16;
+                cols[0] = (i * 2000) as u16;
+                c::cmsAppendNamedColor(ncl, nm.as_ptr(),
+                    pcs.as_ptr(), cols.as_ptr());
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6e636c32)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsFreeNamedColorList(ncl);
+        }
+    }
+}
