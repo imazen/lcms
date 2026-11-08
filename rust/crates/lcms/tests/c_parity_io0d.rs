@@ -15729,3 +15729,70 @@ fn gray_out_labv2v4_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Interp internals — 1ch (bilinear), 2ch (bilinear), 4ch+
+/// (tetrahedral/eval4) float + 16-bit CLUT sampling.
+#[test]
+fn interp_internal_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // 1ch CLUT pipelines — bilinear/eval1 arms
+        for nch in [1u32, 2, 3, 4, 5, 6, 7, 8, 15] {
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), nch, nch);
+            let dims = vec![3u32; nch as usize];
+            let npts: usize = dims.iter()
+                .map(|&x| x as usize).product();
+            let grid = vec![0x4000u16; npts * nch as usize];
+            let st = c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), nch, nch,
+                grid.as_ptr());
+            c::cmsPipelineInsertStage(p, 0, st);
+            let inp = vec![0x4000u16; nch as usize];
+            let mut out = vec![0u16; nch as usize];
+            let inpf = vec![0.5f32; nch as usize];
+            let mut outf = vec![0.0f32; nch as usize];
+            c::cmsPipelineEval16(
+                inp.as_ptr(), out.as_mut_ptr(), p);
+            c::cmsPipelineEvalFloat(
+                inpf.as_ptr(), outf.as_mut_ptr(), p);
+            let mut hint = vec![0.5f32; nch as usize];
+            let rev = c::cmsPipelineEvalReverseFloat(
+                inpf.as_ptr() as *mut f32, outf.as_mut_ptr(),
+                hint.as_mut_ptr(), p);
+            eprintln!("{nch}ch rev={rev}");
+            c::cmsPipelineFree(p);
+        }
+        // gray transforms — 1ch interp paths
+        for intent in [0u32, 1] {
+            for (a, b, fi, fo, name) in [
+                (gray, srgb, g8, r8, "g->rgb"),
+                (srgb, gray, r8, g8, "rgb->g"),
+                (gray, lab, g8, l8, "g->lab"),
+                (lab, gray, l8, g8, "lab->g"),
+            ] {
+                let t = c::cmsCreateTransform(a, fi, b, fo,
+                    intent, 0x0400 /* HIGHRES */);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
