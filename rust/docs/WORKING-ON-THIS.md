@@ -187,3 +187,27 @@ the corpus adds no new flag-path coverage.
   test-side endianness bug — all formats pass with native-endian
   input (c_parity_pack2). The rd16 bounds panic on premul short
   inputs is a real (minor) bounds check gap in pack.rs.
+
+## Round 2 — API-surface sweep (through ceae9b03)
+
+**66.13% lines / 83.72% functions** — the exported `cms*` API
+surface is now fully exercised (API diff against lcms2.h shows
+only types/constants ungated). ~34 gates added: misc batches 1–7
+(channel counts, CMM version, header CMM/mfr, pipeline/stage ctx
+IDs, unlink + save8-flag, transform getters + alarm codes,
+supported intents, segmented curves, reverse/TempFrom/adaptation,
+dict iterate, open variants, matrix-shaper, formatters, triple-free,
+gamut-check pipeline, check-and-retrieve, unregister plugins,
+cube devicelink, gamma detect, stream IO, THR builders/transforms,
+colorant getters, PostScript CSA/CRD, IOhandler variants, the
+last builders), plus plugin matrix (all 11 sigs incl. memH/mtxH/
+parH/typH/mpeH), named-color stage, slice-space-float, MPE mixed
+stages, stage channels, Lab/XYZ elements, premul + modifier matrix,
+transform2devicelink flags, flag branches, colorspace-mismatch
+reject, dense GBD, wtpnt, gamma3, raw tags, find-format, IT8 file
+IO, desaturate/detect.
+
+Line-level gaps remain in cmspack (~135 formatter variants —
+status covered, not every eval), cmstypes (Type_* Read/Dup/Free
+on unusual payloads), cmsio1 (tag-serialization internals),
+cmscgats (parser error paths), cmscnvrt (intent-link internals).

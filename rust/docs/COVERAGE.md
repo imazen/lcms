@@ -209,3 +209,32 @@ These numbers are a floor.
 Lowest files: `cmsvirt.c` 40.3% (the virt builders' uncovered paths),
 `cmspack.c` 46.7%, `cmstypes.c` 50.5%, `cmscgats.c` 56.0%,
 `cmsgmt.c` 55.7%, `cmsio1.c` 59.4%.
+
+## C oracle through the parity suite — AFTER round 2 (`just coverage-cref`)
+
+**66.13% lines / 83.72% functions** after the remaining-API batch
+(~34 more gates; the exported `cms*` surface is now fully
+exercised):
+
+| file | lines | fns | | file | lines | fns |
+|---|---|---|---|---|---|---|
+| cmsalpha.c | 86.6% | 85.4% | | cmsopt.c | 76.1% | 81.8% |
+| cmscam02.c | 91.3% | 100% | | cmspack.c | 49.0% | 58.0% |
+| cmscgats.c | 66.3% | 91.9% | | cmspcs.c | 63.8% | 100% |
+| cmscnvrt.c | 66.4% | 87.0% | | cmsplugin.c | 73.4% | 100% |
+| cmserr.c | 79.3% | 100% | | cmsps2.c | 72.4% | 90.6% |
+| cmsgamma.c | 70.7% | 89.5% | | cmssamp.c | 72.6% | 85.7% |
+| cmsgmt.c | 79.0% | 100% | | cmssm.c | 90.7% | 100% |
+| cmshalf.c | 100% | 100% | | cmstypes.c | 51.0% | 79.0% |
+| cmsintrp.c | 98.5% | 100% | | cmsvirt.c | 66.3% | 96.9% |
+| cmsio0.c | 74.5% | 95.7% | | cmswtpnt.c | 87.1% | 100% |
+| cmsio1.c | 63.4% | 80.0% | | cmsxform.c | 70.9% | 75.0% |
+| cmslut.c | 79.2% | 96.1% | | cmsmd5.c | 88.1% | 80.0% |
+| cmsmtrx.c | 100% | 100% | | cmsnamed.c | 72.2% | 97.8% |
+
+Remaining gaps are mostly line-level: cmspack (~135 Unroll/Pack
+formatter variants — the format matrix covers status but not
+every combo's eval), cmstypes (~30 Type_* Read/Dup/Free branches
+on unusual payloads), cmsio1 (tag-serialization internals on
+uncommon tag shapes), cmscgats (parser error paths), cmscnvrt
+(intent-link internals on unusual chains).
