@@ -13341,3 +13341,95 @@ fn pseq_desc_tac_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// WriteInputLUT (PostScript input-LUT on input-class) +
+/// cmsOpenIOhandlerFromFile/_cmsReadHeader error arms +
+/// cmsCreateLab2/4ProfileTHR.
+#[test]
+fn ps_input_io_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let lab4t = c::cmsCreateLab4ProfileTHR(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let lab2t = c::cmsCreateLab2ProfileTHR(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        eprintln!("lab2/4thr={}/{}", !lab4t.is_null(),
+            !lab2t.is_null());
+        // input-class profile (class='scnr') for WriteInputLUT
+        let inpc = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(inpc, 0x73636e72);   // scnr
+        c::cmsSetColorSpace(inpc, 0x52474220);
+        c::cmsSetPCS(inpc, 0x4C616220);
+        c::cmsSetProfileVersion(inpc, 4.4);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let mut grid = vec![0u16; 27 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 23) * 2848) as u16;
+        }
+        let dims = [3u32; 3];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                grid.as_ptr()));
+        c::cmsWriteTag(inpc, 0x41324230, p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        for (prof, name) in [
+            (inpc, "input"), (srgb, "display"), (lab, "lab"),
+        ] {
+            for intent in [0u32, 1] {
+                let r = c::cmsGetPostScriptCSA(
+                    std::ptr::null_mut(), prof, intent, 0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let r2 = c::cmsGetPostScriptCRD(
+                    std::ptr::null_mut(), prof, intent, 0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                eprintln!("ps {name} i{intent} csa={r} crd={r2}");
+            }
+        }
+        // file-IO error arms — nonexistent/dir/empty file
+        let f1 = c::cmsOpenProfileFromFile(
+            b"/nonexistent/x.icc\0".as_ptr() as *const i8,
+            b"r\0".as_ptr() as *const u8);
+        let f2 = c::cmsOpenProfileFromFile(
+            b"/tmp\0".as_ptr() as *const i8,
+            b"r\0".as_ptr() as *const u8);
+        let mut empty = std::env::temp_dir();
+        empty.push("lcms_empty.icc");
+        std::fs::write(&empty, b"").ok();
+        let es = empty.to_string_lossy().into_owned() + "\0";
+        let f3 = c::cmsOpenProfileFromFile(
+            es.as_ptr() as *const i8,
+            b"r\0".as_ptr() as *const u8);
+        // 16-byte truncated header
+        std::fs::write(&empty, &[0u8; 16]).ok();
+        let f4 = c::cmsOpenProfileFromFile(
+            es.as_ptr() as *const i8,
+            b"r\0".as_ptr() as *const u8);
+        // garbage header
+        std::fs::write(&empty, &[0x41u8; 132]).ok();
+        let f5 = c::cmsOpenProfileFromFile(
+            es.as_ptr() as *const i8,
+            b"r\0".as_ptr() as *const u8);
+        eprintln!("file miss={} dir={} empty={} trunc={} \
+            garb={}", !f1.is_null(), !f2.is_null(),
+            !f3.is_null(), !f4.is_null(), !f5.is_null());
+        for f in [f1, f2, f3, f4, f5] {
+            if !f.is_null() { c::cmsCloseProfile(f); }
+        }
+        std::fs::remove_file(&empty).ok();
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(inpc);
+        if !lab4t.is_null() { c::cmsCloseProfile(lab4t); }
+        if !lab2t.is_null() { c::cmsCloseProfile(lab2t); }
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
