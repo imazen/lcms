@@ -1469,3 +1469,70 @@ fn it8_deep_arms8() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/DataSection arms —
+/// CookPointers/SetData/ReadReal internals via the table API.
+#[test]
+fn it8_deep_arms9() {
+    unsafe {
+        let doc = b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 4\nBEGIN_DATA_FORMAT\nSAMPLE_ID L A\nEND_DATA_FORMAT\nBEGIN_DATA\n1 50 0\n2 60 10\n3 70 -10\n4 80 5\nEND_DATA\n";
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        if !p.is_null() {
+            // SetDataRowCol / GetDataRowCol for every cell
+            for r in 0..4i32 {
+                for c_ in 0..3i32 {
+                    let v = c::cmsIT8GetDataRowCol(p, r, c_);
+                    eprintln!("data[{r}][{c_}]={}",
+                        !v.is_null());
+                    let _ = v;
+                }
+            }
+            // SetDataRowCol writes
+            let ok = c::cmsIT8SetDataRowCol(p, 0, 0,
+                b"99\0".as_ptr() as *const _);
+            eprintln!("setdata={ok}");
+            let ok2 = c::cmsIT8SetDataRowCol(p, -1, 0,
+                b"bad\0".as_ptr() as *const _);
+            eprintln!("setdata-neg={ok2}");
+            // GetDataDbl on numeric cells
+            let d = c::cmsIT8GetDataDbl(p, b"L\0".as_ptr() as *const _,
+                b"1\0".as_ptr() as *const _);
+            eprintln!("getdbldbl={d}");
+            // property enum + get on all
+            let mut names: *mut *mut i8 = std::ptr::null_mut();
+            let np = c::cmsIT8EnumProperties(p, &mut names);
+            eprintln!("enumprops={np}");
+            // save + reload
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsIT8SaveToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("save={s}");
+            let rp = if s != 0 {
+                c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("reload={}", !rp.is_null());
+            if !rp.is_null() { c::cmsIT8Free(rp); }
+            c::cmsIT8Free(p);
+        }
+        // multi-table with data — GetPatchByName/DataByName
+        let doc2 = b"IT8FILE\nDATA_IDENTIFIER \"tab1\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"tab2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n5\nEND_DATA\n";
+        let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc2.as_ptr() as *const _, doc2.len() as u32);
+        if !p2.is_null() {
+            // SetTableByLabel on each sheet
+            let ok = c::cmsIT8SetTableByLabel(p2,
+                b"A\0".as_ptr() as *const _,
+                b"1\0".as_ptr() as *const _,
+                b"\0".as_ptr() as *const _);
+            eprintln!("settab={ok}");
+            let d = c::cmsIT8GetDataDbl(p2,
+                b"A\0".as_ptr() as *const _,
+                b"1\0".as_ptr() as *const _);
+            eprintln!("getdata={d}");
+            c::cmsIT8Free(p2);
+        }
+    }
+}
