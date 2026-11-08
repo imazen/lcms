@@ -323,3 +323,26 @@ fn placeholder_full() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Version machinery — cmsSetEncodedICCversion /
+/// cmsGetProfileVersion on unusual values.
+#[test]
+fn version_machinery() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for v in [2.1f64, 2.4, 4.3, 4.4, 1.0, 5.0] {
+            c::cmsSetProfileVersion(h, v);
+            let gv = c::cmsGetProfileVersion(h);
+            eprintln!("set={v} get={gv}");
+        }
+        for ev in [0x02100000u32, 0x02400000, 0x04300000,
+                   0x04400000] {
+            c::cmsSetEncodedICCversion(h, ev);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            eprintln!("enc={ev:#x} save={cn}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
