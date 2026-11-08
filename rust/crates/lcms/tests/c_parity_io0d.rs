@@ -5809,3 +5809,67 @@ fn pseq_psid_full() {
 
     }
 }
+
+/// Type_Curve_Read arms — 'curv' Count=0 (linear), Count=1
+/// (gamma exponent), Count=N (table) + Type_Text raw read.
+#[test]
+fn curve_text_read_arms() {
+    unsafe {
+        // curv payloads: {count:u32, [u16;count]}
+        for (name, count, entries) in [
+            ("linear", 0u32, vec![]),
+            ("gamma", 1, vec![0x0233u16]), // gamma 2.2 in 8.8
+            ("table4", 4, vec![0u16, 0x5555, 0xAAAA, 0xFFFF]),
+            ("table1", 1, vec![0x0100u16]),
+        ] {
+            let mut raw = Vec::new();
+            raw.extend_from_slice(&0x63757276u32.to_be_bytes()); // 'curv'
+            raw.extend_from_slice(&[0; 4]);
+            raw.extend_from_slice(&count.to_be_bytes());
+            for e in &entries {
+                raw.extend_from_slice(&e.to_be_bytes());
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x72545243,
+                raw.as_ptr() as *const _, raw.len() as u32); // rTRC
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x72545243)
+            } else { std::ptr::null_mut() };
+            let est = if !tag.is_null() {
+                c::cmsEstimateGamma(tag as *const _, 0.001)
+            } else { -1.0 };
+            eprintln!("curv-{name} s={s} read={} est={est:.3}",
+                !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        // text type on targ
+        let mut traw = Vec::new();
+        traw.extend_from_slice(&0x74657874u32.to_be_bytes()); // 'text'
+        traw.extend_from_slice(&[0; 4]);
+        traw.extend_from_slice(b"Some target text\0");
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsWriteRawTag(prof, 0x74617267,
+            traw.as_ptr() as *const _, traw.len() as u32); // 'targ'
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x74617267)
+        } else { std::ptr::null_mut() };
+        eprintln!("targ-text s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
