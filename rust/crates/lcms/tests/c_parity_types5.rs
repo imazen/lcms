@@ -2048,3 +2048,65 @@ fn mlu_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_DateTime + Type_Measurement internals — 'dtim'/'meas'
+/// bodies on the accepting sigs.
+#[test]
+fn datetime_measurement_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // 'dtim' body — 6 u16 fields
+        for sig in [0x63616C74u32, 0x63707274u32,
+                    0x64657363u32] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"dtim");
+            b.extend_from_slice(&[0; 4]);
+            for v in [2024u16, 6, 15, 12, 30, 45] {
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("dtim {sig:#x} write={ok} read={}",
+                r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        // 'meas' body — backing + geometry + measurand
+        for sig in [0x6D656173u32] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"meas");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u32.to_be_bytes()); // observer
+            b.extend_from_slice(&0x00010000i32.to_be_bytes()); // X
+            b.extend_from_slice(&0x00010000i32.to_be_bytes()); // Y
+            b.extend_from_slice(&0x00010000i32.to_be_bytes()); // Z
+            b.extend_from_slice(&1u32.to_be_bytes()); // geometry
+            b.extend_from_slice(&1u32.to_be_bytes()); // flare
+            b.extend_from_slice(&1u32.to_be_bytes()); // measurand
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("meas write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
