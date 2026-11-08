@@ -17833,3 +17833,124 @@ fn internal_final6_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmslut/cmsintrp residual — CLUT sampling internals +
+///   pipeline eval internals + stage internals.
+#[test]
+fn lut_sample_eval_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // cmsStageSampleCLut16bit / Float on varied dims
+        unsafe extern "C" fn samp16(inp: *const u16,
+            out: *mut u16,
+            _u: *mut std::ffi::c_void) -> i32 {
+            unsafe {
+                *out.add(0) = (*inp.add(0)).wrapping_add(100);
+                *out.add(1) = (*inp.add(1)).wrapping_add(100);
+                *out.add(2) = (*inp.add(2)).wrapping_add(100);
+            }
+            1
+        }
+        unsafe extern "C" fn sampf(inp: *const f32,
+            out: *mut f32,
+            _u: *mut std::ffi::c_void) -> i32 {
+            unsafe {
+                *out.add(0) = *inp.add(0) + 0.01;
+                *out.add(1) = *inp.add(1) + 0.01;
+                *out.add(2) = *inp.add(2) + 0.01;
+            }
+            1
+        }
+        let mut grids: Vec<Vec<u16>> = Vec::new();
+        for (gr, name) in [(2u32, "2x2x2"), (3, "3x3x3"),
+            (4, "4x4x4"), (16, "16"), (17, "17")] {
+            let mk = |grids: &mut Vec<Vec<u16>>|
+                -> *mut std::ffi::c_void {
+                let p = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                let dims = [gr; 3];
+                grids.push(vec![0x4000u16;
+                    (gr * gr * gr * 3) as usize]);
+                c::cmsPipelineInsertStage(p, 0,
+                    c::cmsStageAllocCLut16bitGranular(
+                        std::ptr::null_mut(), dims.as_ptr(),
+                        3, 3, grids.last().unwrap().as_ptr()));
+                p
+            };
+            let p1 = mk(&mut grids);
+            let r = c::cmsStageSampleCLut16bit(
+                c::cmsPipelineGetPtrToFirstStage(p1),
+                samp16, std::ptr::null_mut(), 0);
+            c::cmsPipelineFree(p1);
+            // float sampler needs a float-alloc'd CLUT
+            //   (Tab.TFloat union — on a u16 CLUT it
+            //   overruns the table)
+            grids.push(vec![0x4000u16;
+                (gr * gr * gr * 3) as usize]);
+            let pf = c::cmsStageAllocCLutFloat(
+                std::ptr::null_mut(), gr, 3, 3,
+                std::ptr::null());
+            let p2 = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p2, 0, pf);
+            let r2 = c::cmsStageSampleCLutFloat(
+                c::cmsPipelineGetPtrToFirstStage(p2),
+                sampf, std::ptr::null_mut(), 0);
+            c::cmsPipelineFree(p2);
+            let p3 = mk(&mut grids);
+            let r3 = c::cmsStageSampleCLut16bit(
+                c::cmsPipelineGetPtrToFirstStage(p3),
+                samp16, std::ptr::null_mut(), 1);
+            c::cmsPipelineFree(p3);
+            eprintln!("{name} samp16={r} sampf={r2} \
+                samp16f1={r3}");
+        }
+        // eval on CLUT stages of increasing channel counts
+        for ch in [1u32, 2, 3, 4, 6, 8, 10, 15] {
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), ch, ch);
+            let dims = vec![2u32; ch as usize];
+            let n = 2u32.pow(ch) * ch;
+            let grid = vec![0x4000u16; n as usize];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    ch, ch, grid.as_ptr()));
+            let inp = vec![0x4000u16; ch as usize];
+            let mut out = vec![0u16; ch as usize];
+            c::cmsPipelineEval16(inp.as_ptr(),
+                out.as_mut_ptr(), p);
+            let inpf = vec![0.5f32; ch as usize];
+            let mut outf = vec![0.0f32; ch as usize];
+            c::cmsPipelineEvalFloat(inpf.as_ptr(),
+                outf.as_mut_ptr(), p);
+            eprintln!("ch{ch} out0={} outf0={}", out[0],
+                outf[0]);
+            c::cmsPipelineFree(p);
+        }
+        // stage internals — alloc/dup/free all types +
+        //   eval through pipeline
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0];
+        for (st, name) in [
+            (c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                3, 3, mat.as_ptr(), std::ptr::null()), "mat"),
+            (c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _), "cv"),
+            (c::cmsStageAllocIdentity(std::ptr::null_mut(), 3),
+                "idn"),
+        ] {
+            if st.is_null() { continue; }
+            let dup = c::cmsStageDup(st);
+            let ty = c::cmsStageType(st);
+            let ic = c::cmsStageInputChannels(st);
+            let oc = c::cmsStageOutputChannels(st);
+            eprintln!("{name} ty={ty:#x} {ic}->{oc} dup={}",
+                !dup.is_null());
+            if !dup.is_null() { c::cmsStageFree(dup); }
+            c::cmsStageFree(st);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
