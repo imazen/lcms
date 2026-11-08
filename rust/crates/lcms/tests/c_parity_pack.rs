@@ -1893,3 +1893,22 @@ fn xyz_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Ink-limiting on more channel counts — the ink-limiting
+/// machinery.
+#[test]
+fn ink_limiting_variants() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (nch, sig, name) in [
+            (4usize, 0x434D594B, "CMYK"),
+            (6, 0x36434C52, "6CLR"),
+            (3, 0x52474220, "RGB ")] {
+            let mut curves = vec![g; nch];
+            let dl = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), sig, 60.0);
+            eprintln!("{name} dl={}", !dl.is_null());
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+        }
+    }
+}
