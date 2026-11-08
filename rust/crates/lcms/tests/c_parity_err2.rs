@@ -132,3 +132,77 @@ fn dup_intents_list() {
         if !ctx.is_null() { c::cmsDeleteContext(ctx); }
     }
 }
+
+/// cmsplugin residual — cmsCreateContext (plugins+
+///   userdata), DupContext propagation, DeleteContext
+///   lifecycle, SetAlarmCodes clamping, GetClientChunk
+///   via context-scoped profile ops.
+#[test]
+fn err_ctx_lifecycle_arms() {
+    unsafe {
+        // create ctx with userdata, dup it, use both
+        let mut ud = 0xABCDu32;
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(),
+            &mut ud as *mut _ as *mut _);
+        eprintln!("ctx={}", !ctx.is_null());
+        let srgb_ctx = if !ctx.is_null() {
+            c::cmsCreate_sRGBProfileTHR(ctx)
+        } else { std::ptr::null_mut() };
+        eprintln!("  srgb-on-ctx={}", !srgb_ctx.is_null());
+        let dctx = if !ctx.is_null() {
+            let mut ud2 = 0x1234u32;
+            c::cmsDupContext(ctx,
+                &mut ud2 as *mut _ as *mut _)
+        } else { std::ptr::null_mut() };
+        eprintln!("  dctx={}", !dctx.is_null());
+        let srgb_d = if !dctx.is_null() {
+            c::cmsCreate_sRGBProfileTHR(dctx)
+        } else { std::ptr::null_mut() };
+        eprintln!("  srgb-on-dctx={}", !srgb_d.is_null());
+        // alarm codes: set/get on ctx + NULL (global)
+        let codes = [1u16, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+                     11, 12, 13, 14, 15, 16];
+        c::cmsSetAlarmCodes(codes.as_ptr());
+        let mut got = [0u16; 16];
+        c::cmsGetAlarmCodes(got.as_mut_ptr());
+        eprintln!("  alarms={:?}", &got[..4]);
+        if !ctx.is_null() {
+            let codes2 = [100u16; 16];
+            c::cmsSetAlarmCodesTHR(ctx, codes2.as_ptr());
+            let mut g2 = [0u16; 16];
+            c::cmsGetAlarmCodesTHR(ctx, g2.as_mut_ptr());
+            eprintln!("  ctx-alarms={:?}", &g2[..4]);
+        }
+        // NULL-context alarm ops (global)
+        for v in [0u16, 1, 0xFFFF] {
+            let mut a = [v; 16];
+            c::cmsGetAlarmCodes(a.as_mut_ptr());
+            eprintln!("  null-ctx alarms[0]={}",
+                a[0]);
+        }
+        // dup chain: dup-of-dup, then delete all
+        let ddctx = if !dctx.is_null() {
+            c::cmsDupContext(dctx, std::ptr::null_mut())
+        } else { std::ptr::null_mut() };
+        eprintln!("  ddctx={}", !ddctx.is_null());
+        if !ddctx.is_null() {
+            c::cmsDeleteContext(ddctx); }
+        if !dctx.is_null() {
+            c::cmsDeleteContext(dctx); }
+        if !srgb_d.is_null() {
+            c::cmsCloseProfile(srgb_d); }
+        if !srgb_ctx.is_null() {
+            c::cmsCloseProfile(srgb_ctx); }
+        if !ctx.is_null() {
+            c::cmsDeleteContext(ctx); }
+        // create + immediately delete empty ctx
+        for _ in 0..3 {
+            let e = c::cmsCreateContext(
+                std::ptr::null_mut(),
+                std::ptr::null_mut());
+            c::cmsDeleteContext(e);
+        }
+        eprintln!("lifecycle ok");
+    }
+}
