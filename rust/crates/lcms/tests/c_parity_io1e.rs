@@ -1852,3 +1852,21 @@ fn mpe_each_element() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// bACS/eACS/named MPE elements — the identity/abstract
+/// stage element types.
+#[test]
+fn mpe_abstract_elements() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // identity stage — the bACS/eACS element path
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocIdentity(std::ptr::null_mut(), 3));
+        let ok = c::cmsWriteTag(h, 0x41324230,
+            pl as *mut std::ffi::c_void);
+        eprintln!("identity write={ok}");
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
