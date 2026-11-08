@@ -125,3 +125,27 @@ fn corrupt_profile_bytes() {
     }
 }
 
+
+/// IOhandler-FromNull + IT8 contiguous-save variants.
+#[test]
+fn iohandler_null_it8_contiguous() {
+    unsafe {
+        let n = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+        assert!(!n.is_null(), "null iohandler");
+        c::cmsCloseIOhandler(n);
+        // IT8 save variants — cmsIT8SaveToMem/ToFile are the
+        // real exports (no contiguous variants exist)
+        let doc = "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1 2\nEND_DATA\n";
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        let mut cb = vec![0u8; 4096];
+        let mut cn = 0u32;
+        let ok = c::cmsIT8SaveToMem(h,
+            cb.as_mut_ptr() as *mut _, &mut cn);
+        eprintln!("save mem ok={ok} n={cn}");
+        let f = c::cmsIT8SaveToFile(h,
+            b"/tmp/it8_save.txt\0".as_ptr() as *const _);
+        eprintln!("save file={f}");
+        c::cmsIT8Free(h);
+    }
+}
