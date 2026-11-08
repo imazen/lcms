@@ -25140,3 +25140,161 @@ fn internal_final78_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsplugin residual — cmsPluginTHR default branch
+///   (bogus plugin type), _cmsFindMemoryPlugin bundle
+///   walk + mem-handler hit via cmsCreateContext
+///   plugin bundle, cmsDeleteContext(NULL) global
+///   pool path in a forked child.
+#[test]
+fn internal_final79_arms() {
+    unsafe {
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct MemPlugin {
+            base: PluginBase,
+            alloc: *const std::ffi::c_void,
+            free: *const std::ffi::c_void,
+            realloc: *const std::ffi::c_void,
+            allocz: *const std::ffi::c_void,
+            calloc_: *const std::ffi::c_void,
+            dup: *const std::ffi::c_void,
+        }
+        unsafe extern "C" {
+            fn malloc(n: usize) -> *mut std::ffi::c_void;
+            fn free(p: *mut std::ffi::c_void);
+            fn realloc(p: *mut std::ffi::c_void,
+                n: usize) -> *mut std::ffi::c_void;
+        }
+        unsafe extern "C" fn my_alloc(
+            _ctx: *mut std::ffi::c_void,
+            n: u32) -> *mut std::ffi::c_void {
+            malloc(n as usize)
+        }
+        unsafe extern "C" fn my_free(
+            _ctx: *mut std::ffi::c_void,
+            p: *mut std::ffi::c_void) {
+            free(p)
+        }
+        unsafe extern "C" fn my_realloc(
+            _ctx: *mut std::ffi::c_void,
+            p: *mut std::ffi::c_void,
+            n: u32) -> *mut std::ffi::c_void {
+            realloc(p, n as usize)
+        }
+        // bogus-type plugin → cmsPluginTHR default branch
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let mut bp = PluginBase {
+            magic: 0x61637070, ver: 2200,
+            typ: 0x7A7A7A7A, next: std::ptr::null_mut(),
+        };
+        let r1 = c::cmsPluginTHR(ctx,
+            &mut bp as *mut _ as *mut _);
+        // bogus magic → early reject
+        let mut bp2 = PluginBase {
+            magic: 0x0, ver: 2200,
+            typ: 0x74797048, next: std::ptr::null_mut(),
+        };
+        let r2 = c::cmsPluginTHR(ctx,
+            &mut bp2 as *mut _ as *mut _);
+        // too-new version → reject
+        let mut bp3 = PluginBase {
+            magic: 0x61637070, ver: 0x7FFFFFFF,
+            typ: 0x74797048, next: std::ptr::null_mut(),
+        };
+        let r3 = c::cmsPluginTHR(ctx,
+            &mut bp3 as *mut _ as *mut _);
+        eprintln!("bogus-typ={r1} badmagic={r2} \
+            newver={r3}");
+        // plugin bundle chain passed to cmsCreateContext
+        //   → _cmsFindMemoryPlugin walk; include a real
+        //   mem-handler to hit the found-branch too
+        let mut mp = MemPlugin {
+            base: PluginBase {
+                magic: 0x61637070, ver: 2200,
+                typ: 0x6D656D48,
+                next: std::ptr::null_mut(),
+            },
+            alloc: my_alloc as *const std::ffi::c_void,
+            free: my_free as *const std::ffi::c_void,
+            realloc: my_realloc as *const std::ffi::c_void,
+            allocz: std::ptr::null(),
+            calloc_: std::ptr::null(),
+            dup: std::ptr::null(),
+        };
+        let ctx2 = c::cmsCreateContext(
+            &mut mp as *mut _ as *mut _,
+            std::ptr::null_mut());
+        eprintln!("mem-bundle ctx2={}", !ctx2.is_null());
+        if !ctx2.is_null() {
+            c::cmsDeleteContext(ctx2); }
+        // chain: mem-handler -> tagtype (bundle walk hits
+        //   non-mem plugin mid-chain)
+        #[repr(C)]
+        struct TagTypePlugin {
+            base: PluginBase,
+            sig: u32,
+            read: *const std::ffi::c_void,
+            write: *const std::ffi::c_void,
+            dup: *const std::ffi::c_void,
+            free: *const std::ffi::c_void,
+            ctx: *mut std::ffi::c_void,
+            iccver: u32,
+        }
+        let mut tp = TagTypePlugin {
+            base: PluginBase {
+                magic: 0x61637070, ver: 2200,
+                typ: 0x74797048,
+                next: std::ptr::null_mut(),
+            },
+            sig: 0x7A7A7A7A,
+            read: std::ptr::null(),
+            write: std::ptr::null(),
+            dup: std::ptr::null(),
+            free: std::ptr::null(),
+            ctx: std::ptr::null_mut(),
+            iccver: 0,
+        };
+        let mut mp2 = MemPlugin {
+            base: PluginBase {
+                magic: 0x61637070, ver: 2200,
+                typ: 0x6D656D48,
+                next: &mut tp as *mut _ as *mut _,
+            },
+            alloc: my_alloc as *const std::ffi::c_void,
+            free: my_free as *const std::ffi::c_void,
+            realloc: my_realloc as *const std::ffi::c_void,
+            allocz: std::ptr::null(),
+            calloc_: std::ptr::null(),
+            dup: std::ptr::null(),
+        };
+        let ctx3 = c::cmsCreateContext(
+            &mut mp2 as *mut _ as *mut _,
+            std::ptr::null_mut());
+        eprintln!("chain-bundle ctx3={}", !ctx3.is_null());
+        if !ctx3.is_null() {
+            c::cmsDeleteContext(ctx3); }
+        c::cmsDeleteContext(ctx);
+        // cmsDeleteContext(NULL) → global unreg + pool
+        //   destroy — forked child so global state in
+        //   the test process is unaffected
+        unsafe extern "C" {
+            fn fork() -> i32;
+            fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+            fn _exit(c: i32) -> !;
+        }
+        let pid = fork();
+        if pid == 0 {
+            c::cmsDeleteContext(std::ptr::null_mut());
+            _exit(0);
+        }
+        let mut st = 0i32;
+        waitpid(pid, &mut st, 0);
+        eprintln!("del-null child st={st:#x}");
+    }
+}
