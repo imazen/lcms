@@ -6684,3 +6684,51 @@ fn io0_edge_internals() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// cmsGetProfileInfo internals — per-info-id tag selection on
+/// corpus profiles × languages × encodings.
+#[test]
+fn profile_info_internals2() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u16; 512];
+        for (id, name) in [
+            (0u32, "desc"), (1, "cprt"), (2, "dmnd"),
+            (3, "dmdd"), (4, "lmod"), (5, "tech"),
+            (6, "vued"), (7, "arg"), (8, "chad"),
+        ] {
+            let n = c::cmsGetProfileInfoUTF8(srgb, id,
+                b"en\0".as_ptr() as *const i8,
+                b"US\0".as_ptr() as *const i8,
+                buf.as_mut_ptr() as *mut _, 512);
+            let n2 = c::cmsGetProfileInfo(srgb, id,
+                b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                buf.as_mut_ptr() as *mut _, 512);
+            let n3 = c::cmsGetProfileInfoASCII(srgb, id,
+                b"en\0".as_ptr() as *const i8,
+                b"US\0".as_ptr() as *const i8,
+                buf.as_mut_ptr() as *mut _, 512);
+            eprintln!("{name} utf8={n} u16={n2} ascii={n3}");
+        }
+        // corpus profiles
+        for f in ["lcms2cmyk.icc", "labv4lcms2.icc", "labv2lcms2.icc",
+                  "aRGBlcms2.icc", "graylcms2.icc", "xyzlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for id in 0..9u32 {
+                let _ = c::cmsGetProfileInfoASCII(p, id,
+                    b"en\0".as_ptr() as *const i8,
+                    b"US\0".as_ptr() as *const i8,
+                    buf.as_mut_ptr() as *mut _, 512);
+            }
+            eprintln!("{f} done");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
