@@ -24141,3 +24141,114 @@ fn internal_final68_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — _cmsReadProfileSequence +
+///   _cmsCompileProfileSequence internals via pseq/psid
+///   tags + transform on sequence-bearing profiles.
+#[test]
+fn internal_final69_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for sig in [0x70736571u32, 0x70736964] {
+            for (nd, name) in [
+                (1u32, "1d"), (4, "4d"),
+            ] {
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                c::cmsSetColorSpace(prof, 0x52474220);
+                c::cmsSetPCS(prof, 0x58595A20);
+                c::cmsSetProfileVersion(prof, 4.4);
+                // pseq via public allocator + per-desc MLUs
+                let seq = c::cmsAllocProfileSequenceDescription(
+                    std::ptr::null_mut(), nd);
+                if !seq.is_null() {
+                    // fill seq[i] fields: cmsPSEQDESC =
+                    //   {devMfg, devModel, devTech,
+                    //    devAttr, profileID[16],
+                    //    desc, techInfo, attr}
+                    // cmsPSEQDESC = {u32 mfg; u32 model;
+                    //   u64 attributes; u32 technology;
+                    //   u8 profileID[16]; pad; MLU* Mfr;
+                    //   MLU* Model; MLU* Desc} — 64 bytes
+                    #[repr(C)]
+                    #[derive(Clone, Copy)]
+                    struct PseqDesc {
+                        mfg: u32, model: u32,
+                        attr: u64,
+                        tech: u32,
+                        pid: [u8; 16],
+                        _pad: u32,
+                        mfr_mlu: c::Handle,
+                        model_mlu: c::Handle,
+                        desc_mlu: c::Handle,
+                    }
+                    // cmsSEQ = {u32 n; void* ctx;
+                    //   cmsPSEQDESC* seq}
+                    let seqptr = *(seq as
+                        *const *mut PseqDesc)
+                        .add(2);
+                    for i in 0..nd as isize {
+                        let d = seqptr.add(i as usize);
+                        let mk = |txt: &str| -> c::Handle {
+                            let m = c::cmsMLUalloc(
+                                std::ptr::null_mut(), 1);
+                            let mut w_ = [0i32; 8];
+                            for (j, ch) in
+                                format!("{txt}\0").chars()
+                                    .enumerate() {
+                                w_[j] = ch as i32; }
+                            c::cmsMLUsetWide(m,
+                                b"en\0".as_ptr()
+                                    as *const _,
+                                b"US\0".as_ptr()
+                                    as *const _,
+                                w_.as_ptr());
+                            m
+                        };
+                        (*d).mfg = 0x696D617A;
+                        (*d).model = i as u32 + 1;
+                        (*d).attr = 0x6174747265627574;
+                        (*d).tech = 0x6C617473;
+                        (*d).pid = [i as u8 + 1; 16];
+                        (*d).mfr_mlu = mk("m");
+                        (*d).model_mlu = mk("o");
+                        (*d).desc_mlu = mk("d");
+                    }
+                    let w = c::cmsWriteTag(prof, sig,
+                        seq as *const _);
+                    let mut buf = vec![0u8; 1 << 20];
+                    let mut n = buf.len() as u32;
+                    let s = c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n);
+                    let rp = if s != 0 {
+                        c::cmsOpenProfileFromMem(
+                            buf.as_ptr() as *const _, n)
+                    } else { std::ptr::null_mut() };
+                    let r = if !rp.is_null() {
+                        let t = c::cmsReadTag(rp, sig);
+                        let ok = !t.is_null();
+                        // transform → compile seq
+                        let fin = (4u32 << 16)
+                            | (3 << 3) | 2;
+                        let tr = c::cmsCreateTransform(rp,
+                            fin, srgb, fin, 0, 0);
+                        eprintln!("{sig:#x} {name} \
+                            w={w} s={s} r={ok} \
+                            tr={}", !tr.is_null());
+                        if !tr.is_null() {
+                            c::cmsDeleteTransform(tr); }
+                        c::cmsCloseProfile(rp);
+                        ok
+                    } else { false };
+                    c::cmsFreeProfileSequenceDescription(
+                        seq);
+                    c::cmsCloseProfile(prof);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
