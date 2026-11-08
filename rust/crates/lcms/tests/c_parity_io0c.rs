@@ -996,3 +996,111 @@ fn internal_outlut_clrt_chad_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — ReadICC_Cam + named-color reader
+///   tails: ncl2 transforms at all intents + DToB/
+///   BToD intent dispatch on input/output classes.
+#[test]
+fn internal_cam_ncl2_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let fnc = (0u32 << 16) | (1 << 3) | 2;
+        // ncl2 profile + transforms at each intent
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 4,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let pcs = [0x4000u16; 16];
+        let dev = [0x6000u16; 16];
+        for i in 0..4 {
+            let nm = format!("c{i}\0");
+            c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        let np = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(np, 0x6E6D636C);
+        c::cmsSetColorSpace(np, 0x4D434834);
+        c::cmsSetPCS(np, 0x4C616220);
+        c::cmsSetProfileVersion(np, 4.4);
+        c::cmsWriteTag(np, 0x6E636C32,
+            nl as *const _);
+        for i in 0..4u32 {
+            let t = c::cmsCreateTransform(np, fnc,
+                lab4, flab, i, 0);
+            eprintln!("ncl2 i{i} t={}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+        }
+        // DToB/BToD intents on input/output classes
+        for (cls, tags, name) in [
+            (0x6D6E7472u32,
+                &[0x44324230u32, 0x44324231,
+                  0x44324232, 0x44324233] as &[u32],
+                "mntr-d2b"),
+            (0x70727472,
+                &[0x42324430u32, 0x42324431,
+                  0x42324432, 0x42324433],
+                "prtr-b2d"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            // mAB tag on each DToB/BToD sig
+            let mut blob = vec![
+                0x6D, 0x41, 0x42, 0x20, 0, 0, 0, 0];
+            blob.extend_from_slice(&3u8.to_be_bytes());
+            blob.extend_from_slice(&3u8.to_be_bytes());
+            blob.extend_from_slice(&[0u8; 2]);
+            blob.extend_from_slice(&48u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            for _ in 0..3 {
+                blob.extend_from_slice(&[
+                    0x63u8, 0x75, 0x72, 0x76,
+                    0, 0, 0, 0]);
+                blob.extend_from_slice(&2u32.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x4000u16.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x8000u16.to_be_bytes());
+            }
+            for tag in tags {
+                c::cmsWriteRawTag(p, *tag,
+                    blob.as_ptr() as *const _,
+                    blob.len() as u32);
+            }
+            let mut buf = [0u8; 1 << 18];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} prof={}", !pr.is_null());
+            if !pr.is_null() {
+                for i in 0..4u32 {
+                    let t = c::cmsCreateTransform(pr,
+                        (4u32 << 16) | (3 << 3) | 2,
+                        lab4, flab, i, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(np);
+        c::cmsFreeNamedColorList(nl);
+        c::cmsCloseProfile(lab4);
+    }
+}
