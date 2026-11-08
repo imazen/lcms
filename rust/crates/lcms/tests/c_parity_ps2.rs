@@ -897,3 +897,67 @@ fn ps2_tail_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsps2 residual — CPD emit + CSA/CRD on more
+///   profile shapes (devicelink, ncl2, abstract) +
+///   output-flag internals.
+#[test]
+fn ps2_cpd_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let mut buf = vec![0u8; 1 << 19];
+        // devicelink profile for CSA/CRD emit
+        let dl = {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6C696E6B);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let tcs = [g, g, g];
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            c::cmsWriteTag(p, 0x41324230,
+                pipe as *const _);
+            let mut bb = [0u8; 1 << 17];
+            let mut n = bb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                bb.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    bb.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            c::cmsCloseProfile(p);
+            c::cmsPipelineFree(pipe);
+            pr
+        };
+        for (prof, name) in [
+            (srgb, "srgb"), (lab4, "lab4"), (dl, "dl"),
+        ] {
+            if prof.is_null() { continue; }
+            for i in [0u32, 2] {
+                let n = c::cmsGetPostScriptCSA(
+                    std::ptr::null_mut(), prof, i, 0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let n2 = c::cmsGetPostScriptCRD(
+                    std::ptr::null_mut(), prof, i, 0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                eprintln!("{name} i{i} csa={n} crd={n2}");
+            }
+        }
+        if !dl.is_null() {
+            c::cmsCloseProfile(dl); }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
