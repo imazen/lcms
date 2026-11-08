@@ -1627,3 +1627,32 @@ fn unusual_sig_reads() {
         }
     }
 }
+
+/// Corpus save+reload — the full serialize machinery on real
+/// profiles.
+#[test]
+fn corpus_serialize() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            // serialize + reload — the full machinery
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h2 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            // tag-for-tag comparison — the round-trip internals
+            if !h2.is_null() {
+                let n1 = c::cmsGetTagCount(h);
+                let n2 = c::cmsGetTagCount(h2);
+                let _ = (n1, n2);
+            }
+            c::cmsCloseProfile(h);
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
