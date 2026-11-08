@@ -5513,3 +5513,128 @@ fn opt_cnvrt_internal_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsvirt/cmsopt/cmscnvrt residual — profile-creation internals
+///   + optimizer on unusual profiles + black-preserving
+///   internals residual.
+#[test]
+fn virt_opt_cnvrt_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        // profile-creation internals — all builders on
+        //   varied white points + TRCs
+        for (wxy, name) in [
+            ((0.3127f64, 0.3290), "d65"),
+            ((0.3457, 0.3585), "d50"),
+            ((0.4476, 0.4075), "a"),
+            ((0.0, 0.0), "zero"),
+            ((0.5, 0.5), "mid"),
+            ((1.0, 1.0), "corner"),
+        ] {
+            let wp = c::CiexyY { x: wxy.0, y: wxy.1, Y: 1.0 };
+            let prim = c::CiexyYTriple {
+                Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+                Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+                Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+            };
+            let trcs = [g, g, g];
+            let prof = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const c::CiexyY as *const _,
+                &prim as *const c::CiexyYTriple as *const _,
+                trcs.as_ptr() as *const *mut std::ffi::c_void);
+            let t = if !prof.is_null() {
+                let t_ = c::cmsCreateTransform(prof, r8,
+                    lab, l8, 0, 0);
+                t_
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} prof={} t={}",
+                !prof.is_null(), !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !prof.is_null() { c::cmsCloseProfile(prof); }
+        }
+        // black-preserve internals — KOnly vs KPlane on all
+        //   CMYK<->CMYK combos
+        if !cmyk.is_null() {
+            for intent in [0u32, 1, 3] {
+                for flags in [0u32, 0x2000 /* BLACKPRESERVE */,
+                    0x4000 /* KONLY */,
+                    0x2000 | 0x4000] {
+                    let t = c::cmsCreateTransform(cmyk, k8,
+                        cmyk, k8, intent, flags);
+                    let t2 = c::cmsCreateTransform(cmyk, k8,
+                        lab, l8, intent, flags);
+                    let t3 = c::cmsCreateTransform(lab, l8,
+                        cmyk, k8, intent, flags);
+                    eprintln!("bp i{intent} f{flags:#x} \
+                        k2k={} k2l={} l2k={}",
+                        !t.is_null(), !t2.is_null(),
+                        !t3.is_null());
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                    if !t2.is_null() {
+                        c::cmsDeleteTransform(t2); }
+                    if !t3.is_null() {
+                        c::cmsDeleteTransform(t3); }
+                }
+            }
+        }
+        // optimizer on unusual profiles — devicelink +
+        //   abstract + named-color transforms
+        for (cls, cs, pcs, name) in [
+            (0x6C696E6Bu32, 0x52474220, 0x58595A20, "link"),
+            (0x61627374, 0x4C616220, 0x4C616220, "abstract"),
+            (0x6E6D636C, 0x4E434C20, 0x4C616220,
+                "namedcolor"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    grid.as_ptr()));
+            c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            c::cmsWriteTag(prof, 0x42324130,
+                p as *const _);
+            for flags in [0u32, 0x0001, 0x0002, 0x0004,
+                0x0010, 0x0040, 0x0100, 0x0400] {
+                let t = c::cmsCreateTransform(prof, r8,
+                    srgb, r8, 0, flags);
+                eprintln!("{name} f{flags:#x} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
