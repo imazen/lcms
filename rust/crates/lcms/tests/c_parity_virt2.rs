@@ -544,3 +544,40 @@ fn proofing_transform_paths() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Gamut/preview LUT readers — proofing transform on a profile
+/// carrying a gamt tag hits _cmsReadGamutLUT; preview tags pre0-2
+/// hit _cmsReadPreviewLUT.
+#[test]
+fn gamut_preview_lut_readers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        // build a pipeline for the gamt tag
+        let gp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(gp, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(prof, 0x67616D74, gp as *const _); // 'gamt'
+        let cmyk = c::cmsCreate_sRGBProfile(); // reuse as proof target
+        let srgb = c::cmsCreate_sRGBProfile();
+        for flags in [0x4000u32, 0x5000] {
+            let rgb16 = (4u32 << 16) | (3 << 3) | 2;
+            let t = c::cmsCreateProofingTransform(
+                srgb, rgb16, cmyk, rgb16, prof,
+                0, 0, flags);
+            eprintln!("gamut proof f{flags:#x} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [100u8, 150, 200];
+                let mut ob = [0u8; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(cmyk);
+        c::cmsCloseProfile(srgb);
+        c::cmsPipelineFree(gp);
+    }
+}
