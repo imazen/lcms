@@ -14745,3 +14745,78 @@ fn api_misc_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// DupFormatterFactoryList/DupPluginOptimizationList/
+/// _cmsFindMemoryPlugin — context dup with registered plugins.
+/// Fork-isolated: registered plugins persist globally.
+#[test]
+fn ctx_dup_plugin_arms() {
+    unsafe extern "C" { fn fork() -> i32;
+        fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+        fn _exit(code: i32) -> !;
+        fn dlsym(h: *mut std::ffi::c_void,
+            n: *const i8) -> *mut std::ffi::c_void; }
+    let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+        let f = dlsym(std::ptr::null_mut(),
+            b"__llvm_profile_write_file\0".as_ptr() as *const i8);
+        if f.is_null() { None } else { Some(std::mem::transmute(f)) }
+    };
+    let pid = unsafe { fork() };
+    if pid == 0 {
+        unsafe {
+            // create a context with a valid inpH plugin, dup
+            unsafe extern "C" fn interp(
+                _ctx: *mut std::ffi::c_void, _n: u32,
+                _i: u32, _o: u32,
+                _t: *const std::ffi::c_void)
+                -> *mut std::ffi::c_void {
+                std::ptr::null_mut()
+            }
+            let mut pl = vec![0u64; 8];
+            let b = pl.as_mut_ptr() as *mut u8;
+            *(b as *mut u32) = 0x61637070;   // 'acpp'
+            *(b as *mut u32).add(1) = 2100;
+            *(b as *mut u32).add(2) = 0x696E7048;   // 'inpH'
+            *(b as *mut u32).add(3) = 0;            // sig
+            *(b as *mut u32).add(4) = 0;            // save-rev
+            *(b as *mut usize).add(5) = 0;          // next
+            *(b as *mut usize).add(6) = interp
+                as *const () as usize;              // factory
+            let ctx = c::cmsCreateContext(
+                pl.as_mut_ptr() as *mut _,
+                std::ptr::null_mut());
+            let r1 = 1;
+            // dup the context — exercises the Dup* lists
+            let d1 = c::cmsDupContext(ctx, std::ptr::null_mut());
+            let mut ud = 0x99u32;
+            let d2 = c::cmsDupContext(ctx,
+                &mut ud as *mut u32 as *mut _);
+            let d3 = c::cmsDupContext(std::ptr::null_mut(),
+                std::ptr::null_mut());
+            eprintln!("ctx={} dup={}/{}/{}", !ctx.is_null(),
+                !d1.is_null(), !d2.is_null(), !d3.is_null());
+            // transform under each context
+            if !d1.is_null() {
+                let srgb = c::cmsCreate_sRGBProfileTHR(d1);
+                let lab = c::cmsCreateLab4ProfileTHR(d1,
+                    std::ptr::null_mut());
+                let t = c::cmsCreateTransformTHR(d1, srgb,
+                    (4u32 << 16) | (3 << 3) | 1, lab,
+                    (10u32 << 16) | (3 << 3) | 1, 0, 0);
+                eprintln!("ctx-xform t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                c::cmsCloseProfile(srgb);
+                c::cmsCloseProfile(lab);
+            }
+            if !d1.is_null() { c::cmsDeleteContext(d1); }
+            if !d2.is_null() { c::cmsDeleteContext(d2); }
+            if !d3.is_null() { c::cmsDeleteContext(d3); }
+            if !ctx.is_null() { c::cmsDeleteContext(ctx); }
+            if let Some(f) = flush { f(); }
+            _exit(0);
+        }
+    }
+    let mut st = 0i32;
+    unsafe { waitpid(pid, &mut st, 0); }
+    eprintln!("ctxdup child st={st}");
+}
