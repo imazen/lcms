@@ -979,3 +979,35 @@ fn it8_deep_arms() {
         }
     }
 }
+
+/// satob internals — every numeric token form exercises the
+/// string-to-double helper (exponents, signs, hex, binary,
+/// edge forms).
+#[test]
+fn it8_satob_arms() {
+    unsafe {
+        let doc = b"CGATS.17\n\
+            N1 +1\nN2 -1\nN3 +1.5e3\nN4 -1.5e-3\nN5 1.5e+3\n\
+            N6 +.5\nN7 -.5\nN8 .5e2\nN9 1e0\nN10 1e-0\n\
+            N11 0x1\nN12 0xFF\nN13 0xffff\nN14 +0x10\n\
+            N15 0b1\nN16 0b101\nN17 0b11\nN18 00\nN19 000.000\n\
+            N20 999999999999999.999e9\nN21 0.0e-99\n\
+            NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA_FORMAT\nV\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n+1.5e3\nEND_DATA\n";
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("load={}", !h.is_null());
+        if !h.is_null() {
+            for i in 1..21i32 {
+                let k = format!("N{i}\0");
+                let v = c::cmsIT8GetPropertyDbl(h, k.as_ptr() as *const i8);
+                eprintln!("{k}={v}");
+            }
+            let mut buf = vec![0u8; 1 << 16];
+            let mut n = buf.len() as u32;
+            c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
+            c::cmsIT8Free(h);
+        }
+    }
+}
