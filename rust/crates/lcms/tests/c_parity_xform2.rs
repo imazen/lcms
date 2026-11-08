@@ -2689,3 +2689,76 @@ fn opt_matshaper_arms() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// PatchLUT/DefaultICCintents deep arms — gamut-check pipelines,
+/// preview transforms, intent direction variants.
+#[test]
+fn conversion_arms5() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        // gamut-check on all intents — PreviewLUT path
+        if !cmyk.is_null() {
+            for intent in 0..4u32 {
+                let t = c::cmsCreateProofingTransform(
+                    srgb, r16, srgb, r16, cmyk, intent, 0, 0x1000);
+                eprintln!("gamut-i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x8000u16; 8];
+                    let mut ob = [0x8000u16; 8];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 2);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            // proofing with all proofing-intent variants
+            for proof in 0..4u32 {
+                let t = c::cmsCreateProofingTransform(
+                    srgb, r16, srgb, r16, cmyk, 0, proof, 0);
+                eprintln!("proof-p{proof} t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+        }
+        // reverse-direction class combos
+        for (inp, outp, if_, of_, intent, name) in [
+            (lab, srgb, l16, r16, 0, "lab->srgb"),
+            (lab, srgb, l16, r16, 1, "lab->srgb rel"),
+            (lab, srgb, l16, r16, 2, "lab->srgb sat"),
+            (lab, srgb, l16, r16, 3, "lab->srgb abs"),
+            (xyz, lab, (9u32<<16)|(3<<3)|2, l16, 0, "xyz->lab"),
+            (lab, xyz, l16, (9u32<<16)|(3<<3)|2, 0, "lab->xyz"),
+            (gray, srgb, (3u32<<16)|(1<<3)|2, r16, 0, "gray->srgb"),
+            (srgb, xyz, r16, (9u32<<16)|(3<<3)|2, 0, "srgb->xyz"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 8];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        let _ = k16;
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
