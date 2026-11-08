@@ -215,3 +215,51 @@ fn gbd_dense() {
         }
     }
 }
+
+/// Black-point / TAC / desaturate sweep — cmsDetectBlackPoint's
+/// devClass x intent x version dispatch (Link/Abstract/NamedColor
+/// reject, v4+matrix-shaper->BlackPointAsDarkerColorant, percep-
+/// tual-black fallback), DetectDestinationBlackPoint, DetectTAC,
+/// DesaturateLab.
+#[test]
+fn blackpoint_dispatch() {
+    unsafe {
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2cmyk.icc", "graylcms2.icc", "labv2lcms2.icc",
+                  "sRGB3.icc", "labv4lcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue }
+            for intent in 0..=3u32 {
+                for flags in [0u32, 0x4000] {
+                    let mut bp = Xyz { x: -1.0, y: -1.0, z: -1.0 };
+                    let r = c::cmsDetectBlackPoint(
+                        &mut bp as *mut _ as *mut _, p, intent, flags);
+                    let mut dp = Xyz { x: -1.0, y: -1.0, z: -1.0 };
+                    let dr = c::cmsDetectDestinationBlackPoint(
+                        &mut dp as *mut _ as *mut _, p, intent, flags);
+                    eprintln!("{f} i{intent} f{flags:#x} bp={r} dest={dr} \
+                        bp=({:.3},{:.3},{:.3})", bp.x, bp.y, bp.z);
+                }
+            }
+            let tac = c::cmsDetectTAC(p);
+            eprintln!("{f} TAC={tac:.1}");
+            c::cmsCloseProfile(p);
+        }
+        // DesaturateLab on a range of Lab values
+        for (a0, a1, b0, b1) in
+            [(-50.0f64, 50.0, -50.0, 50.0),
+             (-100.0, 100.0, -100.0, 100.0),
+             (0.0, 0.0, 0.0, 0.0)] {
+            #[repr(C)] struct Lab { l: f64, a: f64, b: f64 }
+            let mut lab = Lab { l: 50.0, a: 60.0, b: -70.0 };
+            let r = c::cmsDesaturateLab(
+                &mut lab as *mut _ as *mut _, a0, a1, b0, b1);
+            eprintln!("desat ({a0},{a1},{b0},{b1}) r={r} \
+                lab=({:.1},{:.1},{:.1})", lab.l, lab.a, lab.b);
+        }
+    }
+}
