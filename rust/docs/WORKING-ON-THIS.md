@@ -459,3 +459,29 @@ cmspack ~74%, cmsps2 ~64% (shared-static race under
 parallel tests), cmsvirt ~74%, cmsopt ~83%, cmsnamed ~84%,
 cmsio1 ~81%, cmscnvrt ~81%, cmsio0 ~81%, cmsplugin ~83%,
 cmscgats ~88%.
+
+## Alloc-fail injection (through 9f69c03c)
+
+`alloc_fail_arms` registers a counting cmsPluginMemHandler
+(sig 'memH' 0x6D656D48, struct = base + Malloc/Free/Realloc/
+MallocZero/Calloc/Dup fn ptrs) that returns NULL at call N,
+then sweeps N under `fork()` isolation so crashing depths
+don't kill the test. Result: **fail@1 SIGSEGVs upstream**
+(cmsOpenProfileFromFileTHR's first-alloc failure path is
+unchecked — a real OOM-unsafety finding, NOT a parity bug);
+all other depths error cleanly. Every `if (x == NULL) return/
+goto Error` arm across the codebase is now hittable — extend
+the depth sweep to tag reads, transform creation, profile
+saves, IT8 parses, cmsTransform2DeviceLink, gamma/pipeline/
+stage construction for hundreds more error arms.
+
+**Next targets:** cmsps2 emitters (GenerateCSA 61%,
+WriteInputLUT 67%, Emit1Gamma/NGamma/EmitIntent arms via
+cmsGetPostScriptCSA on mntr/LUT/gray/named profiles),
+cmscgats IT8 (GetTable/AllocChunk/WriteHeader/SetDataFormat/
+AddToList branches via odd header/table files), cmsnamed
+(decodeUTF8/AddMLUBlock/GrowMLUtable+pool/SearchMLUEntry via
+edge UTF-8 + many-lang MLUs), cmssm (GetPoint/QuantizeToSector
+via cmsGBD point configs), cmsopt (PatchLUT 45%,
+OptimizeByJoiningCurves, PrelinOpt16alloc — devicelink+CLUT
+and odd-shape pipelines through optimize flags).
