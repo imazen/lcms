@@ -2543,3 +2543,51 @@ fn it8_cookptr_arms() {
         }
     }
 }
+
+/// SetData/DataSection residual — property/data writes with
+/// every value-form + missing-table/multi-row arms.
+#[test]
+fn it8_setdata_arms() {
+    unsafe {
+        let doc = "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\n\
+            BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n1 2\n3 4\nEND_DATA\n";
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("load={}", !p.is_null());
+        if !p.is_null() {
+            // SetData patch/field/row forms
+            for (patch, field, val, name) in [
+                (b"1\0" as &[u8], b"A\0" as &[u8],
+                    b"10\0" as &[u8], "patch1-A"),
+                (b"2\0", b"B\0", b"20\0", "patch2-B"),
+                (b"\0", b"A\0", b"x\0", "empty-patch"),
+                (b"1\0", b"\0", b"x\0", "empty-field"),
+                (b"1\0", b"A\0", b"\0", "empty-val"),
+                (b"9\0", b"A\0", b"x\0", "no-patch"),
+                (b"1\0", b"Z\0", b"x\0", "no-field"),
+            ] {
+                let r = c::cmsIT8SetData(p,
+                    patch.as_ptr() as *const i8,
+                    field.as_ptr() as *const i8,
+                    val.as_ptr() as *const i8);
+                eprintln!("{name}={r}");
+            }
+            // row/col forms
+            let r = c::cmsIT8SetDataRowCol(p, 0, 0,
+                b"99\0".as_ptr() as *const i8);
+            let d = c::cmsIT8GetDataRowCol(p, 0, 0);
+            let r2 = c::cmsIT8SetDataRowCol(p, 9, 9,
+                b"x\0".as_ptr() as *const i8);
+            eprintln!("rowcol {r} d={d:?} far={r2}");
+            // SetDataDbl
+            let rd = c::cmsIT8SetDataDbl(p, b"1\0".as_ptr()
+                as *const i8, b"A\0".as_ptr() as *const i8,
+                3.14159);
+            let dd = c::cmsIT8GetDataDbl(p, b"1\0".as_ptr()
+                as *const i8, b"A\0".as_ptr() as *const i8);
+            eprintln!("dbl {rd}={dd}");
+            c::cmsIT8Free(p);
+        }
+    }
+}
