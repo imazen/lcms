@@ -1575,3 +1575,44 @@ fn io1_lut_reader_chains() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// io1 float-devicelink normalization + corpus LUT readers —
+/// float transforms on link/prtr profiles hit normalization
+/// stage insertion.
+#[test]
+fn io1_float_devicelink() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let fl = 1u32 << 22;
+        let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for f in ["lcms2link.icc", "lcms2link2.icc", "lcms2cmyk.icc",
+                  "limitlcms2.icc", "linlcms2.icc", "brightness.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for (ifmt, ofmt, intent, name) in [
+                (lfl, lfl, 0u32, "fl-fl-i0"),
+                (l16, lfl, 0, "16-fl-i0"),
+                (lfl, l16, 1, "fl-16-i1"),
+                (lfl, lfl, 2, "fl-fl-i2"),
+            ] {
+                let t = c::cmsCreateTransform(lab, ifmt, p, ofmt,
+                    intent, 0);
+                eprintln!("{f}-{name} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0.5f32; 4];
+                    let mut ob = [0.5f32; 4];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
