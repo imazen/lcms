@@ -5154,3 +5154,87 @@ fn compute_conversion_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// _cmsReasonableGridpointsByColorspace + ComputeChromaticAdaptation
+/// + BlackPreservingSampler + TranslateNonICCIntents internals.
+#[test]
+fn gridpoint_adapt_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // reasonable-gridpoints — fires inside CLUT alloc for
+        //   each colorspace channel count
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        for (inp, outp, fi, fo, name) in [
+            (gray, srgb, (3u32 << 16) | (1 << 3) | 1,
+                (4u32 << 16) | (3 << 3) | 1, "g->rgb"),
+            (srgb, gray, (4u32 << 16) | (3 << 3) | 1,
+                (3u32 << 16) | (1 << 3) | 1, "rgb->g"),
+            (lab, gray, (10u32 << 16) | (3 << 3) | 1,
+                (3u32 << 16) | (1 << 3) | 1, "lab->g"),
+            (srgb, cmyk, (4u32 << 16) | (3 << 3) | 1,
+                (6u32 << 16) | (4 << 3) | 1, "rgb->cmyk"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for intent in [0u32, 1, 10, 11, 12, 13, 14, 15] {
+                let t = c::cmsCreateTransform(inp, fi,
+                    outp, fo, intent, 0x0400 /* HIGHRES */);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        // chromatic adaptation — profile pairs with different
+        //   white points drive ComputeChromaticAdaptation
+        let d50 = [0.3457f64, 0.3585, 1.0];
+        let d65 = [0.3127f64, 0.3290, 1.0];
+        let prim = [0.64f64, 0.33, 1.0, 0.30, 0.60, 1.0,
+            0.15, 0.06, 1.0];
+        let trc = [g, g, g];
+        let p50 = c::cmsCreateRGBProfile(d50.as_ptr() as *const _,
+            prim.as_ptr() as *const _,
+            trc.as_ptr() as *const *mut _);
+        let p65 = c::cmsCreateRGBProfile(d65.as_ptr() as *const _,
+            prim.as_ptr() as *const _,
+            trc.as_ptr() as *const *mut _);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        for (a, b, name) in [
+            (p50, p65, "d50->d65"), (p65, p50, "d65->d50"),
+            (p50, srgb, "d50->srgb"), (p65, srgb, "d65->srgb"),
+        ] {
+            for intent in [0u32, 1, 3] {
+                let t = c::cmsCreateTransform(a, r8, b, r8,
+                    intent, 0);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(p50);
+        c::cmsCloseProfile(p65);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
