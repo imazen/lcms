@@ -1723,3 +1723,23 @@ fn pipeline_flag_granular() {
         c::cmsPipelineFree(pl);
     }
 }
+
+/// Float-granular CLUT allocs on more combos — the float
+/// granular machinery.
+#[test]
+fn float_granular() {
+    unsafe {
+        for (name, grid) in [
+            ("333", [3u32, 3, 3].as_slice()),
+            ("222", [2u32, 2, 2].as_slice()),
+            ("mixed", [2u32, 3, 4].as_slice()),
+            ("44", [4u32, 4, 4, 4].as_slice())] {
+            let ch = if grid.len() == 4 { 4u32 } else { 3 };
+            let st = c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), grid.as_ptr(), ch, ch,
+                std::ptr::null());
+            eprintln!("{name} alloc={}", !st.is_null());
+            if !st.is_null() { c::cmsStageFree(st); }
+        }
+    }
+}
