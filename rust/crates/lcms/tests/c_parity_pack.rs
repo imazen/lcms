@@ -500,3 +500,50 @@ fn colorspace_formats() {
         let _ = c::cmsCloseProfile(gray);
     }
 }
+
+/// CMYK + multi-channel formats + premul-alpha — the
+/// remaining packed-format internals.
+#[test]
+fn cmyk_multi_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        // a CMYK profile for CMYK formats
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let cmyk = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(cmyk, 0x70727472); // prtr
+        c::cmsSetColorSpace(cmyk, 0x434D594B); // CMYK
+        c::cmsSetPCS(cmyk, 0x4C616220); // Lab
+        // CMYK + 4ch + 6ch + premul-alpha formats
+        for (name, in_fmt, out_fmt, p2) in [
+            ("cmyk-8", (4 << 16) | (3 << 3) | 1u32,
+             (18 << 16) | (4 << 3) | 1, cmyk),
+            ("cmyk-16", (4 << 16) | (3 << 3) | 2,
+             (18 << 16) | (4 << 3) | 2, cmyk),
+            ("cmyk-flt", (1 << 22) | (4 << 16) | (3 << 3) | 4,
+             (1 << 22) | (18 << 16) | (4 << 3) | 4, cmyk),
+            ("4ch-rgba", (4 << 16) | (1 << 7) | (3 << 3) | 2,
+             (4 << 16) | (1 << 7) | (3 << 3) | 2, ho),
+            ("premul-a", (4 << 16) | (1 << 23) | (1 << 7)
+             | (3 << 3) | 2,
+             (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 2,
+             ho),
+        ] {
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x8000u16, 0x6000, 0x4000, 0xFFFF];
+                let mut out = [0u16; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let _ = c::cmsCloseProfile(cmyk);
+    }
+}
