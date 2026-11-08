@@ -2456,3 +2456,38 @@ fn pseq_type2() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_Dictionary internals — 'meta' with a real cmsDict
+/// payload (the dict machinery).
+#[test]
+fn dict_type() {
+    unsafe {
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        eprintln!("dict null={}", dict.is_null());
+        if !dict.is_null() {
+            let name = [0x6Eu32, 0x61, 0x6D, 0x65, 0]; // "name" utf32
+            let val = [0x76u32, 0x61, 0x6C, 0x75, 0x65, 0];
+            let ok1 = c::cmsDictAddEntry(dict,
+                name.as_ptr() as *const i32,
+                val.as_ptr() as *const i32,
+                std::ptr::null_mut(), std::ptr::null_mut());
+            let h = c::cmsCreate_sRGBProfile();
+            let ok2 = c::cmsWriteTag(h, 0x6D657461,
+                dict as *mut std::ffi::c_void);
+            eprintln!("dict add={ok1} write={ok2}");
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h2 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h2, 0x6D657461);
+            eprintln!("dict read={}", r.is_null());
+            c::cmsCloseProfile(h2);
+            c::cmsCloseProfile(h);
+            c::cmsDictFree(dict);
+        }
+    }
+}
