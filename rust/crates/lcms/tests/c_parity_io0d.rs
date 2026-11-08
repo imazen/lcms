@@ -4101,3 +4101,37 @@ fn curve_tag_handlers() {
         c::cmsFreeToneCurve(tc);
     }
 }
+
+/// Parametric-curve tag handlers — all parametric types through
+/// TRC sigs -> Type_ParametricCurve dispatch.
+#[test]
+fn parametric_curve_handlers() {
+    unsafe {
+        // parametric types 1-10 via BuildParametricToneCurve
+        for ptype in 1i32..=10 {
+            let params = [2.2f64, 1.0, 0.0, 0.0, 0.0,
+                          0.0, 0.0, 0.0, 0.0, 0.0];
+            let tc = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ptype, params.as_ptr());
+            if tc.is_null() { continue; }
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, 0x72545243, tc as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x72545243)
+            } else { std::ptr::null_mut() };
+            eprintln!("ptype{ptype} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsFreeToneCurve(tc);
+        }
+    }
+}
