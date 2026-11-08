@@ -1330,3 +1330,32 @@ fn tag_table_structures() {
         }
     }
 }
+
+/// Tag-signature machinery — unusual tag sigs.
+#[test]
+fn tag_sig_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the first tag's sig (offset 132)
+        for (name, v) in [
+            ("sig-0", 0u32),
+            ("sig-huge", 0xFFFFFFFFu32),
+            ("sig-desc", 0x64657363),
+            ("sig-A2B0", 0x41324230),
+            ("sig-acsp", 0x61637370),
+            ("sig-abcd", 0x61626364)] {
+            let mut d = cbuf.clone();
+            d[132..136].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
