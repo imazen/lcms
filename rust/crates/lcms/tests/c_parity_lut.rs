@@ -1295,3 +1295,28 @@ fn pipeline_eval2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Pipeline eval16 internals on more combos — the u16
+/// eval machinery.
+#[test]
+fn pipeline_eval16() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (name, n) in [
+            ("1ch", 1u32), ("3ch", 3), ("4ch", 4), ("15ch", 15)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), n, n);
+            let curves = vec![g; n as usize];
+            c::cmsPipelineInsertStage(pl, 1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), n, curves.as_ptr()));
+            let inp = [0x8000u16; 15];
+            let mut out = [0u16; 15];
+            c::cmsPipelineEval16(
+                inp.as_ptr(), out.as_mut_ptr(), pl);
+            eprintln!("{name} eval={}", out[0]);
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
