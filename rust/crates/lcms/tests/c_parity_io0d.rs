@@ -7026,3 +7026,74 @@ fn vcgt_read_arms() {
         }
     }
 }
+
+/// Type_MHC2_Read arms — raw MHC2 tags with wrong curve counts,
+/// bad matrix entries and luminance edge cases.
+#[test]
+fn mhc2_read_arms() {
+    unsafe {
+        // real format: CurveEntries:u32, MinLum/PeakLum s15f16,
+        // MatrixOffset + Red/Green/Blue table offsets, then
+        // matrix f64x12 and 'sf32' curve tables at the offsets.
+        let mk = |n_ent: u32, mat_off: u32, curv_off: u32,
+                  min_l: u32, peak_l: u32| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x4d484332u32.to_be_bytes()); // 'MHC2'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&n_ent.to_be_bytes());
+            t.extend_from_slice(&min_l.to_be_bytes());
+            t.extend_from_slice(&peak_l.to_be_bytes());
+            t.extend_from_slice(&mat_off.to_be_bytes());
+            t.extend_from_slice(&curv_off.to_be_bytes());
+            t.extend_from_slice(&(curv_off).to_be_bytes());
+            t.extend_from_slice(&(curv_off).to_be_bytes());
+            // pad to offsets
+            while t.len() < mat_off as usize && mat_off > 0 {
+                t.push(0);
+            }
+            if mat_off > 0 {
+                for i in 0..12u32 {
+                    let v = if i % 4 == 0 { 1.0f64 } else { 0.0 };
+                    t.extend_from_slice(&v.to_be_bytes());
+                }
+            }
+            while t.len() < curv_off as usize && curv_off > 0 {
+                t.push(0);
+            }
+            if curv_off > 0 {
+                // 'sf32' + rsv + entries x f64
+                t.extend_from_slice(&0x73663332u32.to_be_bytes());
+                t.extend_from_slice(&[0; 4]);
+                for i in 0..n_ent {
+                    let v = i as f64 / (n_ent.max(1) - 1).max(1) as f64;
+                    t.extend_from_slice(&v.to_be_bytes());
+                }
+            }
+            t
+        };
+        for (raw, name) in [
+            (mk(4, 0, 56, 0, 0x03200000), "full-nomat"),
+            (mk(4, 56, 152, 0, 0x03200000), "full-mat"),
+            (mk(0, 0, 0, 0, 0x03200000), "0-entries"),
+            (mk(5000, 0, 56, 0, 0x03200000), "5k-entries"),
+            (mk(4, 0, 56, 0, 0), "zero-peak"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x4d484332,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x4d484332)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
