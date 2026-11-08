@@ -2588,3 +2588,41 @@ fn typeparse_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Type-sig dispatch — mutate tag[0]'s type sig then read
+/// (the per-type read dispatch).
+#[test]
+fn typesig_dispatch() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let off = u32::from_be_bytes(
+            buf[136..140].try_into().unwrap()) as usize;
+        let sig = u32::from_be_bytes(
+            buf[132..136].try_into().unwrap());
+        for (name, ty) in [
+            ("real", u32::from_be_bytes(
+                buf[off..off+4].try_into().unwrap())),
+            ("curv", 0x63757276), ("para", 0x70617261),
+            ("XYZ ", 0x58595a20), ("text", 0x74657874),
+            ("mluc", 0x6d6c7563), ("mft2", 0x6d667432),
+            ("junk", 0xdeadbeef), ("zero", 0)] {
+            let mut b = buf.clone();
+            b[off..off+4].copy_from_slice(&ty.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            let t = if h.is_null() { std::ptr::null() }
+                else { c::cmsReadTag(h, sig) };
+            eprintln!(
+                "{name} ty={ty:#x} h={} t={}",
+                !h.is_null(), !t.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
