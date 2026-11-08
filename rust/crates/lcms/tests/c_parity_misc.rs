@@ -394,3 +394,113 @@ fn unregister_plugins() {
         drop(rctx);
     }
 }
+
+/// cmsCreateDeviceLinkFromCubeFile(THR) — the .cube LUT parser →
+/// devicelink profile machinery.
+#[test]
+fn devicelink_from_cube() {
+    // minimal .cube file: LUT_1D with 4 entries
+    let cube = "TITLE \"test\"\n\
+                LUT_1D_SIZE 4\n\
+                0.0 0.0 0.0\n\
+                0.3 0.4 0.5\n\
+                0.7 0.6 0.5\n\
+                1.0 1.0 1.0\n";
+    let path = std::env::temp_dir().join("lcms_test.cube");
+    std::fs::write(&path, cube).unwrap();
+    let cpath = std::ffi::CString::new(
+        path.to_str().unwrap()).unwrap();
+    unsafe {
+        let h = c::cmsCreateDeviceLinkFromCubeFile(cpath.as_ptr());
+        assert!(!h.is_null(), "C cube devicelink");
+        let cclass = c::cmsGetDeviceClass(h);
+        eprintln!("cube dl class={cclass:#x}");
+        let h2 = c::cmsCreateDeviceLinkFromCubeFileTHR(
+            std::ptr::null_mut(), cpath.as_ptr());
+        assert!(!h2.is_null(), "C cube THR");
+        let _ = c::cmsCloseProfile(h);
+        let _ = c::cmsCloseProfile(h2);
+    }
+    let r = lcms::cgats::It8::create_device_link_from_cube_file(None,
+        path.to_str().unwrap());
+    assert!(r.is_some(), "rust cube devicelink");
+}
+
+/// cmsDetectRGBProfileGamma — estimate the RGB TRC gamma.
+#[test]
+fn detect_rgb_gamma() {
+    unsafe {
+        // sRGB should detect ~2.2
+        let h = c::cmsCreate_sRGBProfile();
+        let cg = c::cmsDetectRGBProfileGamma(h, 0.001);
+        eprintln!("srgb gamma={cg}");
+        // -1 = parametric TRC (not detectable as a plain gamma)
+        assert!(cg == -1.0 || (cg > 1.5 && cg < 3.0),
+            "srgb gamma sane c={cg}");
+        // corpus profiles
+        for data in corpus() {
+            let h2 = c::cmsOpenProfileFromMem(data.as_ptr() as _,
+                data.len() as u32);
+            let g = c::cmsDetectRGBProfileGamma(h2, 0.001);
+            let _ = g; // accept any result incl. -1 for non-RGB
+            c::cmsCloseProfile(h2);
+        }
+        c::cmsCloseProfile(h);
+    }
+}
+
+/// cmsOpenProfileFromStream + cmsSaveProfileToStream +
+/// cmsOpenIOhandlerFromStream + cmsOpenProfileFromIOhandler2THR —
+/// the FILE*/IOhandler entry variants.
+#[test]
+fn stream_io_variants() {
+    unsafe extern "C" fn _fwrite(_p: *const c_void, _s: usize,
+        _n: usize, _f: *mut c_void) -> usize { _n }
+    for data in corpus() {
+        unsafe {
+            // write to a temp file, reopen via the stream path
+            let path = std::env::temp_dir()
+                .join("lcms_test_stream.icc");
+            std::fs::write(&path, &data).unwrap();
+            let _cpath = std::ffi::CString::new(
+                path.to_str().unwrap()).unwrap();
+            // cmsOpenProfileFromStream takes FILE* — get one via
+            // libc fopen
+            unsafe extern "C" {
+                fn fopen(path: *const i8, mode: *const i8)
+                    -> *mut c_void;
+                fn fclose(f: *mut c_void) -> i32;
+            }
+            let f = fopen(_cpath.as_ptr(),
+                b"rb\0".as_ptr() as *const _);
+            assert!(!f.is_null(), "fopen");
+            let h = c::cmsOpenProfileFromStream(f,
+                b"r\0".as_ptr() as *const _);
+            assert!(!h.is_null(), "stream open");
+            // save via cmsSaveProfileToStream to a second file
+            let path2 = std::env::temp_dir()
+                .join("lcms_test_stream_out.icc");
+            let cpath2 = std::ffi::CString::new(
+                path2.to_str().unwrap()).unwrap();
+            let f2 = fopen(cpath2.as_ptr(),
+                b"wb\0".as_ptr() as *const _);
+            assert!(!f2.is_null(), "fopen out");
+            // C's IOHANDLER owns both FILE* — no manual fclose
+            // (fclose in FileClose on save; on cmsCloseProfile for
+            // the input stream)
+            let sok = c::cmsSaveProfileToStream(h, f2);
+            assert_ne!(sok, 0, "stream save");
+            let _ = fclose; // unused — C owns the streams
+            // resaved bytes should match the mem-save
+            let resaved = std::fs::read(&path2).unwrap();
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+                &mut cn);
+            assert_eq!(resaved, cbuf, "stream vs mem bytes");
+            c::cmsCloseProfile(h);
+            break;
+        }
+    }
+}

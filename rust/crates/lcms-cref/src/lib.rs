@@ -767,6 +767,7 @@ unsafe extern "C" {
     pub fn cmsGetSupportedIntentsTHR(ctx: *mut c_void, n_max: u32, codes: *mut u32, descriptions: *mut *mut i8) -> u32;
     pub fn cmsGetToneCurveSegment(n: i32, t: *const ToneCurve) -> *const c_void;
     pub fn cmsOpenProfileFromFileTHR(ctx: *mut c_void, profile: *const i8, access: *const i8) -> *mut c_void;
+    pub fn cmsOpenProfileFromStream(stream: *mut c_void, access: *const i8) -> *mut c_void;
     pub fn cmsOpenProfileFromIOhandler2THR(ctx: *mut c_void, io: *mut c_void, write: i32) -> *mut c_void;
     pub fn cmsOpenProfileFromMemTHR(ctx: *mut c_void, ptr: *const c_void, size: u32) -> *mut c_void;
     pub fn cmsSaveProfileToStream(prof: *mut c_void, stream: *mut c_void) -> i32;
