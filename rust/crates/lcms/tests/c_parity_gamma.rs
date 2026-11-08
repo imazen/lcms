@@ -846,3 +846,76 @@ fn rawtag_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsReverseToneCurve(Ex) + cmsBuildSegmentedToneCurve +
+/// cmsGetTagOffsetAndSize arms.
+#[test]
+fn reverse_seg_arms() {
+    unsafe {
+        for gamma in [1.0f64, 2.2, 0.4545, 3.1] {
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), gamma);
+            for n in [256u32, 4096, 16] {
+                let r = c::cmsReverseToneCurveEx(n, g);
+                let mut y = 0f64;
+                if !r.is_null() {
+                    for v in [0u16, 0x4000, 0x8000, 0xffff] {
+                        let ev = c::cmsEvalToneCurve16(r, v);
+                        y = ev as f64 / 65535.0;
+                    }
+                    c::cmsFreeToneCurve(r);
+                }
+                eprintln!("g={gamma} n={n} rev={y:.4}");
+            }
+            let r2 = c::cmsReverseToneCurve(g);
+            if !r2.is_null() { c::cmsFreeToneCurve(r2); }
+            c::cmsFreeToneCurve(g);
+        }
+        // seg curve
+        let mut seg = [c::CurveSegment {
+            x0: -1e5, x1: 0.0,
+            r#type: 6, params: [0.0; 10],
+            n_grid_points: 0,
+            sampled_points: std::ptr::null(),
+        }; 2];
+        seg[0] = c::CurveSegment {
+            x0: -1e5, x1: 0.0, r#type: 6,
+            params: { let mut p = [0.0f64; 10];
+                p[0] = 0.0; p },
+            n_grid_points: 0,
+            sampled_points: std::ptr::null(),
+        };
+        seg[1] = c::CurveSegment {
+            x0: 0.0, x1: 1e5, r#type: 8,
+            params: { let mut p = [0.0f64; 10];
+                p[0] = 1.0; p },
+            n_grid_points: 0,
+            sampled_points: std::ptr::null(),
+        };
+        let sc = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 2,
+            seg.as_ptr() as *const _);
+        eprintln!("seg={}", !sc.is_null());
+        if !sc.is_null() {
+            let ev = c::cmsEvalToneCurveFloat(sc, 0.5);
+            eprintln!("segval={ev}");
+            c::cmsFreeToneCurve(sc);
+        }
+        // tag offsets/sizes on a real profile
+        let p = c::cmsCreate_sRGBProfile();
+        let n = c::cmsGetTagCount(p);
+        for i in 0..n as i32 {
+            let mut off = 0u32;
+            let mut sz = 0u32;
+            let sig = c::cmsGetTagSignature(p, i as u32);
+            let ok = c::cmsGetTagOffsetAndSize(p, i as u32,
+                &mut off, &mut sz);
+            eprintln!("tag{i} {sig:#x} off={off} sz={sz} ok={ok}");
+        }
+        let mut o9 = 0u32;
+        let mut s9 = 0u32;
+        let ok9 = c::cmsGetTagOffsetAndSize(p, 99,
+            &mut o9, &mut s9);
+        eprintln!("tag99 ok={ok9}");
+        c::cmsCloseProfile(p);
+    }
+}
