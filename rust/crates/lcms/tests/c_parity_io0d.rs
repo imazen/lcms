@@ -5501,3 +5501,59 @@ fn desc_reader_arms() {
         }
     }
 }
+
+/// Type_CrdInfo + Type_ProfileSequenceId — crdi PS-MLU and psid
+/// sequence-id payloads.
+#[test]
+fn crdi_psid_tags() {
+    unsafe {
+        // crdi — MLU with lang "PS" and countries nm/#0/#1/#2/#3
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 5);
+        for (cnt, txt) in [
+            ("nm\0", "prod\0"), ("#0\0", "crd0\0"), ("#1\0", "crd1\0"),
+            ("#2\0", "crd2\0"), ("#3\0", "crd3\0"),
+        ] {
+            c::cmsMLUsetUTF8(m, b"PS\0".as_ptr() as *const _,
+                cnt.as_ptr() as *const _, txt.as_ptr());
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x63726469, m as *const _); // 'crdi'
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x63726469)
+        } else { std::ptr::null_mut() };
+        eprintln!("crdi w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsMLUfree(m);
+
+        // psid — a cmsSEQ (profile-sequence-id payload)
+        let psd = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 2);
+        let prof2 = c::cmsCreate_sRGBProfile();
+        let w2 = c::cmsWriteTag(prof2, 0x70736964, psd as *const _);
+        let mut n2 = buf.len() as u32;
+        let s2 = if w2 != 0 {
+            c::cmsSaveProfileToMem(prof2,
+                buf.as_mut_ptr() as *mut _, &mut n2)
+        } else { 0 };
+        let rp2 = if s2 != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n2)
+        } else { std::ptr::null_mut() };
+        let tag2 = if !rp2.is_null() {
+            c::cmsReadTag(rp2, 0x70736964)
+        } else { std::ptr::null_mut() };
+        eprintln!("psid w={w2} s={s2} read={}", !tag2.is_null());
+        if !rp2.is_null() { c::cmsCloseProfile(rp2); }
+        c::cmsCloseProfile(prof2);
+        c::cmsFreeProfileSequenceDescription(psd);
+    }
+}
