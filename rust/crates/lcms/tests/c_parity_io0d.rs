@@ -5325,3 +5325,32 @@ fn mhc2_tag() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Type_vcgt_Read/Write — video-card gamma tag: payload is a
+/// cmsToneCurve*[3].
+#[test]
+fn vcgt_tag() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x76636774,
+            curves.as_mut_ptr() as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x76636774)
+        } else { std::ptr::null_mut() };
+        eprintln!("vcgt w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(g);
+    }
+}
