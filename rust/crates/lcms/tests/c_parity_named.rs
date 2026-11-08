@@ -807,3 +807,72 @@ fn mlu_serialization() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Type_MLU/Type_Dictionary internals — multi-translation MLU +
+/// dict with varied name/value/display combos.
+#[test]
+fn mlu_dict_internals() {
+    unsafe {
+        // MLU with 6 translations of varied lengths
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        for (l, c_, t) in [
+            ("en\0","US\0","a"), ("de\0","DE\0","medium text"),
+            ("fr\0","FR\0","x"), ("ja\0","JP\0","jp"),
+            ("zh\0","CN\0","zh"), ("it\0","IT\0","it"),
+        ] {
+            c::cmsMLUsetUTF8(m, l.as_ptr() as *const _,
+                c_.as_ptr() as *const _, t.as_ptr());
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(prof, 0x64657363, m as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x64657363)
+        } else { std::ptr::null_mut() };
+        eprintln!("mlu s={s} read={} entries={}",
+            !tag.is_null(),
+            if !tag.is_null() {
+                c::cmsMLUtranslationsCount(tag) } else { 0 });
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsMLUfree(m);
+        // dict with name+value+display combos
+        let d = c::cmsDictAlloc(std::ptr::null_mut());
+        let w = |s: &str| s.chars().map(|c| c as i32)
+            .chain([0]).collect::<Vec<i32>>();
+        let dn = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(dn, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, b"d\0".as_ptr());
+        c::cmsDictAddEntry(d, w("k1").as_ptr(), w("v1").as_ptr(),
+            dn, dn);
+        c::cmsDictAddEntry(d, w("k2").as_ptr(), w("v2").as_ptr(),
+            std::ptr::null_mut(), dn);
+        c::cmsDictAddEntry(d, w("k3").as_ptr(), w("v3").as_ptr(),
+            dn, std::ptr::null_mut());
+        c::cmsDictAddEntry(d, w("k4").as_ptr(), w("v4").as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let prof2 = c::cmsCreate_sRGBProfile();
+        let wt = c::cmsWriteTag(prof2, 0x6d657461, d as *const _);
+        let s2 = if wt != 0 {
+            c::cmsSaveProfileToMem(prof2,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp2 = if s2 != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag2 = if !rp2.is_null() {
+            c::cmsReadTag(rp2, 0x6d657461)
+        } else { std::ptr::null_mut() };
+        eprintln!("dict s={s2} read={}", !tag2.is_null());
+        if !rp2.is_null() { c::cmsCloseProfile(rp2); }
+        c::cmsCloseProfile(prof2);
+        c::cmsDictFree(d);
+        c::cmsMLUfree(dn);
+    }
+}
