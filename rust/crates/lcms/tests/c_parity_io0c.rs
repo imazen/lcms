@@ -1104,3 +1104,106 @@ fn internal_cam_ncl2_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — mBA output-LUT + gamt/A2B1-2
+///   intent-tag reads on output-class profiles.
+#[test]
+fn internal_mba_intent_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        // mBA : B curves + CLUT + A curves (reverse mAB)
+        let mba = |inch: u8, outch: u8| {
+            let mut blob = vec![
+                0x6D, 0x42, 0x41, 0x20, 0, 0, 0, 0];
+            blob.extend_from_slice(&inch.to_be_bytes());
+            blob.extend_from_slice(&outch.to_be_bytes());
+            blob.extend_from_slice(&[0u8; 2]);
+            blob.extend_from_slice(&48u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            blob.extend_from_slice(&0u32.to_be_bytes());
+            for _ in 0..outch {
+                blob.extend_from_slice(&[
+                    0x63u8, 0x75, 0x72, 0x76,
+                    0, 0, 0, 0]);
+                blob.extend_from_slice(&2u32.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x4000u16.to_be_bytes());
+                blob.extend_from_slice(
+                    &0x8000u16.to_be_bytes());
+            }
+            blob
+        };
+        // output-class profile with mBA on B2A0-3 +
+        //   gamt
+        for (cls, name) in [
+            (0x70727472u32, "prtr"),
+            (0x6F757470, "outp"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            let blob = mba(3, 3);
+            for tag in [0x42324130u32, 0x42324131,
+                        0x42324132, 0x42324133,
+                        0x67616D75] {
+                c::cmsWriteRawTag(p, tag,
+                    blob.as_ptr() as *const _,
+                    blob.len() as u32);
+            }
+            let mut buf = [0u8; 1 << 18];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} prof={}", !pr.is_null());
+            if !pr.is_null() {
+                for i in 0..4u32 {
+                    let t = c::cmsCreateTransform(srgb,
+                        frgb, pr, frgb, i, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        // gamut-tag intent on a normal profile
+        let p2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p2, 0x70727472);
+        c::cmsSetColorSpace(p2, 0x52474220);
+        c::cmsSetPCS(p2, 0x4C616220);
+        c::cmsSetProfileVersion(p2, 4.4);
+        let blob = mba(3, 3);
+        c::cmsWriteRawTag(p2, 0x42324130,
+            blob.as_ptr() as *const _, blob.len() as u32);
+        c::cmsWriteRawTag(p2, 0x67616D75,
+            blob.as_ptr() as *const _, blob.len() as u32);
+        let mut buf = [0u8; 1 << 18];
+        let mut n = buf.len() as u32;
+        let sv = c::cmsSaveProfileToMem(p2,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let pr = if sv != 0 {
+            c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        eprintln!("gamt prof={}", !pr.is_null());
+        if !pr.is_null() {
+            c::cmsCloseProfile(pr); }
+        c::cmsCloseProfile(p2);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
