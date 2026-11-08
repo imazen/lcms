@@ -3714,3 +3714,26 @@ fn write_dispatch_mlu_array() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a named-color stage — the write
+/// machinery on different stage types.
+#[test]
+fn write_dispatch_named_stage() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 3,
+            b"P\0".as_ptr() as _, b"S\0".as_ptr() as _);
+        let st = c::_cmsStageAllocNamedColor(ncl, 0);
+        for (sig, name) in [
+            (0x636C6F74u32, "clot"), (0x636C7274u32, "clrt"),
+            (0x6E64696Eu32, "ndin"), (0x6E636C32u32, "ncl2")] {
+            let ok = c::cmsWriteTag(h, sig,
+                st as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsStageFree(st);
+        c::cmsFreeNamedColorList(ncl);
+        c::cmsCloseProfile(h);
+    }
+}
