@@ -322,3 +322,65 @@ cmsio0 ~136, cmslut ~111, cmsnamed ~102, cmsio1 ~90,
 cmscnvrt ~85, cmsplugin ~65, cmsxform ~63, cmsgamma ~49,
 cmssamp ~48, cmsps2 ~43, cmsgmt ~37, cmserr ~29, cmsalpha ~30,
 cmssm ~20, cmsmd5 ~10, cmsintrp ~8, cmspcs ~10.
+
+## Round — mpet/mAB internals correction sweep (through a082c845+)
+
+Run18 coverage (floored — 4 binaries had instrumented-build test
+failures: ps2 x17 shared-static race, types4/io0d/cam02/pcs x1
+codegen diffs): 79.87% lines / 95.03% fns / 87.72% regions /
+74.07% branches. Run17 remains the clean checkpoint at
+83.06/95.59/89.56/77.34.
+
+**Two structural fixes discovered this stretch:**
+
+1. **`cmsPipelineInsertStage` loc must be `cmsAT_BEGIN`(0) or
+   `cmsAT_END`(1)** — earlier gates passed `-1`, which silently
+   returns FALSE with no insert. ~92 earlier `type_write*` gates
+   were writing EMPTY pipelines (still hit `Type_MPE_Write`
+   head/count path but NOT `WriteMPEElem`/`Type_MPEcurve_Write`/
+   `Type_MPEmatrix_Write`/`Type_MPEclut_Write` element bodies).
+   Fixed in write96-99; real element-write internals now covered
+   (u16clut HasFloatValues reject, matf+offsets f32 write,
+   cvst WriteSegmentedCurve arms, full cvst+matf+fclut
+   write+read-back, identity/XYZ2Lab TypeHandler==NULL rejects,
+   segmented curves types 0/6/7/8 + type-5 reject).
+
+2. **MPE element bodies are FLOAT32, not u8/f64.**
+   - `clut` element = sig8 + in u16 + out u16 + dims[16] +
+     nEntries*f32 — NO precision byte (lcms2's MPE clut is
+     float-only).
+   - `matf` element = sig8 + in u16 + out u16 + (in*out + out)*f32.
+   - `_cmsReadFloat32Number` rejects NaN/±inf/>1e20 and
+     non-normal non-zero (fpclassify must be FP_ZERO or
+     FP_NORMAL) — earlier u8/f64 "clut/matf reads" were silently
+     exercising these sanity rejects or garbage-but-valid paths.
+
+3. **`bACS` (0x62414353) / `eACS` (0x65414353) have NULL
+   ReadPtr** — skipped mid-chain per spec (earlier tests used
+   wrong lowercase sigs and hit the unknown-element reject
+   instead).
+
+4. **mAB/mBA layout** = 32-byte header (in u8 + out u8 + pad16 +
+   5 offsets B/Mat/M/C/A). mAB inserts A→C→M→Mat→B; mBA inserts
+   B→Mat→M→C→A. Curve counts: mAB A=inch, M/B=outch; mBA
+   B/M=inch, A=outch. Elements: curves = nCh embedded
+   'curv'/'para' + 4-align; matrix = 9+3 s15f16 (always 3×3 —
+   inserted into non-3ch pipelines without an in/out check);
+   clut = 16 grid + 1 prec + 3 pad + entries (prec 1|2).
+   ReadEmbeddedCurve accepts 'curv'/'para' only.
+
+5. **Segmented-curve wire format**: outer 'curf' (0x63757266),
+   nSegments u16, (n-1)×f32 breakpoints, then per-segment
+   'parf' (0x70617266, types 0-2 → internal 6-8, params 4/5/5
+   f32) or 'samf' (0x73616D66, count+points f32; implicit first
+   point fixed via eval). Write side: seg types 0/6/7/8 legal,
+   5 → Type-6<0 reject.
+
+6. `cmsPipelineAlloc(16,3)` returns NULL (channel cap 15).
+   `cmsSaveProfileToMem`'s `nn` reports buffer capacity, not
+   bytes written (quirk — earlier "n=131072/262144" prints were
+   capacity, not size).
+
+7. Element offsets in builder closures must be recorded BEFORE
+   pushing data (one gate was briefly broken by post-push
+   offsets).
