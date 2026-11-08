@@ -819,3 +819,30 @@ fn remaining_open_variants() {
         if !h2.is_null() { c::cmsCloseProfile(h2); }
     }
 }
+
+/// Stream/IOhandler variants — more IO paths on a corpus
+/// profile.
+#[test]
+fn stream_iohandler_variants() {
+    unsafe {
+        for (name, h) in [
+            ("srgb", c::cmsCreate_sRGBProfile()),
+            ("xyz", c::cmsCreateXYZProfile()),
+            ("lab4", c::cmsCreateLab4Profile(
+                std::ptr::null_mut())),
+        ] {
+            // save to mem + reopen — the IO paths
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h2 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            eprintln!("{name} reopen={}", !h2.is_null());
+            c::cmsCloseProfile(h);
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
