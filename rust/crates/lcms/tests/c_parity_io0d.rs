@@ -6269,3 +6269,57 @@ fn curve_write_arms() {
         }
     }
 }
+
+/// io0 internals — linked-tag traversal, header read/write,
+/// IOhandler seek edges.
+#[test]
+fn io0_linked_headers() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        // write a tag, then link another sig to it
+        let mut xyz = [0.5f64; 3];
+        c::cmsWriteTag(prof, 0x77747074,
+            xyz.as_mut_ptr() as *const _); // wtpt
+        // gTRC -> rTRC link
+        let mut tab = [0u16; 16];
+        for i in 0..16 { tab[i] = (i * 4096) as u16; }
+        let tc = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            16, tab.as_ptr());
+        c::cmsWriteTag(prof, 0x72545243, tc as *const _); // rTRC
+        c::cmsLinkTag(prof, 0x67545243, 0x72545243); // gTRC->rTRC
+        c::cmsLinkTag(prof, 0x62545243, 0x67545243); // bTRC->gTRC (chain)
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        for sig in [0x77747074u32, 0x72545243, 0x67545243, 0x62545243] {
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("sig={sig:#x} read={}", !tag.is_null());
+        }
+        // header accessors on the saved profile
+        if !rp.is_null() {
+            let mut pid = [0u8; 16];
+            let mut flags = 0u32;
+            let mut attrs = [0u64; 2];
+            let mut dt = std::mem::zeroed::<[u16; 6]>();
+            c::cmsGetHeaderProfileID(rp, pid.as_mut_ptr());
+            c::cmsGetHeaderFlags(rp, &mut flags);
+            c::cmsGetHeaderAttributes(rp, attrs.as_mut_ptr());
+            let _ = c::cmsGetHeaderCreationDateTime(rp,
+                dt.as_mut_ptr() as *mut _);
+            let _ = c::cmsGetHeaderManufacturer(rp);
+            let _ = c::cmsGetHeaderModel(rp);
+            let _ = c::cmsGetHeaderRenderingIntent(rp);
+            let _ = c::cmsGetHeaderCMM(rp);
+            let _ = c::cmsGetHeaderCreator(rp);
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(tc);
+    }
+}
