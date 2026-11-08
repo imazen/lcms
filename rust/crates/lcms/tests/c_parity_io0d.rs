@@ -7613,3 +7613,85 @@ fn pseq_embedded_text_arms() {
     }
 }
 
+
+/// Type_*_Free + Type_Data_Dup arms — read raw text-desc/curv/
+/// para/data tags so the free/dup handlers run on close/read-twice.
+#[test]
+fn tag_free_dup_arms() {
+    unsafe {
+        // raw tags whose readers build objects freed via Free arm
+        let mk_text = |s: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x74657874u32.to_be_bytes()); // 'text'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(s.as_bytes());
+            t.push(0);
+            t
+        };
+        let mk_desc = |s: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x64657363u32.to_be_bytes()); // 'desc'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&(s.len() as u32 + 1).to_be_bytes());
+            t.extend_from_slice(s.as_bytes());
+            t.push(0);
+            t.extend_from_slice(&[0; 3]);
+            t
+        };
+        let mk_curv = |n: u32| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x63757276u32.to_be_bytes()); // 'curv'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&n.to_be_bytes());
+            for i in 0..n {
+                t.extend_from_slice(&((i * 16384) as u16).to_be_bytes());
+            }
+            t
+        };
+        let mk_para = |ty: u16| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x70617261u32.to_be_bytes()); // 'para'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&ty.to_be_bytes());
+            t.extend_from_slice(&[0; 2]);
+            for v in [0x00023333u32, 0, 0, 0, 0] {
+                t.extend_from_slice(&v.to_be_bytes());
+            }
+            t
+        };
+        let mk_data = |d: &[u8]| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x64617461u32.to_be_bytes()); // 'data'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(d);
+            t
+        };
+        for (raw, sig, name) in [
+            (mk_text("desc text"), 0x64657363u32, "text-desc"),
+            (mk_desc("a desc"), 0x64657363u32, "desc-desc"),
+            (mk_curv(4), 0x72545243u32, "curv-rtrc"),
+            (mk_para(1), 0x72545243u32, "para-rtrc"),
+            (mk_data(b"data bytes\0"), 0x70733073u32, "data-ps0"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, sig,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            if !rp.is_null() {
+                // read twice — second read dups the cached object
+                let t1 = c::cmsReadTag(rp, sig);
+                let t2 = c::cmsReadTag(rp, sig);
+                eprintln!("{name} s={s} r1={} r2={}",
+                    !t1.is_null(), !t2.is_null());
+                c::cmsCloseProfile(rp);
+            }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
