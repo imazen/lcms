@@ -332,3 +332,47 @@ fn utf8_mlu_roundtrip() {
         }
     }
 }
+
+/// Named-color ops sweep — AppendNamedColor grow/NULL-default/name-
+/// cap arms, NamedColorCount/Info, list dup/free, over-capacity.
+#[test]
+fn named_color_ops() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
+            b"suf\0".as_ptr());
+        assert!(!ncl.is_null());
+        // appends past initial capacity -> GrowNamedColorList
+        for i in 0..20u32 {
+            let name = format!("c{i}\0");
+            let pcs = [0x1000u16, 0x2000, 0x3000];
+            let col = [0xFFFFu16; 4];
+            c::cmsAppendNamedColor(ncl, name.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        // NULL-colorant / NULL-pcs / NULL-name defaults
+        c::cmsAppendNamedColor(ncl, std::ptr::null(),
+            std::ptr::null(), std::ptr::null());
+        // over-cap name (strncpy cap at cmsMAX_PATH-1)
+        let long = "x".repeat(300) + "\0";
+        c::cmsAppendNamedColor(ncl, long.as_ptr(),
+            std::ptr::null(), std::ptr::null());
+        let n = c::cmsNamedColorCount(ncl);
+        eprintln!("count={n}");
+        // NamedColorInfo reads
+        for i in [0u32, 10, 21] {
+            let mut nm = [0u8; 256];
+            let mut pcs = [0u16; 3];
+            let mut col = [0u16; 16];
+            let r = c::cmsNamedColorInfo(ncl, i, nm.as_mut_ptr(),
+                std::ptr::null_mut(), std::ptr::null_mut(),
+                pcs.as_mut_ptr(), col.as_mut_ptr());
+            eprintln!("info[{i}]={r} name={:?} pcs={pcs:?}",
+                std::ffi::CStr::from_ptr(nm.as_ptr() as *const i8)
+                    .to_str().unwrap_or("?"));
+        }
+        let dp = c::cmsDupNamedColorList(ncl);
+        if !dp.is_null() { c::cmsFreeNamedColorList(dp); }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
