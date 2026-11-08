@@ -330,3 +330,43 @@ fn optimized_evaluators() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Optimizer internals — OptimizeByJoiningCurves/Resampling/
+/// ComputingLinearization + the resample-sampler callback ->
+/// integer-format CLUT transforms.
+#[test]
+fn optimizer_internals() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        // corpus CLUT profiles + flag combos hit the optimizers
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "aRGBlcms2.icc",
+                  "lcms2link.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for (flags, name) in [
+                (0u32, "default"), (0x00000001, "nobpc"),
+                (0x00000200, "noresample"), (0x00000400, "nocache"),
+                (0x00000040, "highresprecalc"),
+            ] {
+                for (fmt, fn_) in [(r16, "16"), (r8, "8")] {
+                    let t = c::cmsCreateTransform(p, fmt, lab, l16,
+                        0, flags);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            eprintln!("{f} ok");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
