@@ -154,3 +154,48 @@ fn colorspace_chains() {
         for (ch, _) in profiles { let _ = c::cmsCloseProfile(ch); }
     }
 }
+
+/// Intent-specific link construction: sRGB->sRGB at each intent —
+/// the link shape differs per intent (matrix-join, curve-join,
+/// CLUT-resample branches).
+#[test]
+fn intent_link_matrix() {
+    unsafe {
+        let in_fmt: u32 = (6 << 16) | (3 << 3) | 1;
+        for intent in 0..4u32 {
+            let h1 = c::cmsCreate_sRGBProfile();
+            let h2 = c::cmsCreate_sRGBProfile();
+            let cs = c::cmsGetColorSpace(h1) | 3 << 3 | 1;
+            let ct = c::cmsCreateTransform(h1, cs, h2, cs, intent, 0);
+            let _ = c::cmsCloseProfile(h1);
+            let _ = c::cmsCloseProfile(h2);
+            let mut rp1 = virt::create_srgb_profile(None).unwrap();
+            let mut rp2 = virt::create_srgb_profile(None).unwrap();
+            let fi = rp1.color_space | 3 << 3 | 1;
+            let fo = rp2.color_space | 3 << 3 | 1;
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [intent; 2];
+            let adapt = [1.0f64; 2];
+            let rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                fi, fo, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "intent{intent}");
+            if !ct.is_null() && rt.is_some() {
+                let mut rt = rt.unwrap();
+                let inp = [0x1234u16, 0x5678, 0x9abc];
+                let inb: Vec<u8> = inp.iter()
+                    .flat_map(|v| v.to_be_bytes()).collect();
+                let mut co = [0u16; 3];
+                let mut ro = vec![0u8; 6];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                rt.do_transform(&inb, &mut ro, 1);
+                let ro16: Vec<u16> = ro.chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                assert_eq!(co, ro16[..3], "intent{intent} eval");
+                c::cmsDeleteTransform(ct);
+            }
+        }
+    }
+}
