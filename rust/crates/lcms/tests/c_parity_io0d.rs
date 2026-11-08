@@ -26243,7 +26243,7 @@ fn internal_searchtag2_arms() {
 #[test]
 fn savetags_arms2() {
     unsafe {
-        let ctx = std::ptr::null_mut();
+        let ctx: *mut std::ffi::c_void = std::ptr::null_mut();
         let open = |n: &str| {
             let p = format!("{}/../../{}",
                 env!("CARGO_MANIFEST_DIR"), n);
@@ -26301,5 +26301,81 @@ fn savetags_arms2() {
             buf.as_mut_ptr() as *mut _, &mut nn2);
         eprintln!("nodesc: sv={sv2}");
         c::cmsCloseProfile(p);
+    }
+}
+
+/// cmsio0 residual — WriteHeaderPlugin/ReadHeaderPlugin:
+///   a registered 'hdrH' plugin's ReadPtr/WritePtr fire
+///   on profile open/save.
+#[test]
+fn header_plugin_arms() {
+    unsafe {
+        static mut HITS: u32 = 0;
+        unsafe extern "C" fn rd(
+            _ctx: *mut std::ffi::c_void, _p: *mut std::ffi::c_void,
+            _io: *mut std::ffi::c_void) -> i32 {
+            unsafe { HITS += 1; }
+            eprintln!("  rd fired");
+            1 }
+        unsafe extern "C" fn wr(
+            _ctx: *mut std::ffi::c_void, _p: *mut std::ffi::c_void,
+            _io: *mut std::ffi::c_void) -> i32 {
+            unsafe { HITS += 1; }
+            1 }
+        // register on the global ctx via cmsPlugin
+        let ctx: *mut std::ffi::c_void = std::ptr::null_mut();
+        #[repr(C)]
+        struct PlugBase {
+            magic: u32, ver: u32, ty: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct Plug {
+            base: PlugBase,
+            icc_ver: u32,
+            read: *mut std::ffi::c_void,
+            write: *mut std::ffi::c_void,
+        }
+        let mut pl = Plug {
+            base: PlugBase {
+                magic: 0x61637070, // 'acpp'
+                ver: 2200,
+                ty: 0x68647248, // 'hdrH'
+                next: std::ptr::null_mut() },
+            icc_ver: 0xFFFFFFFF,
+            read: rd as *mut std::ffi::c_void,
+            write: wr as *mut std::ffi::c_void,
+        };
+        // baseline open on the bare ctx first
+        {
+            let raw0 = std::fs::read(format!(
+                "{}/../../sRGBlcms2.icc",
+                env!("CARGO_MANIFEST_DIR"))).unwrap();
+            let p0 = c::cmsOpenProfileFromMem(
+                raw0.as_ptr() as *const _,
+                raw0.len() as u32);
+            eprintln!("bare-ctx open={}", !p0.is_null());
+            if !p0.is_null() {
+                c::cmsCloseProfile(p0); } }
+        let reg = c::cmsPlugin(
+            &mut pl as *mut _ as *mut std::ffi::c_void);
+        eprintln!("plugin reg={reg}");
+        eprintln!("ctx={}", !ctx.is_null());
+        let raw = std::fs::read(format!(
+            "{}/../../sRGBlcms2.icc",
+            env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let srgb = c::cmsOpenProfileFromMem(
+            raw.as_ptr() as *const _,
+            raw.len() as u32);
+        eprintln!("open={} hits={}", !srgb.is_null(),
+            unsafe { HITS });
+        if !srgb.is_null() {
+            let mut buf = [0u8; 1 << 18];
+            let mut nn = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(srgb,
+                buf.as_mut_ptr() as *mut std::ffi::c_void, &mut nn);
+            eprintln!("save={sv} hits={}", unsafe { HITS });
+            c::cmsCloseProfile(srgb); }
+
     }
 }
