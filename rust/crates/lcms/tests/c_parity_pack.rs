@@ -2729,3 +2729,34 @@ fn mch_format_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// 4-channel packers — CMYK devicelink transforms -> Pack4Bytes/
+/// Pack4Words + Unroll4* arms.
+#[test]
+fn four_channel_packers() {
+    unsafe {
+        let dl = c::cmsCreateInkLimitingDeviceLink(0x434D594B, 250.0);
+        if dl.is_null() { eprintln!("dl=null"); return; }
+        // 4-channel formats — PT_CMYK=6, 4ch, u8/u16, +swap/endian
+        for (fl, name) in [
+            (0u32, "u8"),
+            (1u32, "u16"),
+            (1 << 14, "u8-be"),
+            (1 << 15, "u8-swapfirst"),
+            ((1 << 10) | (1 << 14), "u16-be-doswap"),
+        ] {
+            let f = (6u32 << 16) | fl | (4 << 3) | (if fl & 1 != 0 {2} else {1});
+            let f2 = (6u32 << 16) | (4 << 3) | 1;
+            let t = c::cmsCreateTransform(dl, f2, dl, f2, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x40u8; 8];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(dl);
+    }
+}
