@@ -284,3 +284,51 @@ fn multiprofile_transform() {
         }
     }
 }
+
+/// cmsCreateMultiprofileTransform on mixed-class chains — the
+/// CheckOne/FindCombination/AllowedLUT link-validation machinery.
+#[test]
+fn mixed_class_chains() {
+    unsafe {
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        // chains: matrix-shaper->LUT, LUT->matrix, matrix->devicelink,
+        // devicelink->matrix — exercises FindCombination's LUT table
+        for (name, n, kinds) in [
+            ("m->l", 2i32, [1u8, 2, 0, 0]),
+            ("l->m", 2, [2u8, 1, 0, 0]),
+            ("m->d", 2, [1u8, 3, 0, 0]),
+            ("d->m", 2, [3u8, 1, 0, 0]),
+            ("m->l->m", 3, [1u8, 2, 1, 0]),
+            ("l->m->d", 3, [2u8, 1, 3, 0]),
+            ("m->l->m->d", 4, [1u8, 2, 1, 3]),
+        ] {
+            let mut c_profs: Vec<*mut c_void> = Vec::new();
+            for k in &kinds[..n as usize] {
+                c_profs.push(match k {
+                    1 => c::cmsCreate_sRGBProfile(), // matrix-shaper
+                    2 => c::cmsCreateLab4Profile(std::ptr::null_mut()), // LUT
+                    _ => c::cmsCreateNULLProfile(), // devicelink
+                });
+            }
+            let ct = c::cmsCreateMultiprofileTransform(
+                c_profs.as_mut_ptr(), n, in_fmt, out_fmt, 0, 0);
+            let mut ps: Vec<_> = kinds[..n as usize].iter().map(|k| {
+                match k {
+                    1 => virt::create_srgb_profile(None).unwrap(),
+                    2 => virt::create_lab4_profile(None, None).unwrap(),
+                    _ => virt::create_null_profile(None).unwrap(),
+                }
+            }).collect();
+            let mut bpc = vec![false; n as usize];
+            let intents = vec![0u32; n as usize];
+            let adapt = vec![1.0f64; n as usize];
+            let rt = xform::create_extended_transform(
+                None, &mut ps, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, out_fmt, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "{name}");
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            for h in c_profs { let _ = c::cmsCloseProfile(h); }
+        }
+    }
+}
