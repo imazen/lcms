@@ -26380,3 +26380,22 @@ fn header_plugin_arms() {
     }
 }
 
+
+/// cmsio0 residual — NULLWrite/NULLRead/Seek arms via
+///   truncated and zero-byte profile opens.
+#[test]
+fn io_null_arms() {
+    unsafe {
+        for n in [0usize, 4, 8, 16, 60, 128] {
+            let buf = vec![0u8; n];
+            let p = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n as u32);
+            let t = if !p.is_null() {
+                let r = c::cmsReadTag(p, 0x64657363);
+                let ok = !r.is_null();
+                c::cmsCloseProfile(p);
+                ok as i32
+            } else { -1 };
+            eprintln!("n{n}: t={t}"); }
+    }
+}
