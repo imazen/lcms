@@ -673,3 +673,47 @@ fn mixed_chains() {
         let _ = c::cmsCloseProfile(ab);
     }
 }
+
+/// Proofing-link machinery — cmsCreateProofingTransform on
+/// more combos (gamut-check pipelines).
+#[test]
+fn proofing_links() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let cmyk = c::cmsCreateInkLimitingDeviceLink(
+            0x434D594B, 300.0);
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let cmyk_fmt: u32 = (6 << 16) | (4 << 3) | 2;
+        // proofing transforms — the gamut-check machinery
+        for (name, (i, ifmt, o, ofmt, prf, intents)) in [
+            ("srgb->lab4-cmyk",
+             (srgb, in_fmt, lab4, lab_fmt, cmyk,
+              [0u32, 0])),
+            ("lab4->srgb-cmyk",
+             (lab4, lab_fmt, srgb, in_fmt, cmyk,
+              [0u32, 0])),
+            ("srgb->srgb-cmyk",
+             (srgb, in_fmt, srgb, in_fmt, cmyk,
+              [0u32, 0])),
+        ] {
+            let (pi, pifmt, po, pofmt, proof, intents) =
+                (i, ifmt, o, ofmt, prf, intents);
+            let ct = c::cmsCreateProofingTransform(
+                pi, pifmt, po, pofmt, proof,
+                intents[0], intents[1], 0);
+            eprintln!("{name} null={}", ct.is_null());
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 4];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(srgb);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(cmyk);
+    }
+}
