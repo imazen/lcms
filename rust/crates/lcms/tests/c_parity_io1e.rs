@@ -2466,3 +2466,24 @@ fn para_data_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Array-type tag sigs — 'ut16'/'ut32'/'uif8'/'uif16'/'uif32'/
+/// 'uif64'/'s15f'/'uf16'/'uf32'/'uf64'.
+#[test]
+fn array_type_tag_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (sig, name) in [
+            (0x75743136u32, "ut16"), (0x75743332u32, "ut32"),
+            (0x75696638u32, "uif8"), (0x75696631u32, "uif16"),
+            (0x75696633u32, "uif32"), (0x75696636u32, "uif64"),
+            (0x73313566u32, "s15f"), (0x75663136u32, "uf16"),
+            (0x75663332u32, "uf32"), (0x75663634u32, "uf64")] {
+            let ok = c::cmsWriteTag(h, sig,
+                g as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
