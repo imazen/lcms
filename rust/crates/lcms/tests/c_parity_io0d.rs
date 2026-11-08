@@ -2553,3 +2553,38 @@ fn tagread_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Type-parse bounds — truncate a tag's data mid-type then read
+/// (the type-parser-bounds machinery).
+#[test]
+fn typeparse_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // tag[0] size at 140 — shrink it so the type data is truncated
+        let sig = u32::from_be_bytes(
+            buf[132..136].try_into().unwrap());
+        for (name, sz) in [
+            ("real", u32::from_be_bytes(
+                buf[140..144].try_into().unwrap())),
+            ("zero", 0), ("sig8", 8), ("half", 18),
+            ("nearly", 34)] {
+            let mut b = buf.clone();
+            b[140..144].copy_from_slice(&sz.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            let t = if h.is_null() { std::ptr::null() }
+                else { c::cmsReadTag(h, sig) };
+            eprintln!(
+                "{name} sz={sz} h={} t={}",
+                !h.is_null(), !t.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
