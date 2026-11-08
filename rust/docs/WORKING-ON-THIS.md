@@ -384,3 +384,12 @@ codegen diffs): 79.87% lines / 95.03% fns / 87.72% regions /
 7. Element offsets in builder closures must be recorded BEFORE
    pushing data (one gate was briefly broken by post-push
    offsets).
+
+8. **MHC2 is NOT an MPE container** — it is Microsoft's HDR
+   type: `CurveEntries u32` (≤4096, 0 fails via calloc),
+   `MinLuminance`/`PeakLuminance` s15f16, then 4 u32 offsets
+   (matrix, R, G, B). Matrix offset 0 → identity; nonzero →
+   12 × s15f16 (3×4). Each curve offset → 'sf32' + 8-byte base
+   skipped, then CurveEntries × s15f16. Type AND tag sig are
+   BOTH `'MHC2'` = 0x4D484332 (uppercase — lowercase 'mhc2'
+   rejects at IsTypeSupported).
