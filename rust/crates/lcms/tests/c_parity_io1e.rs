@@ -468,3 +468,35 @@ fn tag_table_lifecycle() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Corrupt tag-directory reads — the SearchTag/read-error
+/// machinery on malformed tag tables.
+#[test]
+fn corrupt_tag_directory() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // corrupt a tag's offset to past-EOF + read it
+        for (name, off, val) in [
+            ("tag-off-past-eof", 136u32, 0xFFu8),
+            ("tag-size-huge", 140, 0xFF),
+            ("dup-sig", 144, b'd' as u8), // 2nd tag sig byte
+        ] {
+            let mut dd = d.clone();
+            dd[off as usize] = val;
+            let h2 = c::cmsOpenProfileFromMem(dd.as_ptr() as _,
+                dd.len() as u32);
+            if h2.is_null() { eprintln!("{name} open=null");
+                continue; }
+            let s = c::cmsGetTagSignature(h2, 0);
+            let r = c::cmsReadTag(h2, s);
+            eprintln!("{name} sig={s:#x} read={}", r.is_null());
+            c::cmsCloseProfile(h2);
+        }
+    }
+}
