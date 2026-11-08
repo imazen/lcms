@@ -335,6 +335,13 @@ unsafe extern "C" {
     pub fn cmsWriteRawTag(p: *mut c_void, sig: u32, data: *const c_void, size: u32) -> i32;
     pub fn cmsSaveProfileToMem(p: *mut c_void, mem: *mut c_void, size: *mut u32) -> i32;
     pub fn cmsCreateProfilePlaceholder(ctx: *mut c_void) -> *mut c_void;
+    pub fn cmsCreateGrayProfileTHR(ctx: *mut c_void, wp: *const c_void, tf: *const c_void) -> *mut c_void;
+    pub fn cmsCreateLab2ProfileTHR(ctx: *mut c_void, wp: *const c_void) -> *mut c_void;
+    pub fn cmsCreateLab4ProfileTHR(ctx: *mut c_void, wp: *const c_void) -> *mut c_void;
+    pub fn cmsCreateXYZProfileTHR(ctx: *mut c_void) -> *mut c_void;
+    pub fn cmsCreate_sRGBProfileTHR(ctx: *mut c_void) -> *mut c_void;
+    pub fn cmsCreateBCHSWabstractProfileTHR(ctx: *mut c_void, n_lut: u32, bright: f64, contrast: f64, hue: f64, sat: f64, wp_src: *const c_void, wp_dest: *const c_void) -> *mut c_void;
+    pub fn cmsCreateNULLProfileTHR(ctx: *mut c_void) -> *mut c_void;
     // --- cmsvirt ---
     pub fn cmsCreate_sRGBProfile() -> *mut c_void;
     pub fn cmsCreateRGBProfileTHR(ctx: Context, white: *const c_void, primaries: *const c_void, transfer: *const *mut c_void) -> *mut c_void;

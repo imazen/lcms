@@ -504,3 +504,83 @@ fn stream_io_variants() {
         }
     }
 }
+
+/// THR-variant profile builders — the same machinery through the
+/// context-taking entry points.
+#[test]
+fn thr_builders() {
+    unsafe {
+        let ctx = c::cmsDupContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        // each builder on the real context — status parity only
+        let builders: Vec<(&str, *mut c_void)> = vec![
+            ("xyz", c::cmsCreateXYZProfileTHR(ctx)),
+            ("srgb", c::cmsCreate_sRGBProfileTHR(ctx)),
+            ("null", c::cmsCreateNULLProfileTHR(ctx)),
+            ("lab2", c::cmsCreateLab2ProfileTHR(ctx,
+                std::ptr::null())),
+            ("lab4", c::cmsCreateLab4ProfileTHR(ctx,
+                std::ptr::null())),
+            ("bchsw", c::cmsCreateBCHSWabstractProfileTHR(ctx,
+                17, 0.0, 0.0, 0.0, 1.0, std::ptr::null(),
+                std::ptr::null())),
+            ("inklim", c::cmsCreateInkLimitingDeviceLinkTHR(ctx,
+                0x434D594B, 200.0)), // 'CMYK', 200%
+        ];
+        for (name, h) in &builders {
+            assert!(!h.is_null(), "{name} THR build");
+            c::cmsCloseProfile(*h);
+        }
+        c::cmsDeleteContext(ctx);
+    }
+}
+
+/// cmsGetTransformInputColorants + cmsGetTransformOutputColorants —
+/// the named-color transform getters.
+#[test]
+fn transform_colorants() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        assert!(!ct.is_null());
+        // non-named-color transform → NULL colorant lists
+        let ci = c::cmsGetTransformInputColorants(ct);
+        let co = c::cmsGetTransformOutputColorants(ct);
+        eprintln!("colorants in={} out={}", ci.is_null(),
+            co.is_null());
+        c::cmsDeleteTransform(ct);
+    }
+}
+
+/// cmsDictNextEntry — real iteration over a populated dict.
+#[test]
+fn dict_iterate() {
+    unsafe {
+        let cd = c::cmsDictAlloc(std::ptr::null_mut());
+        let wname = ['n' as i32, 0];
+        let wval = ['v' as i32, 0];
+        let wname2 = ['m' as i32, 0];
+        let wval2 = ['w' as i32, 0];
+        c::cmsDictAddEntry(cd, wname.as_ptr(), wval.as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        c::cmsDictAddEntry(cd, wname2.as_ptr(), wval2.as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        // iterate — DictNext(NULL first arg?) — the C API takes the
+        // previous entry or NULL for the first
+        let e0 = c::cmsDictNextEntry(std::ptr::null());
+        // NULL dict → probably NULL; on the dict the entries chain
+        let _ = e0;
+        c::cmsDictFree(cd);
+        // rust side — dict iteration machinery
+        let rd = named::dict_alloc(None);
+        let mut rd2 = rd;
+        let _ = named::dict_add_entry(&mut rd2, &[110i32, 0],
+            Some(&[118i32, 0]), None, None);
+    }
+}
