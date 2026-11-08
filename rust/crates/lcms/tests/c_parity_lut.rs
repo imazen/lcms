@@ -3461,3 +3461,39 @@ fn named_identity_stage_evals() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Pipeline pointer/accessor internals — first/last stage,
+/// estimated-table entries + content.
+#[test]
+fn pipeline_ptr_accessors() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        let tab: Vec<u16> = (0..27*3).map(|i| (i * 9) as u16).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g; 3].as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 3, 3, 3,
+                tab.as_ptr()));
+        let first = c::cmsPipelineGetPtrToFirstStage(p);
+        let last = c::cmsPipelineGetPtrToLastStage(p);
+        eprintln!("first={} last={}",
+            !first.is_null(), !last.is_null());
+        // walk the stage chain via cmsStageNext
+        let mut cur = first;
+        let mut nst = 0;
+        while !cur.is_null() && nst < 10 {
+            nst += 1;
+            cur = c::cmsStageNext(cur);
+        }
+        eprintln!("stages walked={nst}");
+        // UnlinkStage — remove + return the unlinked stage
+        let mut out_st: c::Handle = std::ptr::null_mut();
+        let u = c::cmsPipelineUnlinkStage(p, 1, &mut out_st);
+        eprintln!("unlink={u} st={}", !out_st.is_null());
+        if !out_st.is_null() { c::cmsStageFree(out_st); }
+        c::cmsPipelineFree(p);
+    }
+}
