@@ -10604,3 +10604,61 @@ fn lut16_write_arms14() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// SaveTags remaining internals — profile save/reopen/read-
+/// twice on all class+version+tag combinations.
+#[test]
+fn save_tags_arms6() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        // profile class × version + all tag types -> save+reopen
+        for (class, ver, name) in [
+            (0x73636e72u32, 2.1, "scnr-v2"),
+            (0x73636e72, 4.4, "scnr-v4"),
+            (0x6d6e7472, 2.1, "mntr-v2"),
+            (0x6d6e7472, 4.4, "mntr-v4"),
+            (0x70727472, 2.1, "prtr-v2"),
+            (0x70727472, 4.4, "prtr-v4"),
+            (0x61627374, 4.4, "abst-v4"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            c::cmsSetDeviceClass(prof, class);
+            for sig in [
+                0x72545243u32, 0x67545243, 0x62545243,
+                0x7258595a, 0x6758595a, 0x6258595a,
+                0x6d656461, 0x74656368, 0x63686164,
+                0x636c726f, 0x63686172,
+            ] {
+                c::cmsWriteTag(prof, sig, g as *const _);
+            }
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                    [g, g2, g].as_ptr() as *mut _));
+            c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 22];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            if !rp.is_null() {
+                let nt = c::cmsGetTagCount(rp);
+                for i in 0..nt as u32 {
+                    let sig = c::cmsGetTagSignature(rp, i);
+                    let _t = c::cmsReadTag(rp, sig);
+                }
+                c::cmsCloseProfile(rp);
+            }
+            eprintln!("{name} s={s}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
