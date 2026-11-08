@@ -1582,3 +1582,41 @@ fn it8_deep_arms10() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection arms — every
+/// S* token class + property-value forms + malformed inputs.
+#[test]
+fn it8_deep_arms11() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // every numeric literal class in property position
+            (b"IT8FILE\nP1 1\nP2 -1\nP3 +1\nP4 1.5\nP5 -1.5\nP6 +1.5\nP7 .5\nP8 1.\nP9 1e2\nP10 1E2\nP11 1e-2\nP12 1e+2\nP13 0x1F\nP14 0X1f\nP15 1.5e-3\nP16 -0.5E+3\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "all-nums"),
+            // quoted property with all escape types
+            (b"IT8FILE\nP1 \"tab\\there\"\nP2 \"nl\\nhere\"\nP3 \"bs\\\\here\"\nP4 \"q\\\"here\"\nP5 \"u\\u{263A}here\"\nP6 \"x\\x41here\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "all-esc"),
+            // property spanning multiple lines via continuation
+            (b"IT8FILE\nP1 \"line1\nline2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "multiline"),
+            // deep property name nesting
+            (b"IT8FILE\nA1 \"v1\"\nA2 \"v2\"\nB1 \"v3\"\nB2 \"v4\"\nC1 \"v5\"\nC2 \"v6\"\nD1 \"v7\"\nD2 \"v8\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "many-props2"),
+            // IT8 with only comments + minimal structure
+            (b"# only comments\nIT8FILE\n".to_vec(), "min"),
+            // IT8 with just the signature line
+            (b"IT8FILE\n".to_vec(), "bare"),
+            // IT8 with just signature + number fields
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n".to_vec(), "counts-only"),
+            // property values that look like section headers
+            (b"IT8FILE\nP1 \"BEGIN_DATA_FORMAT\"\nP2 \"END_DATA_FORMAT\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "hdr-props"),
+            // semicolon-separated pair values
+            (b"IT8FILE\nP1 \"k1;v1\"\nP2 \"k1;v1;k2;v2\"\nP3 \"a;b;c\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "semis"),
+            // numbers with leading + and spaces
+            (b"IT8FILE\nNUMBER_OF_FIELDS +2\nNUMBER_OF_SETS +3\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\n5 6\nEND_DATA\n".to_vec(), "plus-counts"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
