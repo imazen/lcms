@@ -1416,3 +1416,38 @@ fn file_open_variants() {
         }
     }
 }
+
+/// Real corpus profiles — open + transform on file-backed
+/// profiles (the real-profile machinery).
+#[test]
+fn corpus_profile_transform() {
+    unsafe {
+        for (name, path) in [
+            ("lcms2link", b"../../lcms2link.icc\0" as &[u8]),
+            ("gray", b"../../graylcms2.icc\0"),
+            ("labv2", b"../../labv2lcms2.icc\0"),
+            ("lin", b"../../linlcms2.icc\0"),
+            ("labv4", b"../../labv4lcms2.icc\0"),
+            ("xyz", b"../../xyzlcms2.icc\0")] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let cs = c::cmsGetColorSpace(h);
+            let pcs = c::cmsGetPCS(h);
+            let nt = c::cmsGetTagCount(h);
+            eprintln!("{name} cs={cs:#x} pcs={pcs:#x} tags={nt}");
+            // sRGB->profile transform where possible
+            let srgb = c::cmsCreate_sRGBProfile();
+            let fmt = (4 << 16) | (3 << 3) | 1u32;
+            let t = c::cmsCreateTransform(srgb, fmt,
+                h, fmt, 0, 0);
+            eprintln!("  xform={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(h);
+            c::cmsCloseProfile(srgb);
+        }
+    }
+}
