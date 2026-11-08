@@ -478,3 +478,27 @@ fn it8_writer_populated() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// IT8 enum/rowcol/patch machinery on more table setups.
+#[test]
+fn it8_enum_rowcol() {
+    unsafe {
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        // set a data format then enum it
+        c::cmsIT8SetDataFormat(it8, 0, b"SAMPLE_ID\0".as_ptr() as _);
+        c::cmsIT8SetDataFormat(it8, 1, b"RGB_R\0".as_ptr() as _);
+        c::cmsIT8SetDataFormat(it8, 2, b"RGB_G\0".as_ptr() as _);
+        c::cmsIT8SetDataFormat(it8, 3, b"RGB_B\0".as_ptr() as _);
+        let mut names: [*mut i8; 8] = [std::ptr::null_mut(); 8];
+        let mut names_ptr: *mut *mut i8 = names.as_mut_ptr();
+        let n = c::cmsIT8EnumDataFormat(it8, &mut names_ptr);
+        eprintln!("enum n={n}");
+        // get/set a data row
+        c::cmsIT8SetDataDbl(it8, b"1\0".as_ptr() as _,
+            b"RGB_R\0".as_ptr() as _, 0.5);
+        let v = c::cmsIT8GetDataDbl(it8,
+            b"1\0".as_ptr() as _, b"RGB_R\0".as_ptr() as _);
+        eprintln!("data v={v}");
+        c::cmsIT8Free(it8);
+    }
+}
