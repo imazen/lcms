@@ -108,5 +108,7 @@ fn emit_link(out_dir: &Path) {
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=lcms2cref");
     // lcms2 calls into libm
-    println!("cargo:rustc-link-lib=m");
+    if std::env::var("CARGO_CFG_TARGET_FAMILY").as_deref() == Ok("unix") {
+        println!("cargo:rustc-link-lib=m");
+    }
 }
