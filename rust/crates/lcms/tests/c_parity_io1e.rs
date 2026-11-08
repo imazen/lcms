@@ -2657,3 +2657,30 @@ fn write_dispatch_null() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Tag-presence machinery — cmsIsTag on present/absent/
+/// deleted tags.
+#[test]
+fn tag_presence() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [
+            (0x64657363u32, "desc"), (0x77747074u32, "wtpt"),
+            (0x41324230u32, "A2B0"), (0x6D657461u32, "meta"),
+            (0x63696370u32, "cicp"), (0x6E636C32u32, "ncl2"),
+            (0x00000000u32, "zero"), (0xFFFFFFFFu32, "huge")] {
+            let istag = c::cmsIsTag(h, sig);
+            let rd = c::cmsReadTag(h, sig);
+            eprintln!("{name} istag={istag} rd={}",
+                !rd.is_null());
+        }
+        // delete desc via NULL write, then re-check
+        let d = c::cmsWriteTag(h, 0x64657363,
+            std::ptr::null_mut());
+        let istag2 = c::cmsIsTag(h, 0x64657363);
+        let rd2 = c::cmsReadTag(h, 0x64657363);
+        eprintln!("desc-delete ok={d} istag={istag2} rd={}",
+            !rd2.is_null());
+        c::cmsCloseProfile(h);
+    }
+}
