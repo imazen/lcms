@@ -295,3 +295,50 @@ fn gbd_sweep() {
         c::cmsGBDFree(g);
     }
 }
+
+/// cmsSliceSpace variants + DetectTAC internals — multi-point
+/// grid slicing over the input cube, TAC detection on CMYK.
+#[test]
+fn slice_space_tac() {
+    unsafe {
+        // cmsSliceSpace16/Float walk a grid calling the sampler
+        extern "C" fn samp(i: *const u16, _o: *mut u16,
+                           c: *mut std::ffi::c_void) -> i32 {
+            unsafe {
+                let cnt = c as *mut i32;
+                *cnt += i.read() as i32;
+                1
+            }
+        }
+        extern "C" fn sampf(i: *const f32, _o: *mut f32,
+                            c: *mut std::ffi::c_void) -> i32 {
+            unsafe {
+                let cnt = c as *mut i32;
+                *cnt += (*i * 100.0) as i32;
+                1
+            }
+        }
+        let mut c16 = 0i32;
+        let mut cf = 0i32;
+        for n in [2u32, 5] {
+            let grid = [n; 3];
+            c::cmsSliceSpace16(3, grid.as_ptr(), samp,
+                &mut c16 as *mut _ as *mut _);
+            c::cmsSliceSpaceFloat(3, grid.as_ptr(), sampf,
+                &mut cf as *mut _ as *mut _);
+        }
+        eprintln!("slices c16={c16} cf={cf}");
+        // DetectTAC on a CMYK profile
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if !p.is_null() {
+                let tac = c::cmsDetectTAC(p);
+                eprintln!("tac={tac}");
+                c::cmsCloseProfile(p);
+            }
+        }
+    }
+}
