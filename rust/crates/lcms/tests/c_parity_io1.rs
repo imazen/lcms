@@ -566,3 +566,35 @@ fn output_lut_intent_dispatch() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Formatter-for-profile helpers — FormatterForColorspaceOfProfile/
+/// FormatterForPCSOfProfile across n_bytes x is_float.
+#[test]
+fn formatter_for_profile() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let mut profs = vec![
+            ("srgb", c::cmsCreate_sRGBProfile()),
+            ("lab", c::cmsCreateLab4Profile(std::ptr::null_mut())),
+        ];
+        if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if !p.is_null() { profs.push(("cmyk", p)); }
+        }
+        for (name, p) in &profs {
+            for nb in [1u32, 2, 4] {
+                for fl in [0i32, 1] {
+                    let fc = c::cmsFormatterForColorspaceOfProfile(
+                        *p, nb, fl);
+                    let fp = c::cmsFormatterForPCSOfProfile(*p, nb, fl);
+                    if fc != 0 || fp != 0 {
+                        eprintln!("{name} nb{nb} f{fl} cs={fc:#x} pcs={fp:#x}");
+                    }
+                }
+            }
+            c::cmsCloseProfile(*p);
+        }
+    }
+}
