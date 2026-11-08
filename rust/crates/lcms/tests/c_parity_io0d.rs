@@ -7481,3 +7481,51 @@ fn decide_type_arms() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Type_CrdInfo_Read arms — raw crdi tags with count+string
+/// record variants (valid, truncated, oversize counts).
+#[test]
+fn crdi_read_arms() {
+    unsafe {
+        let rec = |s: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&(s.len() as u32).to_be_bytes());
+            t.extend_from_slice(s.as_bytes());
+            t
+        };
+        let mk = |recs: &[Vec<u8>]| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x63726469u32.to_be_bytes()); // 'crdi'
+            t.extend_from_slice(&[0; 4]);
+            for r in recs { t.extend_from_slice(r); }
+            t
+        };
+        let full = [
+            rec("device"), rec("0"), rec("1"), rec("2"), rec("3")];
+        for (raw, name) in [
+            (mk(&full), "full"),
+            (mk(&full[..4]), "4-recs"),
+            (mk(&full[..1]), "1-rec"),
+            (mk(&[]), "0-recs"),
+            (mk(&[vec![0xffu8; 4]]), "huge-count"),
+            (mk(&[rec(&"x".repeat(400))]), "long"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x63726469,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x63726469)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
