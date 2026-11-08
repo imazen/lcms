@@ -1222,3 +1222,42 @@ garbage for out-of-range locs; `mpet`-typed DToB/BToD saves reject
 API pipelines (Type_MPEclut/Matrix_Write + WriteSegmentedCurve stay
 dead-path); `MemoryWrite` truncates rather than failing (write-fail
 arms only reachable via a patched Write callback).
+
+## run9 (2026-11-05)
+
+`TOTAL: 81.02% lines / 95.59% fns / 87.91% regions / 74.52% branches`
+(up from run8's 81.22/95.59/87.78/74.60 — regions +0.13, branches
+-0.08, lines -0.20 as more reject paths were exercised and added
+uncovered-error line hits)
+
+| file | lines | fns | regions | branches |
+|---|---|---|---|---|
+| cmstypes.c | 73.41% | 99.07% | 86.24% | 69.72% |
+| cmspack.c | — | — | — | — |
+| cmsio0.c | — | — | — | — |
+| cmsopt.c | — | — | — | — |
+| cmslut.c | — | — | — | — |
+| cmsvirt.c | 73.43% | 100% | 85.43% | 56.74% |
+| cmscnvrt.c | — | — | — | — |
+| cmsnamed.c | — | — | — | — |
+| cmsxform.c | 88.57% | 100% | 91.46% | 81.47% |
+| cmsintrp.c | — | — | — | — |
+| cmspcs.c | — | — | — | — |
+| cmsmtrx.c | — | — | — | — |
+| cmscam02.c | — | — | — | — |
+| cmswtpnt.c | 93.55% | 100% | 99.33% | 83.33% |
+| cmsplugin.c | 81.37% | 100% | 91.31% | 74.04% |
+| cmsps2.c | 89.41% | 100% | 92.69% | 79.13% |
+| cmssamp.c | 86.01% | 100% | 87.89% | 67.12% |
+| cmssm.c | 90.70% | 100% | 96.05% | 86.73% |
+| cmsio1.c | — | — | — | — |
+| cmsio2.c | — | — | — | — |
+| cmserr0.c | — | — | — | — |
+| cmscgats.c | — | — | — | — |
+| cmsalpha.c | — | — | — | — |
+| cmslut.c | — | — | — | — |
+| cmsmd5.c | — | — | — | — |
+
+(~30 gates landed since run8: internal_final8-35, pack_alpha,
+type_read_err, fileio_err, opt_deep, lindevlink,
+blackpreserve_intent, utf8_decode, cgats_errpath, virt_opt_residual)
