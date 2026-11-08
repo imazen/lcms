@@ -6729,7 +6729,6 @@ fn profile_info_internals2() {
             eprintln!("{f} done");
             c::cmsCloseProfile(p);
         }
-        c::cmsCloseProfile(srgb);
     }
 }
 
@@ -15414,6 +15413,45 @@ fn wtpnt_arms() {
             let r = c::_cmsEndPointsBySpace(cs,
                 &mut white, &mut black, &mut n_out);
             eprintln!("cs={cs:#x} r={r} n={n_out}");
+        }
+    }
+}
+
+/// BlackPointAsDarkerColorant — relative-colorimetric +
+/// output-class + ink-colorspace profiles.
+#[test]
+fn darker_colorant_arms() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        // also a placeholder ink-colorspace output profile
+        let ink = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(ink, 0x70727472);
+        c::cmsSetColorSpace(ink, 0x434D594B);
+        c::cmsSetPCS(ink, 0x4C616220);
+        let srgb = c::cmsCreate_sRGBProfile();
+        for (p, name) in [(cmyk, "cmyk"), (ink, "ink"),
+            (srgb, "srgb")] {
+            if p.is_null() { continue; }
+            let mut bp = [0.0f64; 3];
+            for intent in 0..4u32 {
+                for flags in [0u32, 0x2000] {
+                    let r = c::cmsDetectBlackPoint(
+                        bp.as_mut_ptr() as *mut _, p,
+                        intent, flags);
+                    let r2 = c::cmsDetectDestinationBlackPoint(
+                        bp.as_mut_ptr() as *mut _, p,
+                        intent, flags);
+                    eprintln!("{name} i{intent} f{flags:#x} \
+                        {r}/{r2} bp={bp:?}");
+                }
+            }
+            c::cmsCloseProfile(p);
         }
     }
 }
