@@ -3185,3 +3185,88 @@ fn unroll_cell_sweep() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Per-cell packer sweep — every named OutputFormatters16 body
+/// via lab->profile transforms with the same format cells.
+#[test]
+fn pack_cell_sweep() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let sw = |name: &str, inp: *mut _, if_: u32, of_: u32, prof: *mut _| {
+            let t = c::cmsCreateTransform(inp, if_, prof, of_, 0, 0);
+            let ok = !t.is_null();
+            eprintln!("{name} t={ok}");
+            if ok {
+                let ib = [0x4000u16; 8];
+                let mut ob = [0u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        };
+        let rgb = |ch: u32, extra: u32, bytes: u32| {
+            (4u32 << 16) | (extra << 7) | (ch << 3) | bytes
+        };
+        let gry = |extra: u32, bytes: u32| {
+            (3u32 << 16) | (extra << 7) | (1 << 3) | bytes
+        };
+        // 3-channel word output arms
+        sw("p3w", lab, l16, rgb(3, 0, 2), srgb);
+        sw("p3w-doswap", lab, l16, rgb(3, 0, 2) | (1 << 10), srgb);
+        sw("p3w-x1-sf", lab, l16, rgb(3, 1, 2) | (1 << 14), srgb);
+        sw("p3w-x1-ds", lab, l16, rgb(3, 1, 2) | (1 << 10), srgb);
+        sw("p3w-planar", lab, l16, rgb(3, 0, 2) | (1 << 12), srgb);
+        sw("p3w-endian", lab, l16, rgb(3, 0, 2) | (1 << 11), srgb);
+        // 3-channel byte output arms
+        sw("p3b", lab, l16, rgb(3, 0, 1), srgb);
+        sw("p3b-doswap", lab, l16, rgb(3, 0, 1) | (1 << 10), srgb);
+        sw("p3b-x1-ds", lab, l16, rgb(3, 1, 1) | (1 << 10), srgb);
+        sw("p3b-x1-sf", lab, l16, rgb(3, 1, 1) | (1 << 14), srgb);
+        sw("p3b-x1-ds-sf", lab, l16,
+            rgb(3, 1, 1) | (1 << 10) | (1 << 14), srgb);
+        sw("p3b-planar", lab, l16, rgb(3, 0, 1) | (1 << 12), srgb);
+        sw("p3b-chunky-x2", lab, l16, rgb(3, 2, 1), srgb);
+        // gray output arms
+        sw("p1w", lab, l16, gry(0, 2), gray);
+        sw("p1w-flavor", lab, l16, gry(0, 2) | (1 << 13), gray);
+        sw("p1w-x3", lab, l16, gry(3, 2), gray);
+        sw("p1b", lab, l16, gry(0, 1), gray);
+        sw("p1b-x1", lab, l16, gry(1, 1), gray);
+        sw("p1b-x2", lab, l16, gry(2, 1), gray);
+        sw("p1b-flavor", lab, l16, gry(0, 1) | (1 << 13), gray);
+        // CMYK output arms
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
+            let ck = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
+                d.len() as u32);
+            if !ck.is_null() {
+                let k = |ch: u32, extra: u32, bytes: u32| {
+                    (6u32 << 16) | (extra << 7) | (ch << 3) | bytes
+                };
+                sw("p4w", lab, l16, k(4, 0, 2), ck);
+                sw("p4w-flavor", lab, l16, k(4, 0, 2) | (1 << 13), ck);
+                sw("p4w-sf", lab, l16, k(4, 0, 2) | (1 << 14), ck);
+                sw("p4w-ds", lab, l16, k(4, 0, 2) | (1 << 10), ck);
+                sw("p4w-ds-sf", lab, l16,
+                    k(4, 0, 2) | (1 << 10) | (1 << 14), ck);
+                sw("p4b", lab, l16, k(4, 0, 1), ck);
+                sw("p4b-flavor", lab, l16, k(4, 0, 1) | (1 << 13), ck);
+                sw("p4b-sf", lab, l16, k(4, 0, 1) | (1 << 14), ck);
+                sw("p4b-ds", lab, l16, k(4, 0, 1) | (1 << 10), ck);
+                sw("p4b-ds-sf", lab, l16,
+                    k(4, 0, 1) | (1 << 10) | (1 << 14), ck);
+                sw("p2w", lab, l16, k(2, 0, 2), ck);
+                c::cmsCloseProfile(ck);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
