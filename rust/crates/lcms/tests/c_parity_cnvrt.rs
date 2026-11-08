@@ -501,3 +501,42 @@ fn devicelink_transform() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// 4-profile chains + proofing gamut — the multi-link and
+/// gamut-check internals.
+#[test]
+fn four_profile_chains() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let nullp = c::cmsCreateNULLProfile();
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        for (name, chain) in [
+            ("srgb+lab4+xyz+srgb",
+             (srgb, lab4, xyz, srgb, in_fmt, in_fmt)),
+            ("srgb+null+lab4+srgb",
+             (srgb, nullp, lab4, srgb, in_fmt, in_fmt)),
+            ("lab4+srgb+xyz+lab4",
+             (lab4, srgb, xyz, lab4, lab_fmt, lab_fmt)),
+        ] {
+            let (p1, p2, p3, p4, ifmt, ofmt) = chain;
+            let mut profs = [p1, p2, p3, p4];
+            let ct = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 4, ifmt, ofmt, 0, 0);
+            eprintln!("{name} null={}", ct.is_null());
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(srgb);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(xyz);
+        let _ = c::cmsCloseProfile(nullp);
+    }
+}
