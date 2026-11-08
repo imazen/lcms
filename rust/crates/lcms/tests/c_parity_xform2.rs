@@ -6055,3 +6055,89 @@ fn xform_devlink2_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsxform residual — GetTransformContextID +
+///   Input/OutputColorants on named-color +
+///   devicelink transforms; ChangeBuffersFormat fmt
+///   sweep incl. planar/float/extra transitions.
+#[test]
+fn xform_getter_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // transform context + colorants
+        let t = c::cmsCreateTransform(srgb, frgb,
+            lab4, flab, 0, 0);
+        let ctx = c::cmsGetTransformContextID(t);
+        eprintln!("t-ctx={} null-ctx={}",
+            !ctx.is_null(), ctx.is_null());
+        let ic = c::cmsGetTransformInputColorants(t);
+        let oc = c::cmsGetTransformOutputColorants(t);
+        eprintln!("ic={} oc={}", !ic.is_null(), !oc.is_null());
+        // ChangeBuffersFormat: u16 -> u8 -> float ->
+        //   planar transitions
+        for (ni, no, name) in [
+            ((4u32 << 16) | (3 << 3) | 1,
+             (10u32 << 16) | (3 << 3) | 1, "16->8"),
+            ((1u32 << 22) | (4 << 16) | (3 << 3) | 4,
+             (1u32 << 22) | (10 << 16) | (3 << 3) | 4,
+             "16->flt"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
+             (10u32 << 16) | (1 << 12) | (3 << 3) | 2,
+             "16->planar"),
+            ((4u32 << 16) | (1 << 7) | (3 << 3) | 2,
+             (10u32 << 16) | (1 << 7) | (3 << 3) | 2,
+             "16->ex1"),
+            ((4u32 << 16) | (3 << 3) | 2,
+             (10u32 << 16) | (3 << 3) | 2, "16->16"),
+        ] {
+            let ok = c::cmsChangeBuffersFormat(t, ni, no);
+            eprintln!("chg {name} ok={ok}");
+            let src = [0x8000u16; 8];
+            let mut dst = [0u16; 8];
+            c::cmsDoTransform(t,
+                src.as_ptr() as *const _,
+                dst.as_mut_ptr() as *mut _, 1);
+        }
+        c::cmsDeleteTransform(t);
+        // named-color transform colorants
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 3, 4,
+            b"P\0".as_ptr() as *const _,
+            b"S\0".as_ptr() as *const _);
+        let pcs = [0x1000u16; 16];
+        let dev = [0x2000u16; 16];
+        for i in 0..3 {
+            let nm = format!("c{i}\0");
+            c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const _,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        let np = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(np, 0x6E6D636C);
+        c::cmsSetColorSpace(np, 0x4D434834);
+        c::cmsSetPCS(np, 0x4C616220);
+        c::cmsSetProfileVersion(np, 4.4);
+        c::cmsWriteTag(np, 0x6E636C32,
+            nl as *const _);
+        let fnc = (0u32 << 16) | (1 << 3) | 2;
+        let t2 = c::cmsCreateTransform(np, fnc,
+            lab4, flab, 0, 0);
+        eprintln!("nc-xform={}", !t2.is_null());
+        if !t2.is_null() {
+            let ic2 = c::cmsGetTransformInputColorants(t2);
+            let oc2 = c::cmsGetTransformOutputColorants(t2);
+            eprintln!("  ic2={} oc2={}",
+                !ic2.is_null(), !oc2.is_null());
+            c::cmsDeleteTransform(t2);
+        }
+        c::cmsCloseProfile(np);
+        c::cmsFreeNamedColorList(nl);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(srgb);
+    }
+}
