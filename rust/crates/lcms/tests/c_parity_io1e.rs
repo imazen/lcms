@@ -1377,3 +1377,36 @@ fn link_tag_machinery() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Tag-table enumeration on unusual tables — corrupt +
+/// oversized + linked tables.
+#[test]
+fn tag_table_enumeration() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            // the full enumeration machinery on each corpus
+            // profile's table
+            let n = c::cmsGetTagCount(h);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                let istag = c::cmsIsTag(h, sig);
+                let lt = c::cmsTagLinkedTo(h, sig);
+                let _ = (istag, lt);
+            }
+            c::cmsCloseProfile(h);
+        }
+        // a built profile with a big + linked table
+        let h2 = c::cmsCreate_sRGBProfile();
+        c::cmsLinkTag(h2, 0x626B7074, 0x77747074);
+        c::cmsLinkTag(h2, 0x63686164, 0x77747074);
+        let n2 = c::cmsGetTagCount(h2);
+        for i in 0..n2 {
+            let sig = c::cmsGetTagSignature(h2, i as u32);
+            let lt = c::cmsTagLinkedTo(h2, sig);
+            let _ = lt;
+        }
+        c::cmsCloseProfile(h2);
+    }
+}
