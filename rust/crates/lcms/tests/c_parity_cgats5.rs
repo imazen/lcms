@@ -255,3 +255,60 @@ fn it8_multi_table() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 parser internals — comments/hex/quotes/unusual
+/// whitespace on more doc shapes.
+#[test]
+fn it8_parser_shapes() {
+    unsafe {
+        for (name, doc) in [
+            ("comments",
+             "# a comment\nCGATS.17\n# another\n\
+              NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n"),
+            ("quoted-string",
+             "CGATS.17\nNUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\n\
+              A\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n\"quoted string\"\nEND_DATA\n"),
+            ("hex-number",
+             "CGATS.17\nNUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\n\
+              A\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n0x1F\nEND_DATA\n"),
+            ("negative-float",
+             "CGATS.17\nNUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\n\
+              A\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n-1.5e3\nEND_DATA\n"),
+            ("extra-ws",
+             "CGATS.17\n  NUMBER_OF_FIELDS  1 \n\
+              BEGIN_DATA_FORMAT\n A \nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\nBEGIN_DATA\n  1  \nEND_DATA\n"),
+            ("crlf",
+             "CGATS.17\r\nNUMBER_OF_FIELDS 1\r\n\
+              BEGIN_DATA_FORMAT\r\nA\r\nEND_DATA_FORMAT\r\n\
+              NUMBER_OF_SETS 1\r\nBEGIN_DATA\r\n1\r\n\
+              END_DATA\r\n"),
+            ("empty-prop",
+             "CGATS.17\nPROP \"\"\nNUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\nBEGIN_DATA\n1\nEND_DATA\n"),
+            ("multi-line",
+             "CGATS.17\nPROP \"multi\nline\"\n\
+              NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n"),
+        ] {
+            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} null={}", h.is_null());
+            if !h.is_null() {
+                // read back the data
+                let mut cb = vec![0u8; 2048];
+                let mut cn = 0u32;
+                c::cmsIT8SaveToMem(h,
+                    cb.as_mut_ptr() as *mut _, &mut cn);
+                c::cmsIT8Free(h);
+            }
+        }
+    }
+}
