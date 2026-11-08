@@ -2119,3 +2119,61 @@ fn conversion_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// PatchLUT/AddConversion deep arms — abstract-midchain,
+/// devicelink chains, gamut/preview links.
+#[test]
+fn conversion_arms2() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let abs = std::fs::read(dir.join("brightness.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let link = std::fs::read(dir.join("lcms2link.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        // 3+ profile chains: device->abstract->device etc
+        for (profs, intent, name) in [
+            (vec![srgb, abs, lab], 0, "srgb->abs->lab"),
+            (vec![srgb, cmyk, lab], 0, "srgb->cmyk->lab"),
+            (vec![lab, abs, srgb], 0, "lab->abs->srgb"),
+            (vec![srgb, abs, cmyk], 1, "srgb->abs->cmyk"),
+            (vec![cmyk, srgb, lab], 2, "cmyk->srgb->lab"),
+            (vec![link, lab, srgb], 0, "link->lab->srgb"),
+            (vec![srgb, link, lab], 0, "srgb->link->lab"),
+            (vec![srgb, srgb, lab], 0, "srgb->srgb->lab"),
+        ] {
+            if profs.iter().any(|p| p.is_null()) { continue; }
+            let mut ps = profs;
+            let t = c::cmsCreateMultiprofileTransform(
+                ps.as_mut_ptr(), ps.len() as i32, r16, l16,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 8];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        let _ = k16;
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !abs.is_null() { c::cmsCloseProfile(abs); }
+        if !link.is_null() { c::cmsCloseProfile(link); }
+    }
+}
