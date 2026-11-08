@@ -1962,3 +1962,43 @@ fn array_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_TextDesc internals — 'desc' bodies on more sigs.
+#[test]
+fn text_desc_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [(0x64657363u32, "desc"),
+                            (0x646D6464u32, "dmdd"),
+                            (0x646D6E64u32, "dmnd"),
+                            (0x6473636Du32, "dscm"),
+                            (0x76756564u32, "vued")] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"desc");
+            b.extend_from_slice(&[0; 4]);
+            // asciiCount + ascii + padding
+            let text = b"textdesc\0";
+            b.extend_from_slice(&(text.len() as u32)
+                .to_be_bytes());
+            b.extend_from_slice(text);
+            // pad to 12-byte alignment then unicode+script
+            while b.len() % 4 != 0 { b.push(0); }
+            b.extend_from_slice(&[0; 67]); // unicode/scriptcode
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
