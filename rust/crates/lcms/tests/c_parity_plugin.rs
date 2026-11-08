@@ -218,3 +218,110 @@ fn plugin_memh_mtxh() {
         assert_ne!(c_ok2, 0, "C mtxH accept");
     }
 }
+
+/// parH/typH/mpeH plugin types — parametric-curve + tag-type + MPE
+/// registration with real payloads.
+#[test]
+fn plugin_parh_typh_mpeh() {
+    // parH — cmsPluginParametricCurves
+    unsafe extern "C" fn eval_fn(ty: i32, params: *const f64, r: f64) -> f64 {
+        let _ = (ty, params);
+        r * r
+    }
+    #[repr(C)]
+    struct CPluginParCurves {
+        base: CPluginBase,
+        n_functions: u32,
+        function_types: [u32; 20],
+        parameter_count: [u32; 20],
+        evaluator: unsafe extern "C" fn(i32, *const f64, f64) -> f64,
+    }
+    let mut parh = CPluginParCurves {
+        base: CPluginBase { magic: 0x61637070,
+            expected_version: 2200, ty: 0x70617248, // 'parH'
+            next: std::ptr::null_mut() },
+        n_functions: 1,
+        function_types: {
+            let mut t = [0u32; 20];
+            t[0] = 100; // custom type 100
+            t
+        },
+        parameter_count: {
+            let mut c = [0u32; 20];
+            c[0] = 1;
+            c
+        },
+        evaluator: eval_fn,
+    };
+    unsafe {
+        let c_ok = c::cmsPlugin(&mut parh as *mut _ as *mut c_void);
+        assert_ne!(c_ok, 0, "C parH accept");
+    }
+
+    // typH — cmsPluginTagType: base + cmsTagTypeHandler
+    unsafe extern "C" fn read_stub(_s: *mut c_void, _io: *mut c_void,
+        _n: *mut u32, _sz: u32) -> *mut c_void { std::ptr::null_mut() }
+    unsafe extern "C" fn write_stub(_s: *mut c_void, _io: *mut c_void,
+        _p: *mut c_void, _n: u32) -> i32 { 0 }
+    unsafe extern "C" fn dup_stub(_s: *mut c_void, _p: *const c_void,
+        _n: u32) -> *mut c_void { std::ptr::null_mut() }
+    unsafe extern "C" fn free_stub(_s: *mut c_void, _p: *mut c_void) {}
+    #[repr(C)]
+    struct CTagTypeHandler {
+        signature: u32,
+        read_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut u32, u32) -> *mut c_void,
+        write_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, u32) -> i32,
+        dup_ptr: unsafe extern "C" fn(*mut c_void, *const c_void, u32) -> *mut c_void,
+        free_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void),
+        context_id: *mut c_void,
+        icc_version: u32,
+    }
+    #[repr(C)]
+    struct CPluginTagTypeFull {
+        base: CPluginBase,
+        handler: CTagTypeHandler,
+    }
+    let mut typh = CPluginTagTypeFull {
+        base: CPluginBase { magic: 0x61637070,
+            expected_version: 2200, ty: 0x74797048, // 'typH'
+            next: std::ptr::null_mut() },
+        handler: CTagTypeHandler {
+            signature: 0x74657874, // 'text'
+            read_ptr: read_stub,
+            write_ptr: write_stub,
+            dup_ptr: dup_stub,
+            free_ptr: free_stub,
+            context_id: std::ptr::null_mut(),
+            icc_version: 0x04300000,
+        },
+    };
+    unsafe {
+        let c_ok2 = c::cmsPlugin(&mut typh as *mut _ as *mut c_void);
+        assert_ne!(c_ok2, 0, "C typH accept");
+    }
+
+    // mpeH — cmsPluginMultiProcessElement: same handler shape
+    #[repr(C)]
+    struct CPluginMpeFull {
+        base: CPluginBase,
+        handler: CTagTypeHandler,
+    }
+    let mut mpeh = CPluginMpeFull {
+        base: CPluginBase { magic: 0x61637070,
+            expected_version: 2200, ty: 0x6D706548, // 'mpeH'
+            next: std::ptr::null_mut() },
+        handler: CTagTypeHandler {
+            signature: 0x6D706574, // 'mpet'
+            read_ptr: read_stub,
+            write_ptr: write_stub,
+            dup_ptr: dup_stub,
+            free_ptr: free_stub,
+            context_id: std::ptr::null_mut(),
+            icc_version: 0x04300000,
+        },
+    };
+    unsafe {
+        let c_ok3 = c::cmsPlugin(&mut mpeh as *mut _ as *mut c_void);
+        assert_ne!(c_ok3, 0, "C mpeH accept");
+    }
+}
