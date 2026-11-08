@@ -442,7 +442,10 @@ fn type_xyz_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u3
 }
 
 /// `DecideXYZtype`
-pub fn decide_xyz_type(_ver: f64, _data: &TagObject) -> u32 {
+pub fn decide_xyz_type(_ver: f64, data: &TagObject) -> u32 {
+    // Reject type-mismatched payloads — C's tag-descriptor table
+    // validates the object against the sig's allowed types.
+    if !matches!(data, TagObject::Xyz(_)) { return 0 }
     tsig::SigXYZType
 }
 
@@ -740,7 +743,12 @@ fn type_text_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u
 }
 
 /// `DecideTextType`
-pub fn decide_text_type(ver: f64, _data: &TagObject) -> u32 {
+pub fn decide_text_type(ver: f64, data: &TagObject) -> u32 {
+    if !matches!(data,
+        TagObject::Mlu(_) | TagObject::Text(_) | TagObject::TextDescription(_))
+    {
+        return 0;
+    }
     if ver >= 4.0 {
         tsig::SigMultiLocalizedUnicodeType
     } else {
@@ -995,7 +1003,7 @@ fn type_curve_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: 
 /// `DecideCurveType`
 pub fn decide_curve_type(ver: f64, data: &TagObject) -> u32 {
     let (TagObject::Curve(c) | TagObject::ParametricCurve(c)) = data else {
-        return tsig::SigCurveType;
+        return 0; // type-mismatched payload — is_type_supported rejects
     };
     if ver < 4.0 || c.segments.len() != 1 || c.segments[0].r#type < 0 || c.segments[0].r#type > 5 {
         tsig::SigCurveType
@@ -4425,7 +4433,7 @@ fn decide_lut_a2b(v: f64, d: &TagObject) -> u32 {
     | TagObject::LutB2A(lut)
     | TagObject::Mpe(lut)) = d
     else {
-        return tsig::SigLut16Type;
+        return 0; // type-mismatched payload — is_type_supported rejects
     };
     if v < 4.0 {
         if lut.save_as_8bits {
@@ -4446,7 +4454,7 @@ fn decide_lut_b2a(v: f64, d: &TagObject) -> u32 {
     | TagObject::LutB2A(lut)
     | TagObject::Mpe(lut)) = d
     else {
-        return tsig::SigLut16Type;
+        return 0; // type-mismatched payload — is_type_supported rejects
     };
     if v < 4.0 {
         if lut.save_as_8bits {
