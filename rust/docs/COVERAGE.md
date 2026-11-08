@@ -1064,3 +1064,39 @@ opt_resample_arms (HIGHRES/LOWRES/GRIDPOINTS).
   handler entries; MPE pipelines dup/free through cmsStage* fns.
 - `from16SEto*`/`from*to16SE` (3 pairs) — upstream rejects
   16SE↔float alpha conversions; dispatch arms covered.
+
+### campaign wrap — practical API ceiling
+
+Final round-24: **77.32% lines / 95.27% fns / 85.70% regions /
+69.70% branches** across 1107 passing tests (~100 gates landed
+since round 20).
+
+The remaining 0-region functions after all gates:
+
+- `cmssamp.c:RootOfLeastSquaresFitQuadraticCurve` — the only
+  genuinely-reachable uncovered function. Requires intent-1
+  `cmsDetectBlackPoint`/`cmsDetectDestinationBlackPoint` on a
+  valid-class CLUT profile whose L* round-trip deviates ≥4 from
+  identity in the 20-100% midrange (breaking
+  `NearlyStraightMidrange`). Every corpus and placeholder CLUT
+  produces either a straight midrange (early return with the
+  initial estimate) or a degenerate round-trip — needs a real
+  printer profile's characteristic ink-limiting shape.
+- Dead upstream code (9 fns): `Pack3Bytes*Optimized` (6, the
+  stock output formatter strips OPTIMIZED_SH before lookup),
+  `Prelin16dup`, `GenericMPEdup`, `GenericMPEfree`,
+  `satob` (WRITE_BINARY has no caller).
+- Upstream-rejected dispatch (3 fns): `from16SEtoHLF`,
+  `fromHLFto16SE`, `fromFLTto16SE` — lcms rejects 16SE↔float
+  alpha conversions; only the reject arm is reachable.
+- `CHAD2Temp`/`Temp2CHAD` — now covered via `chad_temp_adapt`
+  (AdaptationState=0.5 + chad tags -> ComputeAbsoluteIntent
+  incomplete-adaptation arm).
+
+All other uncovered mass is branch detail inside covered
+functions (~2900 regions): lexer token-form arms in cmscgats,
+per-cell packer bodies in cmspack, deep tag-read/write branches
+in cmstypes, and optimizer/conversion internals. The suite is
+green under the normal build (1107 tests) and produces usable
+aggregate coverage under clang instrumentation (3 known
+codegen-class target failures: cam02/pcs/xform2).
