@@ -22579,3 +22579,79 @@ fn internal_final53_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — cmsLinkTag linked-tag internals
+///   (link→save→reopen→read through link, unlink by
+///   rewrite, link chains/cycles).
+#[test]
+fn internal_final54_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (dst, lnk, name) in [
+            (0x72545243u32, 0x67545243, "rTRC<-gTRC"),
+            (0x72545243, 0x62545243, "rTRC<-bTRC"),
+            (0x72545243, 0x6B545243, "rTRC<-kTRC"),
+            (0x67545243, 0x62545243, "gTRC<-bTRC"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, dst, g as *const _);
+            let l = c::cmsLinkTag(prof, lnk, dst);
+            let cnt = c::cmsGetTagCount(prof);
+            let to = c::cmsTagLinkedTo(prof, lnk);
+            let is_ = c::cmsIsTag(prof, lnk);
+            let t = c::cmsReadTag(prof, lnk);
+            eprintln!("{name} l={l} cnt={cnt} to={to:#x} \
+                is={is_} read={}", !t.is_null());
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            if !rp.is_null() {
+                let l2 = c::cmsTagLinkedTo(rp, lnk);
+                let t2 = c::cmsReadTag(rp, lnk);
+                eprintln!("  reopen: linked={l2:#x} \
+                    read={}", !t2.is_null());
+                c::cmsCloseProfile(rp);
+            }
+            c::cmsCloseProfile(prof);
+        }
+        // link chain: A<-B<-C and self-link attempts
+        for (seq, name) in [
+            (vec![(0x67545243u32, 0x72545243),
+                  (0x62545243, 0x67545243)], "chain2"),
+            (vec![(0x72545243u32, 0x72545243)], "self"),
+            (vec![(0x62545243u32, 0x67545243),
+                  (0x67545243, 0x62545243)], "cycle"),
+            (vec![(0x6B545243u32, 0xFFFFFFFF)], "baddest"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, 0x72545243, g as *const _);
+            let mut out = String::new();
+            for (lnk, dst) in &seq {
+                let l = c::cmsLinkTag(prof, *lnk, *dst);
+                out += &format!(" {lnk:#x}->{dst:#x}={l}");
+            }
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("{name}{out} s={s}");
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
