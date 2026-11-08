@@ -738,3 +738,38 @@ fn illuminant_mutations() {
         }
     }
 }
+
+/// Flags/attributes/intent mutations — the remaining header
+/// validation internals.
+#[test]
+fn flags_attr_intent() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // flags @44-48, intent @64-68, attributes @56-64
+        for (name, off, val) in [
+            ("flags-0", 44usize, 0u32),
+            ("flags-1", 44, 1u32),
+            ("flags-huge", 44, 0xFFFFFFFFu32),
+            ("intent-0", 64, 0u32),
+            ("intent-1", 64, 1u32),
+            ("intent-3", 64, 3u32),
+            ("intent-4", 64, 4u32),
+            ("intent-huge", 64, 0xFFFFFFFFu32),
+            ("attr-0", 56, 0u32),
+            ("attr-neg", 56, 0xFFFFFFFFu32),
+        ] {
+            let mut dd = d.clone();
+            dd[off..off + 4].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
