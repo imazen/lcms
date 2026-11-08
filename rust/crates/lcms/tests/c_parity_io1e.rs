@@ -1819,3 +1819,36 @@ fn mpet_machinery() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Each MPE element type through the 'mpet' write — the
+/// element-serialization dispatch.
+#[test]
+fn mpe_each_element() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let grid = [4u32; 3];
+        let tab = [0.5f32; 4 * 4 * 4 * 3];
+        for (name, st) in [
+            ("cvst", c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr())),
+            ("matf", c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3, mat.as_ptr(),
+                std::ptr::null())),
+            ("clut", c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+                tab.as_ptr())),
+        ] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(pl, 1, st);
+            let ok = c::cmsWriteTag(h, 0x41324230,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+            c::cmsPipelineFree(pl);
+        }
+        c::cmsCloseProfile(h);
+    }
+}
