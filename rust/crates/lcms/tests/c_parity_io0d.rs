@@ -6053,3 +6053,59 @@ fn multi_item_array_reads() {
         }
     }
 }
+
+/// Type_ParametricCurve_Read arms — 'para' tags with each
+/// function type and malformed variants.
+#[test]
+fn param_curve_read_arms() {
+    unsafe {
+        let mk = |ptype: u16, params: &[i32]| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x70617261u32.to_be_bytes()); // 'para'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&ptype.to_be_bytes());
+            t.extend_from_slice(&[0; 2]);
+            for &v in params {
+                t.extend_from_slice(&v.to_be_bytes());
+            }
+            t
+        };
+        let fx = |v: f64| (v * 65536.0) as i32; // S15Fixed16
+        for (ptype, params, name) in [
+            (0u16, &[fx(2.2)][..], "t0"),
+            (1, &[fx(2.2), fx(1.0), fx(0.0)][..], "t1"),
+            (2, &[fx(2.2), fx(1.0), fx(0.0), fx(0.0)][..], "t2"),
+            (3, &[fx(2.2), fx(1.0), fx(0.0), fx(0.0), fx(0.0)][..], "t3"),
+            (4, &[fx(2.2), fx(1.0), fx(0.0), fx(0.0), fx(0.0),
+                  fx(0.0), fx(0.0)][..], "t4"),
+            (5, &[fx(2.2), fx(1.0), fx(0.0), fx(0.0), fx(0.0),
+                  fx(0.0), fx(0.0)][..], "t5"),
+            (6, &[fx(1.0), fx(0.0), fx(0.0), fx(1.0)][..], "t6"),
+            (7, &[fx(1.0), fx(0.0), fx(0.0), fx(0.0), fx(0.0)][..], "t7"),
+            (8, &[fx(1.0), fx(0.0), fx(0.0), fx(0.0), fx(0.0)][..], "t8"),
+            (9, &[fx(1.0)][..], "t9-bad"),
+            (4, &[fx(1.0)][..], "t4-trunc"),
+        ] {
+            let raw = mk(ptype, params);
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x72545243,
+                raw.as_ptr() as *const _, raw.len() as u32); // rTRC
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x72545243)
+            } else { std::ptr::null_mut() };
+            let pt = if !tag.is_null() {
+                c::cmsGetToneCurveParametricType(tag as *const _)
+            } else { -1 };
+            eprintln!("para-{name} s={s} read={} pt={pt}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
