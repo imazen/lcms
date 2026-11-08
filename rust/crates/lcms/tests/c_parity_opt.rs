@@ -125,3 +125,63 @@ fn optimizer_branch_matrix() {
         }
     }
 }
+
+/// OptimizeMatrixShaper arms — 3-stage curves->matrix->curves and
+/// 4-stage curves->matrix->matrix->curves pipelines through the
+/// optimizer; also JoiningCurves (adjacent curve sets). Constructs
+/// the pipeline shapes via profile tags.
+#[test]
+fn opt_matrix_shaper_shapes() {
+    unsafe {
+        // 4-stage: curves->matrix->matrix->curves — build via a
+        // devicelink profile carrying that pipeline shape
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let mat2: [f64; 9] = [1.1,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,0.9];
+        for (name, n_stages) in [("m3", 3u8), ("m4", 4u8)] {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                    mat.as_ptr(), std::ptr::null()));
+            if n_stages == 4 {
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                        mat2.as_ptr(), std::ptr::null()));
+            }
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6c696e6b); // 'link'
+            c::cmsSetColorSpace(prof, 0x52474220);  // 'RGB '
+            c::cmsSetPCS(prof, 0x4C616220);          // 'Lab '
+            c::cmsWriteTag(prof, 0x41324230, p as *const _); // A2B0
+            // devicelink alone IS the transform
+            let t = c::cmsCreateTransform(prof, 0x00ff04,
+                prof, 0x00ff04, 0, 0);
+            eprintln!("{name}: t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        // JoiningCurves — profile with two adjacent curve sets
+        let p2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        let prof2 = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof2, 0x6c696e6b);
+        c::cmsSetColorSpace(prof2, 0x52474220);
+        c::cmsSetPCS(prof2, 0x4C616220);
+        c::cmsWriteTag(prof2, 0x41324230, p2 as *const _);
+        let t2 = c::cmsCreateTransform(prof2, 0x00ff04,
+            prof2, 0x00ff04, 0, 0);
+        eprintln!("jc: t={}", !t2.is_null());
+        if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        c::cmsCloseProfile(prof2);
+        c::cmsPipelineFree(p2);
+    }
+}
