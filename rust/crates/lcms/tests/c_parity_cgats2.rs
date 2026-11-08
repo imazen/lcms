@@ -2084,3 +2084,63 @@ fn it8_insymbol_arms() {
         }
     }
 }
+
+/// HeaderSection — WRITE_PAIR property arms: WEIGHTING_FUNCTION +
+/// COMPUTATIONAL_PARAMETER in subkey;value pair syntax.
+#[test]
+fn it8_header_pair_arms() {
+    unsafe {
+        let tail = b"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n1\nEND_DATA\n".to_vec();
+        let doc = |props: &str| -> Vec<u8> {
+            let mut d = b"IT8FILE\n".to_vec();
+            d.extend_from_slice(props.as_bytes());
+            d.extend_from_slice(&tail);
+            d
+        };
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (doc("WEIGHTING_FUNCTION \"observer;10deg\""),
+                "wf-pair"),
+            (doc("WEIGHTING_FUNCTION \"observer;10deg;\
+                illuminant;D65\""), "wf-2pairs"),
+            (doc("COMPUTATIONAL_PARAMETER \"method;CIE15\""),
+                "cp-pair"),
+            (doc("WEIGHTING_FUNCTION \"observer\""),
+                "wf-nopair"),
+            (doc("WEIGHTING_FUNCTION 42"), "wf-nonstring"),
+            (doc("WEIGHTING_FUNCTION \";\""), "wf-empty"),
+            (doc("WEIGHTING_FUNCTION \"a;;b\""),
+                "wf-empty-val"),
+            (doc("WEIGHTING_FUNCTION \"a;b;c\""),
+                "wf-odd"),
+            (doc("NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+                WEIGHTING_FUNCTION \"x;y\"\nORIGINATOR \"o\""),
+                "wf-mid"),
+        ];
+        for (d, name) in &variants {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                d.as_ptr() as *const _, d.len() as u32);
+            let ok = !p.is_null();
+            eprintln!("{name} ok={ok}");
+            if ok {
+                // round-trip via SetPropertyMulti + save
+                c::cmsIT8SetPropertyMulti(p,
+                    "WEIGHTING_FUNCTION\0".as_ptr() as *const i8,
+                    "observer\0".as_ptr() as *const i8,
+                    "2deg\0".as_ptr() as *const i8);
+                let mut buf = vec![0u8; 1 << 16];
+                let mut n = buf.len() as u32;
+                let sv = c::cmsIT8SaveToMem(p,
+                    buf.as_mut_ptr() as *mut _, &mut n);
+                if sv != 0 {
+                    let p2 = c::cmsIT8LoadFromMem(
+                        std::ptr::null_mut(),
+                        buf.as_ptr() as *const _, n);
+                    if !p2.is_null() { c::cmsIT8Free(p2); }
+                }
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
