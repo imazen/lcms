@@ -26020,3 +26020,50 @@ fn internal_searchtag_arms() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// cmsio0 residual — ReadEmbeddedTextTag via
+///   GetInfo/getProfileInfo on every text-type tag +
+///   lang/country variants.
+#[test]
+fn internal_texttag_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // text-bearing tags on srgb: desc/cprt/
+        //   dmnd/dmdd/lumi/targ/vued
+        let mut buf = [0i8; 256];
+        for (info, name) in [
+            (0u32, "desc"), (1, "mfr"), (2, "model"),
+            (3, "cprt"), (4, "tech"), (5, "lumi"),
+            (6, "meas"), (7, "bkpt"), (8, "wtpt"),
+            (9, "gamt"), (0x0A, "desc2"),
+            (0xFFFFFFFF, "bogus"),
+        ] {
+            for (lang, ctry) in [
+                (b"en\0" as &[u8], b"US\0"),
+                (b"de\0", b"DE\0"), (b"fr\0", b"FR\0"),
+                (b"xx\0", b"YY\0"),
+            ] {
+                let n = c::cmsGetProfileInfo(srgb, info,
+                    lang.as_ptr() as *const i8,
+                    ctry.as_ptr() as *const i8,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                if n > 0 && (info < 4 || lang == b"de\0") {
+                    let s = std::ffi::CStr::from_ptr(
+                        buf.as_ptr()).to_string_lossy();
+                    eprintln!("{name} {lang:?} = {s}"); }
+                else if n == 0 && info < 4 {
+                    eprintln!("{name} {lang:?} miss"); }
+            }
+        }
+        // ReadTag text internals via each text tag
+        for tag in [0x64657363u32, 0x63707274,
+                    0x646D6E64, 0x646D6464,
+                    0x6C756D69, 0x74617267,
+                    0x76756564] {
+            let rd = c::cmsReadTag(srgb, tag);
+            eprintln!("read {tag:#x}={}", !rd.is_null());
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
