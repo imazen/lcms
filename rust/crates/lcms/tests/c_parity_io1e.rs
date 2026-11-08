@@ -1165,3 +1165,29 @@ fn tag_size_mismatch() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'targ' with an IT8 doc payload — the charTarget machinery.
+#[test]
+fn targ_it8() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // 'targ' takes an IT8 doc as text — the charTarget
+        let doc = "IT8.7/2\nORIGINATOR \"lcms\"\n\
+            NUMBER_OF_FIELDS 3\nBEGIN_DATA_FORMAT\nRGB_R RGB_G \
+            RGB_B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA\n1.0 0.5 0.25\nEND_DATA\n";
+        let ok = c::cmsWriteTag(h, 0x74617267,
+            doc.as_ptr() as *const std::ffi::c_void);
+        eprintln!("targ write={ok}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x74617267);
+        eprintln!("targ read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
