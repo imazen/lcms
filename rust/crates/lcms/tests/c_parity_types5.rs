@@ -3188,3 +3188,26 @@ fn write_dispatch_mlu() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a named-color payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_named() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 3,
+            b"P\0".as_ptr() as _,
+            b"S\0".as_ptr() as _);
+        for (sig, name) in [
+            (0x636C6F74u32, "clot"), (0x636C7274u32, "clrt"),
+            (0x6E64696Eu32, "ndin"), (0x41324230u32, "A2B0"),
+            (0x63696370u32, "cicp")] {
+            let ok = c::cmsWriteTag(h, sig,
+                ncl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsFreeNamedColorList(ncl);
+        c::cmsCloseProfile(h);
+    }
+}
