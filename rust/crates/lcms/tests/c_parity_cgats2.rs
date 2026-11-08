@@ -980,3 +980,50 @@ fn it8_deep_arms() {
     }
 }
 
+
+/// cmscgats header/data deep arms — KEYWORD/DATA_FORMAT_ID
+/// directives, WRITE_PAIR values, quoted vs uncooked props.
+#[test]
+fn it8_header_arms() {
+    unsafe {
+        let docs: Vec<(&[u8], &str)> = vec![
+            // KEYWORD directive declares a custom keyword
+            (b"IT8FILE\nKEYWORD \"CUSTOM_PROP\"\nCUSTOM_PROP \"v\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "keyword-dir"),
+            // DATA_FORMAT_ID declares a format id
+            (b"IT8FILE\nDATA_FORMAT_ID \"fmt1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "datafmt-id"),
+            // quoted-string vs bare-number property values
+            (b"IT8FILE\nP1 \"quoted\"\nP2 42\nP3 3.14\nP4 0x1F\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "prop-forms"),
+            // WRITE_PAIR value (subkey,value;...) — needs
+            // SetPropertyMulti first on a loaded doc
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "for-pair"),
+            // multiple keywords + sample ids
+            (b"IT8FILE\nKEYWORD \"K1\"\nKEYWORD \"K2\"\nDATA_FORMAT_ID \"d1\"\nK1 \"a\"\nK2 \"b\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "multi-kw"),
+            // property value with inline comment
+            (b"IT8FILE\nP1 \"v\" # comment\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "inline-cmt"),
+            // no-space between tokens
+            (b"IT8FILE\nP1=\"v\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "nospace-eq"),
+            // unicode + special chars in quoted strings
+            ("IT8FILE\nP1 \"café ☕\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".as_bytes(), "utf8-str"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                if name == "for-pair" {
+                    // WRITE_PAIR arm — SetPropertyMulti writes the
+                    // pair form which HeaderSection then parses
+                    c::cmsIT8SetPropertyMulti(p,
+                        b"PAIR\0".as_ptr() as *const _,
+                        b"k1\0".as_ptr() as *const _,
+                        b"v1\0".as_ptr() as *const _);
+                    let v = c::cmsIT8GetProperty(p,
+                        b"PAIR\0".as_ptr() as *const _);
+                    eprintln!("  pair-val={}", !v.is_null());
+                }
+                let _nt = c::cmsIT8TableCount(p);
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
