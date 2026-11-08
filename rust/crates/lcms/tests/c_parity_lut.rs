@@ -2128,3 +2128,62 @@ fn float_lut_reads() {
         c::cmsCloseProfile(s2);
     }
 }
+
+/// Optimized-pipeline duplication — cmsPipelineDup on a transform's
+/// optimized LUT invokes the optimizer's dup callbacks
+/// (Prelin16dup/Prelin8dup/CurvesDup/DupMatShaper).
+#[test]
+fn optimized_pipeline_dup() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let pb = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../aRGBlcms2.icc");
+        let pth = std::ffi::CString::new(pb.to_str().unwrap()).unwrap();
+        let argb = c::cmsOpenProfileFromFile(pth.as_ptr(), b"r\0".as_ptr());
+        let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
+        let rgb16: u32 = (4 << 16) | (3 << 3) | 2;
+        // matshaper opt (srgb->argb), u8 (prelin8) + u16 (prelin16)
+        for (name, a, b, fi, fo) in [
+            ("ms8", srgb, argb, rgb8, rgb8),
+            ("ms16", srgb, argb, rgb16, rgb16),
+        ] {
+            let t = c::cmsCreateTransform(a, fi, b, fo, 0, 0);
+            if t.is_null() { eprintln!("{name} no-xform"); continue; }
+            let p = c::cmsGetTransformPipeline(t);
+            let d = c::cmsPipelineDup(p);
+            eprintln!("{name} pipe={} dup={}",
+                !p.is_null(), !d.is_null());
+            if !d.is_null() { c::cmsPipelineFree(d); }
+            c::cmsDeleteTransform(t);
+        }
+        // curves-only opt — gray profile transform
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gp = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let gray8: u32 = (3 << 16) | (1 << 3) | 1;
+        let t = c::cmsCreateTransform(gp, gray8, gp, gray8, 0, 0);
+        if !t.is_null() {
+            let p = c::cmsGetTransformPipeline(t);
+            let d = c::cmsPipelineDup(p);
+            eprintln!("curves dup={}", !d.is_null());
+            if !d.is_null() { c::cmsPipelineFree(d); }
+            c::cmsDeleteTransform(t);
+        }
+        // devicelink lut pipeline (clut+curves) -> prelin
+        let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [gg; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220, cc.as_mut_ptr());
+        let t = c::cmsCreateTransform(dl, rgb8, dl, rgb8, 0, 0);
+        if !t.is_null() {
+            let p = c::cmsGetTransformPipeline(t);
+            let d = c::cmsPipelineDup(p);
+            eprintln!("link dup={}", !d.is_null());
+            if !d.is_null() { c::cmsPipelineFree(d); }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(argb);
+        c::cmsCloseProfile(gp);
+        c::cmsCloseProfile(dl);
+    }
+}
