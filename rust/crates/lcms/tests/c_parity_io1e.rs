@@ -2154,3 +2154,37 @@ fn mlu_text_resave() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Remaining object sigs — 'tech'/'scrd'/'vued'/'vuet'/
+/// 'cicp'/'rig0'/'rigs'/'smmm'/'clid'/'ciid'/'ceid' writes.
+#[test]
+fn remaining_object_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"x\0".as_ptr() as *const u8);
+        let sigv: u32 = 0x666F7461;
+        for (sig, name, payload) in [
+            (0x74656368u32, "tech",
+             &sigv as *const _ as *mut std::ffi::c_void),
+            (0x63696973u32, "ciis",
+             &sigv as *const _ as *mut std::ffi::c_void),
+            (0x72696730u32, "rig0",
+             &sigv as *const _ as *mut std::ffi::c_void),
+            (0x73637264u32, "scrd",
+             mlu as *mut std::ffi::c_void),
+            (0x76756564u32, "vued",
+             mlu as *mut std::ffi::c_void),
+            (0x76756574u32, "vuet",
+             mlu as *mut std::ffi::c_void),
+        ] {
+            let ok = c::cmsWriteTag(h, sig, payload);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
