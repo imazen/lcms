@@ -24252,3 +24252,112 @@ fn internal_final69_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmscnvrt residual — GetSupportedIntentsTHR internals
+///   (description-copy branches, nMax limits, context
+///   enumeration on intent-plugin-bearing ctxs).
+#[test]
+fn internal_final70_arms() {
+    unsafe {
+        for (nmax, name) in [
+            (0u32, "0"), (1, "1"), (4, "4"), (8, "8"),
+            (12, "12"), (16, "16"), (32, "32"), (255, "255"),
+        ] {
+            // Codes-only
+            let mut codes = vec![0u32; nmax.max(1)
+                as usize];
+            let n1 = c::cmsGetSupportedIntents(nmax,
+                codes.as_mut_ptr() as *mut _,
+                std::ptr::null_mut());
+            // Codes+Descriptions
+            let mut descs: Vec<*const i8> =
+                vec![std::ptr::null(); nmax.max(1)
+                    as usize];
+            let n2 = c::cmsGetSupportedIntents(nmax,
+                codes.as_mut_ptr() as *mut _,
+                descs.as_mut_ptr() as *mut _);
+            // NULL both
+            let n3 = c::cmsGetSupportedIntents(nmax,
+                std::ptr::null_mut(),
+                std::ptr::null_mut());
+            // THR on default + custom ctx
+            let n4 = c::cmsGetSupportedIntentsTHR(
+                std::ptr::null_mut(), nmax,
+                codes.as_mut_ptr() as *mut _,
+                descs.as_mut_ptr() as *mut _);
+            eprintln!("n{nmax} {name} \
+                {n1}/{n2}/{n3}/{n4}");
+            for i in 0..(n4 as usize)
+                .min(codes.len()).min(4) {
+                eprintln!("  i{i} code={:#x} d={}",
+                    codes[i], !descs[i].is_null());
+            }
+        }
+        // on an intent-plugin-bearing context
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct IntentPlugin {
+            base: PluginBase,
+            intent: u32,
+            link: *const std::ffi::c_void,
+            desc: [u8; 256],
+        }
+        unsafe extern "C" fn lnk(
+            _c: *mut std::ffi::c_void,
+            _n: u32, _i: *mut u32,
+            _p: *mut *mut std::ffi::c_void,
+            _b: *mut i32, _a: *mut f64, _f: u32)
+            -> *mut std::ffi::c_void {
+            std::ptr::null_mut()
+        }
+        for (iplug, name) in [
+            (0u32, "none"), (1, "one"), (3, "three"),
+        ] {
+            let ctx2 = c::cmsCreateContext(
+                std::ptr::null_mut(), std::ptr::null_mut());
+            let mut plugs: Vec<IntentPlugin> = vec![];
+            for i in 0..iplug {
+                let mut d = [0u8; 256];
+                let s = format!("intent-{i}\0");
+                d[..s.len()].copy_from_slice(s.as_bytes());
+                plugs.push(IntentPlugin {
+                    base: PluginBase {
+                        magic: 0x61637070,
+                        ver: 2200,
+                        typ: 0x696E7448,
+                        next: std::ptr::null_mut(),
+                    },
+                    intent: 50 + i,
+                    link: lnk as *const std::ffi::c_void,
+                    desc: d,
+                });
+            }
+            for p_ in &plugs {
+                c::cmsPluginTHR(ctx2,
+                    p_ as *const _ as *mut _);
+            }
+            let mut codes = vec![0u32; 64];
+            let mut descs: Vec<*const i8> =
+                vec![std::ptr::null(); 64];
+            let n = c::cmsGetSupportedIntentsTHR(ctx2,
+                64, codes.as_mut_ptr() as *mut _,
+                descs.as_mut_ptr() as *mut _);
+            eprintln!("{name} plugctx n={n}");
+            let d = c::cmsDupContext(ctx2,
+                std::ptr::null_mut());
+            let n2 = c::cmsGetSupportedIntentsTHR(d,
+                64, codes.as_mut_ptr() as *mut _,
+                descs.as_mut_ptr() as *mut _);
+            eprintln!("  dupctx n={n2}");
+            if !d.is_null() { c::cmsDeleteContext(d); }
+            c::cmsDeleteContext(ctx2);
+        }
+        c::cmsDeleteContext(ctx);
+    }
+}
