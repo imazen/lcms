@@ -5983,3 +5983,75 @@ fn xform_blacktrail_arms() {
             c::cmsCloseProfile(p); }
     }
 }
+
+/// cmsvirt residual — Transform2DeviceLink: Output
+///   Class output -> BToA0 tag; FORCE_CLUT -> null
+///   LUT; colorant-tag writes on link/input profiles.
+#[test]
+fn xform_devlink2_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        // output-class target profile (prtr RGB)
+        let prtr = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prtr, 0x70727472);
+        c::cmsSetColorSpace(prtr, 0x52474220);
+        c::cmsSetPCS(prtr, 0x4C616220);
+        c::cmsSetProfileVersion(prtr, 4.4);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        let tcs = [g, g, g];
+        let pipe_out = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(pipe_out, 0,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                tcs.as_ptr() as *mut _));
+        c::cmsWriteTag(prtr, 0x42324130,
+            pipe_out as *const _);
+        let xyz = [0x0000F6D6u32, 0x00010000, 0x0000D32D];
+        c::cmsWriteTag(prtr, 0x77747074,
+            xyz.as_ptr() as *const _);
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // transforms -> devicelinks at various combos
+        for (a, afmt, b, bfmt, flags, name) in [
+            (srgb, frgb, lab4, flab, 0u32, "srgb->lab4"),
+            (srgb, frgb, prtr, frgb, 0, "srgb->prtr"),
+            (lab4, flab, srgb, frgb, 0, "lab4->srgb"),
+            (lab4, flab, prtr, frgb, 0, "lab4->prtr"),
+            (srgb, frgb, lab4, flab, 0x4000, "forceclut"),
+            (srgb, frgb, prtr, frgb, 0x4000, "prtr-clut"),
+            (srgb, frgb, lab4, flab, 0x8000, "noclang"),
+        ] {
+            let t = c::cmsCreateTransform(a, afmt,
+                b, bfmt, 0, 0);
+            if t.is_null() {
+                eprintln!("{name} xform=0"); continue; }
+            for ver in [2.0f64, 3.0, 4.0, 4.3, 4.4] {
+                let dl = c::cmsTransform2DeviceLink(
+                    t, ver, flags);
+                eprintln!("{name} v{ver} dl={}",
+                    !dl.is_null());
+                if !dl.is_null() {
+                    // check the link saved with a tag
+                    let mut buf = [0u8; 1 << 17];
+                    let mut n = buf.len() as u32;
+                    let sv = c::cmsSaveProfileToMem(dl,
+                        buf.as_mut_ptr() as *mut _,
+                        &mut n);
+                    if ver == 4.4 {
+                        eprintln!("  sv={sv}"); }
+                    c::cmsCloseProfile(dl);
+                }
+            }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(prtr);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(srgb);
+        c::cmsPipelineFree(pipe_out);
+        c::cmsFreeToneCurve(g);
+    }
+}
