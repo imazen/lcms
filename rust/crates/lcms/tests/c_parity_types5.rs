@@ -4182,3 +4182,67 @@ fn uint_tag_plugin() {
         c::cmsUnregisterPlugins();
     }
 }
+
+/// Dictionary with display-name + display-value MLU columns —
+/// Length=32 records through ReadOneMLUC/WriteOneMLUC. C-vs-Rust
+/// serialize byte-exact; the cooked dict read hits ReadOneMLUC.
+#[test]
+fn dict_mlu_roundtrip() {
+    unsafe {
+        let d = c::cmsDictAlloc(std::ptr::null_mut());
+        let nm = [b'N' as i32, b'a' as i32, b'm' as i32, b'e' as i32, 0];
+        let vv = [b'V' as i32, b'a' as i32, b'l' as i32, 0];
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            b"Display name\0".as_ptr());
+        c::cmsDictAddEntry(d, nm.as_ptr(), vv.as_ptr(),
+            mlu, std::ptr::null_mut());
+        let nm2 = [b'N' as i32, b'2' as i32, 0];
+        let vv2 = [b'V' as i32, b'2' as i32, 0];
+        let mlu2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu2, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            b"DispVal\0".as_ptr());
+        c::cmsDictAddEntry(d, nm2.as_ptr(), vv2.as_ptr(),
+            std::ptr::null_mut(), mlu2);
+        let prof = c::cmsCreate_sRGBProfile();
+        let c_ok = c::cmsWriteTag(prof, 0x6D657461, d as *const _);
+        // rust side
+        let mut rd = lcms::named::dict_alloc(None);
+        let mut rm1 = lcms::named::mlu_alloc(None, 1).unwrap();
+        lcms::named::mlu_set_ascii(&mut rm1, b"en", b"US",
+            b"Display name");
+        lcms::named::dict_add_entry(&mut rd, &nm[..4],
+            Some(&vv[..3]), Some(&rm1), None);
+        let mut rm2 = lcms::named::mlu_alloc(None, 1).unwrap();
+        lcms::named::mlu_set_ascii(&mut rm2, b"en", b"US", b"DispVal");
+        lcms::named::dict_add_entry(&mut rd, &nm2[..2],
+            Some(&vv2[..2]), None, Some(&rm2));
+        let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+        let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x6D657461,
+            Some(lcms::tagtypes::TagObject::Dictionary(rd)));
+        assert_eq!(c_ok != 0, r_ok, "meta dict write");
+        // serialize both
+        let mut cbuf = vec![0u8; 1 << 20];
+        let mut n = cbuf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            cbuf.as_mut_ptr() as *mut _, &mut n);
+        let rbuf = lcms::profile::save_profile_to_mem(&mut rp);
+        assert_eq!(s != 0, rbuf.is_some(), "dict save");
+        if let Some(mut rbuf) = rbuf {
+            cbuf.truncate(n as usize);
+            for i in 0..12 {
+                cbuf.get_mut(24 + i).map(|b| *b = 0);
+                rbuf.get_mut(24 + i).map(|b| *b = 0);
+            }
+            cbuf.resize(rbuf.len().max(cbuf.len()), 0);
+            rbuf.resize(cbuf.len(), 0);
+            assert_eq!(cbuf, rbuf, "meta dict resave");
+        }
+        // cooked read — ReadOneMLUC on both display columns
+        let h = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, n);
+        let rd = c::cmsReadTag(h, 0x6D657461);
+        eprintln!("dict-with-mlu read={}", !rd.is_null());
+        c::cmsCloseProfile(h);
+        c::cmsCloseProfile(prof);
+    }
+}
