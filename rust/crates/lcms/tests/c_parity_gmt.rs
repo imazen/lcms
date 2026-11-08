@@ -98,3 +98,44 @@ fn is_clut_matrix() {
         }
     }
 }
+
+/// GBD lifecycle + edge cases: degenerate points, boundary checks,
+/// dup/free paths.
+#[test]
+fn gbd_edge_cases() {
+    unsafe {
+        let cg = c::cmsGBDAlloc(std::ptr::null_mut());
+        let mut rg = lcms::gbd::Gbd::alloc(None);
+        // degenerate inputs — the same point, zeros, boundary values
+        let pts = [
+            (0.0f64, 0.0f64, 0.0f64),
+            (0.0, 0.0, 0.0),       // duplicate
+            (50.0, 0.0, 0.0),
+            (100.0, 0.0, 0.0),
+            (50.0, 127.0, 127.0),
+            (50.0, -128.0, -128.0),
+            (0.0, 127.0, -128.0),
+            (100.0, -128.0, 127.0),
+        ];
+        for (i, &(l, a, b)) in pts.iter().enumerate() {
+            let lab = lcms::types::CieLab { L: l, a, b };
+            let clab = c::CieLab { L: l, a, b };
+            assert_eq!(
+                c::cmsGDBAddPoint(cg, &clab as *const _ as *const _) != 0,
+                rg.add_point(&lab),
+                "edge add pt{i}");
+        }
+        // compute on the sparse set
+        assert_eq!(c::cmsGDBCompute(cg, 0) != 0, rg.compute(0), "edge compute");
+        // boundary checks — the exact added points + slightly off
+        for (i, &(l, a, b)) in pts.iter().enumerate() {
+            let lab = lcms::types::CieLab { L: l, a, b };
+            let clab = c::CieLab { L: l, a, b };
+            assert_eq!(
+                c::cmsGDBCheckPoint(cg, &clab as *const _ as *const _) != 0,
+                rg.check_point(&lab),
+                "edge check pt{i}");
+        }
+        c::cmsGBDFree(cg);
+    }
+}
