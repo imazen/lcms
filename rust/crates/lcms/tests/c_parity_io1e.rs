@@ -1128,3 +1128,40 @@ fn real_lut_reads() {
         }
     }
 }
+
+/// Stored-tag-size validation — read a tag whose stored size
+/// mismatches the type's expectation.
+#[test]
+fn tag_size_mismatch() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // write an XYZ body to 'wtpt' — reads 1 XYZ; then a
+        // 2-XYZ body to the same sig — the size-check machinery
+        for (name, n) in [("1-elem", 1u32), ("2-elem", 2),
+                          ("0-elem", 0), ("big", 64)] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"XYZ ");
+            b.extend_from_slice(&[0; 4]);
+            for _ in 0..n {
+                b.extend_from_slice(&0x00010000i32.to_be_bytes());
+                b.extend_from_slice(&0x00010000i32.to_be_bytes());
+                b.extend_from_slice(&0x00010000i32.to_be_bytes());
+            }
+            let ok = c::cmsWriteRawTag(h, 0x77747074,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x77747074);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
