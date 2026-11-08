@@ -881,3 +881,32 @@ fn colorspace_mutations() {
         }
     }
 }
+
+/// Tag-entry offset/size machinery — unusual tag bounds.
+#[test]
+fn tag_bounds() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the first tag's size field (offset+8)
+        for (name, off, v) in [
+            ("sz-huge", 128+8, 0xFF000000u32),
+            ("sz-0", 128+8, 0u32),
+            ("sz-neg", 128+8, 0x80000000u32),
+            ("off-huge", 128+4, 0xFF000000u32),
+            ("off-0", 128+4, 0u32),
+            ("off-end", 128+4, (cn-4))] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
