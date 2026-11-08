@@ -1920,3 +1920,45 @@ fn it8_deep_arms18() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/DataSection arms —
+/// every remaining token-form + table-structure variant.
+#[test]
+fn it8_deep_arms19() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // every data-value form across all numeric classes
+            (b"IT8FILE\nNUMBER_OF_FIELDS 6\nNUMBER_OF_SETS 8\nBEGIN_DATA_FORMAT\nA B C D E F\nEND_DATA_FORMAT\nBEGIN_DATA\n0 1 -1 +1 .5 -.5\n1.5 -1.5 +1.5 1. -1. +1.\n0x0 0x1 -0x1 +0x1 0xFF -0xFF\n1e0 1e1 1e-1 1e+1 -1e0 -1e1\n1E0 1E1 1E-1 1E+1 -1E0 -1E1\n0.0 -0.0 +0.0 0.0e0 -0.0e0 +0.0e0\n1.5e-3 -1.5e-3 +1.5e-3 1.5E+3 -1.5E+3 +1.5E+3\n0xABCDEF 0xabcdef -0xABCDEF +0xabcdef 0x0FF 0xFF0\nEND_DATA\n".to_vec(), "num-classes"),
+            // property values that span multiple words
+            (b"IT8FILE\nP1 one two three four five\nP2 \"one two three four five\"\nP3 six\nP4 \"seven\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "multi-word"),
+            // data format names that are numbers
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n1 2.5 0x1F\nEND_DATA_FORMAT\nBEGIN_DATA\na b c\nEND_DATA\n".to_vec(), "num-fnames"),
+            // property name that starts with underscore/digit
+            (b"IT8FILE\n_P1 \"v\"\n_P2 \"w\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "underscore"),
+            // data-format section inside quotes
+            (b"IT8FILE\nP1 \"BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "fmt-in-str"),
+            // deeply nested quoted escapes
+            (b"IT8FILE\nP1 \"a\\\"b\\\"c\\\"d\"\nP2 \"x\\\\y\\\\z\"\nP3 \"\\u{263A}\\u{1F600}\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "deep-esc2"),
+            // comment at every boundary
+            (b"IT8FILE\n#1\nNUMBER_OF_FIELDS 1\n#2\nNUMBER_OF_SETS 1\n#3\nBEGIN_DATA_FORMAT\n#4\nA\n#5\nEND_DATA_FORMAT\n#6\nBEGIN_DATA\n#7\n1\n#8\nEND_DATA\n#9\n".to_vec(), "cmt-all"),
+            // data values with leading/trailing whitespace
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n 1\t 2\n3\t4 \nEND_DATA\n".to_vec(), "ws-data2"),
+            // data identifier with all characters
+            (b"IT8FILE\nDATA_IDENTIFIER \"a-b_c.d:e!f@g#h$i%j&k*l(m)n\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "id-chars"),
+            // NUMBER_OF_FIELDS/SETS with scientific notation
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1e0\nNUMBER_OF_SETS 1E0\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "sci-counts"),
+            // property with value = another property name
+            (b"IT8FILE\nP1 P2\nP2 P3\nP3 P4\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "prop-chain"),
+            // deeply mixed structure
+            (b"IT8FILE\nP1 \"a\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 3\nP2 \"b\"\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nP3 \"c\"\nBEGIN_DATA\n1 2\n3 4\n5 6\nEND_DATA\nP4 \"d\"\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n7\nEND_DATA\n".to_vec(), "mixed-all"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
