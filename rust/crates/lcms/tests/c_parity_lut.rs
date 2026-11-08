@@ -3762,3 +3762,39 @@ fn mab_reader_offsets() {
         }
     }
 }
+
+/// NamedColor + Lab stage eval internals — the named-color stage
+/// (1->3 channel) + remaining Lab variants.
+#[test]
+fn named_lab_stage_evals() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 1,
+            3, b"p\0".as_ptr(), b"s\0".as_ptr());
+        let lab16 = [0xF000u16; 3];
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
+            lab16.as_ptr(), lab16.as_ptr());
+        // named-color stage (1-in, 3-out)
+        let st = c::_cmsStageAllocNamedColor(ncl, 1);
+        if !st.is_null() {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
+            c::cmsPipelineInsertStage(p, 1, st);
+            let ib = [0x8000u16];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            eprintln!("ncl ob={ob:?}");
+            c::cmsPipelineFree(p);
+        }
+        // bAcs/eAcs evaluators — abstract-color-stage
+        let st2 = c::_cmsStageAllocIdentityCLut(std::ptr::null_mut(), 3);
+        if !st2.is_null() {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, st2);
+            let ib = [0x4000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            eprintln!("idclut ob={ob:?}");
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
