@@ -1369,3 +1369,65 @@ fn gamma_smooth_plugin_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmsgamma residual — DefaultEvalParametricFn reversed
+///   (-1..-4) degenerate guards: near-zero params,
+///   negative inputs, disc<0.
+#[test]
+fn gamma_reverse_degen_arms() {
+    unsafe {
+        for (t, params, name) in [
+            // type1 gamma≈0 -> rev -1 degenerate
+            (1i32, &[0.0f64][..], "t1-g0"),
+            (1, &[1.0][..], "t1-g1"),
+            (1, &[-2.0][..], "t1-neg"),
+            // type2 (g,a,b) a/b≈0 -> rev -2 zeros
+            (2, &[2.2, 0.0, 0.0][..], "t2-a0"),
+            (2, &[2.2, 1.0, 0.0][..], "t2-b0"),
+            (2, &[0.0, 1.0, 0.5][..], "t2-g0"),
+            // type3 (g,a,b,c) -> rev -3
+            (3, &[2.2, 0.0, 0.5, 0.1][..], "t3-a0"),
+            (3, &[2.2, 1.0, 0.0, 0.1][..], "t3-b0"),
+            (3, &[2.2, 1.0, 0.5, 0.9][..], "t3-c09"),
+            // type4 (g,a,b,c,d) -> rev -4 disc<0 path
+            (4, &[2.2, 0.0, 0.5, 0.1, 0.2][..], "t4-a0"),
+            (4, &[2.2, 1.0, 0.0, 0.1, 0.2][..], "t4-b0"),
+            (4, &[2.2, 1.0, 0.5, 0.0, 0.2][..], "t4-c0"),
+            (4, &[2.2, 1.0, 0.5, 0.1, -0.9][..], "t4-dneg"),
+            (4, &[2.2, 1.0, -0.5, 0.1, 0.2][..], "t4-bneg"),
+            // types 5-8 reversed internals
+            (5, &[2.2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0][..], "t5"),
+            (6, &[2.2, 1.0, 0.5, 0.0, 0.0, 0.0, 0.0][..], "t6"),
+            (7, &[2.2, 1.0, 0.0, 0.1, 0.2, 0.0, 0.0][..], "t7"),
+            (8, &[2.2, 1.0, 0.5, 0.1, 0.0, 0.0, 0.0][..], "t8"),
+        ] {
+            let tc = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), t,
+                params.as_ptr());
+            if tc.is_null() {
+                eprintln!("{name} tc=0");
+                continue;
+            }
+            // forward eval at edge inputs
+            for x in [-0.5f64, 0.0, 0.25, 0.5, 0.75,
+                      1.0, 1.5] {
+                let v = c::cmsEvalToneCurveFloat(tc, x as f32);
+                let _ = v;
+            }
+            // reverse + eval -> -type evaluators
+            let rt = c::cmsReverseToneCurve(tc);
+            let r_ = if !rt.is_null() {
+                for x in [-0.5f64, 0.0, 0.1, 0.5, 0.9,
+                          1.0, 1.5] {
+                    let v = c::cmsEvalToneCurveFloat(
+                        rt, x as f32);
+                    let _ = v;
+                }
+                c::cmsFreeToneCurve(rt);
+                1
+            } else { 0 };
+            eprintln!("{name} rev={r_}");
+            c::cmsFreeToneCurve(tc);
+        }
+    }
+}
