@@ -7010,3 +7010,52 @@ fn float_tag_body_arms() {
             c::cmsCloseProfile(srgb); }
     }
 }
+
+/// cmsgmt residual — EstimateTAC via cmsDetectTAC on all
+///   profile classes; ComputeKToLstar via the
+///   multiprofile black-point compensation path.
+#[test]
+fn gmt_tac_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        for nm in ["sRGBlcms2.icc", "lcms2cmyk.icc",
+                   "graylcms2.icc", "labv4lcms2.icc",
+                   "lcms2link.icc", "nullcms2.icc",
+                   "xyzlcms2.icc"] {
+            let p = open(nm);
+            if p.is_null() {
+                eprintln!("{nm}: null"); continue; }
+            let tac = c::cmsDetectTAC(p);
+            eprintln!("{nm} tac={tac:.2}");
+            c::cmsCloseProfile(p); }
+        // ComputeKToLstar: multiprofile chain black-point
+        //   compensation — cmsBlackPointCompensatingTransform
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        // multiprofile transform w/ BPC + adaptation
+        for (a, b, nm) in [
+            (srgb, cmyk, "s2c"), (cmyk, srgb, "c2s")] {
+            for flags in [0x0200u32, 0x0200 | 0x4000] {
+                let t = c::cmsCreateTransform(a, f16(4, 3),
+                    b, f16(6, 4), 0, flags);
+                eprintln!("{nm} f{flags:#x}: {}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x4000u16; 8];
+                    let mut ob = [0u16; 8];
+                    c::cmsDoTransform(t,
+                        ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t); } } }
+        for p in [srgb, cmyk] {
+            if !p.is_null() { c::cmsCloseProfile(p); } }
+    }
+}
