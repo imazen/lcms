@@ -1275,3 +1275,32 @@ fn matching_channel_formats() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// 4-channel format on a CMYK devicelink — the channel-
+/// matching machinery.
+#[test]
+fn four_channel_formats() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        eprintln!("dl={}", !dl.is_null());
+        // 4-channel formats on the devicelink
+        for (name, fmt) in [
+            ("4ch-u8", (0 << 16) | (4 << 3) | 1u32),
+            ("4ch-u16", (0 << 16) | (4 << 3) | 2),
+            ("4ch-flt", (1 << 22) | (0 << 16) | (4 << 3) | 4),
+            ("4ch-dbl", (1 << 22) | (0 << 16) | (4 << 3) | 0),
+            ("4ch-hlf", (1 << 22) | (0 << 16) | (4 << 3) | 2),
+            ("4ch-planar", (0 << 16) | (1 << 12) | (4 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
