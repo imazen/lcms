@@ -276,3 +276,14 @@ serialization internals (~56%) are the remaining gaps —
 reachable only through profile shapes the public API can't
 produce or through oracle-UB inputs (the mAB writer NULL-derefs
 on non-canonical pipelines).
+
+## Round 7 — cmspack format sweep (through ee90d50a)
+
+**68.09% lines / 86.13% functions.** ~315 parity gates.
+cmspack is now 53.42% — the packed/float/half/u16/u8 ×
+planar/doswap/swapfirst/extra/endian16/flavor/premul ×
+BGRA/RGBA/ARGB/ABGR/BGR/gray-alpha/Lab-byte-order matrix is
+exercised. The remaining cmspack gap is the per-format
+Unroll*/Pack* body internals for the less-common pixel types
+(15-color formats, 2-byte-per-channel packed, named-color
+formats) — each needs its own format-code gate.
