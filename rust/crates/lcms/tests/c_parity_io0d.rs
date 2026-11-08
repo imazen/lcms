@@ -438,3 +438,37 @@ fn cs_pcs_validation() {
         }
     }
 }
+
+/// Remaining header fields — profile-ID + creation-datetime +
+/// model + manufacturer + creator through the validation.
+#[test]
+fn remaining_header_fields2() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate fields: profile-ID @84-100, creation-date
+        // @24-36, model @40-44, mfg @48-52, creator @80-84
+        for (name, off, val) in [
+            ("id-zeros", 84usize, 0u32),
+            ("id-huge", 84, 0xFFFFFFFFu32),
+            ("year-2000", 24, 0x07D0u32),
+            ("month-13", 26, 0x000Du32),
+            ("model-0", 40, 0u32),
+            ("mfg-0", 48, 0u32),
+            ("creator-0", 80, 0u32),
+            ("id-set", 84, 0x12345678u32),
+        ] {
+            let mut dd = d.clone();
+            dd[off..off + 4].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
