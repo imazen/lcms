@@ -2936,3 +2936,38 @@ fn interp_channel_arms() {
         }
     }
 }
+
+/// Matrix-stage internals — with/without offset vectors, different
+/// shapes -> EvaluateMatrix offset arms.
+#[test]
+fn matrix_stage_arms() {
+    unsafe {
+        let m = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        let off = [0.01f64, 0.02, 0.03];
+        for (o, name) in [(std::ptr::null(), "no-off"),
+                          (off.as_ptr(), "with-off")] {
+            let st = c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                3, 3, m.as_ptr(), o);
+            if st.is_null() { eprintln!("{name} null"); continue; }
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, st);
+            let ib = [0x4000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            let ibf = [0.5f32; 3];
+            let mut obf = [0f32; 3];
+            c::cmsPipelineEvalFloat(ibf.as_ptr(), obf.as_mut_ptr(), p);
+            eprintln!("{name} ob={ob:?} obf={obf:?}");
+            c::cmsPipelineFree(p);
+        }
+        // non-square matrix — 3-in-1-out
+        let m31 = [0.5f64, 0.3, 0.2];
+        let st = c::cmsStageAllocMatrix(std::ptr::null_mut(), 1, 3,
+            m31.as_ptr(), std::ptr::null());
+        if !st.is_null() {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 1);
+            c::cmsPipelineInsertStage(p, 1, st);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
