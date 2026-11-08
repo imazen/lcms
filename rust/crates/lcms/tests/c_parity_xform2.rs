@@ -1957,3 +1957,45 @@ fn opt_linearization_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// OptimizeMatrixShaper 4-stage arm — absolute-intent RGB->RGB
+/// inserts the extra adaptation matrix (cvst-matf-matf-cvst).
+#[test]
+fn opt_matrixshaper4() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let argb = c::cmsCreateRGBProfileTHR(
+            std::ptr::null_mut(),
+            [0.3127f64, 0.3290, 1.0].as_ptr() as *const _,
+            [0.64f64, 0.33, 0.21,
+             0.30, 0.60, 0.10,
+             0.15, 0.06, 0.79].as_ptr() as *const _,
+            [c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+             c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+             c::cmsBuildGamma(std::ptr::null_mut(), 2.2)]
+                .as_mut_ptr() as *mut _);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        for (inp, outp, intent, name) in [
+            (srgb, argb, 3, "srgb->argb abs"),
+            (argb, srgb, 3, "argb->srgb abs"),
+            (srgb, srgb, 3, "srgb->srgb abs"),
+            (srgb, argb, 0, "srgb->argb per"),
+            (argb, srgb, 1, "argb->srgb rel"),
+            (srgb, argb, 2, "srgb->argb sat"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, r8, outp, r8,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 12];
+                let mut ob = [0x80u8; 12];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        if !argb.is_null() { c::cmsCloseProfile(argb); }
+    }
+}
