@@ -134,3 +134,87 @@ fn plugin_type_matrix2() {
         assert_eq!(c_ok != 0, r_ok, "plugin type {sig:#x}");
     }
 }
+
+/// memH + mtxH plugin types — memory-handler + mutex registration
+/// machinery with real fn-ptr payloads.
+#[test]
+fn plugin_memh_mtxh() {
+    #[repr(C)]
+    struct CPluginMemHandler {
+        base: CPluginBase,
+        malloc_ptr: unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void,
+        free_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void),
+        realloc_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) -> *mut c_void,
+        malloc_zero: *mut c_void,
+        calloc: *mut c_void,
+        dup: *mut c_void,
+    }
+    unsafe extern "C" fn my_malloc(_ctx: *mut c_void, size: usize) -> *mut c_void {
+        libc_malloc(size)
+    }
+    unsafe extern "C" fn my_free(_ctx: *mut c_void, ptr: *mut c_void) {
+        libc_free(ptr)
+    }
+    unsafe extern "C" fn my_realloc(_ctx: *mut c_void, ptr: *mut c_void, size: usize) -> *mut c_void {
+        libc_realloc(ptr, size)
+    }
+    unsafe extern "C" {
+        fn malloc(s: usize) -> *mut c_void;
+        fn free(p: *mut c_void);
+        fn realloc(p: *mut c_void, s: usize) -> *mut c_void;
+    }
+    unsafe fn libc_malloc(s: usize) -> *mut c_void { unsafe { malloc(s) } }
+    unsafe fn libc_free(p: *mut c_void) { unsafe { free(p) } }
+    unsafe fn libc_realloc(p: *mut c_void, s: usize) -> *mut c_void { unsafe { realloc(p, s) } }
+
+    let mut memh = CPluginMemHandler {
+        base: CPluginBase {
+            magic: 0x61637070,       // 'acpp' plugin magic
+            expected_version: 2200,
+            ty: 0x6D656D48,          // 'memH'
+            next: std::ptr::null_mut() },
+        malloc_ptr: my_malloc,
+        free_ptr: my_free,
+        realloc_ptr: my_realloc,
+        malloc_zero: std::ptr::null_mut(),
+        calloc: std::ptr::null_mut(),
+        dup: std::ptr::null_mut(),
+    };
+    unsafe {
+        let c_ok = c::cmsPlugin(&mut memh as *mut _ as *mut c_void);
+        assert_ne!(c_ok, 0, "C memH accept");
+    }
+
+    #[repr(C)]
+    struct CPluginMutex {
+        base: CPluginBase,
+        create: unsafe extern "C" fn(*mut c_void) -> *mut c_void,
+        destroy: unsafe extern "C" fn(*mut c_void, *mut c_void),
+        lock: unsafe extern "C" fn(*mut c_void, *mut c_void) -> i32,
+        unlock: unsafe extern "C" fn(*mut c_void, *mut c_void),
+    }
+    unsafe extern "C" fn mtx_create(_c: *mut c_void) -> *mut c_void {
+        Box::into_raw(Box::new(0u8)) as *mut c_void
+    }
+    unsafe extern "C" fn mtx_destroy(_c: *mut c_void, m: *mut c_void) {
+        if !m.is_null() { drop(Box::from_raw(m as *mut u8)); }
+    }
+    unsafe extern "C" fn mtx_lock(_c: *mut c_void, _m: *mut c_void) -> i32 { 1 }
+    unsafe extern "C" fn mtx_unlock(_c: *mut c_void, _m: *mut c_void) {}
+
+    let mut mtxp = CPluginMutex {
+        base: CPluginBase {
+            magic: 0x61637070,
+            expected_version: 2200,
+            ty: 0x6D747A48,          // 'mtxH'
+            next: std::ptr::null_mut() },
+        create: mtx_create,
+        destroy: mtx_destroy,
+        lock: mtx_lock,
+        unlock: mtx_unlock,
+    };
+    unsafe {
+        let c_ok2 = c::cmsPlugin(&mut mtxp as *mut _ as *mut c_void);
+        assert_ne!(c_ok2, 0, "C mtxH accept");
+    }
+}
