@@ -393,3 +393,69 @@ codegen diffs): 79.87% lines / 95.03% fns / 87.72% regions /
    skipped, then CurveEntries × s15f16. Type AND tag sig are
    BOTH `'MHC2'` = 0x4D484332 (uppercase — lowercase 'mhc2'
    rejects at IsTypeSupported).
+
+## Round — per-function residual query + api-driven arms (through d6bb40c4)
+
+New process: `llvm-cov-14 report <bin> -object <bins> -instr-profile=bench/out/coverage-cref/all.profdata -show-functions <src>` gives per-function
+region/line/branch residuals — much better targeting than the
+floored run18 totals.
+
+**Coverage drivers discovered:**
+
+- `cmspack` format-word matrix: BYTES[0..2] CHANNELS[3..6]
+  EXTRA[7..9] DOSWAP[10] ENDIAN16[11] PLANAR[12] FLAVOR[13]
+  SWAPFIRST[14] COLORSPACE[16..20] FLOAT[22] PREMUL[23].
+  PT codes: GRAY=3 RGB=4 CMY=5 CMYK=6 XYZ=9 LAB=10
+  MCH1-15=15-29 LABV2=30. Each Unroll*/Pack* variant needs
+  its exact combo as in/out format. (c_parity_pack.rs older
+  tests use local PT_MCH5..10 = 12..17 — upstream is 19..24;
+  channels still matched.)
+- `cmsTransform2DeviceLink` (bound in lcms-cref) drives
+  FixColorSpaces/SetTextTags/FindCombination/optimize/
+  identity-curve inserts/LabV2ToV4+LabV4ToV2 fixups (Lab
+  PCS + Version<4) / 8BITS_DEVICELINK flag / FORCE_CLUT /
+  CreateNamedColorDevicelink. Best single cmsvirt driver.
+- Named-color input: class 'nmcl' (0x6E6D636C), colorspace
+  '1CLR' (0x31434C52), ncl2 tag; input format
+  TYPE_NAMED_COLOR_INDEX = (1<<3)|2 = 0x0A. Gives
+  CreateNamedColorDevicelink + cmsGetNamedColorList.
+- `cmsLinkTag(p, sig, dest)` creates linked tag-table
+  entries → SetLinks/SaveTags arms on save.
+- IO handlers: `cmsOpenIOhandlerFromNULL/Mem/File/Stream`,
+  `cmsSaveProfileToIOhandler` returns byte count (132 for
+  minimal profile). NULL/small/RO handlers exercise
+  NULLWrite/MemoryWrite/Seek/Tell error arms.
+  `cmsOpenProfileFromIOhandler2THR(ctx, io, write=1)` for
+  rw opens. `cmsGetProfileIOhandler` returns the handler.
+- Preserve-K intents 10-15 → BlackPreservingKOnlyIntents/
+  KPlaneIntents + samplers; intents 4-9 reject. Proofing
+  transforms at same intents hit more arms.
+- `cmsDupContext` → DupPlugin*List (opt/formatters/intents).
+  `cmsStageDup`/`cmsPipelineDup` → CurveSetDup/CLUTElemDup/
+  MatrixElemDup (all 12 stage kinds dup cleanly).
+- `cmsPluginHeader`: base{magic 'acpp', expected, type
+  'hdrH', next} + ICCVersion + ReadPtr + WritePtr —
+  `_cmsReadUInt32Number` usable inside hooks; NULL hooks
+  registration rejects.
+- Multiprofile chains through abst profiles (labv2/v4,
+  xyzlcms2) insert Lab↔XYZ stages → EvaluateLab2XYZ/
+  EvaluateXYZ2Lab evaluators.
+- Device class sigs are NOT validated on save (all write);
+  profile version >4.4 or <0 rejects on save.
+- `cmsSaveProfileToMem`'s `nn` reports buffer capacity,
+  not bytes written (earlier "n=131072" prints were
+  capacity).
+
+**Real ICC profiles in `rust/`:** sRGBlcms2/aRGBlcms2
+(mntr RGB matrix-shaper), lcms2cmyk.icc (prtr CMYK→Lab
+A2B0-2+B2A0-2), lcms2link*/limit/lin (link CMYK→CMYK),
+gray3lcms2 (mntr GRAY kTRC), nullcms2 (prtr GRAY B2A0),
+glablcms2 (gray kTRC), xyzlcms2 (abst XYZ), labv2/v4 (abst
+Lab A2B0), bchs/bright (mntr RGB A2B0 only — B2A direction
+rejects). cmsOpenProfileFromFile needs `b"r\0"`.
+
+**Remaining residuals (run18 floored):** cmstypes ~69%,
+cmspack ~74%, cmsps2 ~64% (shared-static race under
+parallel tests), cmsvirt ~74%, cmsopt ~83%, cmsnamed ~84%,
+cmsio1 ~81%, cmscnvrt ~81%, cmsio0 ~81%, cmsplugin ~83%,
+cmscgats ~88%.
