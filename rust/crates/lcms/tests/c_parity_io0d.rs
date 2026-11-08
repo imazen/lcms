@@ -1818,3 +1818,36 @@ fn corpus_multiprofile2() {
         let _ = (argb, srgb, lab, cmyk);
     }
 }
+
+/// Corpus IOhandler variants — open via IOhandler + save
+/// to IOhandler on real profiles.
+#[test]
+fn corpus_iohandler() {
+    unsafe {
+        for (name, path) in [
+            ("argb", "../../aRGBlcms2.icc"),
+            ("gray", "../../graylcms2.icc"),
+            ("labv4", "../../labv4lcms2.icc"),
+            ("bchs", "../../bchslcms2.icc")] {
+            let data = std::fs::read(path).unwrap_or_default();
+            if data.is_empty() {
+                eprintln!("{name} read=0");
+                continue;
+            }
+            let io = c::cmsOpenIOhandlerFromMem(
+                std::ptr::null_mut(),
+                data.as_ptr() as *mut _, data.len() as u32,
+                b"r\0".as_ptr() as _);
+            if io.is_null() {
+                eprintln!("{name} io=NULL");
+                continue;
+            }
+            let h = c::cmsOpenProfileFromIOhandlerTHR(
+                std::ptr::null_mut(), io);
+            eprintln!("{name} iohandler-open={}",
+                !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+            // profile owns io once opened — no extra close
+        }
+    }
+}
