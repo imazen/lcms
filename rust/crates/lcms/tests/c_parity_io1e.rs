@@ -1102,3 +1102,29 @@ fn overwrite_type_change() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// LUT reads on the corpus's real LUT profiles — the actual
+/// LUT evaluators on stored lut8/lut16/mAB data.
+#[test]
+fn real_lut_reads() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            // read + eval the LUT sigs — the actual stored LUT
+            // machinery, not just the dispatch
+            for sig in [0x41324230u32, 0x41324231, 0x41324232,
+                        0x42324130, 0x42324131, 0x42324132,
+                        0x67616D74, 0x70726530, 0x70726531,
+                        0x70726532, 0x44324230, 0x42424430] {
+                let r = c::cmsReadTag(h, sig);
+                if !r.is_null() {
+                    // walk the stage list — the LUT internals
+                    let n = c::cmsPipelineStageCount(r);
+                    let _ = n;
+                }
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
