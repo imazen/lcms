@@ -2277,3 +2277,48 @@ fn viewing_conditions_type() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Comprehensive Type_*_Read sweep — every remaining type
+/// signature on a generic sig.
+#[test]
+fn remaining_type_reads() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // all lcms2.20 type signatures — a generic body
+        // exercises each Type_*_Read's dispatch + reject
+        let types: [&[u8; 4]; 40] = [
+            b"XYZ ", b"curv", b"data", b"desc", b"dtim",
+            b"meas", b"mluc", b"para", b"sig ", b"text",
+            b"vcgt", b"chrm", b"clrt", b"scrn", b"ncl2",
+            b"dict", b"cprt", b"dmnd", b"dmdd", b"dscm",
+            b"vued", b"view", b"ndin", b"resp", b"rcs2",
+            b"targ", b"tech", b"scrd", b"bfd ", b"gamt",
+            b"pre0", b"pre1", b"pre2", b"lut8", b"lut1",
+            b"lutA", b"lutB", b"mAB ", b"mBA ", b"mft1",
+        ];
+        for ty in types {
+            let mut b = Vec::new();
+            b.extend_from_slice(ty);
+            b.extend_from_slice(&[0; 4]);
+            // minimal valid body per type — the reader's
+            // dispatch fires even when the body rejects
+            b.extend_from_slice(&[0u8; 32]);
+            let ok = c::cmsWriteRawTag(h, 0x77747074,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x77747074);
+            eprintln!("{:?} write={ok} read={}",
+                std::str::from_utf8(ty), r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
