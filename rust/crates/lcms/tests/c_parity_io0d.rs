@@ -17605,8 +17605,8 @@ fn internal_final4_arms() {
         //   delete chains
         let mut ud = 0xcafeu32;
         let ctx = c::cmsCreateContext(
-            &mut ud as *mut u32 as *mut _,
-            std::ptr::null_mut());
+            std::ptr::null_mut(),
+            &mut ud as *mut u32 as *mut _);
         if !ctx.is_null() {
             for i in 0..8 {
                 let d = c::cmsDupContext(ctx,
@@ -17744,6 +17744,89 @@ fn internal_final5_arms() {
                 outf.as_mut_ptr(), p);
             eprintln!("{name} out={out:?} outf={outf:?}");
             c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
+
+/// cmsio0/cmsio1/cmslut residual — transform internals +
+///   LUT-builder internals + tag internals + context internals.
+#[test]
+fn internal_final6_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // all-intent on every colorspace-pair direction
+        for (a, b, fi, fo, name) in [
+            (srgb, lab, r8, l8, "rgb->lab"),
+            (lab, srgb, l8, r8, "lab->rgb"),
+        ] {
+            for intent in 0..8u32 {
+                let t = c::cmsCreateTransform(a, fi, b,
+                    fo, intent, 0);
+                let t2 = c::cmsCreateTransform(a, fi, b,
+                    fo, intent, 0x0400);
+                let t3 = c::cmsCreateTransform(a, fi, b,
+                    fo, intent, 0x0800);
+                eprintln!("{name} i{intent} \
+                    0/0400/0800={}/{}/{}",
+                    !t.is_null(), !t2.is_null(),
+                    !t3.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t2.is_null() { c::cmsDeleteTransform(t2); }
+                if !t3.is_null() { c::cmsDeleteTransform(t3); }
+            }
+        }
+        // LUT-builder internals — proofing + multi on varied
+        //   profile combos
+        let mut profs = [srgb, lab, srgb];
+        for (n_, name) in [(2i32, "2p"), (3, "3p")] {
+            for intent in 0..4u32 {
+                for flags in [0u32, 0x0100, 0x0200, 0x0400,
+                    0x0800, 0x1000, 0x2000, 0x4000] {
+                    let mut bpc = [intent as i32; 4];
+                    let mut intents = [intent; 4];
+                    let mut adapt = [0.5f64; 4];
+                    let t = c::cmsCreateExtendedTransform(
+                        std::ptr::null_mut(), n_ as u32,
+                        profs.as_mut_ptr(),
+                        bpc.as_mut_ptr(),
+                        intents.as_mut_ptr(),
+                        adapt.as_mut_ptr(),
+                        std::ptr::null_mut(), 0,
+                        r8, r8, flags);
+                    if !t.is_null() {
+                        let ib = [0x55u8; 8];
+                        let mut ob = [0u8; 8];
+                        c::cmsDoTransform(t, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            eprintln!("{name} done");
+        }
+        // context internals — create/dup/delete on varied
+        //   userdata
+        for ud_val in [0u32, 1, 0xdeadbeef, u32::MAX] {
+            let mut ud = ud_val;
+            eprintln!("ud {ud_val:#x} create..");
+            let ctx = c::cmsCreateContext(
+                std::ptr::null_mut(),
+                &mut ud as *mut u32 as *mut _);
+            eprintln!("ud {ud_val:#x} ctx={ctx:?}");
+            if ctx.is_null() { continue; }
+            let d = c::cmsDupContext(ctx,
+                &mut ud as *mut u32 as *mut _);
+            eprintln!("ud {ud_val:#x} d={d:?}");
+            if !d.is_null() { c::cmsDeleteContext(d); }
+            c::cmsDeleteContext(ctx);
         }
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab);
