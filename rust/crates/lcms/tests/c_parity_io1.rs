@@ -444,3 +444,39 @@ fn profile_capability_helpers() {
         }
     }
 }
+
+/// Float-tag readers — DToB/BToD mpet tags on profiles in each
+/// transform position -> _cmsReadFloatInputTag/OutputTag/
+/// DevicelinkTag + the normalization insertions.
+#[test]
+fn float_tag_readers() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        // input-class profile with DToB tag -> _cmsReadFloatInputTag
+        let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(inp, 0x6d6e7472);
+        c::cmsSetColorSpace(inp, 0x52474220);
+        c::cmsSetPCS(inp, 0x4C616220);
+        c::cmsSetProfileVersion(inp, 4.4);
+        c::cmsWriteTag(inp, 0x44324230, p as *const _); // 'D2B0'
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (a, b, af, bf, name) in [
+            (inp, lab, r16, l16, "dtob-in"),
+            (lab, inp, l16, r16, "dtob-out"),
+        ] {
+            let t = c::cmsCreateTransform(a, af, b, bf, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(inp);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
