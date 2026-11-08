@@ -1261,3 +1261,42 @@ arms only reachable via a patched Write callback).
 (~30 gates landed since run8: internal_final8-35, pack_alpha,
 type_read_err, fileio_err, opt_deep, lindevlink,
 blackpreserve_intent, utf8_decode, cgats_errpath, virt_opt_residual)
+
+## run10 (2026-11-05)
+
+`TOTAL: 81.14% lines / 95.59% fns / 87.91% regions / 74.68% branches`
+(up from run9's 81.02/95.59/87.91/74.52 — lines +0.12, branches
++0.16)
+
+| file | lines | fns | regions | branches |
+|---|---|---|---|---|
+| cmsalpha.c | 86.61% | 85.37% | 86.85% | 77.68% |
+| cmscam02.c | 91.26% | 100% | 98.05% | 84.00% |
+| cmscgats.c | 84.50% | 98.99% | 88.56% | 77.98% |
+| cmscnvrt.c | 77.93% | 100% | 87.60% | 70.05% |
+| cmserr.c | 84.38% | 100% | 89.62% | 70.59% |
+| cmsgamma.c | 88.15% | 100% | 92.09% | 79.95% |
+| cmsgmt.c | 85.98% | 100% | 89.94% | 67.12% |
+| cmshalf.c | 100% | 100% | 100% | — |
+| cmsintrp.c | 98.50% | 100% | 98.85% | 96.90% |
+| cmsio0.c | 84.63% | 100% | 90.95% | 78.57% |
+| cmsio1.c | 80.80% | 100% | 79.48% | 70.41% |
+| cmslut.c | 83.89% | 100% | 92.29% | 75.62% |
+| cmsmd5.c | 94.59% | 100% | 97.06% | 63.64% |
+| cmsmtrx.c | 100% | 100% | 100% | 100% |
+| cmsnamed.c | 82.70% | 100% | 95.24% | 76.06% |
+| cmsopt.c | 83.41% | 95.45% | 86.16% | 75.61% |
+| cmspack.c | 70.86% | 95.65% | 74.00% | 68.61% |
+| cmspcs.c | 97.17% | 100% | 98.67% | 94.84% |
+| cmsplugin.c | 81.37% | 100% | 91.31% | 74.04% |
+| cmsps2.c | 89.41% | 100% | 92.69% | 79.13% |
+| cmssamp.c | 86.01% | 100% | 87.89% | 67.12% |
+| cmssm.c | 90.70% | 100% | 96.05% | 86.73% |
+| cmstypes.c | 73.89% | 99.07% | 86.24% | 70.12% |
+| cmsvirt.c | 73.43% | 100% | 85.43% | 56.99% |
+| cmswtpnt.c | 93.55% | 100% | 99.33% | 83.33% |
+| cmsxform.c | 88.57% | 100% | 91.46% | 81.47% |
+
+(~35 gates landed since run9: type_write14-36, type_read12-31,
+internal_final46-59 incl. linked-tag, supported-intent, IsCLUT,
+profile-info, save-path, malformed-open arms, seg9/10 SIGSEGV child)

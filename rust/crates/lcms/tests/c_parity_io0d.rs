@@ -22967,3 +22967,79 @@ fn internal_final58_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — OpenProfileFromMem on truncated/
+///   corrupted ICC blobs (header-validation internals).
+#[test]
+fn internal_final59_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // get a real profile blob first
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        buf.truncate(n as usize);
+        let real = buf.clone();
+        // truncations
+        for len in [
+            0usize, 1, 4, 32, 127, 128, 129, 132,
+            real.len()/4, real.len()/2, real.len()-1,
+            real.len(),
+        ] {
+            let d = &real[..len.min(real.len())];
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, len as u32);
+            eprintln!("len{len} p={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        // corrupted fields
+        for (off, bytes, name) in [
+            (0usize, &b"\xde\xad\xbe\xef"[..], "size"),
+            (4, &b"\xde\xad\xbe\xef"[..], "cmm"),
+            (16, &b"\x00\x00\x00\x00"[..], "class0"),
+            (16, &b"zzzz"[..], "classz"),
+            (20, &b"\x00\x00\x00\x00"[..], "cs0"),
+            (36, &b"\x61\x63\x73\x70"[..], "acsp-ok"),
+            (36, &b"XXXX"[..], "acsp-bad"),
+            (40, &b"\xde\xad\xbe\xef"[..], "platform"),
+            (64, &b"\xde\xad\xbe\xef"[..], "intent"),
+            (128, &b"\xde\xad\xbe\xef"[..], "tagcount"),
+            (128, &b"\x7f\xff\xff\xff"[..], "hugecnt"),
+            (132, &b"zzzz"[..], "tag0sig"),
+            (140, &b"\xde\xad\xbe\xef"[..], "tag0size"),
+            (136, &b"\xde\xad\xbe\xef"[..], "tag0off"),
+            (136, &b"\xff\xff\xff\xff"[..], "tag0offmax"),
+        ] {
+            let mut d = real.clone();
+            if off + bytes.len() <= d.len() {
+                d[off..off+bytes.len()]
+                    .copy_from_slice(bytes);
+                let p = c::cmsOpenProfileFromMem(
+                    d.as_ptr() as *const _, d.len() as u32);
+                eprintln!("{name}@{off} p={}",
+                    !p.is_null());
+                if !p.is_null() {
+                    // probe tag reads too
+                    let t = c::cmsReadTag(p, 0x72545243);
+                    let cnt = c::cmsGetTagCount(p);
+                    eprintln!("  cnt={cnt} \
+                        trc={}", !t.is_null());
+                    c::cmsCloseProfile(p);
+                }
+            }
+        }
+        // THR + null/oversize paths
+        let p = c::cmsOpenProfileFromMem(
+            std::ptr::null(), 0);
+        eprintln!("null p={}", !p.is_null());
+        let p = c::cmsOpenProfileFromMem(
+            real.as_ptr() as *const _, 0);
+        eprintln!("sz0 p={}", !p.is_null());
+        let p = c::cmsOpenProfileFromMem(
+            real.as_ptr() as *const _, u32::MAX);
+        eprintln!("szmax p={}", !p.is_null());
+        if !p.is_null() { c::cmsCloseProfile(p); }
+        c::cmsCloseProfile(srgb);
+    }
+}
