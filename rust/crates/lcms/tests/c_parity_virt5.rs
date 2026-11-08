@@ -227,3 +227,45 @@ fn abstract_variants() {
         let _ = c::cmsCloseProfile(srgb);
     }
 }
+
+/// Linearization + ink-limiting internals on more combos —
+/// the devicelink builders on different colorspaces/curves.
+#[test]
+fn devicelink_variants() {
+    unsafe {
+        for (name, cs, ncurves) in [
+            ("rgb", 0x52474220u32, 3usize),   // 'RGB '
+            ("cmyk", 0x434D594B, 4),           // 'CMYK'
+            ("gray", 0x47524159, 1),           // 'GRAY'
+            ("lab", 0x4C616220, 3),            // 'Lab '
+        ] {
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+            let mut curves: Vec<*mut std::ffi::c_void> =
+                Vec::new();
+            for _ in 0..ncurves {
+                curves.push(g as *mut std::ffi::c_void);
+            }
+            let dl = c::cmsCreateLinearizationDeviceLink(cs,
+                curves.as_ptr());
+            eprintln!("{name} lin null={}", dl.is_null());
+            if !dl.is_null() {
+                // resave — the devicelink serializes its curves
+                let mut cn = 0u32;
+                c::cmsSaveProfileToMem(dl, std::ptr::null_mut(),
+                    &mut cn);
+                eprintln!("  lin save={cn}");
+                c::cmsCloseProfile(dl);
+            }
+            let il = c::cmsCreateInkLimitingDeviceLink(cs,
+                200.0 + (ncurves as f64) * 50.0);
+            eprintln!("{name} ink null={}", il.is_null());
+            if !il.is_null() {
+                let mut cn = 0u32;
+                c::cmsSaveProfileToMem(il, std::ptr::null_mut(),
+                    &mut cn);
+                eprintln!("  ink save={cn}");
+                c::cmsCloseProfile(il);
+            }
+        }
+    }
+}
