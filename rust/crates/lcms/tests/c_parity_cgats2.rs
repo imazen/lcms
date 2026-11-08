@@ -654,3 +654,69 @@ fn it8_parser_arms() {
         }
     }
 }
+
+/// IT8 lexer arms — hex strings, scientific notation, quoted
+/// escapes, comment styles, multi-table docs, key=value variants.
+#[test]
+fn it8_lexer_arms() {
+    unsafe {
+        let docs = [
+            // hex + scientific + quoted escapes
+            r#"CGATS.17
+ORIGINATOR "dev \"quoted\" name"
+NUMBER_OF_FIELDS 4
+NUMBER_OF_SETS 2
+BEGIN_DATA_FORMAT
+A B C D
+END_DATA_FORMAT
+BEGIN_DATA
+0x1F 1.5e-3 -2.4E+2 7
+"str val" +INF -INF 0b101
+END_DATA"#.as_bytes(),
+            // multi-table + comments + blank lines
+            r#"CGATS.17
+# leading comment
+
+NUMBER_OF_FIELDS 1
+NUMBER_OF_SETS 1
+BEGIN_DATA_FORMAT
+A
+END_DATA_FORMAT
+BEGIN_DATA
+1
+END_DATA
+
+CGATS.17
+NUMBER_OF_FIELDS 1
+NUMBER_OF_SETS 1
+BEGIN_DATA_FORMAT
+B
+END_DATA_FORMAT
+BEGIN_DATA
+2
+END_DATA"#.as_bytes(),
+            // symbol/keyword forms + semicolon comments
+            r#"IT8
+KEYWORD with spaces
+PROP_A 1
+PROP_B -1
+NUMBER_OF_FIELDS 1
+NUMBER_OF_SETS 1
+BEGIN_DATA_FORMAT
+X
+END_DATA_FORMAT
+BEGIN_DATA
+9.99
+END_DATA"#.as_bytes(),
+            // malformed docs (reject arms)
+            "CGATS.17\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\n".as_bytes(),
+            "not a cgats doc at all".as_bytes(),
+        ];
+        for (i, d) in docs.iter().enumerate() {
+            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                d.as_ptr() as *const _, d.len() as u32);
+            eprintln!("doc{i} load={}", !h.is_null());
+            if !h.is_null() { c::cmsIT8Free(h); }
+        }
+    }
+}
