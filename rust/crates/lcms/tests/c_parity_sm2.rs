@@ -81,3 +81,38 @@ fn detect_matrix() {
         assert_eq!(c_tac, r_tac, "TAC");
     }
 }
+
+/// Shadow-fit quadratic path — cmsDetectBlackPoint on profiles whose
+/// L* round-trip ramp leaves >= 3 points in the lo..hi fit band
+/// (lcms2cmyk + graylcms2, intents 0..2) — reaches
+/// RootOfLeastSquaresFitQuadraticCurve. bp XYZ parity both sides.
+#[test]
+fn blackpoint_quadratic() {
+    unsafe {
+        let dir = env!("CARGO_MANIFEST_DIR");
+        for name in ["lcms2cmyk.icc", "graylcms2.icc"] {
+            let path = format!("{dir}/../../{name}\0");
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as *const i8, b"r\0".as_ptr());
+            assert!(!h.is_null());
+            let mut rp = lcms::profile::open_profile_from_file(
+                None, &format!("{dir}/../../{name}"), "r").unwrap();
+            for intent in 0u32..4 {
+                let mut cbp = c::CieXyz::default();
+                let c_ok = c::cmsDetectBlackPoint(
+                    &mut cbp as *mut _ as *mut _, h, intent, 0);
+                let rbp = lcms::sm::detect_black_point(&mut rp, intent, 0);
+                assert_eq!(c_ok != 0, rbp.is_some(),
+                    "{name} i{intent} status");
+                if let Some(r) = rbp {
+                    assert!((cbp.X - r.X).abs() < 1e-9
+                        && (cbp.Y - r.Y).abs() < 1e-9
+                        && (cbp.Z - r.Z).abs() < 1e-9,
+                        "{name} i{intent} bp: C {},{},{} R {},{},{}",
+                        cbp.X, cbp.Y, cbp.Z, r.X, r.Y, r.Z);
+                }
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
