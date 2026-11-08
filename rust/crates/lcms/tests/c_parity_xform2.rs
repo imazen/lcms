@@ -2398,3 +2398,62 @@ fn opt_flag_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// BlackPreservingKOnly/KPlane deep arms — intents 8-11 on
+/// CMYK->CMYK + BPC + v2/v4 profiles + more CMYK corpus.
+#[test]
+fn black_preserving_arms() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let read = |f: &str| -> *mut std::ffi::c_void {
+            std::fs::read(dir.join(f)).ok()
+                .map(|d| c::cmsOpenProfileFromMem(
+                    d.as_ptr() as *const _, d.len() as u32))
+                .unwrap_or(std::ptr::null_mut())
+        };
+        let cmyk = read("lcms2cmyk.icc");
+        let cmyk2 = read("lcms2cmyk2.icc");
+        let cmyk3 = read("uswop20coated_v2.icc");
+        let null2 = read("nullcms2.icc");
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, intent, fl, name) in [
+            (cmyk, cmyk, 10, 0, "cmyk i10"),
+            (cmyk, cmyk, 11, 0, "cmyk i11"),
+            (cmyk, cmyk, 10, 0x2000, "cmyk i10+bpc"),
+            (cmyk, cmyk, 11, 0x2000, "cmyk i11+bpc"),
+            (cmyk, null2, 10, 0, "cmyk->null i10"),
+            (cmyk, null2, 11, 0, "cmyk->null i11"),
+            (cmyk, cmyk2, 10, 0, "cmyk->cmyk2 i10"),
+            (cmyk, cmyk3, 10, 0, "cmyk->cmyk3 i10"),
+            (null2, cmyk, 10, 0, "null->cmyk i10"),
+            (null2, null2, 10, 0, "null->null i10"),
+            (null2, null2, 11, 0, "null->null i11"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, k16, outp, k16,
+                intent, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 8];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // rgb->cmyk with black-preserving intents
+        let srgb = c::cmsCreate_sRGBProfile();
+        for intent in [10u32, 11] {
+            let t = c::cmsCreateTransform(srgb, r16, cmyk, k16,
+                intent, 0);
+            eprintln!("rgb->cmyk i{intent} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        for p in [cmyk, cmyk2, cmyk3, null2] {
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+    }
+}
