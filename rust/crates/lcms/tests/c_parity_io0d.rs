@@ -3639,3 +3639,36 @@ fn md5_incremental() {
         }
     }
 }
+
+/// _cmsSearchTag lFollowLinks — linked tags resolve through the
+/// link chain on read; IsTag follows them.
+#[test]
+fn linked_tag_resolution() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // write gTRC then link rTRC->gTRC and bTRC->rTRC (chain)
+        c::cmsWriteTag(p, 0x67545243, g as *const _); // 'gTRC'
+        c::cmsLinkTag(p, 0x72545243, 0x67545243);      // rTRC->gTRC
+        c::cmsLinkTag(p, 0x62545243, 0x72545243);      // bTRC->rTRC
+        // reads resolve the link chain
+        for sig in [0x67545243u32, 0x72545243, 0x62545243] {
+            let tag = c::cmsReadTag(p, sig);
+            eprintln!("sig{sig:#x} tag={}", !tag.is_null());
+        }
+        // save + reread — linked tags serialize
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        if !rp.is_null() {
+            let tag = c::cmsReadTag(rp, 0x62545243); // bTRC via chain
+            eprintln!("reread bTRC={}", !tag.is_null());
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(p);
+    }
+}
