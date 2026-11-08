@@ -4356,3 +4356,120 @@ fn lut_dup_oversize_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsintrp/cmssm/cmscam02/cmsmd5 residual — interp
+///   plugin factory path, GBD gamut-boundary add/
+///   check/compute, CIECAM02 fwd/rev, MD5 stream.
+#[test]
+fn lut_interp_gbd_cam_md5_arms() {
+    unsafe {
+        // interp plugin: factory fires on CLUT interp-
+        //   param computation
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        union IFunc {
+            l16: *const std::ffi::c_void,
+            lf: *const std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct InterpPlugin {
+            base: PluginBase,
+            factory: *const std::ffi::c_void,
+        }
+        unsafe extern "C" fn my_lerp16(
+            inp: *const u16, out: *mut u16,
+            _p: *const std::ffi::c_void) {
+            *out = *inp;
+        }
+        unsafe extern "C" fn my_factory(
+            _nin: u32, _nout: u32, _flags: u32) -> IFunc {
+            IFunc { l16: my_lerp16
+                as *const std::ffi::c_void }
+        }
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let mut ip = InterpPlugin {
+            base: PluginBase {
+                magic: 0x61637070, ver: 2200,
+                typ: 0x696E7048,
+                next: std::ptr::null_mut(),
+            },
+            factory: my_factory as *const std::ffi::c_void,
+        };
+        let r = c::cmsPluginTHR(ctx,
+            &mut ip as *mut _ as *mut _);
+        eprintln!("interp-plugin reg={r}");
+        // a transform on ctx forces interp-params compute
+        let srgb = c::cmsCreate_sRGBProfile();
+        let fin = (0u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransformTHR(ctx, srgb, fin,
+            srgb, fin, 0, 0);
+        eprintln!("interp-xform t={}", !t.is_null());
+        if !t.is_null() {
+            c::cmsDeleteTransform(t); }
+        // GBD: alloc + add points + check + compute
+        let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
+        eprintln!("gbd={}", !gbd.is_null());
+        if !gbd.is_null() {
+            for i in 0..8 {
+                let mut lab = [i as f64 * 10.0, 0.0, 0.0];
+                c::cmsGDBAddPoint(gbd,
+                    lab.as_mut_ptr() as *const _);
+            }
+            let cr = c::cmsGDBCompute(gbd, 0);
+            let mut chk = [50.0f64, 0.0, 0.0];
+            let inside = c::cmsGDBCheckPoint(gbd,
+                chk.as_mut_ptr() as *const _);
+            let mut out_lab = [200.0f64, 150.0, 150.0];
+            let outside = c::cmsGDBCheckPoint(gbd,
+                out_lab.as_mut_ptr() as *const _);
+            eprintln!("gbd compute={cr} in={inside} \
+                out={outside}");
+            c::cmsGBDFree(gbd);
+        }
+        // CIECAM02 fwd/rev
+        #[repr(C)]
+        struct Vc {
+            x_w: f64, y_w: f64, z_w: f64,
+            y_b: f64, l_a: f64,
+            surround: i32, d_value: f64,
+        }
+        let vc = Vc {
+            x_w: 95.05, y_w: 100.0, z_w: 108.88,
+            y_b: 20.0, l_a: 20.0,
+            surround: 2, d_value: 1.0,
+        };
+        let cam = c::cmsCIECAM02Init(
+            std::ptr::null_mut(),
+            &vc as *const _ as *const _);
+        if !cam.is_null() {
+            let mut jch = [0.0f64; 3];
+            let xyz_in = [20.0f64, 25.0, 18.0];
+            c::cmsCIECAM02Forward(cam,
+                xyz_in.as_ptr() as *const _,
+                jch.as_mut_ptr() as *mut _);
+            eprintln!("cam02 JCh={jch:?}");
+            let mut xyz_out = [0.0f64; 3];
+            c::cmsCIECAM02Reverse(cam,
+                jch.as_ptr() as *const _,
+                xyz_out.as_mut_ptr() as *mut _);
+            eprintln!("cam02 rev={xyz_out:?}");
+            c::cmsCIECAM02Done(cam);
+        }
+        // MD5 stream
+        let h = c::cmsMD5alloc(std::ptr::null_mut());
+        if !h.is_null() {
+            c::cmsMD5add(h, b"hello".as_ptr(), 5);
+            let mut pid = [0u8; 16];
+            c::cmsMD5finish(
+                pid.as_mut_ptr() as *mut _, h);
+            eprintln!("md5 {pid:?}");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsDeleteContext(ctx);
+    }
+}
