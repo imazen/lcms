@@ -13886,3 +13886,54 @@ fn lutba_write_arms() {
         c::cmsFreeToneCurve(tc);
     }
 }
+
+/// IsIntentSupported/_cmsReadMatrix + gamut-check internals.
+#[test]
+fn intent_gamut_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        for (p, name) in [
+            (srgb, "srgb"), (lab, "lab"), (cmyk, "cmyk"),
+        ] {
+            if p.is_null() { continue; }
+            for intent in 0..17u32 {
+                for dirn in 0..3u32 {
+                    let r = c::cmsIsIntentSupported(p,
+                        intent, dirn);
+                    if r != 0 {
+                        eprintln!("{name} i{intent} d{dirn} \
+                            ={r}");
+                    }
+                }
+            }
+        }
+        // proofing transform — gamut-check pipeline paths
+        if !cmyk.is_null() {
+            let r8 = (4u32 << 16) | (3 << 3) | 1;
+            let k8 = (6u32 << 16) | (4 << 3) | 1;
+            for flags in [0u32, 0x4000 /* SOFT-proof */,
+                0x8000 /* GAMUTCHECK */, 0x2000 | 0x4000] {
+                let t = c::cmsCreateProofingTransform(
+                    srgb, r8, srgb, r8, cmyk, 0, 0, flags);
+                eprintln!("proof f{flags:#x} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 16];
+                    let mut ob = [0u8; 16];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
