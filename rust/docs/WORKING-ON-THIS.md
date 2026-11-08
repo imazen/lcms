@@ -620,3 +620,24 @@ cmsgmt 80.81%, cmscnvrt 82.49%, cmsopt 84.88%.
 Surrogate finding: lone UTF-16 surrogates reject
 upstream at open — convert_utf16_to_utf32 edge arms
 unreachable through the public mluc path.
+
+## Findings — MPE write curve-rep bug (upstream)
+
+`Type_MPE_Write` on a pipeline containing a TABULATED
+tone curve (`cmsBuildTabulatedToneCurve16`) CRASHES
+upstream: `WriteSegmentedCurve` derefs `g->Segments`
+unconditionally ("NO CHECK IS PERFORMED ON VALIDITY"
+per the source comment) — tabulated curves have
+`nSegments=0`/`Segments=NULL`. Parametric curves
+(`cmsBuildGamma`) reject cleanly; segmented curves
+(`cmsBuildSegmentedToneCurve`, `Type=0` 'samf') write.
+
+Smallest repro: `cmsStageAllocToneCurves` on a
+`cmsBuildTabulatedToneCurve16` curve -> pipeline ->
+`cmsWriteTag(D2B0)` -> `cmsSaveProfileToMem` ->
+SIGSEGV in `WriteSegmentedCurve` (cmstypes.c:4437).
+
+MPE curves must be segmented (Type=0 'samf' or 'parf'
+parametric segments) to serialize. Rust port behavior
+must match upstream (crash is upstream behavior —
+document, don't "fix").
