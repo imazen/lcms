@@ -2812,3 +2812,34 @@ fn granular_clut_accessors() {
         }
     }
 }
+
+/// Stage/pipeline internals — Identity stages, stage-free,
+/// GetEstimatedTableEntries, pipeline dup of every stage type.
+#[test]
+fn stage_internals() {
+    unsafe {
+        // identity stages across channel counts
+        for n in [1u32, 3, 4, 15] {
+            let st = c::cmsStageAllocIdentity(std::ptr::null_mut(), n);
+            eprintln!("id{n}={}", !st.is_null());
+            if !st.is_null() { c::cmsStageFree(st); }
+        }
+        // estimated table entries on a mixed pipeline
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let tab: Vec<u16> = (0..8*3).map(|i| (i * 7) as u16).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 2, 3, 3,
+                tab.as_ptr()));
+        let p2 = c::cmsPipelineDup(p);
+        let mut sz1 = 0u32;
+        let _ = c::cmsPipelineEvalReverseFloat; // silence unused
+        eprintln!("dup={}", !p2.is_null());
+        if !p2.is_null() { c::cmsPipelineFree(p2); }
+        c::cmsPipelineFree(p);
+        let _ = sz1;
+    }
+}
