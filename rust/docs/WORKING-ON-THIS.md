@@ -485,3 +485,55 @@ edge UTF-8 + many-lang MLUs), cmssm (GetPoint/QuantizeToSector
 via cmsGBD point configs), cmsopt (PatchLUT 45%,
 OptimizeByJoiningCurves, PrelinOpt16alloc — devicelink+CLUT
 and odd-shape pipelines through optimize flags).
+
+## Round — per-function residuals + api-driven arms 2 (through 67f846b7)
+
+**run19** (floored — 5 binaries failed under instrumentation:
+xform2 livelocked at 1110% CPU, plus the run18-known set):
+81.21% lines / 93.91% fns / 87.66% regions / 75.14% branches.
+per-fn map = `llvm-cov-14 report <bins>
+-instr-profile=bench/out/coverage-cref/all.profdata
+-show-functions <src>` — run19 profdata is freshest.
+
+**Coverage drivers discovered this round:**
+
+- `cmsMLUsetUTF8` is the decodeUTF8 driver — needs a
+  DISTINCT lang per call (same lang+country rejects via
+  SearchMLUEntry-found arm). Invalid UTF-8 accepted except
+  >U+10FFFF (0xF4 0x90 0x80 0x80).
+- Plugin sigs that register cleanly: 'intH' (intent + Link
+  fn + desc[256]), 'parH' (nFunctions + FunctionTypes[20] +
+  ParamCounts[20] + Evaluator), 'inpH' (factory), 'optH'
+  (opt fn), 'memH', 'hdrH', 'xfmH' (single union ptr =
+  _cmsTransform2Factory: fn(xform*,ud*,fd*,lut*,fi*,fo*,fl*)
+  -> i32 that sets *xform). NULL xfmH factory rejects.
+- `cmsDupContext` after registering plugins exercises
+  DupPlugin*List on each list (TransformList needs a valid
+  xfmH factory).
+- `cmsSliceSpace16/Float(n, gridpts, sampler, cargo)` — the
+  sampler gets (In, Out, cargo) per grid point; In/Out can
+  be null on edge calls — guard the fn.
+- `cmsPipelineEvalReverseFloat(target, result, hint, lut)`
+  — 4 args; only 3-channel pipelines reverse.
+- Stage ctor types: Lab2XYZ='x2l ', XYZ2Lab='l2x ',
+  LabV2ToV4/V4ToV2='matf', V2ToV4curves='cvst',
+  Identity='idn ', NamedColor='ncl '.
+- `cmsPipelineCheckAndRetreiveStages` is variadic
+  (n sigs then n out-ptrs).
+- `cmsIT8SetDataFormat(-1)` aborts on an _cmsAssert —
+  not an error arm.
+- `cmsDetectTAC` returns 0.0 on all bundled profiles
+  (ink-only semantics).
+- `cmsMLUsetUTF8`/`cmsMLUsetASCII` reject same
+  lang+country twice (dup found arm).
+- Alpha: EXTRA_SH>0 + COPY_ALPHA(0x4000000) — copy vs
+  zero-fill differs per format/width/planar; extra-count
+  mismatch between in/out rejects under COPY_ALPHA.
+- Alloc-fail: second crash depth fail@8 on mpet-read
+  (open path is fail@1).
+
+**Remaining residuals (run19 floored):** cmstypes ~74%,
+cmspack ~73%, cmsps2 ~68%, cmsvirt ~73%, cmsio1 ~80%,
+cmsxform ~76%, cmsnamed ~83%, cmsopt ~85%, cmscnvrt ~83%,
+cmsio0 ~85%, cmsplugin ~85%, cmscgats ~88%, cmslut ~85%,
+cmsgmt ~81%, cmssamp ~86%.
