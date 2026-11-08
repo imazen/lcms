@@ -501,3 +501,36 @@ fn dest_bp_tac_internals() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmssamp internals — BlackPointAsDarkerColorant +
+/// EndPointsBySpace + WhitePointFromTemp on corpus profiles.
+#[test]
+fn sm_internals2() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "graylcms2.icc",
+                  "labv4lcms2.icc", "aRGBlcms2.icc", "nullcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let mut bp = [0.0f64; 3];
+            let _ = c::cmsDetectDestinationBlackPoint(
+                bp.as_mut_ptr() as *mut _, p, 0, 0);
+            eprintln!("{f} dbp=({:.3},{:.3},{:.3})",
+                bp[0], bp[1], bp[2]);
+            c::cmsCloseProfile(p);
+        }
+        // white-point-from-temp
+        for k in [0.0f64, 2000.0, 3000.0, 5000.0, 6500.0, 9300.0,
+                  20000.0, 40000.0] {
+            let mut wp = [0.0f64; 3];
+            let r = c::cmsWhitePointFromTemp(wp.as_mut_ptr() as *mut _,
+                k);
+            eprintln!("temp{k} r={r} wp=({:.3},{:.3},{:.3})",
+                wp[0], wp[1], wp[2]);
+        }
+    }
+}
