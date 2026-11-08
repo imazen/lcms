@@ -2819,3 +2819,41 @@ fn chromaticity_payload() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_Curve internals — 'curv' bodies on the TRC sigs
+/// (the per-channel curve machinery).
+#[test]
+fn curve_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [(0x72545243u32, "rTRC"),
+                            (0x67545243u32, "gTRC"),
+                            (0x62545243u32, "bTRC"),
+                            (0x6B545243u32, "kTRC")] {
+            // 256-entry curve — the Type_Curve_Read machinery
+            let mut b = Vec::new();
+            b.extend_from_slice(b"curv");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&256u32.to_be_bytes()); // count
+            for i in 0..256u32 {
+                b.extend_from_slice(&((i * 0x100) as u16)
+                    .to_be_bytes());
+            }
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
