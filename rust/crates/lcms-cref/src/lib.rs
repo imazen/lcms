@@ -318,6 +318,8 @@ unsafe extern "C" {
     pub fn cmsCloseProfile(p: *mut c_void) -> i32;
     pub fn cmsGetTagCount(p: *const c_void) -> i32;
     pub fn cmsGetTagSignature(p: *const c_void, n: u32) -> u32;
+    pub fn cmsLinkTag(p: *mut c_void, sig: u32, dest: u32) -> i32;
+    pub fn cmsTagLinkedTo(p: *const c_void, sig: u32) -> u32;
     pub fn cmsGetTagOffsetAndSize(p: *const c_void, n: u32, off: *mut u32, sz: *mut u32) -> i32;
     pub fn cmsIsTag(p: *const c_void, sig: u32) -> i32;
     pub fn cmsReadTag(p: *mut c_void, sig: u32) -> *mut c_void;
