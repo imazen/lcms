@@ -207,3 +207,35 @@ fn devicelink_lut_dispatch() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Matrix-shaper reader arms — sRGB as output (BuildRGBOutput-
+/// MatrixShaper: inverse matrix + inverse TRC) and as input
+/// (BuildRGBInputMatrixShaper) at multiple intents.
+#[test]
+fn matrix_shaper_directions() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let rgb16 = (4u32 << 16) | (3 << 3) | 2;   // RGB u16
+        let lab16 = (10u32 << 16) | (3 << 3) | 2;  // Lab u16
+        for (name, inp, out, in_fmt, out_fmt) in [
+            ("srgb-in", srgb, lab, rgb16, lab16),
+            ("srgb-out", lab, srgb, lab16, rgb16),
+        ] {
+            for intent in 0..=3u32 {
+                let t = c::cmsCreateTransform(inp, in_fmt, out,
+                    out_fmt, intent, 0);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let mut buf = [0x80u8; 16];
+                    let mut ob = [0u8; 16];
+                    c::cmsDoTransform(t, buf.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
