@@ -924,7 +924,7 @@ fn profile_class_sigs() {
         c::cmsCloseProfile(h);
         // mutate the device-class field (offset 12)
         for (name, v) in [
-            ("mntr", 0x6D6E7472u32), ("prtr", 0x70727472),
+            ("mntr", 0x6D6E7472u32), ("prtr", 0x72545243),
             ("scnr", 0x73636E72), ("link", 0x6C696E6B),
             ("abst", 0x61627374), ("spac", 0x73706163),
             ("nmcl", 0x6E6D636C), ("0", 0u32),
@@ -2041,7 +2041,7 @@ fn deviceclass_bounds() {
             buf.as_mut_ptr() as *mut _, &mut n);
         // deviceClass is a u32be at offset 12
         for (name, val) in [
-            ("mntr", 0x6d6e7472u32), ("prtr", 0x70727472),
+            ("mntr", 0x6d6e7472u32), ("prtr", 0x72545243),
             ("scnr", 0x73636e72), ("link", 0x6c696e6b),
             ("abst", 0x61627374), ("nmcl", 0x6e6d636c),
             ("junk", 0x12345678), ("zero", 0),
@@ -3353,5 +3353,35 @@ fn iohandler_internals() {
             std::ptr::null_mut(), io2, 1);
         eprintln!("io2-open={}", !p2.is_null());
         if !p2.is_null() { c::cmsCloseProfile(p2); }
+    }
+}
+
+/// ParametricCurve tag reader per-type dispatch — build each
+/// parametric type, tag it, read back -> the reader's type arms.
+#[test]
+fn parametric_curve_reader() {
+    unsafe {
+        for ty in [1i32, 2, 3, 4, 5, 6, 7, 8, 108, -108] {
+            let params = [2.2f64, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+            let tc = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ty, params.as_ptr());
+            if tc.is_null() { eprintln!("ty{ty} alloc=null"); continue; }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteTag(prof, 0x72545243, tc as *const _); // 'prtr'
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x72545243)
+            } else { std::ptr::null_mut() };
+            eprintln!("ty{ty} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsFreeToneCurve(tc);
+        }
     }
 }
