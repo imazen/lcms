@@ -1482,3 +1482,24 @@ fn multichannel_modifier_matrix2() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Named-color format on a devicelink — the
+/// TYPE_NAMED_COLOR_INDEX machinery.
+#[test]
+fn named_color_on_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        // the named-index format — 1-channel u16 index
+        let named_fmt: u32 = (1 << 3) | 2;
+        let rgb_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(dl, named_fmt, dl,
+            rgb_fmt, 0, 0);
+        eprintln!("named t={}", !ct.is_null());
+        if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
