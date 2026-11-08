@@ -548,3 +548,25 @@ fn it8_property_types() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// IT8 multi-table machinery — add a second table + switch.
+#[test]
+fn it8_multi_table() {
+    unsafe {
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(it8, b"TEST\0".as_ptr() as _);
+        // add a property then create a second table
+        c::cmsIT8SetPropertyStr(it8,
+            b"ORIGINATOR\0".as_ptr() as _,
+            b"t1\0".as_ptr() as _);
+        let ok = c::cmsIT8SetPropertyDbl(it8,
+            b"NUMBER_OF_SETS\0".as_ptr() as _, 2.0);
+        eprintln!("prop={ok}");
+        // set the current table — table 0/1
+        for t in [0u32, 1] {
+            let ok = c::cmsIT8SetTable(it8, t);
+            eprintln!("table{t}={ok}");
+        }
+        c::cmsIT8Free(it8);
+    }
+}
