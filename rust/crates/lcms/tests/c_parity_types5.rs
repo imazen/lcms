@@ -181,3 +181,62 @@ fn v2_v4_more_sigs() {
         }
     }
 }
+
+/// Remaining exotic tag sigs — canonical payloads on chrm/meas/
+/// tech/lumi/view/clro/ciis/targ.
+#[test]
+fn remaining_exotic_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // chrm — cmsCIExyYTRIPLE
+        #[repr(C)]
+        struct CChrm { r: c::CiexyY, g: c::CiexyY, b: c::CiexyY }
+        let chrm = CChrm {
+            r: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            g: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+            b: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        };
+        let ok1 = c::cmsWriteTag(h, 0x6368726D,
+            &chrm as *const _ as *mut c_void); // 'chrm'
+        // lumi — cmsCIEXYZ
+        let lumi = c::CieXyz { X: 0.0, Y: 0.5, Z: 0.0 };
+        let ok2 = c::cmsWriteTag(h, 0x6C756D69,
+            &lumi as *const _ as *mut c_void); // 'lumi'
+        // tech — signature (fota = Fogra39L)
+        let sigv: u32 = 0x666F7461; // 'fota'
+        let ok3 = c::cmsWriteTag(h, 0x74656368,
+            &sigv as *const _ as *mut c_void); // 'tech'
+        // ciis — signature
+        let ok4 = c::cmsWriteTag(h, 0x63696973,
+            &sigv as *const _ as *mut c_void); // 'ciis'
+        // clro — u8 array of colorant indices
+        let clro: [u8; 4] = [0, 1, 2, 3];
+        let ok5 = c::cmsWriteTag(h, 0x636C726F,
+            clro.as_ptr() as *mut c_void); // 'clro'
+        // targ — text
+        let targ = b"target ref\0";
+        let ok6 = c::cmsWriteTag(h, 0x74617267,
+            targ.as_ptr() as *const c_void); // 'targ'
+        eprintln!("chrm={ok1} lumi={ok2} tech={ok3} ciis={ok4} \
+            clro={ok5} targ={ok6}");
+        // resave
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x6368726Du32, 0x6C756D69, 0x74656368,
+                    0x63696973, 0x636C726F, 0x74617267] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let mut tb = [0u8; 4];
+                c::cmsReadRawTag(h2, sig,
+                    tb.as_mut_ptr() as *mut _, 4);
+                eprintln!("{sig:#x} type={:#010x}",
+                    u32::from_be_bytes(tb));
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
