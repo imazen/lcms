@@ -627,3 +627,30 @@ fn it8_writer_internals() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 parser internals — docs with quoted/hex/comment/data arms.
+#[test]
+fn it8_parser_arms() {
+    unsafe {
+        let docs = [
+            // quoted strings + comments
+            "CGATS.17\nORIGINATOR \"test\"\n# comment\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\nBEG\nID V\nr1 1.5\nEND\n".as_bytes(),
+            // hex values + no quotes
+            "CGATS.17\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEG\nV\n0xABCD\nEND\n".as_bytes(),
+            // multi-set + scientific
+            "CGATS.5\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\nBEG\nA B C\n1.5e2 2 3\n4 5.5 6\nEND\n".as_bytes(),
+            // inline comments + tabs
+            "CGATS.5\nNUM\tBER_OF_FIELDS\t1\nBEG\nV\n7\nEND\n".as_bytes(),
+        ];
+        for (i, d) in docs.iter().enumerate() {
+            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                d.as_ptr() as *const _, d.len() as u32);
+            eprintln!("doc{i} load={}", !h.is_null());
+            if !h.is_null() {
+                let n = c::cmsIT8EnumDataFormat(h, std::ptr::null_mut());
+                eprintln!("  fmt={n}");
+                c::cmsIT8Free(h);
+            }
+        }
+    }
+}
