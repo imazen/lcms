@@ -24669,3 +24669,114 @@ fn internal_final73_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsopt residual — PatchLUT channel-error branch +
+///   Prelin8/16 alloc/dup/eval internals via prelin-opt
+///   transforms on unusual-channel pipelines.
+#[test]
+fn internal_final74_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // cv+clut pipelines on 1/2/3/4/5/8/15 channels →
+        //   PatchLUT dispatch + PrelinOpt alloc
+        for nch in [1u32, 2, 3, 4, 5, 8, 15] {
+            for (fl, fname) in [
+                (0u32, "0"), (0x0100, "opt"),
+                (0x0040, "hilo"),
+            ] {
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                c::cmsSetColorSpace(prof, match nch {
+                    1 => 0x47524159, 4 => 0x434D594B,
+                    _ => 0x52474220 });
+                c::cmsSetPCS(prof, 0x58595A20);
+                c::cmsSetProfileVersion(prof, 4.4);
+                let p = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), nch, nch);
+                let trcs = vec![g; nch as usize];
+                let dims = [3u32; 15];
+                let npt = 3usize.pow(nch.min(5))
+                    * nch as usize;
+                let grid = vec![0x4000u16; npt];
+                c::cmsPipelineInsertStage(p, 0,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), nch,
+                        trcs.as_ptr() as *mut _));
+                if nch <= 5 {
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(),
+                            dims.as_ptr(), nch, nch,
+                            grid.as_ptr()));
+                }
+                c::cmsWriteTag(prof, 0x41324230,
+                    p as *const _);
+                c::cmsWriteTag(prof, 0x42324130,
+                    p as *const _);
+                let fin = (0u32 << 16) | (nch << 3) | 2;
+                let t = c::cmsCreateTransform(prof, fin,
+                    prof, fin, 0, fl);
+                eprintln!("{nch}ch {fname} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = vec![0x4000u16; nch as usize];
+                    let mut dst = vec![0u16; nch as usize];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    // dup transform → private-data dup
+                    c::cmsDeleteTransform(t);
+                }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+        }
+        // u8 format prelin (Prelin8 internals)
+        for nch in [3u32, 4] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, match nch {
+                4 => 0x434D594B, _ => 0x52474220 });
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), nch, nch);
+            let trcs = vec![g; nch as usize];
+            let dims = [3u32; 15];
+            let npt = 3usize.pow(nch) * nch as usize;
+            let grid = vec![0x4000u16; npt];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), nch,
+                    trcs.as_ptr() as *mut _));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(),
+                    dims.as_ptr(), nch, nch,
+                    grid.as_ptr()));
+            c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            c::cmsWriteTag(prof, 0x42324130,
+                p as *const _);
+            let fin = (0u32 << 16) | (nch << 3) | 1;
+            let t = c::cmsCreateTransform(prof, fin,
+                prof, fin, 0, 0);
+            eprintln!("u8 {nch}ch t={}", !t.is_null());
+            if !t.is_null() {
+                let src = vec![128u8; nch as usize];
+                let mut dst = vec![0u8; nch as usize];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
