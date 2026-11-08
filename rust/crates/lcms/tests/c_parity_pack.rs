@@ -661,3 +661,40 @@ fn u16_byte_order_formats() {
         let _ = c::cmsCloseProfile(lab4);
     }
 }
+
+/// Float byte-order + multi-extra combos — the float packers
+/// on byte-order variants.
+#[test]
+fn float_byte_order() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("bgra-flt", (1 << 22) | (4 << 16) | (1 << 10)
+             | (1 << 7) | (3 << 3) | 4u32),
+            ("rgba-flt", (1 << 22) | (4 << 16) | (1 << 7)
+             | (3 << 3) | 4),
+            ("argb-flt", (1 << 22) | (4 << 16) | (1 << 14)
+             | (1 << 7) | (3 << 3) | 4),
+            ("bgr-flt", (1 << 22) | (4 << 16) | (1 << 10)
+             | (3 << 3) | 4),
+            ("rgba-flt-x2", (1 << 22) | (4 << 16) | (2 << 7)
+             | (3 << 3) | 4),
+            ("rgba-flt-x3", (1 << 22) | (4 << 16) | (3 << 7)
+             | (3 << 3) | 4),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0.5f32, 0.4, 0.3, 1.0, 0.5, 0.4];
+                let mut out = [0.0f32; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
