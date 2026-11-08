@@ -1698,3 +1698,28 @@ fn pipeline_eval_reverse() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Save-as-8bits flag + granular CLUT allocs on more
+/// combos.
+#[test]
+fn pipeline_flag_granular() {
+    unsafe {
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        for v in [0i32, 1, 2] {
+            let r = c::cmsPipelineSetSaveAs8bitsFlag(pl, v);
+            eprintln!("flag={v} r={r}");
+        }
+        // granular CLUTs — per-dimension grid
+        for (name, grid) in [
+            ("333", [3u32, 3, 3]),
+            ("222", [2u32, 2, 2]),
+            ("mixed", [2u32, 3, 4])] {
+            let st = c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+                std::ptr::null());
+            eprintln!("{name} alloc={}", !st.is_null());
+            if !st.is_null() { c::cmsStageFree(st); }
+        }
+        c::cmsPipelineFree(pl);
+    }
+}
