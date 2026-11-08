@@ -5096,3 +5096,61 @@ fn linearize_opt_arms() {
         c::cmsFreeToneCurve(tc);
     }
 }
+
+/// ComputeConversion internals — intents + proofing +
+/// GamutCheck + BlackPointCompensation stage injection on
+/// varied PCS-mismatch chains.
+#[test]
+fn compute_conversion_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        const BPC: u32 = 0x2000;
+        const GAMUTCHECK: u32 = 0x1000;
+        const SOFT: u32 = 0x0040;
+        const NOBPC: u32 = 0x0100;
+        for (inp, outp, fmt_in, fmt_out, name) in [
+            (srgb, cmyk, r8, k8, "rgb->cmyk"),
+            (cmyk, srgb, k8, r8, "cmyk->rgb"),
+            (lab, cmyk, l8, k8, "lab->cmyk"),
+            (cmyk, lab, k8, l8, "cmyk->lab"),
+            (srgb, lab, r8, l8, "rgb->lab"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for intent in 0..17u32 {
+                for flags in [0u32, BPC, GAMUTCHECK,
+                    BPC | GAMUTCHECK, NOBPC] {
+                    let t = c::cmsCreateTransform(inp, fmt_in,
+                        outp, fmt_out, intent, flags);
+                    if !t.is_null() {
+                        let ib = [0x55u8; 8];
+                        let mut ob = [0u8; 8];
+                        c::cmsDoTransform(t, ib.as_ptr()
+                            as *const _, ob.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            eprintln!("{name} swept");
+            // proofing transform (3 profiles)
+            let t2 = c::cmsCreateProofingTransform(inp,
+                fmt_in, outp, fmt_out, srgb, 0, 0,
+                SOFT | GAMUTCHECK);
+            eprintln!("{name} proof t={}", !t2.is_null());
+            if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
