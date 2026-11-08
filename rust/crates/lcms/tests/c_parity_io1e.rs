@@ -231,3 +231,47 @@ fn tag_table_machinery() {
         let _ = c::cmsCloseProfile(h);
     }
 }
+
+/// cmsReadRawTag + cmsWriteRawTag — the raw-tag byte paths.
+#[test]
+fn raw_tag_paths() {
+    for data in corpus() {
+        let mut rp = profile::open_profile_from_mem(None, &data).unwrap();
+        unsafe {
+            let mut h = c::cmsOpenProfileFromMem(data.as_ptr() as _,
+                data.len() as u32);
+            // read a tag's raw bytes — 'desc' or first present tag
+            for sig in [0x64657363u32, 0x77747074, 0x72545243] {
+                let cn = c::cmsReadRawTag(h, sig,
+                    std::ptr::null_mut(), 0);
+                let rn = profile::cms_read_raw_tag(&mut rp, sig, None);
+                assert_eq!(cn, rn, "raw read size {sig:#x}");
+                if cn > 0 && cn < 65536 {
+                    let mut cbuf = vec![0u8; cn as usize];
+                    let n2 = c::cmsReadRawTag(h, sig,
+                        cbuf.as_mut_ptr() as *mut _, cn);
+                    let mut rbuf = vec![0u8; cn as usize];
+                    let n3 = profile::cms_read_raw_tag(&mut rp, sig,
+                        Some(&mut rbuf));
+                    assert_eq!(n2, n3, "raw read n {sig:#x}");
+                    assert_eq!(&cbuf[..n2 as usize],
+                        &rbuf[..n3 as usize], "raw bytes {sig:#x}");
+                }
+            }
+            // write a raw tag — inject arbitrary bytes
+            let wsig = 0x6D6E6E6Eu32; // 'mnnn' custom sig
+            let wdata = [0xDEu8, 0xAD, 0xBE, 0xEF];
+            let c_ok = c::cmsWriteRawTag(h, wsig,
+                wdata.as_ptr() as *const _, wdata.len() as u32);
+            let r_ok = profile::cms_write_raw_tag(&mut rp, wsig,
+                &wdata);
+            assert_eq!(c_ok != 0, r_ok, "raw write");
+            // read it back
+            let rn2 = profile::cms_read_raw_tag(&mut rp, wsig, None);
+            let cn2 = c::cmsReadRawTag(h, wsig,
+                std::ptr::null_mut(), 0);
+            assert_eq!(cn2, rn2, "raw written size");
+            c::cmsCloseProfile(h);
+        }
+    }
+}
