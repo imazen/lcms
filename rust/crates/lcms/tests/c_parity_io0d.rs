@@ -8678,3 +8678,63 @@ fn lut_read_deep() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Type_LUT16_Write per-channel curve serialization — curves
+/// with different shapes per channel.
+#[test]
+fn lut16_write_channels() {
+    unsafe {
+        let g22 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g18 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let g26 = c::cmsBuildGamma(std::ptr::null_mut(), 2.6);
+        let g10 = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mut grid = vec![0u16; 17 * 17 * 17 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 17) * 3855) as u16;
+        }
+        // different per-channel curves hit the per-channel
+        // serialization loops inside WriteSetOfCurves/WriteCLUT
+        for (c1, c2, c3, name) in [
+            ([g22, g22, g22], [g22, g22, g22], [g22, g22, g22], "same"),
+            ([g22, g18, g26], [g26, g22, g18], [g18, g26, g22], "diff"),
+            ([g10, g22, g10], [g22, g10, g22], [g10, g22, g10], "mixed"),
+        ] {
+            for (sig, save8, name2) in [
+                (0x41324230u32, false, "a2b0"),
+                (0x41324230u32, true, "a2b0-8"),
+            ] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 2.1);
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                        3, c1.as_ptr() as *mut _));
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                        mat.as_ptr(), std::ptr::null()));
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                        17, 3, 3, grid.as_ptr()));
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                        3, c3.as_ptr() as *mut _));
+                if save8 { c::cmsPipelineSetSaveAs8bitsFlag(p, 1); }
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 22];
+                let mut nn = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut nn)
+                } else { 0 };
+                eprintln!("{name}/{name2} w={w} s={s}");
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+        }
+        c::cmsFreeToneCurve(g22);
+        c::cmsFreeToneCurve(g18);
+        c::cmsFreeToneCurve(g26);
+        c::cmsFreeToneCurve(g10);
+    }
+}
