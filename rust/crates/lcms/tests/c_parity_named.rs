@@ -1427,3 +1427,58 @@ fn named_growth_arms() {
         c::cmsMLUfree(m2);
     }
 }
+
+/// cmsnamed residual — decodeUTF8 byte-class edges:
+///   surrogate-range (0xd800-dfff CESU-8), >0x10ffff
+///   overflow, lone continuations, overlongs, all
+///   lead-byte classes.
+#[test]
+fn utf8_edge_arms() {
+    unsafe {
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 8);
+        let mut ctr = 0u32;
+        let mut try_set = |s: &[u8], nm: &str| {
+            let mut sb = s.to_vec();
+            sb.push(0);
+            let cc = format!("{}{}\0",
+                (b'A' + (ctr % 26) as u8) as char,
+                (b'A' + ((ctr / 26) % 26) as u8) as char);
+            ctr += 1;
+            let r = c::cmsMLUsetUTF8(mlu,
+                b"en\0".as_ptr(),
+                cc.as_ptr() as *const _,
+                sb.as_ptr() as *const _);
+            eprintln!("{nm}: {r}"); };
+        // ASCII
+        try_set(b"plain ascii", "ascii");
+        // 2-byte
+        try_set(b"\xc3\xa9", "2byte-e9");      // é
+        // 3-byte
+        try_set(b"\xe2\x82\xac", "3byte-euro"); // €
+        // 4-byte (>0xffff, surrogate-pair on 2-byte wchar)
+        try_set(b"\xf0\x9f\x98\x80", "4byte-emoji");
+        // surrogate-range CESU-8 (0xd800-0xdfff): skip arm
+        try_set(b"\xed\xa0\x80", "cesu-d800");
+        try_set(b"\xed\xbf\xbf", "cesu-dfff");
+        // >0x10ffff overflow: 4-byte encoding past range
+        try_set(b"\xf4\x90\x80\x80", "over-10ffff");
+        // 5-byte lead (else arm, ch & 0x07)
+        try_set(b"\xf8\x88\x80\x80\x80", "5byte-lead");
+        // lone continuation at start
+        try_set(b"\x80abc", "lone-cont");
+        try_set(b"\xbf\xbf", "cont-cont");
+        // overlong encodings
+        try_set(b"\xc0\x80", "overlong-nul");
+        try_set(b"\xe0\x80\x80", "overlong-3b");
+        // truncated sequences (lead + terminator)
+        try_set(b"\xc3", "trunc-2");
+        try_set(b"\xe2\x82", "trunc-3");
+        try_set(b"\xf0\x9f\x98", "trunc-4");
+        // lead + ASCII (non-cont terminator -> emit early)
+        try_set(b"\xc3a", "lead-then-ascii");
+        try_set(b"\xe2\x82a", "3b-then-ascii");
+        // continuation-run mid-string
+        try_set(b"ab\x80\x80cd", "mid-cont");
+        c::cmsMLUfree(mlu);
+    }
+}
