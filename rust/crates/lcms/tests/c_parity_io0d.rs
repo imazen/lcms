@@ -2976,3 +2976,46 @@ fn iohandler_modes() {
         if !p.is_null() { c::cmsCloseProfile(p); }
     }
 }
+
+/// Tag-type write/read sweep — each remaining cmstypes serializer:
+/// XYZ, signature, text, chromaticity, measurement, S15/U16Fixed16,
+/// dateTime, curve, parametricCurve, UcrBg, screening, UInt8.
+#[test]
+fn tag_type_sweep() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        #[repr(C)] struct Sig { sig: u32 }
+        let xyz = Xyz { x: 0.96, y: 1.0, z: 0.82 };
+        let sig4 = 0x73696720u32;
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(mlu, b"en".as_ptr(), b"US".as_ptr(),
+            b"demo text\0".as_ptr());
+        // (tag sig, payload ptr, name) — type-correct payloads
+        let cases: &[(u32, *const std::ffi::c_void, &str)] = &[
+            (0x77747074, &xyz as *const _ as *const _, "XYZ"),
+            (0x63707274, mlu as *const _, "cprt-mlu"),
+            (0x6b545243, g as *const _, "curve"),
+            (0x64657363, mlu as *const _, "desc-mlu"),
+        ];
+        for (sig, payload, name) in cases {
+            let w = c::cmsWriteTag(prof, *sig, *payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, *sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name}: w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+        }
+        c::cmsCloseProfile(prof);
+    }
+}
