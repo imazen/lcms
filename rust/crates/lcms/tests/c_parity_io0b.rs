@@ -373,3 +373,97 @@ fn internal_hdr_get_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio1 residual — _cmsReadProfileSequence on pseq
+///   with varying counts/entries + tech sigs + attrs.
+#[test]
+fn internal_pseq_desc_arms() {
+    unsafe {
+        for (n, fill, name) in [
+            (0u32, 0, "n0"),
+            (1, 1, "n1"),
+            (2, 2, "n2full"),
+            (3, 1, "n3sparse"),
+            (8, 8, "n8"),
+        ] {
+            let pseq = c::cmsAllocProfileSequenceDescription(
+                std::ptr::null_mut(), n);
+            if !pseq.is_null() && fill > 0 {
+                // fill entries via raw layout (mfr/model/
+                //   desc MLUs + attrs + tech)
+                #[repr(C)]
+                struct Desc {
+                    dev_mfg: u32, dev_model: u32,
+                    attrs: u64, tech: u32,
+                    pid: [u8; 16],
+                    mfr: *mut std::ffi::c_void,
+                    model: *mut std::ffi::c_void,
+                    desc: *mut std::ffi::c_void,
+                }
+                #[repr(C)]
+                struct Seq { n: u32,
+                    ctx: *mut std::ffi::c_void,
+                    seq: *mut Desc }
+                let sp = pseq as *mut Seq;
+                for i in 0..fill.min(n) as isize {
+                    let d = (*sp).seq.offset(i);
+                    (*d).dev_mfg = 0x494D47;
+                    (*d).dev_model = 0x3132;
+                    (*d).attrs = 0x1122334455667788;
+                    (*d).tech = 0x52474420;
+                    for fld in 0..3 {
+                        let mlu = c::cmsMLUalloc(
+                            std::ptr::null_mut(), 1);
+                        c::cmsMLUsetASCII(mlu,
+                            b"en\0".as_ptr() as *const _,
+                            b"US\0".as_ptr() as *const _,
+                            b"e\0".as_ptr() as *const _);
+                        match fld {
+                            0 => (*d).mfr = mlu,
+                            1 => (*d).model = mlu,
+                            _ => (*d).desc = mlu,
+                        }
+                    }
+                }
+            }
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x58595A20);
+            c::cmsSetProfileVersion(p, 4.4);
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            c::cmsWriteTag(p, 0x6B545243,
+                g as *const _);
+            let xyz = [0x0000F6D6u32, 0x00010000,
+                0x0000D32D];
+            for sig in [0x7258595Au32, 0x6758595A,
+                0x6258595A, 0x77747074] {
+                c::cmsWriteTag(p, sig,
+                    xyz.as_ptr() as *const _);
+            }
+            c::cmsWriteTag(p, 0x70736571,
+                pseq as *const _);
+            let mut buf = [0u8; 1 << 17];
+            let mut n2 = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n2);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n2)
+            } else { std::ptr::null_mut() };
+            let rd = if !pr.is_null() {
+                c::cmsReadTag(pr, 0x70736571)
+            } else { std::ptr::null_mut() };
+            eprintln!("pseq {name} sv={sv} rd={}",
+                !rd.is_null());
+            if !pr.is_null() {
+                c::cmsCloseProfile(pr); }
+            c::cmsCloseProfile(p);
+            if !pseq.is_null() {
+                c::cmsFreeProfileSequenceDescription(pseq); }
+            c::cmsFreeToneCurve(g);
+        }
+    }
+}
