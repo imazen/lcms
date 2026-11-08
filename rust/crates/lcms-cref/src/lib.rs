@@ -596,6 +596,9 @@ unsafe extern "C" {
     pub fn cmsSetPCS(p: *mut c_void, sig: u32);
     pub fn cmsSetProfileVersion(p: *mut c_void, version: f64);
     pub fn cmsGetProfileVersion(p: *const c_void) -> f64;
+    pub fn cmsGetProfileInfo(p: *mut c_void, info: u32, lang: *const i8, cntry: *const i8, buf: *mut c_void, bufsize: u32) -> u32;
+    pub fn cmsGetProfileInfoASCII(p: *mut c_void, info: u32, lang: *const i8, cntry: *const i8, buf: *mut c_void, bufsize: u32) -> u32;
+    pub fn cmsGetProfileInfoUTF8(p: *mut c_void, info: u32, lang: *const i8, cntry: *const i8, buf: *mut c_void, bufsize: u32) -> u32;
     pub fn cmsGetProfileContextID(p: *const c_void) -> *mut c_void;
     pub fn cmsIsMatrixShaper(prof: *mut c_void) -> i32;
     pub fn cmsSetHeaderRenderingIntent(p: *mut c_void, intent: u32);
