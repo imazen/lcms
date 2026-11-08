@@ -185,6 +185,7 @@ fn change_buffers_format() {
 
 #[test]
 fn stride_variants() {
+    let _g = CTX_LOCK.lock().unwrap();
     // padded rows: transform n px spread across a larger row stride
     let px = 64;
     let stride_extra = 11; // bytes of padding after each "pixel row"
@@ -364,6 +365,7 @@ fn intent_pipelines() {
 /// beyond the u16 sweep.
 #[test]
 fn u8_packed_formats() {
+    let _g = CTX_LOCK.lock().unwrap();
     unsafe {
         let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
         let lab8: u32 = (10 << 16) | (3 << 3) | 1;
@@ -1243,6 +1245,7 @@ fn transform2_adaptor() {
 /// BlackPreservingKPlaneIntents (13-15) in cmscnvrt.c.
 #[test]
 fn black_preserving_intents() {
+    let _g = CTX_LOCK.lock().unwrap();
     unsafe {
         let path = format!("{}/../../lcms2cmyk.icc\0",
             env!("CARGO_MANIFEST_DIR"));
