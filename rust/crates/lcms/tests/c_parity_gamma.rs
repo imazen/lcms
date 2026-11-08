@@ -675,3 +675,50 @@ fn tonecurve_alloc_arms2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// DefaultEvalParametricFn remaining internals — every type's
+/// domain boundary + inverse + edge parameters.
+#[test]
+fn parametric_arms2() {
+    unsafe {
+        // parametric curves with edge parameters hitting the
+        // boundary conditions inside DefaultEvalParametricFn
+        for (ty, params, name) in [
+            (1, vec![2.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "t1"),
+            (2, vec![2.2, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0], "t2-b0"),
+            (2, vec![2.2, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0], "t2-a0"),
+            (3, vec![2.2, 1.0, 0.0, 0.0, 0.5, 0.0, 0.0], "t3-b0"),
+            (4, vec![2.2, 1.0, 0.0, 0.0, 0.5, 0.0, 0.0], "t4"),
+            (5, vec![2.2, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], "t5"),
+            (6, vec![2.2, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], "t6"),
+            (7, vec![2.2, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], "t7"),
+            (8, vec![2.2, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], "t8"),
+            // 108/109 sigmoid variants
+            (108, vec![2.0, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], "t108"),
+            (108, vec![0.5, 0.5, 0.0, 0.5, 0.0, 0.0, 0.0], "t108b"),
+            (109, vec![2.0, 1.0, 0.0, 0.5, 0.0, 0.0, 0.0], "t109"),
+            (109, vec![0.5, 0.5, 0.0, 0.5, 0.0, 0.0, 0.0], "t109b"),
+        ] {
+            let c = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ty, params.as_ptr());
+            if c.is_null() {
+                eprintln!("{name} null");
+                continue;
+            }
+            // eval across the full domain + edges
+            for x in [-2.0f32, -1.0, -0.5, -0.1, -0.01, 0.0,
+                      0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99, 1.0,
+                      1.01, 1.1, 1.5, 2.0, 5.0] {
+                let y = c::cmsEvalToneCurveFloat(c, x);
+                let _ = y;
+            }
+            // dup + eval again (dup'd struct arm)
+            let d = c::cmsDupToneCurve(c);
+            if !d.is_null() {
+                let _ = c::cmsEvalToneCurveFloat(d, 0.5);
+                c::cmsFreeToneCurve(d);
+            }
+            c::cmsFreeToneCurve(c);
+        }
+    }
+}
