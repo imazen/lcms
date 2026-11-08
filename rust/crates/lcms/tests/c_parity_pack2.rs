@@ -185,3 +185,34 @@ fn mch_formats() {
         }
     }
 }
+
+/// BYTES_SH(0) packed (nibble/packed) + BYTES_SH(4) float formats —
+/// the remaining format-class paths.
+#[test]
+fn packed_float_formats() {
+    unsafe {
+        let lab16: u32 = (10 << 16) | (3 << 3) | 2;
+        // BYTES_SH(0) = packed (1 byte/2 channels?) + BYTES_SH(4) =
+        // float (probably unported)
+        for (name, bytes) in [("packed0", 0u32), ("float4", 4u32)] {
+            let in_fmt = (4 << 16) | (3 << 3) | bytes;
+            let hi = c::cmsCreate_sRGBProfile();
+            let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, lab16, 0, 0);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            let mut rp1 = virt::create_srgb_profile(None).unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, lab16, 0);
+            assert_eq!(ct.is_null(), rt.is_none(),
+                "{name} create");
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+    }
+}
