@@ -2571,3 +2571,32 @@ fn signature_typed_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'rXYZ'/'gXYZ'/'bXYZ' resave+read — the XYZ serialization.
+#[test]
+fn xyz_sig_resave() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        for (sig, name) in [
+            (0x7258595Au32, "rXYZ"), (0x6758595Au32, "gXYZ"),
+            (0x6258595Au32, "bXYZ"), (0x63686164u32, "chad")] {
+            let _ = c::cmsWriteTag(h, sig,
+                &xyz as *const _ as *mut std::ffi::c_void);
+        }
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for (sig, name) in [
+            (0x7258595Au32, "rXYZ"), (0x6758595Au32, "gXYZ"),
+            (0x6258595Au32, "bXYZ"), (0x63686164u32, "chad")] {
+            let r = c::cmsReadTag(h2, sig);
+            eprintln!("{name} read={}", r.is_null());
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
