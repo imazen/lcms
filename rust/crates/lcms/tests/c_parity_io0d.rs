@@ -6597,3 +6597,45 @@ fn mab_element_offset_arms() {
         }
     }
 }
+
+/// _cmsReadWCharArray/_cmsWriteWCharArray — dict entries with
+/// non-ASCII (surrogate-pair) names/values hit the wchar
+/// conversion deep paths.
+#[test]
+fn dict_wchar_deep() {
+    unsafe {
+        // dict with non-ASCII names: CJK + emoji (surrogate pair)
+        let d = c::cmsDictAlloc(std::ptr::null_mut());
+        for (k, v) in [
+            ("キー", "1"),
+            ("emoji\u{1f600}key", "v2"),
+            ("key3", "valüé"),
+            ("", "empty-key"),
+        ] {
+            let mut wk: Vec<u32> = k.chars().map(|c| c as u32).collect();
+            let mut wv: Vec<u32> = v.chars().map(|c| c as u32).collect();
+            wk.push(0); wv.push(0);
+            c::cmsDictAddEntry(d, wk.as_ptr() as *const _,
+                wv.as_ptr() as *const _,
+                std::ptr::null_mut(), std::ptr::null_mut());
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x6d657461, d as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x6d657461)
+        } else { std::ptr::null_mut() };
+        eprintln!("dict-wchar w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsDictFree(d);
+    }
+}

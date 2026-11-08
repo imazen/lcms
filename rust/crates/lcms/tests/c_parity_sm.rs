@@ -406,3 +406,26 @@ fn tac_detection_internals() {
         }
     }
 }
+
+/// TAC detection on real profiles — CMYK prtr/link corpus files
+/// exercise the gamut-hull sampler.
+#[test]
+fn tac_real_profiles() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2cmyk.icc", "lcms2link.icc", "lcms2link2.icc",
+                  "limitlcms2.icc", "linlcms2.icc", "aRGBlcms2.icc",
+                  "bchslcms2.icc", "glablcms2.icc", "gray3lcms2.icc",
+                  "labv4lcms2.icc", "nullcms2.icc", "xyzlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { eprintln!("{f} open=NULL"); continue; }
+            let tac = c::cmsDetectTAC(p);
+            eprintln!("{f} tac={tac:.3}");
+            c::cmsCloseProfile(p);
+        }
+    }
+}
