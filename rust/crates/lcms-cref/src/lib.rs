@@ -702,6 +702,10 @@ unsafe extern "C" {
     pub fn cmsSetAlarmCodesTHR(ctx: *mut c_void, codes: *const u16);
     pub fn cmsGetAlarmCodesTHR(ctx: *mut c_void, codes: *mut u16);
     pub fn cmsSetAdaptationStateTHR(ctx: *mut c_void, d: f64) -> f64;
+    pub fn cmsSetAlarmCodes(codes: *const u16);
+    pub fn cmsGetAlarmCodes(codes: *mut u16);
+    pub fn cmsSetAdaptationState(d: f64) -> f64;
+    pub fn cmsGetAdaptationState() -> f64;
     pub fn cmsGetPCS(prof: *mut c_void) -> u32;
     pub fn cmsGetColorSpace(prof: *mut c_void) -> u32;
     pub fn cmsGetDeviceClass(prof: *mut c_void) -> u32;
@@ -748,4 +752,27 @@ unsafe extern "C" {
     pub fn cref_seg_ngrid(curve: *mut ToneCurve, seg: i32) -> u32;
     pub fn cmsPlugin(plugin: *mut c_void) -> i32;
     pub fn cmsPluginTHR(ctx: *mut c_void, plugin: *mut c_void) -> i32;
+
+    pub fn cmsCreateDeviceLinkFromCubeFileTHR(ctx: *mut c_void, file_name: *const i8) -> *mut c_void;
+    pub fn cmsDetectRGBProfileGamma(prof: *mut c_void, threshold: f64) -> f64;
+    pub fn cmsDictNextEntry(e: *const c_void) -> *const c_void;
+    pub fn cmsFormatterForColorspaceOfProfile(prof: *mut c_void, n_bytes: u32, is_float: i32) -> u32;
+    pub fn cmsFormatterForPCSOfProfile(prof: *mut c_void, n_bytes: u32, is_float: i32) -> u32;
+    pub fn cmsFreeToneCurveTriple(curve: *const *mut c_void);
+    pub fn cmsGetHeaderCMM(prof: *mut c_void) -> u32;
+    pub fn cmsGetPipelineContextID(lut: Handle) -> *mut c_void;
+    pub fn cmsGetStageContextID(mpe: Handle) -> *mut c_void;
+    pub fn cmsGetTransformPipeline(t: *mut c_void) -> *mut c_void;
+    pub fn cmsGetPostScriptColorResource(ctx: *mut c_void, ty: u32, prof: *mut c_void, intent: u32, flags: u32, io: *mut c_void) -> u32;
+    pub fn cmsGetSupportedIntentsTHR(ctx: *mut c_void, n_max: u32, codes: *mut u32, descriptions: *mut *mut i8) -> u32;
+    pub fn cmsGetToneCurveSegment(n: i32, t: *const ToneCurve) -> *const c_void;
+    pub fn cmsOpenProfileFromFileTHR(ctx: *mut c_void, profile: *const i8, access: *const i8) -> *mut c_void;
+    pub fn cmsOpenProfileFromIOhandler2THR(ctx: *mut c_void, io: *mut c_void, write: i32) -> *mut c_void;
+    pub fn cmsOpenProfileFromMemTHR(ctx: *mut c_void, ptr: *const c_void, size: u32) -> *mut c_void;
+    pub fn cmsSaveProfileToStream(prof: *mut c_void, stream: *mut c_void) -> i32;
+    pub fn cmsPipelineCheckAndRetreiveStages(lut: Handle, n: u32, ...) -> i32;
+    pub fn cmsPipelineGetPtrToLastStage(lut: Handle) -> Handle;
+    pub fn cmsPipelineSetSaveAs8bitsFlag(lut: Handle, on: i32) -> i32;
+    pub fn cmsUnregisterPlugins();
+    pub fn cmsUnregisterPluginsTHR(ctx: *mut c_void);
 }
