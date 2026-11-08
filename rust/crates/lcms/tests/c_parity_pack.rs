@@ -3337,3 +3337,55 @@ fn float_packers2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// LabV2 format arms + premul packers — v2 Lab profiles use the
+/// LabV2_8/16 unrollers; premul flag hits the premul bodies.
+#[test]
+fn labv2_premul_packers() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let la8 = (10u32 << 16) | (1 << 7) | (3 << 3) | 1; // ALabV2_8
+        let sw = |name: &str, inp: *mut _, if_: u32, of_: u32, prof: *mut _| {
+            let t = c::cmsCreateTransform(inp, if_, prof, of_, 0, 0);
+            let ok = !t.is_null();
+            eprintln!("{name} t={ok}");
+            if ok {
+                let ib = [0x4000u16; 8];
+                let mut ob = [0u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        };
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let prem = 1u32 << 23;
+        // LabV2 arms — Lab profile v2 in/out with Lab8/16 words
+        sw("labv2-8-in", lab2, l8, r16, srgb);
+        sw("labv2-16-in", lab2, l16, r16, srgb);
+        sw("alabv2-8-in", lab2, la8, r16, srgb);
+        sw("labv2-8-out", srgb, r16, l8, lab2);
+        sw("labv2-16-out", srgb, r16, l16, lab2);
+        sw("alabv2-8-out", srgb, r16, la8, lab2);
+        // premul arms on RGBA u16
+        let ra16 = (4u32 << 16) | (1 << 7) | (3 << 3) | 2;
+        sw("premul-in", srgb, ra16 | prem, l16, lab4);
+        sw("premul-out", lab4, l16, ra16 | prem, srgb);
+        sw("premul-planar", srgb, ra16 | prem | (1 << 12), l16, lab4);
+        // MCH2 — a 2-channel devicelink profile? try xyz 2ch
+        let xyz = c::cmsCreateXYZProfile();
+        let x16 = (9u32 << 16) | (3 << 3) | 2;
+        sw("xyz-16", xyz, x16, l16, lab4);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
