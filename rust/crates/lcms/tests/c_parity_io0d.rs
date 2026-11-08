@@ -22655,3 +22655,81 @@ fn internal_final54_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — supported-intent internals across
+///   every device class × intent.
+#[test]
+fn internal_final55_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // classes × intent 0..9 on sRGB + placeholders
+        for (cls, cname) in [
+            (0x6D6E7472u32, "mntr"), (0x70727472, "prtr"),
+            (0x7363616E, "scnr"), (0x73706163, "spac"),
+            (0x61627374, "abst"), (0x6C696E6B, "link"),
+            (0x6E6D636C, "nmcl"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            // write a generic cv+clut pipeline to A2B0/B2A0
+            //   so intent probing has something to find
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 2.2);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let trcs = [g, g, g];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    trcs.as_ptr() as *mut _));
+            c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            c::cmsWriteTag(prof, 0x42324130, p as *const _);
+            let mut codes = [0u32; 16];
+            let mut descs: [*const i8; 16] =
+                [std::ptr::null(); 16];
+            let n = c::cmsGetSupportedIntents(16,
+                codes.as_mut_ptr(),
+                descs.as_mut_ptr() as *mut _);
+            let mut out = String::new();
+            for i in 0..n.min(16) {
+                out += &format!("{:x} ", codes[i as usize]);
+            }
+            for it in 0..10u32 {
+                let sup = c::cmsIsIntentSupported(
+                    prof, it, 0);
+                out += &format!("i{it}={sup} ");
+            }
+            eprintln!("{cname} n={n} {out}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+            c::cmsFreeToneCurve(g);
+        }
+        // on srgb (has real tags)
+        let mut codes = [0u32; 16];
+        let mut descs: [*const i8; 16] =
+            [std::ptr::null(); 16];
+        let n = c::cmsGetSupportedIntents(16,
+            codes.as_mut_ptr(),
+            descs.as_mut_ptr() as *mut _);
+        // THR variant on a context
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let mut codes2 = [0u32; 16];
+        let mut descs2: [*mut i8; 16] =
+            [std::ptr::null_mut(); 16];
+        let n2 = c::cmsGetSupportedIntentsTHR(ctx, 16,
+            codes2.as_mut_ptr(), descs2.as_mut_ptr());
+        eprintln!("ctx n2={n2}");
+        c::cmsDeleteContext(ctx);
+        for it in 0..10u32 {
+            let sup = c::cmsIsIntentSupported(srgb, it, 0);
+            eprintln!("srgb i{it}={sup}");
+        }
+        eprintln!("srgb n={n}");
+        c::cmsCloseProfile(srgb);
+    }
+}
