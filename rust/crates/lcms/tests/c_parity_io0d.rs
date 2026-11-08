@@ -10096,3 +10096,46 @@ fn lut16_write_arms7() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// SaveTags remaining internals — version conversion during save
+/// for all tag types + profile-class conversion.
+#[test]
+fn save_tags_arms5() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        // profile class × version conversion
+        for (class, ver, name) in [
+            (0x73636e72u32, 2.1, "scnr-v2"),
+            (0x73636e72, 4.4, "scnr-v4"),
+            (0x6d6e7472, 2.1, "mntr-v2"),
+            (0x6d6e7472, 4.4, "mntr-v4"),
+            (0x70727472, 2.1, "prtr-v2"),
+            (0x70727472, 4.4, "prtr-v4"),
+            (0x6c696e6b, 2.1, "link-v2"),
+            (0x6c696e6b, 4.4, "link-v4"),
+            (0x61627374, 2.1, "abst-v2"),
+            (0x61627374, 4.4, "abst-v4"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            c::cmsSetDeviceClass(prof, class);
+            c::cmsWriteTag(prof, 0x72545243, g as *const _);
+            c::cmsWriteTag(prof, 0x67545243, g2 as *const _);
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                    [g, g2, g].as_ptr() as *mut _));
+            c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 22];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("{name} save={s}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
