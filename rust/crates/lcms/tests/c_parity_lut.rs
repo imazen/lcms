@@ -1772,3 +1772,28 @@ fn pipeline_eval_multich() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Pipeline insert validation — invalid positions/stages.
+#[test]
+fn pipeline_insert_invalid() {
+    unsafe {
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocIdentity(std::ptr::null_mut(), 3));
+        // invalid positions — the insert-validation machinery
+        for (name, pos) in [
+            ("neg1", -1i32), ("zero", 0), ("one", 1),
+            ("huge", 999), ("neg-huge", -999)] {
+            let st = c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 3);
+            let r = c::cmsPipelineInsertStage(pl, pos, st);
+            eprintln!("{name} r={r}");
+            if r == 0 { c::cmsStageFree(st); }
+        }
+        // NULL stage
+        let r = c::cmsPipelineInsertStage(pl, 1,
+            std::ptr::null_mut());
+        eprintln!("null-stage r={r}");
+        c::cmsPipelineFree(pl);
+    }
+}
