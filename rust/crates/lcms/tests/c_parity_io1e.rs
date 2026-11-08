@@ -2053,3 +2053,32 @@ fn struct_sig_writes() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Object/struct sig resave+read — the serialization
+/// internals on real objects.
+#[test]
+fn object_sig_resave() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        // add an entry — an empty dict's serialization
+        // crashes on read (oracle UB)
+        c::cmsDictAddEntry(dict, b"key1 ".as_ptr() as _,
+            b"val1 ".as_ptr() as _,
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let _ = c::cmsWriteTag(h, 0x6D657461,
+            dict as *mut std::ffi::c_void);
+        // resave + read — the serialization internals
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x6D657461);
+        eprintln!("meta read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsDictFree(dict);
+    }
+}
