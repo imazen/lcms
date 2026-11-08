@@ -892,3 +892,33 @@ fn flagged_dotransform() {
         let _ = (rgb, rgb2);
     }
 }
+
+/// Line-stride transform internals —
+/// cmsDoTransformLineStride on more shapes.
+#[test]
+fn linestride_bitmap() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let fmt = (4 << 16) | (3 << 3) | 1u32;
+        let lfmt = (10 << 16) | (3 << 3) | 1;
+        let t = c::cmsCreateTransform(rgb, fmt,
+            lab, lfmt, 0, 0);
+        let inp = [128u8; 12];
+        let mut out = [0u8; 12];
+        c::cmsDoTransformLineStride(t,
+            inp.as_ptr() as _, out.as_mut_ptr() as _,
+            4, 1, 3, 3, 0, 0);
+        eprintln!("stride1 out={},{},{}",
+            out[0], out[1], out[2]);
+        // 2-line stride with offset
+        let inp2 = [64u8; 24];
+        let mut out2 = [0u8; 24];
+        c::cmsDoTransformLineStride(t,
+            inp2.as_ptr() as _, out2.as_mut_ptr() as _,
+            4, 2, 3, 3, 12, 12);
+        eprintln!("stride2 out={},{},{}",
+            out2[0], out2[1], out2[2]);
+        let _ = (rgb, lab);
+    }
+}
