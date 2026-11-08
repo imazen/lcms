@@ -2795,3 +2795,76 @@ fn six_eight_channel_packers() {
         }
     }
 }
+
+/// Real MCH devicelink — placeholder + 6-channel pipeline tag ->
+/// Pack6Bytes/Unroll6* through a valid 6-channel transform.
+#[test]
+fn real_mch_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 6, 6);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 6,
+                [g; 6].as_ptr() as *mut _));
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6c696e6b); // 'link'
+        c::cmsSetColorSpace(prof, 0x434d4e36);   // MCH6
+        c::cmsSetPCS(prof, 0x434d4e36);
+        c::cmsWriteTag(prof, 0x41324230, p as *const _); // A2B0
+        let fmt = (9u32 << 16) | (6 << 3) | 1; // MCH6=9? use PT
+        for ch_fmt in [(9u32 << 16) | (6 << 3) | 1,
+                       (6u32 << 16) | (6 << 3) | 1,
+                       (0xBu32 << 16) | (6 << 3) | 1] {
+            let t = c::cmsCreateTransform(prof, ch_fmt,
+                prof, ch_fmt, 0, 0);
+            eprintln!("fmt{ch_fmt:#x} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x40u8; 12];
+                let mut ob = [0u8; 12];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+    }
+}
+
+/// EXTRA/SWAPFIRST/FLAVOR format arms — skip1/reverse unrollers
+/// via the format-flag bits.
+#[test]
+fn extra_swap_flavor_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let gray = c::cmsCreateGrayProfile(
+            &c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 } as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        // EXTRA=1 (skip byte), SWAPFIRST, FLAVOR, DOSWAP combos
+        for (fl, name) in [
+            (1u32 << 3, "extra1"),
+            ((1 << 3) | (1 << 15), "extra-swapfirst"),
+            ((1 << 3) | (1 << 10), "extra-doswap"),
+            (1u32 << 11, "flavor"),
+            ((1 << 3) | (1 << 10) | (1 << 15), "x3"),
+        ] {
+            for ch in [3u32, 4] {
+                for by in [1u32, 2] {
+                    let f = (4u32 << 16) | fl | (ch << 3) | by;
+                    let g = (3u32 << 16) | (1 << 3) | by;
+                    let t = c::cmsCreateTransform(srgb, f, gray, g, 0, 0);
+                    if !t.is_null() {
+                        let ib = vec![0x40u8; 32];
+                        let mut ob = [0u8; 16];
+                        c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                        eprintln!("{name} ch{ch} by{by} ok");
+                    }
+                }
+            }
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+    }
+}
