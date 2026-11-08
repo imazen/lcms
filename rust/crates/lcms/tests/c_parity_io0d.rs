@@ -5630,3 +5630,39 @@ fn text_data_tags() {
         c::cmsCloseProfile(prof3);
     }
 }
+
+/// Malformed-tag reject arms — truncated/corrupt payloads for
+/// meas, view, calt, curv, clro, cicp, chrm.
+#[test]
+fn malformed_tag_reads2() {
+    unsafe {
+        for (sig, name, payload) in [
+            (0x6d656173u32, "meas", vec![0x6d656173u32,0,0,0,0,0,0,0]),
+            (0x76696577, "view", vec![0x76696577u32,0,0,0,0]),
+            (0x63616c74, "calt", vec![0x64696d65u32,0,0,0,0]),
+            (0x72545243, "rTRC", vec![0x63757276u32,0,0xffffff00,0]),
+            (0x636C7274, "clrt", vec![0x6e636c32u32,0,0xff,0,0]),
+            (0x76636774, "vcgt", vec![0x76636774u32,0,0x99,0]),
+            (0x6368726D, "chrm", vec![0x6368726Du32,0,0x05,0]),
+        ] {
+            let raw: Vec<u8> = payload.iter()
+                .flat_map(|w| w.to_be_bytes()).collect();
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, sig, raw.as_ptr() as *const _,
+                raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
