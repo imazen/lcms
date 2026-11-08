@@ -1023,3 +1023,39 @@ fn float_modifier_matrix() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Half-float modifier matrix — the half packer bodies.
+#[test]
+fn half_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("h-planar", (1 << 22) | (4 << 16) | (1 << 12)
+             | (3 << 3) | 2u32),
+            ("h-doswap", (1 << 22) | (4 << 16) | (1 << 10)
+             | (3 << 3) | 2),
+            ("h-swapf", (1 << 22) | (4 << 16) | (1 << 14)
+             | (3 << 3) | 2),
+            ("h-flavor", (1 << 22) | (4 << 16) | (1 << 13)
+             | (3 << 3) | 2),
+            ("h-x1", (1 << 22) | (4 << 16) | (1 << 7)
+             | (3 << 3) | 2),
+            ("h-x2", (1 << 22) | (4 << 16) | (2 << 7)
+             | (3 << 3) | 2),
+            ("h-x3", (1 << 22) | (4 << 16) | (3 << 7)
+             | (3 << 3) | 2),
+            ("h-x4", (1 << 22) | (4 << 16) | (4 << 7)
+             | (3 << 3) | 2),
+            ("h-premul", (1 << 22) | (4 << 16) | (1 << 23)
+             | (1 << 7) | (3 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
