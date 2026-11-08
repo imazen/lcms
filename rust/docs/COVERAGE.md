@@ -1166,3 +1166,35 @@ Type_LUT8_Read (73), OptimizeByResampling (71), Type_LUT16_Read (69),
 SaveTags (69), Type_Text_Description_Read (65 — covered),
 Type_vcgt_Read (62 — covered), Type_MPE_Write (59 — covered),
 AllocateToneCurveStruct (59), Type_Dictionary_Read (55 — covered).
+
+### Round 27 — AFTER the IO/lexer/optimizer sweeps (through 29a4de1f)
+
+C oracle re-measured through the parity suite: **80.09% lines /
+95.51% fns / 87.07% regions / 72.99% branches** (up from round-26's
+78.05/95.51/86.43/70.73 — +2.04/+0.64/+2.62).
+
+| file | r26 | r27 | Δ |
+|---|---|---|---|
+| cmstypes.c | 67.78% | 72.86% | +5.08 (raw-tag save+reopen reads: cvst/desc/vcgt/dict + fail-arm sweeps) |
+| cmsvirt.c | ~57% | 72.94% | devicelink_arms (12 pair x v2.1/v4.0/v4.4 x FORCE_CLUT/8BITS/NOWHITE) |
+| cmscgats.c | 79.24% | 81.98% | +2.74 (insymbol/header-pair/cube-parse lexer sweeps) |
+| cmsopt.c | ~78% | 81.66% | fixwhite_arms (white-mismatch x precalc/prelin flags) |
+| cmsgamma.c | ~83% | 86.27% | parametric_eval_arms2 (types 1-8/108/109/inverse/boundary) |
+| cmsio0.c | 82.07% | 83.71% | +1.64 (write_fail_arms 1-3 + read_fail_arms gated callbacks) |
+| cmscnvrt.c | ~73% | 76.88% | black_preserve_arms2 (intents 10-15) + default_icc_intents_arms |
+| cmsplugin.c | ~77% | 83.37% | plugin_validation_arms (13 sigs + magic/version/chain arms) |
+| cmspcs.c | ~90% | 96.40% | colorspace_switches (41 sigs -> _cmsLCMScolorSpace/_cmsICCcolorSpace) |
+| cmsio1.c | ~70% | 79.00% | create_profile_arms + devicelink_arms |
+| cmslut.c | 82.42% | 82.42% | — |
+| **TOTAL** | **78.05%** | **80.09%** | **+2.04** |
+
+~17 gates: write_fail_arms(1-3) + read_fail_arms (gated IOhandler
+Write/Read callbacks -> every `Write fail->return FALSE`/`Read
+fail->Error` arm in Type_*_Write/Read; MemoryWrite truncation noted);
+colorspace_switches; devicelink_arms; create_profile_arms;
+plugin_validation_arms; cvst_read_arms + seg_cvst_arms/isolate
+(raw mpet/cvst blobs + API seg reject); desc_read_arms2;
+vcgt_read_arms2; parametric_eval_arms2; it8_insymbol_arms;
+it8_header_pair_arms; cube_parse_arms2; fixwhite_arms;
+black_preserve_arms2; lut8_write_arms2 (fork-isolated rejects);
+matshaper_arms; joincurves_arms; default_icc_intents_arms.
