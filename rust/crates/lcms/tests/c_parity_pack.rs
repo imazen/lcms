@@ -1791,3 +1791,25 @@ fn alpha_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Named-color format on a 'nmcl' devicelink — the
+/// TYPE_NAMED_COLOR_INDEX machinery.
+#[test]
+fn named_color_nmcl() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 1];
+        // 'nmcl' devicelink (1-channel named-color)
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x6E6D636C,
+            curves.as_mut_ptr());
+        eprintln!("dl={}", !dl.is_null());
+        // the named-index format — 1-channel u16 index
+        let named_fmt: u32 = (1 << 3) | 2;
+        let ct = c::cmsCreateTransform(dl, named_fmt, dl,
+            named_fmt, 0, 0);
+        eprintln!("named t={}", !ct.is_null());
+        if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
