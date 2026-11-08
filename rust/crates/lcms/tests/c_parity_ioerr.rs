@@ -364,3 +364,30 @@ fn io1_header_getters() {
         unsafe { c::cmsCloseProfile(ch) };
     }
 }
+
+/// cmsio1 intent-support matrix: GetSupportedIntents + IsIntentSupported
+/// per intent x direction x profile.
+#[test]
+fn io1_intent_support() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap().filter_map(|e| e.ok()).map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
+        .collect();
+    files.sort();
+    for f in files {
+        let name = f.file_name().unwrap().to_string_lossy();
+        let data = std::fs::read(&f).unwrap();
+        let ch = unsafe { c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32) };
+        if ch.is_null() { continue; }
+        let mut rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
+        for intent in 0..8u32 {
+            for dir in 0..2u32 {
+                let c_sup = unsafe { c::cmsIsIntentSupported(ch, intent, dir) };
+                let r_sup = lcms::io1::is_intent_supported(&rp, intent, dir as i32);
+                assert_eq!(c_sup != 0, r_sup, "{name} intent {intent} dir {dir}");
+            }
+        }
+        unsafe { c::cmsCloseProfile(ch) };
+    }
+}
