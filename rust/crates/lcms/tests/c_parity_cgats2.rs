@@ -2009,3 +2009,78 @@ fn it8_deep_arms20() {
         }
     }
 }
+
+/// InSymbol — lexer branch arms: hex/binary numbers, overflow,
+/// signs, EOL variants, strings, comments, include, id+num merge.
+#[test]
+fn it8_insymbol_arms() {
+    unsafe {
+        let base = b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            # comment\ndesc \"doc\"\nBEGIN_DATA_FORMAT\n\
+            D\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n\
+            ORIGINATOR \"x\"\n";
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            (b"IT8FILE\nx0ff 12\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n0x10\nEND_DATA\n"
+                .to_vec(), "hex"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n0b101\nEND_DATA\n".to_vec(), "bin"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n0xFFFFFFFFF\nEND_DATA\n".to_vec(),
+                "hex-ovf"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n0b1111111111111111111111111111111111\n\
+                END_DATA\n".to_vec(), "bin-ovf"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n-42\n+17\n.5\n1e3\nEND_DATA\n"
+                .to_vec(), "signs"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n-0.5e-2\nEND_DATA\n".to_vec(),
+                "neg-sci"),
+            (b"IT8FILE\nkw \"val\"\r\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n"
+                .to_vec(), "crlf"),
+            (b"IT8FILE\nkw \"val\"\rNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n"
+                .to_vec(), "cr"),
+            (b"IT8FILE\nkw 'single'\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n"
+                .to_vec(), "squote"),
+            (b"IT8FILE\n12abc \"id-num-merge\"\n\
+                NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n1\nEND_DATA\n".to_vec(), "id-num"),
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n3.14abc\nEND_DATA\n".to_vec(),
+                "num-id"),
+            (b"IT8FILE\n\x1a\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n"
+                .to_vec(), "ctrl-z"),
+            (b"IT8FILE\nkw \"unclosed\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n"
+                .to_vec(), "unclosed-q"),
+            // include directive — missing file → error arm
+            (b"IT8FILE\nINCLUDE \"nonexistent_it8_file.txt\"\n\
+                NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\n\
+                BEGIN_DATA\n1\nEND_DATA\n".to_vec(), "include"),
+            // very long identifier → StringAppend stress
+            ({ let mut d = b"IT8FILE\n".to_vec();
+                d.extend_from_slice(&vec![b'x'; 4096]);
+                d.extend_from_slice(b" 5\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\n\
+                    END_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n");
+                d }, "long-id"),
+            (base.to_vec(), "base"),
+        ];
+        for (doc, name) in &docs {
+            let it8 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            let ok = !it8.is_null();
+            let mut n = 0i32;
+            if ok {
+                n = c::cmsIT8EnumDataFormat(it8,
+                    std::ptr::null_mut());
+                c::cmsIT8Free(it8);
+            }
+            eprintln!("{name} ok={ok} nfmt={n}");
+        }
+    }
+}
