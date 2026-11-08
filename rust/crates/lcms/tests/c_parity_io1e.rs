@@ -1539,3 +1539,23 @@ fn stored_tag_table() {
         }
     }
 }
+
+/// Intent-support machinery — cmsIsIntentSupported on corpus
+/// LUT profiles (the intent-lookup internals).
+#[test]
+fn intent_support_machinery() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            for intent in [0u32, 1, 2, 3, 4, 5, 6] {
+                let d = c::cmsIsIntentSupported(h, intent,
+                    0); // 0=input direction
+                let r = c::cmsIsIntentSupported(h, intent,
+                    1); // 1=output
+                let _ = (d, r);
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
