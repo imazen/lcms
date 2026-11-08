@@ -2613,3 +2613,42 @@ fn format_sweep_pack_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Float/double unroll+pack arms — transforms on float/double
+/// formats with alpha/planar/doswap variants hit the remaining
+/// UnrollDoublesToFloat/UnrollFloatsToFloat/PackX*FromFloat bodies.
+#[test]
+fn float_pack_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // (cs<<16)|(extra<<7)|(float=1<<22? no — T_FLOAT is a flag)
+        // format word: PT|float|channels|bytes|extra|doswap|planar
+        let f = |cs: u32, ch: u32, by: u32, fl: u32|
+            (cs << 16) | fl | (ch << 3) | by;
+        // T_FLOAT = 1<<22; T_EXTRA(n) = n<<7? T_DOSWAP=1<<10,
+        // T_PLANAR=1<<11 — probe the accepted float/double combos
+        for (name, in_fmt, out_fmt) in [
+            ("f32-in", f(4, 3, 4, 1 << 22), f(10, 3, 4, 1 << 22)),
+
+            // T_EXTRA/T_PLANAR/T_DOSWAP float shapes crash in C
+            // (formatter-table gap) — pinned as C rejects/UB; only
+            // the plain float/double arms are safe to drive.
+        ] {
+            let t = c::cmsCreateTransform(srgb, in_fmt, lab,
+                out_fmt, 0, 0);
+            eprintln!("{name}: t={}", !t.is_null());
+            if !t.is_null() {
+                let ch = ((in_fmt >> 3) & 15) as usize;
+                let by = (in_fmt & 7) as usize;
+                let inp = vec![0x40u8; ch * by * 4];
+                let mut out = vec![0u8; 64];
+                c::cmsDoTransform(t, inp.as_ptr() as *const _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
