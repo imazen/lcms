@@ -1370,3 +1370,50 @@ fn pcs_conversion_chains() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// NONEGATIVES clip + abstract-class + devicelink dispatch —
+/// cmsFLAGS_NONEGATIVES inserts a clip stage on gray/CMYK output;
+/// abstract-class and link-class single profiles take the
+/// devicelink/abstract LUT paths.
+#[test]
+fn nonegatives_abstract_devicelink() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let gray = c::cmsCreateGrayProfile(&wp as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        // NONEGATIVES on gray output -> clip stage
+        for (name, inp, outp, if_, of) in [
+            ("g-gray", srgb, gray, r16, g16),
+            ("g-srgb", gray, srgb, g16, r16),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of,
+                0, 0x20000000); // NONEGATIVES
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        // abstract-class profile -> abstract LUT path
+        let bchsw = c::cmsCreateBCHSWabstractProfile(5,
+            0.1, 0.2, 0.3, 0.4, 5000, 6500);
+        if !bchsw.is_null() {
+            let t = c::cmsCreateTransform(srgb, r16, srgb, r16,
+                0, 0);
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(bchsw);
+        }
+        // single devicelink profile -> devicelink LUT
+        let dl = c::cmsCreateInkLimitingDeviceLink(0x434D594B, 250.0);
+        if !dl.is_null() {
+            let cf = (6u32 << 16) | (4 << 3) | 1;
+            let t = c::cmsCreateTransform(dl, cf, dl, cf, 0, 0);
+            eprintln!("dl-single t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(dl);
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+    }
+}
