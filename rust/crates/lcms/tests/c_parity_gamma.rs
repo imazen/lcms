@@ -1674,3 +1674,68 @@ fn gamma_named_tail_arms() {
         c::cmsFreeToneCurve(gdsc);
     }
 }
+
+/// cmsgamma residual — EstimatedTableEntries/Table +
+///   IsToneCurve{Linear,Monotonic,Descending,
+///   Multisegment} on every curve shape.
+#[test]
+fn gamma_est_table_arms() {
+    unsafe {
+        // curve shapes: parametric, tabulated linear/
+        //   non-linear/monotonic/descending, segmented
+        let mk: Vec<(*mut c::ToneCurve, &str)> = vec![
+            (c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+                "para22"),
+            (c::cmsBuildGamma(std::ptr::null_mut(), 1.0),
+                "lin"),
+            (c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 2,
+                [0u16, 0xFFFF].as_ptr()), "tab-lin"),
+            (c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 4,
+                [0u16, 0x1000, 0xF000, 0xFFFF].as_ptr()),
+                "tab-nl"),
+            (c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 4,
+                [0xFFFFu16, 0x8000, 0x2000, 0]
+                    .as_ptr()), "tab-desc"),
+            (c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 4,
+                [0u16, 0xFFFF, 0x1000, 0xFFFF].as_ptr()),
+                "tab-nonmono"),
+        ];
+        for (g, name) in &mk {
+            if g.is_null() { continue; }
+            let ent = c::cmsGetToneCurveEstimatedTableEntries(
+                *g);
+            let tab = c::cmsGetToneCurveEstimatedTable(*g);
+            let lin = c::cmsIsToneCurveLinear(*g);
+            let mon = c::cmsIsToneCurveMonotonic(*g);
+            let dsc = c::cmsIsToneCurveDescending(*g);
+            let ms = c::cmsIsToneCurveMultisegment(*g);
+            let t0 = if !tab.is_null() { *tab } else { 0 };
+            eprintln!("{name} ent={ent} t0={t0} \
+                lin={lin} mon={mon} dsc={dsc} ms={ms}");
+        }
+        for (g, _) in mk {
+            if !g.is_null() {
+                c::cmsFreeToneCurve(g); } }
+        // EstimatedTable read via dup'd + reversed +
+        //   joined
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (g2, name) in [
+            (c::cmsDupToneCurve(g), "dup"),
+            (c::cmsReverseToneCurve(g), "rev"),
+            (c::cmsJoinToneCurve(
+                std::ptr::null_mut(), g, g, 64), "join"),
+        ] {
+            if !g2.is_null() {
+                let ent = c::cmsGetToneCurveEstimatedTableEntries(
+                    g2);
+                eprintln!("{name} ent={ent}");
+                c::cmsFreeToneCurve(g2);
+            }
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
