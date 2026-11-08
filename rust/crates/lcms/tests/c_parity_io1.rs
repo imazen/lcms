@@ -877,3 +877,36 @@ fn output_lut_internals() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Float-tag reader normalization arms — Lab-PCS + XYZ-PCS float
+/// tags -> NormalizeTo/From{Lab,Xyz}Float insertion.
+#[test]
+fn float_normalization_arms() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // Lab-PCS + XYZ-PCS input profiles
+        for (pcs, name) in [(0x4C616220u32, "lab-pcs"),
+                            (0x58595A20, "xyz-pcs")] {
+            let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(inp, 0x6d6e7472);
+            c::cmsSetColorSpace(inp, 0x52474220);
+            c::cmsSetPCS(inp, pcs);
+            c::cmsSetProfileVersion(inp, 4.4);
+            c::cmsWriteTag(inp, 0x44324230, p as *const _);
+            let t = c::cmsCreateTransform(inp, r16, lab, l16, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(inp);
+        }
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
