@@ -316,3 +316,31 @@ fn remaining_header_fields() {
         }
     }
 }
+
+/// cmsOpenProfileFrom* variants on the corpus — the remaining
+/// IO-entry machinery.
+#[test]
+fn open_variants() {
+    unsafe {
+        for (_n, data) in corpus() {
+            // FromMem — the mem-IO path
+            let h1 = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            assert!(!h1.is_null());
+            c::cmsCloseProfile(h1);
+            // FromIOhandler — a mem IOhandler wrapping the data
+            let mut buf = data.clone();
+            let io = c::cmsOpenIOhandlerFromMem(
+                std::ptr::null_mut(),
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+                b"r\0".as_ptr() as *const _);
+            if !io.is_null() {
+                let h2 = c::cmsOpenProfileFromIOhandlerTHR(
+                    std::ptr::null_mut(), io);
+                if !h2.is_null() { c::cmsCloseProfile(h2); }
+                else { c::cmsCloseIOhandler(io); }
+            }
+        }
+    }
+}
