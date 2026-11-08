@@ -3257,3 +3257,35 @@ fn screening_tag() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Profile-info + header getters — GetProfileInfo/ASCII/UTF8 on
+/// desc/cprt + HeaderFlags/Attributes/Creator/Model/ProfileID/
+/// RenderingIntent/Manufacturer.
+#[test]
+fn profile_info_getters() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 256];
+        for info in [0u32, 1, 2, 3] { // desc/cprt/mluc/info enum
+            let n = c::cmsGetProfileInfoASCII(p, info,
+                b"en\0".as_ptr() as *const i8,
+                b"US\0".as_ptr() as *const i8,
+                buf.as_mut_ptr() as *mut _, buf.len() as u32);
+            let n2 = c::cmsGetProfileInfoUTF8(p, info,
+                b"en\0".as_ptr() as *const i8,
+                b"US\0".as_ptr() as *const i8,
+                buf.as_mut_ptr() as *mut _, buf.len() as u32);
+            eprintln!("info{info} ascii={n} utf8={n2}");
+        }
+        let mut fl = 0u32;
+        let mut at = 0u64;
+        let mut id = [0u8; 16];
+        c::cmsGetHeaderFlags(p, &mut fl);
+        c::cmsGetHeaderAttributes(p, &mut at);
+        c::cmsGetHeaderProfileID(p, id.as_mut_ptr());
+        eprintln!("flags={fl:#x} attr={at:#x} mdl={:#x} mfr={:#x} ri={}",
+            c::cmsGetHeaderModel(p), c::cmsGetHeaderManufacturer(p),
+            c::cmsGetHeaderRenderingIntent(p));
+        c::cmsCloseProfile(p);
+    }
+}
