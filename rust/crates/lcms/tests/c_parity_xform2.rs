@@ -686,3 +686,37 @@ fn intent_supported2() {
         let _ = (dl, lab, ph);
     }
 }
+
+/// Black-point + TAC machinery on more profile types.
+#[test]
+fn blackpoint_tac() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let dl4 = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            [g; 4].as_mut_ptr());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ph = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (pname, h) in [
+            ("devlink", dl), ("devlink4", dl4),
+            ("srgb", srgb), ("lab4", lab), ("ph", ph)] {
+            let mut bp = c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 };
+            let r1 = c::cmsDetectBlackPoint(
+                &mut bp as *mut _ as *mut _, h, 0, 0);
+            let mut bp2 = c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 };
+            let r2 = c::cmsDetectDestinationBlackPoint(
+                &mut bp2 as *mut _ as *mut _, h, 0, 0);
+            let tac = c::cmsDetectTAC(h);
+            eprintln!(
+                "{pname} bp={r1}({:.3},{:.3},{:.3}) dbp={r2}({:.3},{:.3},{:.3}) tac={tac:.2}",
+                bp.X, bp.Y, bp.Z, bp2.X, bp2.Y, bp2.Z);
+        }
+        let _ = (dl, dl4, srgb, lab, ph);
+    }
+}
