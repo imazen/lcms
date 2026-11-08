@@ -3,6 +3,7 @@
 
 use lcms::profile;
 use lcms_cref as c;
+use std::ffi::c_void;
 
 fn read_tag_bytes(sig: u32) -> (Vec<u8>, usize) {
     // save an XYZ profile with the wtpt tag (XYZ type = 6-element
@@ -53,5 +54,41 @@ fn corrupt_elem_count() {
         assert_eq!(c_tag.is_null(), r_tag == Some(false) || r_tag == None,
             "corrupt type sig read");
         if !h.is_null() { c::cmsCloseProfile(h); }
+    }
+}
+
+/// Type_* edge payloads — empty/zero/single-element contents
+/// exercising the handlers' boundary branches.
+#[test]
+fn edge_payloads() {
+    unsafe {
+        let h = c::cmsCreateXYZProfile();
+        // empty curve (0 points → identity line per ICC 10.3)
+        let c_curve0 = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 0, std::ptr::null_mut());
+        if !c_curve0.is_null() {
+            let ok = c::cmsWriteTag(h, 0x72545243,
+                c_curve0 as *mut c_void); // 'rTRC'
+            eprintln!("curve0 write={ok}");
+            c::cmsFreeToneCurve(c_curve0);
+        }
+        // single-entry numeric array — U16Fixed16 on 'chad' needs 9
+        let one = [1.0f64; 9];
+        let c_arr = c::cmsStageAllocIdentity; // placeholder
+        let _ = c_arr;
+        // write 9-element U16Fixed16 to chad — the minimum-valid
+        let s15 = c::cmsWriteTag(h, 0x63686164,
+            one.as_ptr() as *mut c_void); // 'chad'
+        eprintln!("chad write={s15}");
+        // empty text tag
+        let c_ok2 = c::cmsWriteTag(h, 0x63707274,
+            b"\0".as_ptr() as *const c_void); // 'cprt'
+        eprintln!("empty cprt={c_ok2}");
+        // zero-entry Mlu
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 0);
+        let c_ok3 = c::cmsWriteTag(h, 0x64657363, mlu as *mut c_void);
+        eprintln!("empty desc={c_ok3}");
+        c::cmsMLUfree(mlu);
+        c::cmsCloseProfile(h);
     }
 }
