@@ -4370,3 +4370,103 @@ fn pack_chgfmt_float16_arms() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmspack residual — T_PLANAR float-input branches
+///   (planar Lab/XYZ float formats through
+///   ChangeBuffersFormat) + Pack*Optimized packers
+///   (u8 fast path via optimizer-engaged transforms).
+#[test]
+fn pack_planar_opt_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // planar float input → Unroll*To16/ToFloat T_PLANAR
+        // FLOAT_SH(1)<<22 | PT_LAB(12)<<16 |
+        //   PLANAR(1)<<12 | CH(3)<<3 | BYTES
+        for (pf, pname) in [
+            ((1u32 << 22) | (12 << 16) | (1 << 12)
+                | (3 << 3) | 4, "flt-planar"),
+            ((1u32 << 22) | (12 << 16) | (3 << 3) | 4,
+                "flt-chunky"),
+            ((1u32 << 22) | (12 << 16) | (1 << 12)
+                | (3 << 3) | 8, "dbl-planar"),
+            ((1u32 << 22) | (12 << 16) | (3 << 3) | 8,
+                "dbl-chunky"),
+            ((1u32 << 22) | (10 << 16) | (1 << 12)
+                | (3 << 3) | 4, "xyz-flt-planar"),
+            ((1u32 << 22) | (10 << 16) | (3 << 3) | 4,
+                "xyz-flt-chunky"),
+        ] {
+            // 16-bit transform then ChangeBuffersFormat
+            //   to the float-planar input format
+            let lab = c::cmsCreateLab4Profile(
+                std::ptr::null_mut());
+            let fin = (0u32 << 16) | (3 << 3) | 2;
+            let t = c::cmsCreateTransform(lab, fin,
+                srgb, fin, 0, 0);
+            if !t.is_null() {
+                c::cmsChangeBuffersFormat(t, pf, fin);
+                // planar input: 3 separate channel planes
+                let l_plane = [50.0f32; 4];
+                let a_plane = [0.0f32; 4];
+                let b_plane = [-10.0f32; 4];
+                let mut out = [0u16; 12];
+                let mut planes = [
+                    l_plane.as_ptr() as *const _,
+                    a_plane.as_ptr() as *const _,
+                    b_plane.as_ptr() as *const _,
+                ];
+                c::cmsDoTransform(t,
+                    planes.as_mut_ptr() as *const _,
+                    out.as_mut_ptr() as *mut _, 4);
+                eprintln!("{pname} ok dst={:?}",
+                    &out[..3]);
+                c::cmsDeleteTransform(t);
+            }
+            c::cmsCloseProfile(lab);
+        }
+        // u8 RGB→RGB fast path → Pack3BytesOptimized etc.
+        for (fmt, fname) in [
+            ((4u32 << 16) | (3 << 3) | 1, "u8-3"),
+            ((4u32 << 16) | (4 << 3) | 1, "u8-4"),
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 12),
+                "u8-3-planar"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt,
+                srgb, fmt, 0, 0x0100); // optimized
+            eprintln!("{fname} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [128u8, 64, 200, 255];
+                let mut dst = [0u8; 4];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                eprintln!("  {fname} {src:?}->{dst:?}");
+                c::cmsDeleteTransform(t);
+            }
+            let tn = c::cmsCreateTransform(srgb, fmt,
+                srgb, fmt, 0, 0); // non-opt
+            if !tn.is_null() {
+                c::cmsDeleteTransform(tn); }
+        }
+        // skip1 variants: RGBX/XRGB u8 → Pack3BytesAndSkip1*
+        for (fmt, fname) in [
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7),
+                "rgbx4"),
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7)
+                | (1 << 14), "xrgb4"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt,
+                srgb, fmt, 0, 0x0100);
+            eprintln!("{fname} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [255u8, 128, 64, 200];
+                let mut dst = [0u8; 4];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
