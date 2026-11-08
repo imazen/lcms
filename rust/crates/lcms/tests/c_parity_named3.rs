@@ -259,3 +259,51 @@ fn ncl2_large() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Named-color machinery internals — dup + iterate + info on
+/// a larger list.
+#[test]
+fn named_machinery() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 8, 4,
+            b"prefix\0".as_ptr() as *const _,
+            b"suffix\0".as_ptr() as *const _);
+        for i in 0..8u32 {
+            let mut pcs = [(0x4000u16) + i as u16 * 0x400,
+                           0x8000, 0x8000];
+            let mut dev = [0u16; 16];
+            for j in 0..4 {
+                dev[j] = ((i as u32) * (j as u32)
+                    * 0x100) as u16;
+            }
+            let nm = [b'n', b'0' + i as u8, 0];
+            c::cmsAppendNamedColor(ncl,
+                nm.as_ptr() as *const u8,
+                pcs.as_ptr(), dev.as_ptr());
+        }
+        // dup — the Dup machinery
+        let ncl2 = c::cmsDupNamedColorList(ncl);
+        eprintln!("dup null={}", ncl2.is_null());
+        // count + index + info on both
+        let n1 = c::cmsNamedColorCount(ncl);
+        let n2 = if !ncl2.is_null() {
+            c::cmsNamedColorCount(ncl2) } else { 0 };
+        eprintln!("counts {n1}/{n2}");
+        for i in 0..n1 {
+            let nm = [b'n', b'0' + i as u8, 0];
+            let idx = c::cmsNamedColorIndex(ncl,
+                nm.as_ptr() as *const u8);
+            let mut buf = [0u8; 32];
+            let mut pcs = [0u16; 3];
+            let mut dev = [0u16; 16];
+            let info = c::cmsNamedColorInfo(ncl, i,
+                buf.as_mut_ptr(), std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                pcs.as_mut_ptr(), dev.as_mut_ptr());
+            let _ = (idx, info);
+        }
+        if !ncl2.is_null() { c::cmsFreeNamedColorList(ncl2); }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
