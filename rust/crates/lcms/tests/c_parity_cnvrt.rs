@@ -332,3 +332,43 @@ fn mixed_class_chains() {
         }
     }
 }
+
+/// IsProperColorSpace — transform creation rejects formats whose
+/// pixel-type colorspace mismatches the profile's colorspace.
+#[test]
+fn colorspace_mismatch_reject() {
+    unsafe {
+        // PT codes: 4=RGB, 10=Lab, 3=XYZ, 1=Gray, 6=CMYK
+        for (name, pt, prof_colorspace_ok) in [
+            ("lab-on-srgb", 10u32, false),   // Lab format on sRGB → reject
+            ("xyz-on-srgb", 3, false),       // XYZ format on sRGB → reject
+            ("gray-on-srgb", 1, false),
+            ("cmyk-on-srgb", 6, false),
+            ("rgb-on-srgb", 4, true),        // matches
+        ] {
+            let in_fmt = (pt << 16) | (3 << 3) | 2;
+            let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let hi = c::cmsCreate_sRGBProfile();
+            let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+                0, 0);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            assert_eq!(ct.is_null(), !prof_colorspace_ok,
+                "{name} C reject");
+            let mut rp1 = virt::create_srgb_profile(None).unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None)
+                .unwrap();
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, out_fmt, 0);
+            assert_eq!(rt.is_none(), !prof_colorspace_ok,
+                "{name} rust reject");
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+    }
+}
