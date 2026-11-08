@@ -500,3 +500,38 @@ fn corrupt_tag_directory() {
         }
     }
 }
+
+/// Tag reads on relabeled-class profiles — the class-dependent
+/// ReadTag/LUT-reader dispatch on wrong-class combos.
+#[test]
+fn class_dependent_reads() {
+    unsafe {
+        for (name, cls) in [
+            ("mntr", 0x6D6E7472u32),
+            ("scnr", 0x73636E72),
+            ("prtr", 0x70727472),
+            ("spac", 0x73706163),
+            ("link", 0x6C696E6B),
+            ("abst", 0x61627374),
+            ("nmcl", 0x6E6D636C),
+        ] {
+            let h = c::cmsCreate_sRGBProfile();
+            c::cmsSetDeviceClass(h, cls);
+            // read the LUT sigs — class-dependent dispatch picks
+            // A2B*/B2A*/D2B*/B2D*/gamt/pre0-2
+            for sig in [0x41324230u32, 0x42324130, 0x41324231,
+                        0x42324131, 0x44324230, 0x42424430,
+                        0x67616D74, 0x70726530, 0x70726531,
+                        0x70726532] {
+                let _ = c::cmsReadTag(h, sig);
+            }
+            // intent support under the class
+            for intent in 0..4u32 {
+                for dir in [1u32, 2] {
+                    let _ = c::cmsIsIntentSupported(h, intent, dir);
+                }
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
