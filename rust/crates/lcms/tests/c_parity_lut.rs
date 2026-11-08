@@ -1357,3 +1357,37 @@ fn named_stage2() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Slice-space machinery — cmsSliceSpace16/Float on more
+/// channel counts.
+#[test]
+fn slice_space2() {
+    unsafe extern "C" fn samp16(
+        inp: *const u16, out: *mut u16, _c: *mut std::ffi::c_void)
+        -> i32 {
+        unsafe {
+            if !out.is_null() && !inp.is_null() { *out = *inp; }
+        }
+        1
+    }
+    unsafe extern "C" fn sampf(
+        inp: *const f32, out: *mut f32, _c: *mut std::ffi::c_void)
+        -> i32 {
+        unsafe {
+            if !out.is_null() && !inp.is_null() { *out = *inp; }
+        }
+        1
+    }
+    unsafe {
+        for (name, n) in [
+            ("1ch", 1u32), ("3ch", 3), ("4ch", 4)] {
+            let pts = [4u32; 15];
+            let r = c::cmsSliceSpace16(n, pts.as_ptr(),
+                samp16, std::ptr::null_mut());
+            eprintln!("{name}-16={r}");
+            let r2 = c::cmsSliceSpaceFloat(n, pts.as_ptr(),
+                sampf, std::ptr::null_mut());
+            eprintln!("{name}-f={r2}");
+        }
+    }
+}
