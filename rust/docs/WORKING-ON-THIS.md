@@ -602,3 +602,21 @@ Correct per-fn query sort: column 3 = regions-MISSED
 - Instrumented builds livelock on parallel test binaries
   (pack/xform2 at >500% CPU) — kill the spinning pid,
   the run proceeds; totals floor accordingly.
+
+## Run20 (floored — c_parity_pack killed mid-run)
+
+Merged manually (script stalled after pack died):
+`bench/out/coverage-cref/all.profdata`, 67 profraws.
+
+Floored totals: cmspack 49.71% (killed binary carries
+most pack coverage), cmsxform 74.64%, cmspcs 71.98% —
+all measurement loss, not real regressions.
+
+Accurate deltas vs run19: cmstypes 74.59% (+0.39),
+cmslut 84.69%, cmsio0 85.14%, cmsio1 80.20%,
+cmsnamed 83.19%, cmsps2 67.98%, cmsvirt 72.77%,
+cmsgmt 80.81%, cmscnvrt 82.49%, cmsopt 84.88%.
+
+Surrogate finding: lone UTF-16 surrogates reject
+upstream at open — convert_utf16_to_utf32 edge arms
+unreachable through the public mluc path.
