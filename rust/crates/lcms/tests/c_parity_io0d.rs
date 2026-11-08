@@ -6479,3 +6479,121 @@ fn mpe_blob_dump() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Dump a real mAB serialized blob to craft element-order arms.
+#[test]
+fn mab_blob_dump() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = vec![g; 3];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves.as_ptr() as *mut _));
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsSetDeviceClass(prof, 0x6d6e7472); // 'mntr'
+        c::cmsSetColorSpace(prof, 0x52474220);  // 'RGB '
+        c::cmsSetPCS(prof, 0x4c616220);         // 'Lab '
+        let w = c::cmsWriteTag(prof, 0x41324230, p as *const _); // A2B0
+        eprintln!("write={w}");
+        let mut raw = vec![0u8; 1 << 16];
+        let n = c::cmsReadRawTag(prof, 0x41324230,
+            raw.as_mut_ptr() as *mut _, raw.len() as u32);
+        eprintln!("raw n={n}");
+        for (i, b) in raw[..n.min(96) as usize].iter().enumerate() {
+            eprint!("{:02x}", b);
+            if i % 4 == 3 { eprint!(" "); }
+        }
+        eprintln!();
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
+
+/// Type_LUTA2B_Read arms — raw mAB tags with element-offset
+/// variants (B-only, B+matrix, B+clut, oob offsets, all-zero).
+#[test]
+fn mab_element_offset_arms() {
+    unsafe {
+        // base: mAB header + 3 'para' B curves at offset 0x20
+        let para = |g: u32| -> Vec<u8> {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x70617261u32.to_be_bytes()); // 'para'
+            v.extend_from_slice(&[0; 4]);
+            v.extend_from_slice(&0u16.to_be_bytes()); // fnType 0
+            v.extend_from_slice(&[0; 2]);
+            v.extend_from_slice(&g.to_be_bytes());
+            v
+        };
+        let curves: Vec<u8> = [0x0233u32, 0x0233, 0x0233].iter()
+            .flat_map(|&g| para(g)).collect();
+        // 'matf'-style? no — mAB matrix is raw s15fixed16 3x3+offsets
+        let mut mat = Vec::new();
+        for i in 0..12u32 {
+            let v = if i % 4 == 0 { 0x00010000u32 } else { 0 };
+            mat.extend_from_slice(&v.to_be_bytes());
+        }
+        let mk = |offs: [u32; 5], tail: Vec<u8>| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6d414220u32.to_be_bytes()); // 'mAB '
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&0x0303u16.to_be_bytes()); // in=3
+            t.extend_from_slice(&[0; 2]);
+            for &o in &offs {
+                t.extend_from_slice(&o.to_be_bytes());
+            }
+            t.extend_from_slice(&tail);
+            t
+        };
+        let mut tail_bmat = curves.clone();
+        tail_bmat.extend_from_slice(&mat);
+        let mut tail_2cv = curves.clone();
+        tail_2cv.extend_from_slice(&curves);
+        // 16-bit CLUT: grid[16]=2 each dim, prec=2, 8 nodes x3
+        let mut clut = vec![2u8; 16];
+        clut.push(2); clut.extend_from_slice(&[0; 3]);
+        for i in 0..24u32 {
+            clut.extend_from_slice(&(i * 2730).to_be_bytes()
+                .iter().skip(2).copied().collect::<Vec<u8>>()
+                .as_slice());
+        }
+        let mut tail_bclut = curves.clone();
+        tail_bclut.extend_from_slice(&clut);
+        for (offs, tail, name) in [
+            ([0x20u32, 0, 0, 0, 0], curves.clone(), "b-only"),
+            ([0x20, 0x50, 0, 0, 0], tail_bmat.clone(), "b+mat"),
+            ([0x20, 0, 0x50, 0, 0], tail_2cv.clone(), "b+m"),
+            ([0x20, 0, 0, 0x50, 0], tail_bclut.clone(), "b+clut"),
+            ([0x20, 0, 0, 0, 0x50], tail_2cv.clone(), "b+a"),
+            ([0xffffu32, 0, 0, 0, 0], curves.clone(), "b-oob"),
+            ([0, 0, 0, 0, 0], vec![], "all-zero"),
+            ([0x20, 0x20, 0x20, 0x20, 0x20], tail_2cv.clone(), "all-b"),
+            ([0x20, 0x50, 0x50, 0x50, 0x50], tail_bmat.clone(),
+             "b+all-mat"),
+        ] {
+            let raw = mk(offs, tail);
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsSetDeviceClass(prof, 0x6d6e7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x4c616220);
+            c::cmsWriteRawTag(prof, 0x41324230,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x41324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
