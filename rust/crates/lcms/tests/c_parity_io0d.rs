@@ -15657,3 +15657,75 @@ fn mlu_pipe_dup_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// BuildGrayOutputPipeline + LabV2ToV4 curve insertion +
+/// interpolation-routine internals.
+#[test]
+fn gray_out_labv2v4_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // gray output profile — BuildGrayOutputPipeline on
+        //   the B2A direction
+        let gout = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(gout, 0x6D6E7472);
+        c::cmsSetColorSpace(gout, 0x47524159);
+        c::cmsSetPCS(gout, 0x58595A20);
+        c::cmsSetProfileVersion(gout, 2.4);
+        c::cmsWriteTag(gout, 0x6B545243, g as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(gout,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rg = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        for intent in [0u32, 1, 3] {
+            let t = c::cmsCreateTransform(srgb, r8, rg, g8,
+                intent, 0);
+            let t2 = c::cmsCreateTransform(rg, g8, srgb, r8,
+                intent, 0);
+            let t3 = c::cmsCreateTransform(
+                c::cmsCreateLab4Profile(std::ptr::null_mut()),
+                l8, rg, g8, intent, 0);
+            eprintln!("gout i{intent} out={} in={} lab={}",
+                !t.is_null(), !t2.is_null(), !t3.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t2.is_null() { c::cmsDeleteTransform(t2); }
+            if !t3.is_null() { c::cmsDeleteTransform(t3); }
+        }
+        if !rg.is_null() { c::cmsCloseProfile(rg); }
+        c::cmsCloseProfile(gout);
+        // LabV2ToV4 curves — Lab v2 profiles force curve
+        //   insertion on Lab->Lab
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (a, b, name) in [
+            (lab2, lab4, "v2->v4"), (lab4, lab2, "v4->v2"),
+            (lab2, lab2, "v2->v2"), (lab4, lab4, "v4->v4"),
+            (lab2, srgb, "v2->srgb"), (srgb, lab2, "srgb->v2"),
+        ] {
+            let t = c::cmsCreateTransform(a, l8, b, l8, 0, 0);
+            let t2 = c::cmsCreateTransform(a, l8, b, l8, 3, 0);
+            eprintln!("{name} i0={} i3={}", !t.is_null(),
+                !t2.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 8];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+            if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        }
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
