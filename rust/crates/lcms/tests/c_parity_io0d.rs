@@ -24013,3 +24013,131 @@ fn internal_final67_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0 residual — cmsWriteTag type-check/avoid-check
+///   branches + ReadRawTag by index + SaveTags on mixed
+///   raw/typed/linked tag tables.
+#[test]
+fn internal_final68_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // WriteTag on every sig with matching + mismatching
+        //   payload types
+        for sig in [
+            0x72545243u32, 0x67545243, 0x62545243,
+            0x6B545243, 0x77747074, 0x7258595A,
+            0x64657363, 0x63707274, 0x63696466,
+            0xFFFFFFFF, 0x00000000,
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            // curve payload on every sig (mismatch tests)
+            let w1 = c::cmsWriteTag(prof, sig,
+                g as *const _);
+            // NULL payload
+            let w2 = c::cmsWriteTag(prof, sig,
+                std::ptr::null());
+            // same tag twice (overwrite path)
+            let w3 = c::cmsWriteTag(prof, sig,
+                g as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("{sig:#x} w={w1}/{w2}/{w3} s={s}");
+            c::cmsCloseProfile(prof);
+        }
+        // pipeline sigs with real pipeline payloads
+        for sig in [
+            0x41324230u32, 0x42324130,
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let trcs = [g, g, g];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    trcs.as_ptr() as *mut _));
+            let w1 = c::cmsWriteTag(prof, sig,
+                p as *const _);
+            let w2 = c::cmsWriteTag(prof, sig,
+                std::ptr::null());
+            let w3 = c::cmsWriteTag(prof, sig,
+                p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("{sig:#x} w={w1}/{w2}/{w3} s={s}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        // ReadRawTag by sig on present + absent tags
+        let prof2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof2, 0x6D6E7472);
+        c::cmsSetColorSpace(prof2, 0x52474220);
+        c::cmsSetPCS(prof2, 0x58595A20);
+        c::cmsWriteTag(prof2, 0x72545243, g as *const _);
+        for sig in [
+            0x72545243u32, 0x67545243, 0x41324230,
+            0xFFFFFFFF, 0x00000000,
+        ] {
+            let mut raw = vec![0u8; 4096];
+            let n1 = c::cmsReadRawTag(prof2, sig,
+                raw.as_mut_ptr() as *mut _,
+                raw.len() as u32);
+            let n2 = c::cmsReadRawTag(prof2, sig,
+                raw.as_mut_ptr() as *mut _, 0);
+            let n3 = c::cmsReadRawTag(prof2, sig,
+                std::ptr::null_mut(), 0);
+            eprintln!("raw {sig:#x} n={n1}/{n2}/{n3}");
+        }
+        // profile with mixed typed+raw+linked tags →
+        //   SaveTags write-order internals
+        let prof3 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof3, 0x6D6E7472);
+        c::cmsSetColorSpace(prof3, 0x52474220);
+        c::cmsSetPCS(prof3, 0x58595A20);
+        c::cmsWriteTag(prof3, 0x72545243, g as *const _);
+        let blob = [0xDEu8, 0xAD, 0xBE, 0xEF, 1, 2, 3, 4];
+        c::cmsWriteRawTag(prof3, 0x76746E74,
+            blob.as_ptr() as *const _, blob.len() as u32);
+        c::cmsLinkTag(prof3, 0x67545243, 0x72545243);
+        c::cmsLinkTag(prof3, 0x62545243, 0x72545243);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof3,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr()
+                as *const _, n)
+        } else { std::ptr::null_mut() };
+        eprintln!("mixed s={s} rp={}", !rp.is_null());
+        if !rp.is_null() {
+            let cnt = c::cmsGetTagCount(rp);
+            let l = c::cmsTagLinkedTo(rp, 0x67545243);
+            let mut raw = [0u8; 16];
+            let nr = c::cmsReadRawTag(rp, 0x76746E74,
+                raw.as_mut_ptr() as *mut _, 16);
+            eprintln!("  cnt={cnt} linked={l:#x} raw={nr}");
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(prof2);
+        c::cmsCloseProfile(prof3);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
