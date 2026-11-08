@@ -16681,3 +16681,94 @@ fn io_residual3_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmswtpnt/cmssm/cmsmd5/cmsmtrx/cmsalpha residual —
+///   adaptation-matrix internals + GBD internals + matrix
+///   eval/dup + extra-channel internals.
+#[test]
+fn mtrx_sm_wtpnt_arms() {
+    unsafe {
+        // matrix internals — identity/diagonal/singular evals
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        for (mat, offs, name) in [
+            ([1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                [0.0f64, 0.0, 0.0], "identity"),
+            ([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                [0.1, 0.2, 0.3], "identity+off"),
+            ([2.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.25],
+                [0.0, 0.0, 0.0], "diagonal"),
+            ([0.5, 0.3, 0.2, 0.1, 0.8, 0.1, 0.0, 0.2, 0.8],
+                [0.0, 0.0, 0.0], "full"),
+            ([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0], "zero"),
+            ([1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0, 0.0], "rank2"),
+            ([1e6, 0.0, 0.0, 0.0, 1e6, 0.0, 0.0, 0.0, 1e6],
+                [0.0, 0.0, 0.0], "huge"),
+        ] {
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                    3, 3, mat.as_ptr(), offs.as_ptr()));
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            let t = if !rp.is_null() {
+                let t_ = c::cmsCreateTransform(rp, r8, lab,
+                    l8, 0, 0);
+                c::cmsCloseProfile(rp);
+                t_
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} t={}",
+                !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        // GBD internals — add/check/fit on varied hulls
+        let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
+        for i in 0..256 {
+            let l_ = c::CieLab {
+                L: ((i * 13) % 101) as f64,
+                a: (((i * 7) % 256) - 128) as f64 * 0.5,
+                b: (((i * 11) % 256) - 128) as f64 * 0.5,
+            };
+            c::cmsGDBAddPoint(gbd,
+                &l_ as *const c::CieLab as *const _);
+        }
+        for f in [0u32, 1, 2, 4] {
+            c::cmsGDBCompute(gbd, f);
+            for lab_ in [
+                [50.0f64, 0.0, 0.0], [0.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0], [50.0, 50.0, 50.0],
+                [-50.0, -128.0, -128.0],
+            ] {
+                let p = c::CieLab {
+                    L: lab_[0], a: lab_[1], b: lab_[2] };
+                let r = c::cmsGDBCheckPoint(gbd,
+                    &p as *const c::CieLab as *const _);
+                eprintln!("gbd f{f} {lab_:?}={r}");
+            }
+        }
+        c::cmsGBDFree(gbd);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
