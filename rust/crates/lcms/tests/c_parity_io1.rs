@@ -849,3 +849,31 @@ fn lut_reader_remaining_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// _cmsReadOutputLUT internals — Lab-PCS output + Lut16-type
+/// output tags -> the normalization read arms.
+#[test]
+fn output_lut_internals() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // output-position corpus profiles exercise the reader
+        for f in ["lcms2cmyk.icc", "labv2lcms2.icc", "graylcms2.icc",
+                  "lcms2link.icc", "lcms2mtsh.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(lab, l16, p,
+                    (4u32 << 16) | (3 << 3) | 2, intent, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{f} ok");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
