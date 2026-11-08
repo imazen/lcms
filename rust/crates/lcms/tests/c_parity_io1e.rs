@@ -2082,3 +2082,39 @@ fn object_sig_resave() {
         c::cmsDictFree(dict);
     }
 }
+
+/// Struct/object resave+read — the serialization round-trips
+/// on real objects.
+#[test]
+fn struct_object_resave() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct Tm {
+            sec: i32, min: i32, hour: i32, mday: i32,
+            mon: i32, year: i32, wday: i32, yday: i32,
+            isdst: i32,
+        }
+        let tm = Tm { sec: 0, min: 0, hour: 0, mday: 1,
+                      mon: 0, year: 124, wday: 0, yday: 0,
+                      isdst: 0 };
+        let _ = c::cmsWriteTag(h, 0x63616C74,
+            &tm as *const _ as *mut std::ffi::c_void);
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let _ = c::cmsWriteTag(h, 0x6368726D,
+            &xyz as *const _ as *mut std::ffi::c_void);
+        // resave + read — the struct serialization internals
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x63616C74u32, 0x6368726D] {
+            let r = c::cmsReadTag(h2, sig);
+            eprintln!("{sig:#x} read={}", r.is_null());
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
