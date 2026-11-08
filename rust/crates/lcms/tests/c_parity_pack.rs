@@ -5717,3 +5717,112 @@ fn blackpoint_arms() {
             c::cmsCloseProfile(p); }
     }
 }
+
+/// cmscnvrt residual — ComputeConversion/AddConversion/
+///   ComputeAbsoluteIntent/CHAD2Temp/Temp2CHAD/IsEmptyLayer/
+///   ColorSpaceIsCompatible/SearchIntent arms via
+///   absolute-intent + BPC transforms on chad/non-chad
+///   profiles and mismatched multiprofile chains.
+#[test]
+fn cnvrt_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!(
+                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                b"r\0".as_ptr() as *const _)
+        };
+        // check which profiles carry 'chad' (0x63686164)
+        for nm in ["sRGBlcms2.icc", "aRGBlcms2.icc",
+                   "lcms2cmyk.icc", "gray3lcms2.icc",
+                   "labv4lcms2.icc", "xyzlcms2.icc",
+                   "nullcms2.icc", "bchslcms2.icc"] {
+            let p = open(nm);
+            if !p.is_null() {
+                let chad = c::cmsReadTag(p, 0x63686164);
+                let wt = c::cmsReadTag(p, 0x77747074);
+                eprintln!("{nm}: chad={} wt={}",
+                    !chad.is_null(), !wt.is_null());
+                c::cmsCloseProfile(p); } }
+        let srgb = open("sRGBlcms2.icc");
+        let argb = open("aRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let gray = open("gray3lcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let xyz = open("xyzlcms2.icc");
+        let null = open("nullcms2.icc");
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let BPC = 0x2000u32;
+        // absolute intent (3) on all pairs — CHAD/white arms
+        for (nm, i, fi, o, fo) in [
+            ("srgb", srgb, f16(4, 3), cmyk, f16(6, 4)),
+            ("cmyk", cmyk, f16(6, 4), srgb, f16(4, 3)),
+            ("srgb", srgb, f16(4, 3), argb, f16(4, 3)),
+            ("argb", argb, f16(4, 3), srgb, f16(4, 3)),
+            ("gray", gray, f16(3, 1), srgb, f16(4, 3)),
+            ("srgb", srgb, f16(4, 3), lab4, f16(10, 3)),
+            ("lab4", lab4, f16(10, 3), srgb, f16(4, 3)),
+            ("xyz", xyz, f16(9, 3), srgb, f16(4, 3)),
+            ("null", null, f16(3, 1), lab4, f16(10, 3)),
+        ] {
+            if i.is_null() || o.is_null() {
+                continue; }
+            for flags in [0u32, BPC] {
+                let t = c::cmsCreateTransform(
+                    i, fi, o, fo, 3, flags);
+                eprintln!("abs3 {nm} fl={flags:#x}: {}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x4000u16; 32];
+                    let mut ob = [0u16; 32];
+                    c::cmsDoTransform(t,
+                        ib.as_ptr() as *const c_void,
+                        ob.as_mut_ptr() as *mut c_void, 4);
+                    c::cmsDeleteTransform(t); } }
+        }
+        // BPC on non-absolute intents — black-point pair arms
+        for intent in [0u32, 1, 2] {
+            let t = c::cmsCreateTransform(srgb,
+                f16(4, 3), cmyk, f16(6, 4), intent, BPC);
+            eprintln!("bpc i{intent}: {}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); } }
+        // multiprofile chains — IsEmptyLayer / ColorSpaceIsCompatible
+        //   / AddConversion arms on odd combos
+        let chains: Vec<(&str, Vec<*mut c_void>, u32, u32)> = vec![
+            ("3ch", vec![srgb, lab4, cmyk], f16(4, 3), f16(6, 4)),
+            ("4ch", vec![srgb, lab4, xyz, cmyk], f16(4, 3), f16(6, 4)),
+            ("dup", vec![srgb, srgb, srgb], f16(4, 3), f16(4, 3)),
+            ("empty-mid", vec![srgb, lab4, srgb], f16(4, 3), f16(4, 3)),
+            ("nul-mid", vec![srgb, null, cmyk], f16(4, 3), f16(6, 4)),
+            ("5ch", vec![srgb, lab4, cmyk, srgb, cmyk],
+                f16(4, 3), f16(6, 4)),
+            ("single", vec![srgb], f16(4, 3), f16(4, 3)),
+            ("2ch", vec![srgb, cmyk], f16(4, 3), f16(6, 4)),
+        ];
+        for (nm, mut chain, fi, fo) in chains {
+            if chain.iter().any(|p| p.is_null()) {
+                continue; }
+            for intent in 0u32..4 {
+                for flags in [0u32, BPC] {
+                    let t = c::cmsCreateMultiprofileTransform(
+                        chain.as_mut_ptr(),
+                        chain.len() as i32,
+                        fi, fo, intent, flags);
+                    if !t.is_null() {
+                        let ib = [0x4000u16; 32];
+                        let mut ob = [0u16; 32];
+                        c::cmsDoTransform(t,
+                            ib.as_ptr() as *const c_void,
+                            ob.as_mut_ptr() as *mut c_void, 4);
+                        c::cmsDeleteTransform(t); } } }
+            eprintln!("chain {nm}: swept");
+        }
+        for p in [srgb, argb, cmyk, gray, lab4, xyz, null] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
