@@ -2002,3 +2002,49 @@ fn text_desc_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_MLU on the MLU-accepting sigs — 'mluc' bodies on
+/// cprt/desc/dmdd/dmnd/dscm/vued/meas/tech/ciis.
+#[test]
+fn mlu_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [(0x63707274u32, "cprt"),
+                            (0x64657363u32, "desc"),
+                            (0x646D6464u32, "dmdd"),
+                            (0x646D6E64u32, "dmnd"),
+                            (0x6473636Du32, "dscm"),
+                            (0x76756564u32, "vued"),
+                            (0x6D656173u32, "meas"),
+                            (0x74656368u32, "tech"),
+                            (0x63696973u32, "ciis"),
+                            (0x636C6F74u32, "clot"),
+                            (0x636C7274u32, "clrt")] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"mluc");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u32.to_be_bytes()); // nrec
+            b.extend_from_slice(&12u32.to_be_bytes()); // recsz
+            b.extend_from_slice(b"enUS");
+            b.extend_from_slice(&8u32.to_be_bytes()); // len
+            b.extend_from_slice(&28u32.to_be_bytes()); // off
+            b.extend_from_slice(&[0, b't', 0, b'e',
+                                  0, b's', 0, b't']);
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
