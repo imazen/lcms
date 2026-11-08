@@ -312,3 +312,134 @@ fn internal_lab_mft_in_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — _cmsReadFloat{Input,Output,
+///   Devicelink}Tag: mpet DToB*/BToD*/A2B0/B2A0
+///   float pipelines on input, output and devicelink
+///   profiles through transforms.
+#[test]
+fn internal_floatlut_arms() {
+    unsafe {
+        let mpet = |nch: u16| {
+            // single cvst element pipeline
+            let mut cv = vec![
+                0x63u8, 0x76, 0x73, 0x74, 0, 0, 0, 0];
+            cv.extend_from_slice(&nch.to_be_bytes());
+            cv.extend_from_slice(&nch.to_be_bytes());
+            let csz = 40usize;
+            let base = 8 + 4 + 8 * nch as usize;
+            for i in 0..nch as usize {
+                cv.extend_from_slice(
+                    &((base + i * csz) as u32)
+                        .to_be_bytes());
+                cv.extend_from_slice(
+                    &(csz as u32).to_be_bytes());
+            }
+            for _ in 0..nch {
+                cv.extend_from_slice(&[
+                    0x63, 0x75, 0x72, 0x66, 0, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0x70, 0x61, 0x72, 0x66, 0, 0, 0, 0,
+                    0, 0, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                ]);
+            }
+            let mut b = vec![
+                0x6D, 0x70, 0x65, 0x74, 0, 0, 0, 0];
+            b.extend_from_slice(&nch.to_be_bytes());
+            b.extend_from_slice(&nch.to_be_bytes());
+            b.extend_from_slice(&1u32.to_be_bytes());
+            b.extend_from_slice(&24u32.to_be_bytes());
+            b.extend_from_slice(
+                &(cv.len() as u32).to_be_bytes());
+            b.extend_from_slice(&cv);
+            b
+        };
+        let mk = |cls: u32, cs: u32, pcs: u32,
+                  tag: u32, nch: u16| {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, cs);
+            c::cmsSetPCS(p, pcs);
+            c::cmsSetProfileVersion(p, 4.4);
+            let blob = mpet(nch);
+            c::cmsWriteRawTag(p, tag,
+                blob.as_ptr() as *const _,
+                blob.len() as u32);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n);
+            c::cmsCloseProfile(p);
+            pr
+        };
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // float INPUT tag: monitor with mpet A2B0
+        let inp = mk(0x6D6E7472, 0x52474220,
+            0x4C616220, 0x41324230, 3);
+        eprintln!("mpet-in prof={}", !inp.is_null());
+        // float OUTPUT tag: monitor with mpet B2A0
+        let outp = mk(0x6D6E7472, 0x52474220,
+            0x4C616220, 0x42324130, 3);
+        eprintln!("mpet-out prof={}", !outp.is_null());
+        // float DEVICELINK: link mpet DToB0 + BToD0
+        let d2b = mk(0x6C696E6B, 0x52474220,
+            0x4C616220, 0x44324230, 3);
+        let b2d = mk(0x6C696E6B, 0x4C616220,
+            0x52474220, 0x42324430, 3);
+        eprintln!("mpet-d2b={} b2d={}",
+            !d2b.is_null(), !b2d.is_null());
+        // DToB0 on INPUT-class profile -> float-input
+        let mntr_d2b = mk(0x6D6E7472, 0x52474220,
+            0x4C616220, 0x44324230, 3);
+        // BToD0 on OUTPUT-class profile -> float-out
+        let mntr_b2d = mk(0x70727472, 0x52474220,
+            0x4C616220, 0x42324430, 3);
+        // also: mntr + DToB1/DToB2/DToB3 intents
+        let mntr_d2b1 = mk(0x6D6E7472, 0x52474220,
+            0x4C616220, 0x44324231, 3);
+        eprintln!("mntr-d2b={} b2d={} d2b1={}",
+            !mntr_d2b.is_null(), !mntr_b2d.is_null(),
+            !mntr_d2b1.is_null());
+        // transforms through each float-tag profile
+        for (a, afmt, b, bfmt, name) in [
+            (mntr_d2b, frgb, lab4, flab, "fd2b-in"),
+            (lab4, flab, mntr_b2d, frgb, "fb2d-out"),
+            (mntr_d2b1, frgb, lab4, flab, "fd2b1-in"),
+            (inp, frgb, lab4, flab, "in->lab4"),
+            (lab4, flab, outp, frgb, "lab4->out"),
+            (d2b, frgb, lab4, flab, "d2b->lab4"),
+            (lab4, flab, b2d, frgb, "lab4->b2d"),
+            (srgb, frgb, inp, flab, "srgb->in"),
+            (outp, flab, srgb, frgb, "out->srgb"),
+            (inp, frgb, outp, frgb, "in->out"),
+            (d2b, frgb, b2d, frgb, "d2b->b2d"),
+        ] {
+            let t = c::cmsCreateTransform(a, afmt,
+                b, bfmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x8000u16; 4];
+                let mut dst = [0u16; 4];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        for p in [inp, outp, d2b, b2d, mntr_d2b,
+                  mntr_b2d, mntr_d2b1, srgb, lab4] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
