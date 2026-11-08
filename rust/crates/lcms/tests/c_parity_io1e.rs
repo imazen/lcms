@@ -1701,3 +1701,37 @@ fn corpus_stored_writes() {
         }
     }
 }
+
+/// Remaining unusual sigs — write+read on gamt/pre0-2/targ/
+/// tech/scrd/vued/vuet/cicp/rig0/rigs/smmm/clid/ciid/ceid.
+#[test]
+fn final_unusual_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let sigv: u32 = 0x666F7461;
+        // 'scrd'/'data'-typed sigs crash on a sig payload
+        // (oracle UB — the data-struct deref). Sig-typed sigs
+        // accept the u32 payload.
+        for (sig, name) in [
+            (0x74656368u32, "tech"), (0x63696973u32, "ciis"),
+            (0x72696730u32, "rig0"), (0x72696773u32, "rigs"),
+            (0x736D6D6Du32, "smmm"), (0x636C6964u32, "clid"),
+            (0x63696964u32, "ciid"), (0x63656964u32, "ceid")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &sigv as *const _ as *mut std::ffi::c_void);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
