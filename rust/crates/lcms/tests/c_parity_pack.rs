@@ -547,3 +547,34 @@ fn cmyk_multi_formats() {
         let _ = c::cmsCloseProfile(cmyk);
     }
 }
+
+/// MCH formats — 6ch/8ch/15ch multi-channel through the
+/// packed-format dispatch.
+#[test]
+fn mch_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        // multi-channel formats — PT_MCH6/8/15 + the MCH
+        // profiles via a devicelink
+        let ink = c::cmsCreateInkLimitingDeviceLink(
+            0x6D6E7472, 90.0); // 'mntr' class on CMYK
+        // 6ch/8ch/15ch on sRGB→sRGB (the MCH channel dispatch)
+        for (name, in_fmt, out_fmt, p2) in [
+            ("6ch-u16", (24 << 16) | (6 << 3) | 2u32,
+             (4 << 16) | (3 << 3) | 2, ho),
+            ("8ch-u16", (26 << 16) | (8 << 3) | 2,
+             (4 << 16) | (3 << 3) | 2, ho),
+            ("15ch-u16", (31 << 16) | (15 << 3) | 2,
+             (4 << 16) | (3 << 3) | 2, ho),
+        ] {
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        if !ink.is_null() { c::cmsCloseProfile(ink); }
+    }
+}
