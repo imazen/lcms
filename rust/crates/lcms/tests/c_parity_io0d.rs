@@ -2231,3 +2231,31 @@ fn reserved_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// CMM-field bounds — mutate the CMM field then open (the
+/// CMM validation machinery).
+#[test]
+fn cmm_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // CMM is a u32be at offset 4
+        for (name, val) in [
+            ("lcms", 0x6c636d73u32), ("adbe", 0x61646265),
+            ("zero", 0), ("junk", 0x12345678),
+            ("neg", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[4..8].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} cmm={val:#x} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
