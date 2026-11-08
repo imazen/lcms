@@ -778,3 +778,27 @@ fn crafted_type_reads() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// cmsDupProfile on profiles with exotic written tags — the
+/// Type_*_Dup + _Free paths on every stored object.
+#[test]
+fn dup_exotic_tags() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // write a spread of tag types
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        c::cmsWriteTag(h, 0x72545243, g as *mut _); // rTRC curv
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"desc\0".as_ptr() as *const u8);
+        c::cmsWriteTag(h, 0x64657363, mlu as *mut _); // desc mluc
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        c::cmsWriteTag(h, 0x7258595A,
+            &xyz as *const _ as *mut _); // rXYZ
+        // cmsDupProfile doesn't exist — Type_*_Free runs on
+        // cmsCloseProfile over the exotic stored objects
+        c::cmsCloseProfile(h);
+    }
+}
