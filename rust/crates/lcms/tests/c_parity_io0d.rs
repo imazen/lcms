@@ -3751,3 +3751,49 @@ fn numeric_array_tags() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Type_LUT8/16_Read validation internals — malformed channel/
+/// count/matrix structures -> the reader's per-field validation.
+#[test]
+fn lut_read_validation() {
+    unsafe {
+        // malformed mft2 (Lut16) tags — bad channel counts, counts
+        let mut t = vec![0u8; 64];
+        let mut hdr = |in_ch: u8, out_ch: u8, grid: u8| {
+            // type sig + reserved + in_ch out_ch grid + matrix
+            let mut v = Vec::with_capacity(60);
+            v.extend_from_slice(&0x6d667432u32.to_be_bytes()); // 'mft2'
+            v.extend_from_slice(&[0; 4]);
+            v.push(in_ch); v.push(out_ch); v.push(grid); v.push(0);
+            for _ in 0..9 { v.extend_from_slice(&0x10000u32.to_be_bytes()); }
+            v.extend_from_slice(&256u16.to_be_bytes()); // inTableEntries
+            v.extend_from_slice(&256u16.to_be_bytes()); // outTableEntries
+            v
+        };
+        for (ic, oc, g, name) in [
+            (0, 3, 2, "0-in"),
+            (3, 0, 2, "0-out"),
+            (3, 3, 0, "0-grid"),
+            (15, 15, 2, "15ch"),
+            (3, 3, 250, "huge-grid"),
+        ] {
+            let p = c::cmsCreate_sRGBProfile();
+            let raw = hdr(ic, oc, g);
+            c::cmsWriteRawTag(p, 0x41324230, raw.as_ptr() as *const _,
+                raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x41324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(p);
+        }
+    }
+}
