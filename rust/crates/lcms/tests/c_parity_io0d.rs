@@ -603,3 +603,33 @@ fn truncated_profiles() {
         }
     }
 }
+
+/// CMM signature mutations — the CMM-machinery internals.
+#[test]
+fn cmm_mutations() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // CMM sig @4-8
+        for (name, val) in [
+            ("lcms", 0x6C636D73u32), // 'lcms'
+            ("adbe", 0x61646265u32), // 'adbe'
+            ("MSFT", 0x4D534654u32), // 'MSFT'
+            ("KODA", 0x4B4F4441u32), // 'KODA'
+            ("zeros", 0u32),
+            ("huge", 0xFFFFFFFFu32),
+        ] {
+            let mut dd = d.clone();
+            dd[4..8].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
