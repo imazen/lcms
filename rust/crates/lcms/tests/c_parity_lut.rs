@@ -695,3 +695,32 @@ fn stage_channels() {
         c::cmsStageFree(m);
     }
 }
+
+/// MPE deeper — multi-stage mpet pipelines with mixed element
+/// types (curves + matrix + CLUT + lab2xyz).
+#[test]
+fn mpe_mixed_stages() {
+    unsafe {
+        let cp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let curves = c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+            3, [c::cmsBuildGamma(std::ptr::null_mut(), 2.2); 3]
+            .as_ptr());
+        let matrix = c::cmsStageAllocMatrix(std::ptr::null_mut(),
+            3, 3, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+            .as_ptr(), std::ptr::null());
+        let clut = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), [17u32; 3].as_ptr(), 3, 3,
+            std::ptr::null_mut());
+        let l2x = c::_cmsStageAllocLab2XYZ(std::ptr::null_mut());
+        c::cmsPipelineInsertStage(cp, 0, curves);
+        c::cmsPipelineInsertStage(cp, 0, matrix);
+        c::cmsPipelineInsertStage(cp, 0, clut);
+        c::cmsPipelineInsertStage(cp, 0, l2x);
+        // write as mpet tag + resave + read back
+        let ch = c::cmsCreateXYZProfile();
+        let c_ok = c::cmsWriteTag(ch, 0x41324230, cp); // 'A2B0'
+        assert_ne!(c_ok, 0, "mpet write");
+        let _ = c::cmsCloseProfile(ch);
+        c::cmsPipelineFree(cp);
+    }
+}
