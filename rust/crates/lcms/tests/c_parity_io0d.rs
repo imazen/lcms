@@ -1094,3 +1094,32 @@ fn datetime_version_fields() {
         }
     }
 }
+
+/// ACSP/magic machinery — the magic-check internals.
+#[test]
+fn acsp_magic_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the ACSP magic (offset 36)
+        for (name, v) in [
+            ("acsp", 0x61637370u32),
+            ("acsq", 0x61637371),
+            ("ACSP", 0x41435350),
+            ("0", 0u32),
+            ("huge", 0xFFFFFFFFu32),
+            ("abcp", 0x61626370)] {
+            let mut d = cbuf.clone();
+            d[36..40].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
