@@ -6191,3 +6191,87 @@ fn float_read_tails() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsxform residual — FloatXFORM channel-count arms,
+///   TransformOnePixelWithGamutCheck (proofing + gamut),
+///   ParalellizeIfSuitable format combos, multi-pixel
+///   doTransform.
+#[test]
+fn xform_tails() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let gray = open("graylcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let null5 = open("nullcms2.icc");
+        let ff = |pt: u32, ch: u32| -> u32 {
+            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        // FloatXFORM per channel-count pair
+        for (a, b, fa, fb, nm) in [
+            (gray, srgb, ff(3, 1), ff(4, 3), "gray>rgb"),
+            (srgb, gray, ff(4, 3), ff(3, 1), "rgb>gray"),
+            (srgb, cmyk, ff(4, 3), ff(6, 4), "rgb>cmyk"),
+            (cmyk, srgb, ff(6, 4), ff(4, 3), "cmyk>rgb"),
+            (srgb, lab4, ff(4, 3), ff(10, 3), "rgb>lab"),
+            (null5, srgb, ff(0x35434C, 5), ff(4, 3), "5cl>rgb"),
+        ] {
+            let t = c::cmsCreateTransform(a, fa,
+                b, fb, 0, 0);
+            eprintln!("{nm} f: {}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0.5f32; 8];
+                let mut ob = [0.0f32; 8];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t); } }
+        // TransformOnePixelWithGamutCheck: proof + GAMUTCHECK
+        for (proof, nm) in [(cmyk, "cmyk-proof"),
+                            (gray, "gray-proof")] {
+            let t = c::cmsCreateProofingTransform(
+                srgb, f16(4, 3), srgb, f16(4, 3),
+                proof, 0, 0, 0x1000 /*GAMUTCHECK*/);
+            eprintln!("{nm} gc: {}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 8];
+                let mut ob = [0u16; 8];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                // multi-pixel for the parallel arm
+                let ib2 = [0x8000u16; 16];
+                let mut ob2 = [0u16; 16];
+                c::cmsDoTransform(t,
+                    ib2.as_ptr() as *const _,
+                    ob2.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t); } }
+        // ParalellizeIfSuitable: multi-pixel on float + 16bit
+        for (fa, nm) in [
+            (ff(4, 3), "f32"),
+            (f16(4, 3), "f16"),
+            ((4 << 16) | (3 << 3) | 1, "u8"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fa,
+                cmyk, f16(6, 4), 0, 0);
+            if !t.is_null() {
+                let ib = [0x8000u16; 64];
+                let mut ob = [0u16; 96];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 8);
+                eprintln!("{nm} px8: ok");
+                c::cmsDeleteTransform(t); } }
+        for p in [srgb, cmyk, gray, lab4, null5] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
