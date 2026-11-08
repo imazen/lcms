@@ -4039,3 +4039,64 @@ fn cgats_hdr_cube_arms() {
         }
     }
 }
+
+/// cmscgats residual — lexer/parser internals:
+///   quoted-string escapes, identifier chars, number
+///   forms in data + properties, section keywords.
+#[test]
+fn cgats_lexer2_arms() {
+    unsafe {
+        for (doc, name) in [
+            ("CGATS.17\n\
+              PROP \"a b c\"\n\
+              PROP2 'single'\n\
+              PROP3 \"esc\\\"ape\"\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n", "quotes"),
+            ("CGATS.17\n\
+              UNDER_score dot.name dash-name\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n", "idents"),
+            ("CGATS.17\n\
+              N1 0x1F N2 0b101 N3 0o17\n\
+              N4 .5 N5 5. N6 1e-2 N7 1E+3\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n", "numforms"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\n\
+              A B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\n\
+              BEGIN_DATA\n\
+              \"q v\" 4\n\
+              5 6\nEND_DATA\n", "qdata"),
+            ("CGATS.17\n\
+              KEYWORD1\nKEYWORD2 val\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n1\nEND_DATA\n", "kw"),
+            ("CGATS.17\n\
+              NUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 1\n\
+              BEGIN_DATA\n\
+              #inline comment\n\
+              1\nEND_DATA\n", "inline-comment"),
+        ] {
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32);
+            eprintln!("{name} it8={}", !it8.is_null());
+            if !it8.is_null() {
+                c::cmsIT8Free(it8); }
+        }
+    }
+}
