@@ -3380,3 +3380,27 @@ fn write_dispatch_trc_array() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a measurement payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_meas() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct Meas {
+            observer: u32, backing: [f64; 3],
+            geometry: u32, flare: f64, illum: u32,
+        }
+        let m = Meas { observer: 0,
+            backing: [0.0; 3], geometry: 0,
+            flare: 0.0, illum: 0 };
+        for (sig, name) in [
+            (0x6D656173u32, "meas"), (0x63616C74u32, "calt")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &m as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
