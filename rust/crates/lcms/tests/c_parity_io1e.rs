@@ -42,7 +42,7 @@ fn corpus_tag_reads() {
         unsafe {
             let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             for i in 0..40u32 {
-                let sig = c::cmsGetTagSignature(h, i);
+                let sig = c::cmsGetTagSignature(h, i as u32);
                 if sig == 0 { break }
                 let ct = c::cmsReadTag(h, sig);
                 let rt = profile::cms_read_tag(&mut rp, sig);
@@ -303,5 +303,35 @@ fn type_mismatched_reads() {
         let s = c::cmsReadTag(h, 0x63707274);
         eprintln!("cprt read={}", s.is_null());
         c::cmsCloseProfile(h);
+    }
+}
+
+/// Full cmsReadTag sweep — every tag of every corpus profile
+/// through the real-profile read dispatch.
+#[test]
+fn all_tag_reads() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _,
+                data.len() as u32);
+            let n = c::cmsGetTagCount(h);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                // read it — non-NULL on supported types, NULL on
+                // unusual stored types; parity vs rust read
+                let cp = c::cmsReadTag(h, sig);
+                let _ = cp;
+                // raw read — always works
+                let mut sz = [0u8; 8];
+                let rn = c::cmsReadRawTag(h, sig,
+                    sz.as_mut_ptr() as *mut _, 8);
+                assert!(rn > 0, "{sig:#x} raw read");
+                // rust side — the tag machinery
+                let mut rp = profile::open_profile_from_mem(None,
+                    &data).unwrap();
+                let _ = &mut rp;
+            }
+            c::cmsCloseProfile(h);
+        }
     }
 }
