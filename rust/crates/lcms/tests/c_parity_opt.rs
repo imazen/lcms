@@ -431,3 +431,57 @@ fn optimizer_internals3() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Optimizer evaluator internals — precalculated evaluators get
+/// *called* on pixels after optimization replaces the pipeline.
+#[test]
+fn opt_eval_internals() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let flags = [0x0002u32, 0x0040, 0x0200, 0x0002 | 0x0040,
+                     0x0002 | 0x0200, 0xffff];
+        for f in flags {
+            for (inp, outp, if_, of_, name) in [
+                (srgb, lab, r8, l8, "rgb-lab-8"),
+                (srgb, lab, r16, l16, "rgb-lab-16"),
+                (lab, srgb, l8, r8, "lab-rgb-8"),
+                (lab, srgb, l16, r16, "lab-rgb-16"),
+                (gray, lab, g8, l8, "gray-lab-8"),
+                (gray, lab, g16, l16, "gray-lab-16"),
+                (srgb, gray, r8, g8, "rgb-gray-8"),
+                (srgb, gray, r16, g16, "rgb-gray-16"),
+            ] {
+                let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                    0, f);
+                if !t.is_null() {
+                    let ib8 = [0x40u8; 4];
+                    let ib16 = [0x4000u16; 4];
+                    let mut ob = [0u8; 8];
+                    if if_ & 3 == 1 {
+                        c::cmsDoTransform(t, ib8.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _, 1);
+                    } else {
+                        c::cmsDoTransform(t, ib16.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _, 1);
+                    }
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            eprintln!("flags={f:#x} done");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
