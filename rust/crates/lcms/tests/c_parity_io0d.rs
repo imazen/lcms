@@ -25762,3 +25762,71 @@ fn internal_io_num_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0 residual — OpenIOhandlerFromStream on real
+///   FILE streams (via libc fopen) + mem-io seek
+///   patterns + profile open via stream handler.
+#[test]
+fn internal_io_stream_arms() {
+    unsafe {
+        unsafe extern "C" {
+            fn fopen(name: *const i8, mode: *const i8)
+                -> *mut std::ffi::c_void;
+            fn fclose(f: *mut std::ffi::c_void) -> i32;
+            fn fwrite(p: *const std::ffi::c_void, sz: usize,
+                n: usize, f: *mut std::ffi::c_void) -> usize;
+        }
+        // write a profile to a file via libc
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let path = b"/tmp/lcms_stream.icc\0";
+        let mode_w = b"wb\0";
+        let f = fopen(path.as_ptr() as *const _,
+            mode_w.as_ptr() as *const _);
+        eprintln!("fopen={}", !f.is_null());
+        if !f.is_null() {
+            fwrite(buf.as_ptr() as *const _,
+                n as usize, 1, f);
+            fclose(f);
+        }
+        // stream io on the file
+        let mode_r = b"rb\0";
+        let fr = fopen(path.as_ptr() as *const _,
+            mode_r.as_ptr() as *const _);
+        let io = c::cmsOpenIOhandlerFromStream(
+            std::ptr::null_mut(), fr);
+        eprintln!("io-stream={}", !io.is_null());
+        // profile open via stream: write into stream-io
+        //   then read back via OpenProfileFromIOhandler
+        let mut rbuf = vec![0u8; 1 << 17];
+        let io2 = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            rbuf.as_mut_ptr() as *mut _,
+            rbuf.len() as u32, b"w\0".as_ptr());
+        if !io2.is_null() {
+            let ok = c::cmsSaveProfileToIOhandler(srgb,
+                io2);
+            eprintln!("save-io={ok}");
+            c::cmsCloseIOhandler(io2);
+        }
+        let io3 = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            rbuf.as_mut_ptr() as *mut _,
+            rbuf.len() as u32, b"r\0".as_ptr());
+        if !io3.is_null() {
+            let pr = c::cmsOpenProfileFromIOhandlerTHR(
+                std::ptr::null_mut(), io3);
+            eprintln!("prof-via-io={}", !pr.is_null());
+            if !pr.is_null() {
+                c::cmsCloseProfile(pr); }
+        }
+        // CloseIOhandler fcloses the wrapped FILE
+        if !io.is_null() {
+            c::cmsCloseIOhandler(io); }
+        let _ = std::fs::remove_file("/tmp/lcms_stream.icc");
+        c::cmsCloseProfile(srgb);
+    }
+}
