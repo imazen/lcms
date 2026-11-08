@@ -2738,3 +2738,38 @@ fn tag_enumeration2() {
         }
     }
 }
+
+/// Read-back machinery — write then read on more payload
+/// types.
+#[test]
+fn readback_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 3,
+            b"P\0".as_ptr() as _, b"S\0".as_ptr() as _);
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        c::cmsDictAddEntry(dict, b"k\0".as_ptr() as _,
+            b"v\0".as_ptr() as _,
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let seq = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 1);
+        for (sig, name, payload) in [
+            (0x72545243u32, "rTRC",
+             g as *mut std::ffi::c_void),
+            (0x77747074u32, "wtpt",
+             &xyz as *const _ as *mut std::ffi::c_void),
+            (0x64657363u32, "desc", mlu as *mut _),
+            (0x636C7274u32, "clrt", ncl as *mut _),
+            (0x6D657461u32, "meta", dict as *mut _),
+            (0x70736571u32, "pseq", seq as *mut _)] {
+            let w = c::cmsWriteTag(h, sig, payload);
+            let rd = c::cmsReadTag(h, sig);
+            eprintln!("{name} w={w} rd={}", !rd.is_null());
+        }
+        c::cmsCloseProfile(h);
+    }
+}
