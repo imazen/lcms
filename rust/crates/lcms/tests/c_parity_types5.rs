@@ -2199,3 +2199,39 @@ fn pseq_dup() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Type_Measurement internals — 'meas' takes a
+/// cmsICCMeasurementConditions payload.
+#[test]
+fn measurement_type() {
+    unsafe {
+        #[repr(C)]
+        struct Meas {
+            observer: u32,
+            backing: c::CieXyz,
+            geometry: u32,
+            flare: f64,
+            illuminant: u32,
+        }
+        let m = Meas {
+            observer: 1,
+            backing: c::CieXyz { X: 0.5, Y: 0.5, Z: 0.5 },
+            geometry: 1,
+            flare: 0.5,
+            illuminant: 1,
+        };
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x6D656173,
+            &m as *const _ as *mut std::ffi::c_void); // 'meas'
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x6D656173);
+        eprintln!("meas write={ok} read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
