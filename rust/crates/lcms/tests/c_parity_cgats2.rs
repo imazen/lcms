@@ -1414,3 +1414,58 @@ fn it8_deep_arms7() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/ParseIT8 arms.
+#[test]
+fn it8_deep_arms8() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // number format edge cases in data values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 6\nNUMBER_OF_SETS 4\nBEGIN_DATA_FORMAT\nA B C D E F\nEND_DATA_FORMAT\nBEGIN_DATA\n1e308 -1e-308 0.000001 999999999 .0000001 0xFF\n1E+308 -0.0 +INF -INF NaN -nan\n0 0x0 00 0. -0. .0\n1.7976931348623157e308 2.2250738585072014e-308 -1.7976931348623157e+308 4.9406564584124654e-324 -4.9406564584124654e-324 1e400\nEND_DATA\n".to_vec(), "num-edge2"),
+            // deeply indented/broken structure
+            (b"IT8FILE\n\tP1 \"v\"\n\t\tNUMBER_OF_FIELDS 1\n NUMBER_OF_SETS 1\n\t\t\tBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\tBEGIN_DATA\n1\n\tEND_DATA\n".to_vec(), "indent"),
+            // property=value forms across all types
+            (b"IT8FILE\nK1=1\nK2 =2\nK3= 3\nK4 = 4\nK5=\"v\"\nK6 =\"v\"\nK7= \"v\"\nK8 = \"v\"\nK9=ident\nK10=0x1F\nK11=-0.5\nK12=.5e2\n".to_vec(), "all-eq"),
+            // DATA_FORMAT_ID + data format names
+            (b"IT8FILE\nDATA_FORMAT_ID \"fmt1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_FORMAT_ID \"fmt2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n".to_vec(), "datafmt-id2"),
+            // deeply nested quotes/escapes in data
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n\"a\\\"b\\\"c\" 1\n2 \"d\\\\e\\u{1f600}f\"\nEND_DATA\n".to_vec(), "deep-esc"),
+            // table with different field counts + set counts
+            ({ let mut v = b"IT8FILE\n".to_vec();
+                for t in 0..5u32 {
+                    let nf = t + 1;
+                    let ns = t * 2 + 1;
+                    v.extend_from_slice(format!("NUMBER_OF_FIELDS {nf}\nNUMBER_OF_SETS {ns}\nBEGIN_DATA_FORMAT\n").as_bytes());
+                    for f in 0..nf {
+                        v.extend_from_slice(format!("F{f} ").as_bytes());
+                    }
+                    v.extend_from_slice(b"\nEND_DATA_FORMAT\nBEGIN_DATA\n");
+                    for s in 0..ns {
+                        for f in 0..nf {
+                            v.extend_from_slice(format!("{} ", s * 10 + f).as_bytes());
+                        }
+                        v.push(b'\n');
+                    }
+                    v.extend_from_slice(b"END_DATA\n");
+                    if t < 4 { v.extend_from_slice(b"IT8FILE\n"); }
+                }
+                v }, "5-tables"),
+            // comment between tokens inside a line
+            (b"IT8FILE\nP1 # mid-comment\n\"v\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "mid-cmt"),
+            // BEGIN_DATA_FORMAT / END_DATA_FORMAT on same line
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT A END_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "inline-fmt"),
+            // BEGIN_DATA / END_DATA on same line as values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA 1 END_DATA\n".to_vec(), "inline-data"),
+            // malformed: unterminated string
+            (b"IT8FILE\nP1 \"unterminated\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "unterm-str"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
