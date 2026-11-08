@@ -3469,3 +3469,71 @@ fn create_profile_arms() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// FixWhiteMisalignment + PatchLUT — optimizer paths between
+/// white-mismatched profiles (D65 sRGB vs D50 printer/lab) with
+/// precalc + prelin/postlin flags.
+#[test]
+fn fixwhite_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        const HIGHRES: u32 = 0x0400;
+        const LOWRES: u32 = 0x0800;
+        const PRELIN: u32 = 0x0010;
+        const POSTLIN: u32 = 0x0001;
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, r8, l8, "srgb->lab"),
+            (srgb, lab, r16, l16, "srgb->lab16"),
+            (lab, srgb, l8, r8, "lab->srgb"),
+            (srgb, cmyk, r8, k8, "srgb->cmyk"),
+            (srgb, cmyk, r16, k16, "srgb->cmyk16"),
+            (cmyk, srgb, k8, r8, "cmyk->srgb"),
+            (cmyk, lab, k8, l8, "cmyk->lab"),
+            (lab, cmyk, l8, k8, "lab->cmyk"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for (flags, fname) in [
+                (0u32, "plain"),
+                (HIGHRES, "hires"),
+                (LOWRES, "lores"),
+                (PRELIN, "prelin"),
+                (POSTLIN, "postlin"),
+                (PRELIN | POSTLIN, "prepost"),
+                (HIGHRES | PRELIN, "hi+pre"),
+                (LOWRES | POSTLIN, "lo+post"),
+                (HIGHRES | PRELIN | POSTLIN, "all"),
+            ] {
+                for intent in [0u32, 1, 2] {
+                    let t = c::cmsCreateTransform(inp, if_, outp,
+                        of_, intent, flags);
+                    eprintln!("{name}/{fname}/i{intent} t={}",
+                        !t.is_null());
+                    if !t.is_null() {
+                        let inp_b = [0x55u8; 8];
+                        let mut out = [0u8; 8];
+                        c::cmsDoTransform(t, inp_b.as_ptr()
+                            as *const _, out.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
