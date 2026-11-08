@@ -2165,3 +2165,30 @@ fn premul_packers() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Flavor packers — FLAVOR on a Lab devicelink (flavor is
+/// a Lab-encoding flag).
+#[test]
+fn flavor_packers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x4C616220,
+            curves.as_mut_ptr());
+        for (name, bits, bytes) in [
+            ("flav-u8", 1u32 << 21, 1u32),
+            ("flav-u16", 1 << 21, 2),
+            ("noflav-u8", 0u32, 1),
+            ("noflav-u16", 0, 2),
+            ("flav-flt", (1 << 21) | (1 << 22), 4)] {
+            let fmt = (10 << 16) | (3 << 3) | bytes | bits;
+            let t = c::cmsCreateTransform(dl, fmt,
+                dl, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(dl);
+        c::cmsFreeToneCurve(g);
+    }
+}
