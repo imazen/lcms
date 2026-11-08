@@ -2804,3 +2804,92 @@ fn it8_write_arms() {
         }
     }
 }
+
+/// cmscgats residual — parse-error paths (malformed doc forms
+///   hitting every reject branch in ParseIT8/HeaderSection/
+///   DataSection/InSymbol).
+#[test]
+fn cgats_errpath_arms() {
+    unsafe {
+        for (doc, name) in [
+            ("NOTIT8\n", "no-magic"),
+            ("IT8FILE", "no-newline"),
+            ("IT8FILE\n", "hdr-only"),
+            ("IT8FILE\nBEGIN_DATA\n", "no-end"),
+            ("IT8FILE\nEND_DATA\n", "data-no-begin"),
+            ("IT8FILE\nBEGIN_DATA\nBEGIN_DATA\nEND_DATA\n",
+                "double-begin"),
+            ("IT8FILE\nBEGIN_DATA\nEND_DATA\nEND_DATA\n",
+                "double-end"),
+            ("IT8FILE\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n",
+                "fmt2data"),
+            ("IT8FILE\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
+                "fmt3data"),
+            ("IT8FILE\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n",
+                "short-row"),
+            ("IT8FILE\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
+                "long-row"),
+            ("IT8FILE\nNUMBER_OF_FIELDS 3\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\n4 5 6\nEND_DATA\n",
+                "nf2rows"),
+            ("IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
+                "ns1of3"),
+            ("IT8FILE\nORIGINATOR \"unclosed\nBEGIN_DATA\nEND_DATA\n",
+                "unclosed-str"),
+            ("IT8FILE\nORIGINATOR 'unclosed\nBEGIN_DATA\nEND_DATA\n",
+                "unclosed-sq"),
+            ("IT8FILE\nPROP val1 val2 val3\nBEGIN_DATA\nEND_DATA\n",
+                "multiword"),
+            ("IT8FILE\n0xZZ\nBEGIN_DATA\nEND_DATA\n",
+                "badhex"),
+            ("IT8FILE\n1.2.3\nBEGIN_DATA\nEND_DATA\n",
+                "badnum"),
+            ("IT8FILE\n@\x01\x02\nBEGIN_DATA\nEND_DATA\n",
+                "ctrl-chars"),
+            ("IT8FILE\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n",
+                "empty-fmt"),
+            ("IT8FILE\n$UNKNOWN_DIRECTIVE x\nBEGIN_DATA\nEND_DATA\n",
+                "unknown-dollar"),
+            ("IT8FILE\nDKEYWORD x\nBEGIN_DATA\nEND_DATA\n",
+                "unknown-dkey"),
+            ("IT8FILE\n#COMMENT y\nBEGIN_DATA\nEND_DATA\n",
+                "hash-comment"),
+            ("IT8FILE\nORIGINATOR\nMANUFACTURER\nBEGIN_DATA\nEND_DATA\n",
+                "empty-props"),
+            ("IT8FILE\nORIGINATOR  \"  spaces  \"\nBEGIN_DATA\nEND_DATA\n",
+                "space-str"),
+            ("IT8FILE\nORIGINATOR 'single'\nBEGIN_DATA\nEND_DATA\n",
+                "sq-str"),
+            ("IT8FILE\nORIGINATOR 1e999\nBEGIN_DATA\nEND_DATA\n",
+                "huge-exp"),
+            ("IT8FILE\nORIGINATOR 0.0e0\nBEGIN_DATA\nEND_DATA\n",
+                "zero-exp"),
+            ("IT8FILE\nORIGINATOR .5\nBEGIN_DATA\nEND_DATA\n",
+                "dot-lead"),
+            ("IT8FILE\nORIGINATOR 5.\nBEGIN_DATA\nEND_DATA\n",
+                "dot-trail"),
+            ("IT8FILE\nORIGINATOR -\nBEGIN_DATA\nEND_DATA\n",
+                "bare-minus"),
+            ("IT8FILE\nORIGINATOR +\nBEGIN_DATA\nEND_DATA\n",
+                "bare-plus"),
+            ("IT8FILE\nORIGINATOR e5\nBEGIN_DATA\nEND_DATA\n",
+                "bare-e"),
+            ("IT8FILE\nORIGINATOR 0x\nBEGIN_DATA\nEND_DATA\n",
+                "bare-0x"),
+            ("IT8FILE\n\tTAB\tsep\nBEGIN_DATA\nEND_DATA\n",
+                "tab-sep"),
+            ("IT8FILE\nORIGINATOR \x7f del\nBEGIN_DATA\nEND_DATA\n",
+                "del-char"),
+            ("IT8FILE\n\x0b vt\nBEGIN_DATA\nEND_DATA\n",
+                "vt-char"),
+            ("IT8FILE\n\x0c ff\nBEGIN_DATA\nEND_DATA\n",
+                "ff-char"),
+        ] {
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32);
+            eprintln!("{name}={}", !p.is_null());
+            if !p.is_null() { c::cmsIT8Free(p); }
+        }
+    }
+}
