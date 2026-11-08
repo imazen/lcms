@@ -430,6 +430,7 @@ unsafe extern "C" {
     pub fn cmsDictAlloc(context_id: Context) -> Handle;
     pub fn cmsDictFree(dict: Handle);
     pub fn cmsDictDup(dict: Handle) -> Handle;
+    pub fn cmsDictGetEntryList(dict: Handle) -> *const c_void;
     pub fn cmsDictAddEntry(
         dict: Handle,
         name: *const i32,

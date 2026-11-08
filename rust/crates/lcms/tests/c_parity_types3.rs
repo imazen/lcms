@@ -2,7 +2,7 @@
 //! cmsIsTag / cmsReadTag presence + cmsTagLinkedTo / cmsLinkTag /
 //! cmsLinkTag-followed-read parity on the corpus + builder profiles.
 
-use lcms::{profile, virt};
+use lcms::{named, profile, virt};
 use lcms_cref as c;
 
 fn corpus() -> Vec<Vec<u8>> {
@@ -104,5 +104,55 @@ fn mpe_tag_read() {
             }
             c::cmsCloseProfile(ch);
         }
+    }
+}
+
+/// cmsDict machinery: alloc + wide-string entries + dup + entry count.
+#[test]
+fn dict_machinery() {
+    unsafe {
+        let cd = c::cmsDictAlloc(std::ptr::null_mut());
+        let mut rd = named::dict_alloc(None);
+        assert!(!cd.is_null());
+        // wide strings (UTF-32 as i32)
+        let w = |s: &str| -> Vec<i32> {
+            s.chars().map(|c| c as i32).chain(std::iter::once(0)).collect()
+        };
+        let pairs = [
+            ("Manufacturer", "Acme"),
+            ("Model", "Pro 1000"),
+            ("SerialNumber", "SN-42"),
+            ("ColorGamut", "Wide"),
+        ];
+        for (k, v) in pairs {
+            let kw = w(k);
+            let vw = w(v);
+            let cm1 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            let cm2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            let c_ok = c::cmsDictAddEntry(cd, kw.as_ptr(), vw.as_ptr(),
+                cm1, cm2);
+            let mut rm1 = named::mlu_alloc(None, 1).unwrap();
+            let mut rm2 = named::mlu_alloc(None, 1).unwrap();
+            let r_ok = named::dict_add_entry(&mut rd, &kw, Some(&vw), Some(&rm1), Some(&rm2));
+            assert_eq!(c_ok != 0, r_ok, "dict add {k}");
+            c::cmsMLUfree(cm1);
+            c::cmsMLUfree(cm2);
+        }
+        // dup + count parity
+        let cdd = c::cmsDictDup(cd);
+        let rdd = named::dict_dup(&rd);
+        // entry count via GetEntryList walk — cmsDICTentry.next is
+        // field 0
+        #[repr(C)]
+        struct CDictEntry { next: *const CDictEntry }
+        let mut cnt = 0u32;
+        let mut e = c::cmsDictGetEntryList(cdd) as *const CDictEntry;
+        while !e.is_null() {
+            cnt += 1;
+            e = (*e).next;
+        }
+        assert_eq!(cnt as usize, rdd.entries.len(), "dict dup count");
+        c::cmsDictFree(cd);
+        c::cmsDictFree(cdd);
     }
 }
