@@ -580,3 +580,35 @@ fn slice_space() {
         eprintln!("slice16 c={c_count} r={r_count}");
     }
 }
+
+/// cmsPipelineStageCount + InputChannels + OutputChannels — the
+/// pipeline introspection getters.
+#[test]
+fn pipeline_introspection() {
+    unsafe {
+        for (ich, och, n_stages) in [(3u32, 3u32, 2u32),
+                                    (4, 4, 3), (15, 15, 1)] {
+            let cp = c::cmsPipelineAlloc(std::ptr::null_mut(),
+                ich, och);
+            for _ in 0..n_stages {
+                let st = c::cmsStageAllocIdentity(
+                    std::ptr::null_mut(), ich);
+                c::cmsPipelineInsertStage(cp, 0, st);
+            }
+            let cn = c::cmsPipelineStageCount(cp);
+            assert_eq!(cn, n_stages, "stage count {ich}x{och}");
+            assert_eq!(c::cmsPipelineInputChannels(cp), ich, "ich");
+            assert_eq!(c::cmsPipelineOutputChannels(cp), och, "och");
+            // rust side
+            let mut rp = lut::pipeline_alloc(None, ich, och).unwrap();
+            for _ in 0..n_stages {
+                let rst = lut::stage_alloc_identity(None, ich);
+                assert!(rp.insert_stage(lut::StageLoc::AtEnd, rst));
+            }
+            assert_eq!(rp.stage_count(), n_stages, "r stage count");
+            assert_eq!(rp.input_channels(), ich, "r ich");
+            assert_eq!(rp.output_channels(), och, "r och");
+            c::cmsPipelineFree(cp);
+        }
+    }
+}
