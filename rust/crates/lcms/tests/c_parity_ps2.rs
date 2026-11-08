@@ -745,6 +745,7 @@ fn ps2_gray_lut_emitters() {
 ///   cmsGetPostScriptCSA/CRD/ColorResource.
 #[test]
 fn ps2_named_intent_arms() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
