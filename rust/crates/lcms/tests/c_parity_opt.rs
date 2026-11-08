@@ -370,3 +370,32 @@ fn optimizer_internals() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Optimizer internals — linearization + resample paths through
+/// LUT-based profile transforms with optimization flags.
+#[test]
+fn optimizer_internals2() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc",
+                  "lcms2link.icc", "labv2lcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let l16 = (10u32 << 16) | (3 << 3) | 2;
+            for flags in [0u32, 0x0002, 0x0040, 0x0400, 0x0200,
+                          0x0004, 0x0008, 0xffff] {
+                let t = c::cmsCreateTransform(lab, l16, p, l16,
+                    0, flags);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{f} done");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
