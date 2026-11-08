@@ -793,4 +793,19 @@ unsafe extern "C" {
     pub fn cmsPipelineSetSaveAs8bitsFlag(lut: Handle, on: i32) -> i32;
     pub fn cmsUnregisterPlugins();
     pub fn cmsUnregisterPluginsTHR(ctx: *mut c_void);
+
+    // ---- lcms2_plugin.h exported internals ----
+    pub fn _cmsSetTransformUserData(t: *mut c_void, ptr: *mut c_void, free_fn: *mut c_void);
+    pub fn _cmsGetTransformUserData(t: *mut c_void) -> *mut c_void;
+    pub fn _cmsGetTransformFormatters16(t: *mut c_void, from_in: *mut c_void, to_out: *mut c_void);
+    pub fn _cmsGetTransformFormattersFloat(t: *mut c_void, from_in: *mut c_void, to_out: *mut c_void);
+    pub fn _cmsGetTransformFlags(t: *mut c_void) -> u32;
+    pub fn _cmsGetTransformWorker(t: *mut c_void) -> *mut c_void;
+    pub fn _cmsGetTransformMaxWorkers(t: *mut c_void) -> i32;
+    pub fn _cmsGetTransformWorkerFlags(t: *mut c_void) -> u32;
+    pub fn _cmsSetProfileUserData(p: *mut c_void, data: *mut c_void, free_fn: *mut c_void);
+    pub fn _cmsGetProfileUserData(p: *mut c_void) -> *mut c_void;
+    pub fn _cmsReadProfileSequence(p: *mut c_void) -> *mut c_void;
+    pub fn _cmsSetHeaderCMM(p: *mut c_void, cmm: u32);
+    pub fn _cmsDefaultICCintents(ctx: *mut c_void, n: u32, intents: *const u32, profs: *const *mut c_void, bpc: *const i32, adapt: *const f64, flags: u32) -> *mut c_void;
 }

@@ -1036,3 +1036,101 @@ fn gamutcheck_workers() {
             "gamut flags diverge too much flags={flags:#x}              c_only={only_c} r_only={only_r}");
     }
 }
+
+/// Exported internals — _cmsGetTransform{Flags,Worker,MaxWorkers,
+/// WorkerFlags,Formatters16,FormattersFloat,UserData},
+/// _cmsSet/GetProfileUserData, _cmsReadProfileSequence,
+/// _cmsSetHeaderCMM, _cmsDefaultICCintents, plus NullFloatXFORM
+/// (NULLTRANSFORM+float) and UnrollNothing/PackNothing ((0,0)
+/// format transform's do_transform).
+unsafe extern "C" fn noop_free(_ctx: *mut std::ffi::c_void,
+    _p: *mut std::ffi::c_void) {}
+
+#[test]
+fn xform_internals() {
+    unsafe {
+        let i = c::cmsCreate_sRGBProfile();
+        let o = c::cmsCreate_sRGBProfile();
+        let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
+        let flt: u32 = (1 << 22) | (4 << 16) | (3 << 3) | 4;
+        let t = c::cmsCreateTransform(i, rgb8, o, rgb8, 0, 0);
+        assert!(!t.is_null());
+        // getters on a live transform
+        let flags = c::_cmsGetTransformFlags(t);
+        let w = c::_cmsGetTransformWorker(t);
+        let mw = c::_cmsGetTransformMaxWorkers(t);
+        let wf = c::_cmsGetTransformWorkerFlags(t);
+        let mut f16a: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut f16b: *mut std::ffi::c_void = std::ptr::null_mut();
+        c::_cmsGetTransformFormatters16(t,
+            &mut f16a as *mut *mut _ as _, &mut f16b as *mut *mut _ as _);
+        let mut ffa: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut ffb: *mut std::ffi::c_void = std::ptr::null_mut();
+        c::_cmsGetTransformFormattersFloat(t,
+            &mut ffa as *mut *mut _ as _, &mut ffb as *mut *mut _ as _);
+        // user data roundtrip
+        static mut UD: usize = 0x1234;
+        c::_cmsSetTransformUserData(t, &raw mut UD as *mut usize as _,
+            noop_free as *mut _);
+        let ud = c::_cmsGetTransformUserData(t);
+        eprintln!("flags={flags:#x} w={} mw={mw} wf={wf:#x} \
+            f16={} ff={} ud={}",
+            !w.is_null(), !f16a.is_null(), !ffa.is_null(),
+            ud == (&raw mut UD as *mut usize as _));
+        // NULLTRANSFORM + float -> NullFloatXFORM
+        let tn = c::cmsCreateTransform(i, flt, o, flt, 0, 0x200);
+        eprintln!("null-float={}", !tn.is_null());
+        if !tn.is_null() {
+            let inp = [0.25f32, 0.5, 0.75];
+            let mut out = [0.0f32; 3];
+            c::cmsDoTransform(tn, inp.as_ptr() as _,
+                out.as_mut_ptr() as _, 1);
+            eprintln!("nullfloat out={out:?}");
+            c::cmsDeleteTransform(tn);
+        }
+        // (0,0)-format transform -> UnrollNothing/PackNothing
+        let tz = c::cmsCreateTransform(i, 0, o, 0, 0, 0);
+        eprintln!("00-xform={}", !tz.is_null());
+        if !tz.is_null() {
+            let inp = [0xAAu8; 24];
+            let mut out = [0u8; 24];
+            c::cmsDoTransform(tz, inp.as_ptr() as _,
+                out.as_mut_ptr() as _, 4);
+            c::cmsDeleteTransform(tz);
+        }
+        // profile user data + ReadProfileSequence + SetHeaderCMM
+        static mut PD: usize = 0xBEEF;
+        c::_cmsSetProfileUserData(i, &raw mut PD as *mut usize as _,
+            noop_free as *mut _);
+        let pd = c::_cmsGetProfileUserData(i);
+        eprintln!("profile-ud={}", pd == (&raw mut PD as *mut usize as _));
+        let seq = c::_cmsReadProfileSequence(i);
+        eprintln!("pseq={}", !seq.is_null());
+        c::_cmsSetHeaderCMM(i, 0xDEADBEEF);
+        eprintln!("cmm={:#x}", c::cmsGetHeaderCMM(i));
+        // _cmsDefaultICCintents — the exported wrapper direct call
+        let profs = [i, o];
+        let intents = [0u32; 2];
+        let bpc = [0i32; 2];
+        let adapt = [1.0f64; 2];
+        let lut = c::_cmsDefaultICCintents(
+            std::ptr::null_mut(), 2, intents.as_ptr(),
+            profs.as_ptr(), bpc.as_ptr(), adapt.as_ptr(), 0);
+        eprintln!("defintents={}", !lut.is_null());
+        c::cmsDeleteTransform(t);
+        c::cmsCloseProfile(i);
+        c::cmsCloseProfile(o);
+        // ReadProfileSequence on corpus profiles carrying pseq
+        for name in ["lcms2link2.icc", "lcms2link.icc",
+            "limitlcms2.icc", "linlcms2.icc"] {
+            let path = format!("{}/../../{name}\0",
+                env!("CARGO_MANIFEST_DIR"));
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as *const i8, b"r\0".as_ptr());
+            if h.is_null() { continue; }
+            let seq = c::_cmsReadProfileSequence(h);
+            eprintln!("{name} pseq={}", !seq.is_null());
+            c::cmsCloseProfile(h);
+        }
+    }
+}
