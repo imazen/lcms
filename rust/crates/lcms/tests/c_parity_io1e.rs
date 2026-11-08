@@ -1782,3 +1782,40 @@ fn canonical_mab_resave() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_MPE internals — 'mpet' stored-type on a real
+/// pipeline (the MPE element serialization machinery).
+#[test]
+fn mpet_machinery() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // a real pipeline with each MPE element type
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr()));
+        let mat = [1.0f64, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3, mat.as_ptr(),
+                std::ptr::null()));
+        let grid = [4u32; 3];
+        let tab = [0.5f32; 4 * 4 * 4 * 3];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+                tab.as_ptr()));
+        // write the pipeline to a sig that accepts 'mpet'
+        for sig in [0x41324230u32, 0x42324130, 0x6443324D,
+                    0x4D324364, 0x7044324D, 0x4D324370] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{sig:#x} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
