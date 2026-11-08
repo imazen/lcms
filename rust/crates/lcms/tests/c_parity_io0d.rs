@@ -12586,3 +12586,81 @@ fn md5_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// Type_MPE_Write — mpet tag serialization: position table +
+/// cvst/clut/matf/bacs/ecs element writes on d2b0-d3/b2d0-d3.
+#[test]
+fn mpe_write_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mk = |kinds: &[u32]| -> Vec<*mut std::ffi::c_void> {
+            kinds.iter().map(|k| match *k {
+                0 => c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _),
+                1 => c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), [3u32; 3].as_ptr(), 3, 3,
+                    vec![0x8000u16; 81].as_ptr()),
+                2 => c::cmsStageAllocMatrix(
+                    std::ptr::null_mut(), 3, 3,
+                    mat.as_ptr(), std::ptr::null()),
+                _ => std::ptr::null_mut(),
+            }).collect()
+        };
+        let cases: Vec<(Vec<u32>, &str)> = vec![
+            (vec![0u32], "cv"),
+            (vec![0, 1, 0], "cv-clut-cv"),
+            (vec![2, 0, 1, 0], "mat-cv-clut-cv"),
+            (vec![0, 2, 1, 2, 0], "cv-mat-clut-mat-cv"),
+            (vec![1], "clut-only"),
+            (vec![2], "mat-only"),
+            (vec![0, 0, 0], "cv-cv-cv"),
+            (vec![1, 1], "clut-clut"),
+        ];
+        for sig in [0x64324230u32, 0x64324231, 0x64324232,
+            0x64324233, 0x62324430, 0x62324431, 0x62324432,
+            0x62324433] {
+            for (kinds, name) in &cases {
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, 0x6D6E7472); // mntr
+                c::cmsSetColorSpace(prof, 0x4C616220); // Lab
+                c::cmsSetPCS(prof, 0x58595A20);        // XYZ
+                c::cmsSetProfileVersion(prof, 4.4);
+                let p = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                // pipeline owns inserted stages; leak on
+                // non-insert so we don't double-free
+                let sts = mk(kinds);
+                for st in &sts {
+                    if !st.is_null() {
+                        c::cmsPipelineInsertStage(p, 1, *st);
+                    }
+                }
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                let rd = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{sig:#x}/{name} w={w} s={s} \
+                    rd={}", !rd.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+                // skip cmsPipelineFree — upstream can
+                // double-free stages consumed by a failed
+                // WriteTag (observed SIGSEGV on b2d* rejects)
+            }
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
