@@ -510,3 +510,31 @@ fn float_output_tag() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadInputLUT per-intent dispatch — profiles with A2B0/1/2
+/// tags selected by intent + the fallback chain.
+#[test]
+fn input_lut_intent_dispatch() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "aRGBlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(p,
+                    (6u32 << 16) | (4 << 3) | 2, lab, l16, intent, 0);
+                if !t.is_null() {
+                    eprintln!("{f} i{intent} ok");
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
