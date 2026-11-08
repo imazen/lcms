@@ -1777,3 +1777,41 @@ fn it8_deep_arms15() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/ParseIT8 arms —
+/// more table-structure + token + malformed variants.
+#[test]
+fn it8_deep_arms16() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // every sheet-structure variant
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nB C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nD\nEND_DATA_FORMAT\nBEGIN_DATA\n5\nEND_DATA\n".to_vec(), "3sheet-diff"),
+            // IT8 with a real DATA_IDENTIFIER per sheet
+            (b"IT8FILE\nDATA_IDENTIFIER \"meas1\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nID L\nEND_DATA_FORMAT\nBEGIN_DATA\n1 50\n2 60\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"meas2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n70\nEND_DATA\n".to_vec(), "meas-sheets"),
+            // property values containing special chars
+            (b"IT8FILE\nP1 \"a@b#c$d%e^f&g*h(i)j\"\nP2 \"k!l-m_n+o=p\"\nP3 \"q[r]s{t}u|v\"\nP4 \"w;x:y,z.v/b?\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "special-chars"),
+            // numbers in every valid position
+            (b"IT8FILE\nP1 -1234567890\nP2 +987654321\nP3 000000001\nP4 0.000000001\nP5 -0.000000001\nP6 999999999999\nP7 1e-999\nP8 -1e+999\nP9 .0000000000001\nP10 9.999999999999e99\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "num-extremes"),
+            // data values on same line as BEGIN_DATA
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n".to_vec(), "std2"),
+            // whitespace + comments interleaved in data
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n 1\t# cmt\n 2\n3 # cmt\n 4\n5 6\nEND_DATA\n".to_vec(), "cmt-data"),
+            // IT8 with just signature + comment
+            (b"# comment\nIT8FILE\n# trailing\n".to_vec(), "cmt-only"),
+            // deeply indented structure
+            (b"IT8FILE\n\t\tP1 \"v\"\n\tNUMBER_OF_FIELDS 1\n\t\tNUMBER_OF_SETS 1\n\tBEGIN_DATA_FORMAT\n\t\tA\n\tEND_DATA_FORMAT\n\t\tBEGIN_DATA\n\t1\n\t\tEND_DATA\n".to_vec(), "deep-indent"),
+            // property = data format field name
+            (b"IT8FILE\nSAMPLE_ID \"s1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nSAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\nx\nEND_DATA\n".to_vec(), "field-eq-prop"),
+            // data values that are quoted keywords
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n\"IT8FILE\" \"BEGIN_DATA\"\n\"END_DATA\" \"NUMBER_OF_FIELDS\"\nEND_DATA\n".to_vec(), "quoted-kw"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
