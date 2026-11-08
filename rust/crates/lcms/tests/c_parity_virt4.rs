@@ -124,3 +124,34 @@ fn bchsw_transform() {
         let _ = c::cmsCloseProfile(ch);
     }
 }
+
+/// Device-link builders on more colorspaces — the deeper
+/// cmsVirtMake* branches (gray, CMYK, MCH).
+#[test]
+fn device_link_colorspaces() {
+    unsafe {
+        // linearization on gray (PT_GRAY=3), CMYK(PT_CMY=12), MCH5(14)
+        for cs in [3u32, 12, 14] {
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+            let nch = if cs == 3 { 1 } else if cs == 12 { 4 } else { 5 };
+            let curves = vec![g; nch];
+            let ch = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), cs, curves.as_ptr());
+            let rg = gamma::build_gamma(None, 1.8).unwrap();
+            let refs: Vec<&lcms::gamma::ToneCurve> =
+                std::iter::repeat(&rg).take(nch).collect();
+            let mut rp = virt::create_linearization_device_link(None, cs, &refs);
+            assert_eq!(ch.is_null(), rp.is_none(), "linearization cs{cs}");
+            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            c::cmsFreeToneCurve(g);
+        }
+        // ink-limiting on more colorspaces
+        for cs in [3u32, 12, 14] {
+            let ch = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), cs, 200.0);
+            let mut rp = virt::create_ink_limiting_device_link(None, cs, 200.0);
+            assert_eq!(ch.is_null(), rp.is_none(), "inklimit cs{cs}");
+            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+        }
+    }
+}
