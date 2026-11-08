@@ -3604,3 +3604,22 @@ fn write_dispatch_u32() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on an IT8-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_it8() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        for (sig, name) in [
+            (0x74617267u32, "targ"), (0x72657370u32, "resp"),
+            (0x72637332u32, "rcs2")] {
+            let ok = c::cmsWriteTag(h, sig,
+                it8 as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsIT8Free(it8);
+        c::cmsCloseProfile(h);
+    }
+}
