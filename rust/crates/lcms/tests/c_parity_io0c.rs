@@ -1311,3 +1311,79 @@ fn internal_clrt_chad2_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — _cmsReadFloat*Tag PCS-normalize
+///   insert arms: matf mpet under DToB/BToD on Lab vs
+///   XYZ PCS profiles.
+#[test]
+fn float_pcs_mix_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        // matf element inside mpet
+        let mut el = b"matf".to_vec();
+        el.extend_from_slice(&[0; 4]);
+        el.extend_from_slice(&3u16.to_be_bytes());
+        el.extend_from_slice(&3u16.to_be_bytes());
+        for i in 0..12u32 {
+            let v: f64 = if i % 4 == i / 4 && i < 10
+                          && (i % 4) == (i / 4)
+                            { 1.0 } else { 0.0 };
+            el.extend_from_slice(&v.to_be_bytes()); }
+        let mut mpet = b"mpet".to_vec();
+        mpet.extend_from_slice(&[0; 4]);
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&1u32.to_be_bytes());
+        mpet.extend_from_slice(&24u32.to_be_bytes());
+        mpet.extend_from_slice(&(el.len() as u32).to_be_bytes());
+        mpet.extend_from_slice(&el);
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        for (pcs, cs_sig, dir, nm) in [
+            (0x4C616220u32, 0x52474220, "DToB", "lab-d2b"),
+            (0x58595A20, 0x52474220, "DToB", "xyz-d2b"),
+            (0x4C616220, 0x434D594B, "DToB", "lab-cmyk-d2b"),
+            (0x4C616220, 0x52474220, "BToD", "lab-b2d"),
+            (0x58595A20, 0x52474220, "BToD", "xyz-b2d")] {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, cs_sig);
+            c::cmsSetPCS(p, pcs);
+            c::cmsSetProfileVersion(p, 4.4);
+            let tag = if dir == "DToB" { 0x44324230u32 }
+                      else { 0x42324430 };
+            c::cmsWriteRawTag(p, tag,
+                mpet.as_ptr() as *const _, mpet.len() as u32);
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                sb.as_mut_ptr() as *mut _, &mut sn);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn)
+            } else { std::ptr::null_mut() };
+            let mut ok = 0i32;
+            if !pr.is_null() {
+                for intent in 0..8u32 {
+                    let srgb = {
+                        let pf = format!("{}/../../sRGBlcms2.icc",
+                            env!("CARGO_MANIFEST_DIR"));
+                        let cs2 = std::ffi::CString::new(pf).unwrap();
+                        c::cmsOpenProfileFromFile(
+                            cs2.as_ptr(), b"r\0".as_ptr() as *const _)
+                    };
+                    if srgb.is_null() { continue; }
+                    let (a, b) = if dir == "DToB" {
+                        (srgb, pr) } else { (pr, srgb) };
+                    let t = c::cmsCreateTransform(
+                        a, f16(4, 3), b, f16(4, 3),
+                        intent, 0);
+                    if !t.is_null() {
+                        ok += 1;
+                        c::cmsDeleteTransform(t); }
+                    c::cmsCloseProfile(srgb); }
+                c::cmsCloseProfile(pr); }
+            eprintln!("{nm}: sv={sv} ok={ok}");
+            c::cmsCloseProfile(p); }
+    }
+}
