@@ -805,3 +805,59 @@ fn named_unusual_formats() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// CMYK formats on a real CMYK profile — the CMYK packers
+/// on a profile with actual LUT data.
+#[test]
+fn cmyk_real_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        // a real CMYK profile via the devicelink machinery
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g, g];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B, curves.as_ptr());
+        // devicelink-only transform — the linearization link
+        // IS a CMYK->CMYK transform (1-profile chain).
+        eprintln!("dl={}", !dl.is_null());
+        if dl.is_null() {
+            eprintln!("linearization dl failed — skipping");
+            let _ = c::cmsCloseProfile(hi);
+            return;
+        }
+        // an ink-limiting devicelink IS a CMYK->CMYK link —
+        // the 1-profile chain treats it as the full transform.
+        let ink = c::cmsCreateInkLimitingDeviceLink(
+            0x434D594B, 90.0);
+        eprintln!("ink={}", !ink.is_null());
+        let mut chain = [ink];
+        for (name, in_fmt, out_fmt) in [
+            ("cmyk-8", (18 << 16) | (4 << 3) | 1u32,
+             (18 << 16) | (4 << 3) | 1),
+            ("cmyk-16", (18 << 16) | (4 << 3) | 2,
+             (18 << 16) | (4 << 3) | 2),
+            ("cmyk-flt", (1 << 22) | (18 << 16) | (4 << 3) | 4,
+             (1 << 22) | (18 << 16) | (4 << 3) | 4),
+            ("cmyk-bgr", (18 << 16) | (1 << 10) | (4 << 3) | 2,
+             (18 << 16) | (1 << 10) | (4 << 3) | 2),
+            ("cmyk-planar", (18 << 16) | (1 << 12) | (4 << 3) | 2,
+             (18 << 16) | (4 << 3) | 2),
+            ("cmyk-x1", (18 << 16) | (1 << 7) | (4 << 3) | 2,
+             (18 << 16) | (1 << 7) | (4 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateMultiprofileTransform(
+                chain.as_mut_ptr(), 1, in_fmt,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x8000u16, 0x6000, 0x4000, 0x2000];
+                let mut out = [0u16; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        if !dl.is_null() { c::cmsCloseProfile(dl); }
+    }
+}
