@@ -3925,3 +3925,72 @@ fn pack_residual_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmspack residual — 8-byte (double) channel formatters +
+///   remaining Unroll*Double* paths.
+#[test]
+fn pack_dbl_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), g);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        // 8-byte channels on every colorspace
+        for cs in [3u32, 4, 6, 9, 10, 12, 13, 14, 15, 16,
+            17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+            28, 29, 30, 31] {
+            for fl in [0u32, 1 << 22, 1 << 7, 1 << 12] {
+                let fmt = (cs << 16) | (3 << 3) | 8 | fl;
+                let t = c::cmsCreateTransform(srgb, r8,
+                    lab, fmt, 0, 0);
+                let t2 = c::cmsCreateTransform(lab, fmt,
+                    srgb, r8, 0, 0);
+                let t3 = c::cmsCreateTransform(srgb, fmt,
+                    lab, fmt, 0, 0);
+                if !t.is_null() {
+                    let ib = [0x55u8; 64];
+                    let mut ob = [0u8; 64];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+                if !t2.is_null() {
+                    let ib = [0x55u8; 64];
+                    let mut ob = [0u8; 64];
+                    c::cmsDoTransform(t2, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t2);
+                }
+                if !t3.is_null() {
+                    let ib = [0x55u8; 64];
+                    let mut ob = [0u8; 64];
+                    c::cmsDoTransform(t3, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t3);
+                }
+            }
+            eprintln!("dbl cs{cs} done");
+        }
+        // double on gray + any-channel
+        for cs in [3u32, 4] {
+            for ch in [1u32, 2, 3, 4] {
+                let fmt = (cs << 16) | (ch << 3) | 8;
+                let t = c::cmsCreateTransform(gray, fmt,
+                    lab, (10 << 16) | (3 << 3) | 1, 0, 0);
+                eprintln!("gdbl cs{cs} ch{ch}={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
