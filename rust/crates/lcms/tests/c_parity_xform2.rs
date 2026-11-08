@@ -836,3 +836,29 @@ fn flag_combos() {
         let _ = (rgb, rgb2, lab);
     }
 }
+
+/// More flag machinery — softproofing/gamutcheck/
+/// copyalpha/gridpoints/embeddedprofile.
+#[test]
+fn flag_combos2() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let rgb2 = c::cmsCreate_sRGBProfile();
+        let fmt = (4 << 16) | (3 << 3) | 1u32;
+        for (name, flags) in [
+            ("softproof", 1u32 << 13),
+            ("gamutchk", 1 << 10),
+            ("copyalpha", 1 << 17),
+            ("gridpts2", 2 << 24),
+            ("gridpts4", 4 << 24),
+            ("embedded", 1 << 19),
+            ("seqdev", 1 << 20),
+            ("guessclass", 1 << 15)] {
+            let t = c::cmsCreateTransform(rgb, fmt,
+                rgb2, fmt, 0, flags);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        let _ = (rgb, rgb2);
+    }
+}
