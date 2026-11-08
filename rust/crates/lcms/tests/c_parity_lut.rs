@@ -4616,3 +4616,208 @@ fn lut_mat_ident_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmslut residual — N-channel (4/5/6) MPE pipeline
+///   evaluation: EvalNInputs dispatch, matf/cvst/
+///   clut multi-channel stage internals.
+#[test]
+fn lut_nchan_eval_arms() {
+    unsafe {
+        unsafe extern "C" fn onerr(
+            _ctx: *mut std::ffi::c_void, code: u32,
+            msg: *const i8) {
+            let s = unsafe {
+                std::ffi::CStr::from_ptr(msg)
+                    .to_string_lossy() };
+            eprintln!("  cerr {code}: {s}");
+        }
+        let fp: unsafe extern "C" fn(
+            *mut std::ffi::c_void, u32, *const i8) = onerr;
+        c::cmsSetLogErrorHandlerTHR(
+            std::ptr::null_mut(), fp as *mut _);
+        // 4ch/5ch/6ch cvst+matf+clut mpet pipelines on
+        //   D2B0 -> multi-channel evaluator internals
+        for (nch, name) in [(4u16, "4ch"), (5, "5ch"),
+                            (6, "6ch")] {
+            // cvst element: nch curves
+            let mut cv = vec![0x63u8, 0x76, 0x73, 0x74,
+                0, 0, 0, 0];
+            cv.extend_from_slice(&nch.to_be_bytes());
+            cv.extend_from_slice(&nch.to_be_bytes());
+            // posTable = nch {offset,size} pairs,
+            //   offsets rel element start (incl
+            //   'cvst'+res = 8 bytes)
+            let curve_sz = 8 + 4 + 8 + 4 + 16;
+            let base = 8 + 4 + 8 * nch as usize;
+            for i in 0..nch as usize {
+                let off = (base + i * curve_sz) as u32;
+                cv.extend_from_slice(&off.to_be_bytes());
+                cv.extend_from_slice(
+                    &(curve_sz as u32).to_be_bytes());
+            }
+            for _ in 0..nch {
+                cv.extend_from_slice(&[
+                    0x63, 0x75, 0x72, 0x66, 0, 0, 0, 0,
+                    0, 1, 0, 0,
+                    0x70, 0x61, 0x72, 0x66, 0, 0, 0, 0,
+                    0, 0, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                    0x3F, 0x80, 0, 0,
+                ]);
+            }
+            // mpet with 1 cvst element
+            let mut blob = vec![
+                0x6D, 0x70, 0x65, 0x74, 0, 0, 0, 0,
+            ];
+            blob.extend_from_slice(&nch.to_be_bytes());
+            blob.extend_from_slice(&nch.to_be_bytes());
+            blob.extend_from_slice(
+                &1u32.to_be_bytes()); // nElem
+            let eoff = 24u32;
+            let esize = cv.len() as u32;
+            blob.extend_from_slice(&eoff.to_be_bytes());
+            blob.extend_from_slice(&esize.to_be_bytes());
+            blob.extend_from_slice(&cv);
+            let cs = match nch {
+                4 => 0x434D594Bu32,  // cmyk
+                5 => 0x35434C52,      // 5CLR
+                _ => 0x36434C52,      // 6CLR
+            };
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6C696E6B);
+            c::cmsSetColorSpace(p, cs);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            c::cmsWriteRawTag(p, 0x44324230,
+                blob.as_ptr() as *const _,
+                blob.len() as u32);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !pr.is_null() {
+                c::cmsReadTag(pr, 0x44324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} sv={sv} rd={}",
+                !rd.is_null());
+            if !pr.is_null() {
+                c::cmsCloseProfile(pr); }
+            c::cmsCloseProfile(p);
+        }
+        // multi-channel eval via linearization + CLUT
+        //   devicelinks (Eval4/EvalNInputs internals)
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.5);
+        for (fmt, nch, name) in [
+            ((0u32 << 16) | (4 << 3) | 2, 4, "cmyk"),
+            ((17u32 << 16) | (1 << 3) | 2, 1, "mch1"),
+            ((21u32 << 16) | (5 << 3) | 2, 5, "mch5"),
+            ((22u32 << 16) | (6 << 3) | 2, 6, "mch6"),
+        ] {
+            let tcs: Vec<*mut c::ToneCurve> =
+                vec![g2];
+            let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), fmt,
+                tcs.as_ptr());
+            eprintln!("{name} lin dl={}", !dl.is_null());
+            if !dl.is_null() {
+                let t = c::cmsCreateTransform(dl,
+                    (0u32 << 16) | (nch << 3) | 2,
+                    dl, (0u32 << 16) | (nch << 3) | 2,
+                    0, 0);
+                eprintln!("  lin t={}", !t.is_null());
+                if !t.is_null() {
+                    let src = vec![0x4000u16;
+                        nch as usize];
+                    let mut dst = vec![0u16;
+                        nch as usize];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    eprintln!("    {dst:?}");
+                    c::cmsDeleteTransform(t);
+                }
+                // also link->srgb output (Nch->3 eval)
+                let srgb = c::cmsCreate_sRGBProfile();
+                let t2 = c::cmsCreateTransform(dl,
+                    (0u32 << 16) | (nch << 3) | 2,
+                    srgb, (4u32 << 16) | (3 << 3) | 2,
+                    0, 0);
+                eprintln!("  dl->srgb t={}",
+                    !t2.is_null());
+                if !t2.is_null() {
+                    c::cmsDeleteTransform(t2); }
+                c::cmsCloseProfile(srgb);
+                c::cmsCloseProfile(dl);
+            }
+        }
+        // 4ch->3ch pipeline: cvst4 + clut4->3 + mat3 +
+        //   cvst3 as A2B0 on a CMYK link
+        let pipe = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 4, 3);
+        let g3 = c::cmsBuildGamma(
+            std::ptr::null_mut(), 1.0);
+        let tc4: Vec<_> = (0..4).map(|_| g3).collect();
+        let tc3: Vec<_> = (0..3).map(|_| g3).collect();
+        c::cmsPipelineInsertStage(pipe, 0,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 4,
+                tc4.as_ptr() as *mut _));
+        let dims = vec![2u32; 15];
+        let grid = vec![0x8000u16; 2usize.pow(4) * 3];
+        c::cmsPipelineInsertStage(pipe, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(),
+                4, 3, grid.as_ptr()));
+        let mut m3 = [0.0f64; 9];
+        m3[0] = 1.0; m3[4] = 1.0; m3[8] = 1.0;
+        c::cmsPipelineInsertStage(pipe, 2,
+            c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                m3.as_ptr(), std::ptr::null()));
+        c::cmsPipelineInsertStage(pipe, 3,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                tc3.as_ptr() as *mut _));
+        let lp = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(lp, 0x6C696E6B);
+        c::cmsSetColorSpace(lp, 0x434D594B);
+        c::cmsSetPCS(lp, 0x4C616220);
+        c::cmsSetProfileVersion(lp, 4.4);
+        c::cmsWriteTag(lp, 0x41324230,
+            pipe as *const _);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let fcmyk = (0u32 << 16) | (4 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let lab4p = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let t3 = c::cmsCreateTransform(lp, fcmyk,
+            lab4p, flab, 0, 0);
+        eprintln!("4->3 pipe t={}", !t3.is_null());
+        if !t3.is_null() {
+            let src = [0x4000u16; 4];
+            let mut d = [0u16; 3];
+            c::cmsDoTransform(t3,
+                src.as_ptr() as *const _,
+                d.as_mut_ptr() as *mut _, 1);
+            eprintln!("  {src:?}->{d:?}");
+            c::cmsDeleteTransform(t3);
+        }
+        c::cmsCloseProfile(lp);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4p);
+        c::cmsPipelineFree(pipe);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+        c::cmsSetLogErrorHandlerTHR(
+            std::ptr::null_mut(),
+            std::ptr::null_mut());
+    }
+}
