@@ -1121,3 +1121,69 @@ fn monotonic_join_arms() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// EvalSegmentedFn + _cmsRegisterParametricCurvesPlugin +
+/// TranslateNonICCIntents residual arms.
+#[test]
+fn seg_eval_param_arms() {
+    unsafe {
+        // parametric types 0-9 + inverse — fires
+        //   EvalSegmentedFn + parametric registration
+        for (ty, params) in [
+            (1i32, [2.2f64, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0]),
+            (2, [-0.2, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (3, [-0.2, 0.5, 0.2, 0.04, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (4, [-0.2, 0.5, 0.2, 0.04, 0.05, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (5, [0.4, 0.2, 0.6, 0.8, 0.1, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (6, [1.0, 0.9, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (7, [1.0, 0.9, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (8, [1.0, 0.9, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (108, [1.0, 0.9, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+            (109, [1.0, 0.9, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0]),
+        ] {
+            let tc = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ty, params.as_ptr());
+            if tc.is_null() { eprintln!("ty{ty} null"); continue; }
+            let mut mx = 0f32;
+            for v in [0.0f32, 0.25, 0.5, 0.75, 1.0] {
+                let y = c::cmsEvalToneCurveFloat(tc, v);
+                if y > mx { mx = y; }
+            }
+            eprintln!("ty{ty} max={mx:.4}");
+            c::cmsFreeToneCurve(tc);
+        }
+        // segmented eval — formula segs through EvalSegmentedFn
+        let mut seg = [c::CurveSegment {
+            x0: -1e5, x1: 0.5,
+            r#type: 6, params: [0.0; 10],
+            n_grid_points: 0,
+            sampled_points: std::ptr::null(),
+        }, c::CurveSegment {
+            x0: 0.5, x1: 1e5,
+            r#type: 8, params: [0.0; 10],
+            n_grid_points: 0,
+            sampled_points: std::ptr::null(),
+        }];
+        seg[0].params[0] = 0.0;
+        seg[1].params[0] = 1.0;
+        let sc = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 2, seg.as_ptr());
+        if !sc.is_null() {
+            for v in [0.0f32, 0.25, 0.5, 0.75, 1.0] {
+                let y = c::cmsEvalToneCurveFloat(sc, v);
+                eprintln!("seg v{v}={y}");
+            }
+            c::cmsFreeToneCurve(sc);
+        }
+    }
+}
