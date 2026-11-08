@@ -1180,3 +1180,60 @@ fn it8_deep_arms3() {
         }
     }
 }
+
+/// cmscgats remaining arms — writer modes, table API, enum
+/// values, boundary conditions.
+#[test]
+fn it8_deep_arms4() {
+    unsafe {
+        // writer modes on a multi-table doc
+        let doc = b"IT8FILE\nKEYWORD \"K\"\nDATA_FORMAT_ID \"D\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n5\nEND_DATA\n";
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        if !p.is_null() {
+            // table API: TableCount/SetTable/GetPatchByName/
+            // DefineDblFormat/SetDataRowCol
+            let nt = c::cmsIT8TableCount(p);
+            for i in 0..nt + 1 {
+                let ok = c::cmsIT8SetTable(p, i);
+                eprintln!("settable{i}={ok}");
+            }
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsIT8SaveToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("save={s}");
+            // write with different enum values
+            c::cmsIT8DefineDblFormat(p, b"%.12g\0".as_ptr() as *const _);
+            let v = c::cmsIT8GetDataRowCol(p, 0, 0);
+            eprintln!("getdata={}", !v.is_null());
+            c::cmsIT8Free(p);
+        }
+        // enum value coverage — read all predefined properties
+        for (prop, name) in [
+            (b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, "nof"),
+            (b"NUMBER_OF_SETS\0".as_ptr() as *const _, "nos"),
+            (b"ORIGINATOR\0".as_ptr() as *const _, "orig"),
+            (b"DATA_IDENTIFIER\0".as_ptr() as *const _, "dataid"),
+            (b"NUMBER_OF_TABLES\0".as_ptr() as *const _, "notables"),
+        ] {
+            let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".as_ptr() as *const _, 106);
+            if !p2.is_null() {
+                let v = c::cmsIT8GetProperty(p2, prop);
+                eprintln!("prop {name}={}", !v.is_null());
+                c::cmsIT8Free(p2);
+            }
+        }
+        // SetDataRowCol/SetProperty on loaded doc
+        let p3 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n".as_ptr() as *const _, 106);
+        if !p3.is_null() {
+            let r = c::cmsIT8SetDataRowCol(p3, 0, 0, b"99\0".as_ptr() as *const _);
+            eprintln!("setdata={r}");
+            let v = c::cmsIT8GetDataRowCol(p3, 0, 0);
+            eprintln!("getdata-val={}", !v.is_null());
+            c::cmsIT8Free(p3);
+        }
+    }
+}
