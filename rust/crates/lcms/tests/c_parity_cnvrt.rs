@@ -585,3 +585,45 @@ fn mab_lut_reader() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Optimizer internals — transforms between profile pairs
+/// producing different optimized pipelines.
+#[test]
+fn optimizer_pipelines() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let nullp = c::cmsCreateNULLProfile();
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let xyz_fmt: u32 = (3 << 16) | (3 << 3) | 2;
+        // different profile pairs → different optimized shapes
+        for (name, (i, ifmt, o, ofmt)) in [
+            ("srgb->lab4", (srgb, in_fmt, lab4, lab_fmt)),
+            ("srgb->lab2", (srgb, in_fmt, lab2, lab_fmt)),
+            ("lab4->srgb", (lab4, lab_fmt, srgb, in_fmt)),
+            ("lab2->srgb", (lab2, lab_fmt, srgb, in_fmt)),
+            ("srgb->null", (srgb, in_fmt, nullp, in_fmt)),
+            ("null->srgb", (nullp, in_fmt, srgb, in_fmt)),
+            ("srgb->xyz", (srgb, in_fmt, xyz, xyz_fmt)),
+            ("xyz->srgb", (xyz, xyz_fmt, srgb, in_fmt)),
+            ("lab4->lab2", (lab4, lab_fmt, lab2, lab_fmt)),
+            ("lab2->lab4", (lab2, lab_fmt, lab4, lab_fmt)),
+        ] {
+            let ct = c::cmsCreateTransform(i, ifmt, o, ofmt, 0, 0);
+            if ct.is_null() { continue; }
+            let inp = [30000u16, 40000, 50000];
+            let mut co = [0u16; 3];
+            c::cmsDoTransform(ct, inp.as_ptr() as _,
+                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDeleteTransform(ct);
+        }
+        let _ = c::cmsCloseProfile(srgb);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(lab2);
+        let _ = c::cmsCloseProfile(xyz);
+        let _ = c::cmsCloseProfile(nullp);
+    }
+}
