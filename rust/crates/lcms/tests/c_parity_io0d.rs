@@ -2844,3 +2844,30 @@ fn intentlut_read() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Distinct-type readers — pseq/sf32/chrm/v2-desc/v2-text/mft2 across
+/// corpus profiles (the remaining per-type read dispatch).
+#[test]
+fn distincttype_read() {
+    unsafe {
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        for (file, name, sig) in [
+            ("lcms2link.icc", "pseq", 0x70736571u32),
+            ("lcms2link.icc", "desc", 0x64657363),
+            ("sRGBlcms2.icc", "chad", 0x63686164),
+            ("sRGBlcms2.icc", "chrm", 0x6368726d),
+            ("labv2lcms2.icc", "v2desc", 0x64657363),
+            ("labv2lcms2.icc", "v2cprt", 0x63707274),
+            ("labv2lcms2.icc", "v2a2b0", 0x41324230)] {
+            let pb = base.join("../../").join(file);
+            let path = std::ffi::CString::new(
+                pb.to_str().unwrap()).unwrap();
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr(), b"r\0".as_ptr());
+            let t = if h.is_null() { std::ptr::null() }
+                else { c::cmsReadTag(h, sig) };
+            eprintln!("{file} {name} t={}", !t.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+    }
+}
