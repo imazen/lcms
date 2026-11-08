@@ -3687,3 +3687,30 @@ fn write_dispatch_pipeline_obj() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on an MLU on the array-type sigs — the
+/// write machinery on wrong-type payloads.
+#[test]
+fn write_dispatch_mlu_array() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetWide(mlu, b"en\0".as_ptr() as _,
+            b"US\0".as_ptr() as _,
+            &[0x74u16, 0x65, 0x73, 0x74] as *const u16 as _);
+        for (sig, name) in [
+            (0x72657370u32, "resp"), (0x72637332u32, "rcs2"),
+            (0x70617261u32, "para"), (0x64617461u32, "data"),
+            (0x75743136u32, "ut16"), (0x75743332u32, "ut32"),
+            (0x75696638u32, "uif8"), (0x75696631u32, "uif16"),
+            (0x75696633u32, "uif32"), (0x75696636u32, "uif64"),
+            (0x73313566u32, "s15f"), (0x75663136u32, "uf16"),
+            (0x75663332u32, "uf32"), (0x75663634u32, "uf64")] {
+            let ok = c::cmsWriteTag(h, sig,
+                mlu as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsMLUfree(mlu);
+        c::cmsCloseProfile(h);
+    }
+}
