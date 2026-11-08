@@ -8250,3 +8250,65 @@ fn lut_write_shapes() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// Type_MHC2_Write deep arms — different CurveEntries, non-
+/// identity matrix, null-curve reject.
+#[test]
+fn mhc2_write_arms() {
+    unsafe {
+        #[repr(C)] struct Mhc2 { n: u32, r: *mut f64,
+            g: *mut f64, b: *mut f64, minl: f64, peakl: f64,
+            m: [[f64; 4]; 3] }
+        let mk = |n: usize| {
+            let mut v = vec![0.0f64; n];
+            for (i, x) in v.iter_mut().enumerate() {
+                *x = i as f64 * 1000.0 / (n - 1) as f64;
+            }
+            v
+        };
+        for (n, nonident, nul, name) in [
+            (2usize, false, false, "n2"),
+            (8, false, false, "n8"),
+            (256, false, false, "n256"),
+            (4096, false, false, "n4096"),
+            (4, true, false, "nonident"),
+            (4, false, true, "nullc"),
+        ] {
+                let mut r = mk(n);
+            let mut g = mk(n);
+            let mut b = mk(n);
+            let m = if nonident {
+                [[1.1,0.1,0.0,0.0],[0.0,0.9,0.1,0.0],
+                 [0.0,0.0,0.8,0.0]]
+            } else {
+                [[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],
+                 [0.0,0.0,1.0,0.0]]
+            };
+            let mut mhc = Mhc2 { n: n as u32,
+                r: r.as_mut_ptr(),
+                g: if nul { std::ptr::null_mut() } else { g.as_mut_ptr() },
+                b: b.as_mut_ptr(),
+                minl: 0.0001, peakl: 1000.0, m };
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x4D484332,
+                &mut mhc as *mut _ as *const _);
+            let mut buf = vec![0u8; 1 << 22];
+            let mut nn = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut nn)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, nn)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x4D484332)
+            } else { std::ptr::null_mut() };
+            eprintln!("mhc2-{name} w={w} s={s} r={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
