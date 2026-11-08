@@ -3513,3 +3513,22 @@ fn write_dispatch_pipeline_array() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a text-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_text() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let text = b"hello\0";
+        for (sig, name) in [
+            (0x74657874u32, "text"), (0x64657363u32, "desc"),
+            (0x63707274u32, "cprt"), (0x64617461u32, "data"),
+            (0x6E636C32u32, "ncl2")] {
+            let ok = c::cmsWriteTag(h, sig,
+                text.as_ptr() as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
