@@ -505,3 +505,67 @@ fn internal_graypipe_arms() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmsio1 residual — _cmsReadDevicelinkLUT intent
+///   sweep + mft1/mft2/mAB/mBA devicelink tag shapes
+///   through multiprofile chains.
+#[test]
+fn internal_devlink_lut_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // devicelink via mft1 A2B0 RGB->Lab
+        let mk = |ty: u32| {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6C696E6B);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 2.4);
+            let mut blob = vec![
+                0x6D, 0x66, 0x74, 0x31, 0, 0, 0, 0,
+                3, 3, 2, 0,
+            ];
+            for i in 0..9 {
+                let v: u32 = if i % 4 == 0 {
+                    0x00010000 } else { 0 };
+                blob.extend_from_slice(&v.to_be_bytes());
+            }
+            blob.extend_from_slice(&[0x80u8; 256 * 3]);
+            blob.extend_from_slice(&[0x80u8; 8 * 3]);
+            blob.extend_from_slice(&[0x80u8; 256 * 3]);
+            c::cmsWriteRawTag(p, ty,
+                blob.as_ptr() as *const _,
+                blob.len() as u32);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n);
+            c::cmsCloseProfile(p);
+            pr
+        };
+        // A2B0 + B2A0 + D2B0 + B2D0 devicelink shapes
+        for (ty, name) in [
+            (0x41324230u32, "A2B0"), (0x42324130, "B2A0"),
+            (0x44324230, "D2B0"), (0x42324430, "B2D0"),
+            (0x41324231, "A2B1"), (0x41324232, "A2B2"),
+        ] {
+            let dl = mk(ty);
+            eprintln!("{name} prof={}", !dl.is_null());
+            if !dl.is_null() {
+                for int_ in [0u32, 1, 2, 3] {
+                    let t = c::cmsCreateTransform(dl,
+                        frgb, lab4, flab, int_, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(dl);
+            }
+        }
+        c::cmsCloseProfile(lab4);
+    }
+}
