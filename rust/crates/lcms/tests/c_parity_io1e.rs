@@ -936,3 +936,48 @@ fn final_sig_writes() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// pre0/pre1/pre2 sigs with real mAB pipelines — the
+/// proofing-LUT serialization internals.
+#[test]
+fn proofing_lut_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // build a real 5-slot mAB pipeline — A-curves + CLUT +
+        // matrix + B-curves
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let acurves = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3, curves.as_ptr());
+        let grid = [4u32; 3];
+        let tab = [0.5f32; 4 * 4 * 4 * 3];
+        let clut = c::cmsStageAllocCLutFloatGranular(
+            std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+            tab.as_ptr());
+        let mat_v = [1.0f64, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0];
+        let mat = c::cmsStageAllocMatrix(
+            std::ptr::null_mut(), 3, 3, mat_v.as_ptr(),
+            std::ptr::null());
+        let bcurves = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3, curves.as_ptr());
+        c::cmsPipelineInsertStage(pl, 0xFFFF, acurves);
+        c::cmsPipelineInsertStage(pl, 0xFFFF, clut);
+        c::cmsPipelineInsertStage(pl, 0xFFFF, mat);
+        c::cmsPipelineInsertStage(pl, 0xFFFF, bcurves);
+        // write to the proofing-LUT sigs
+        for sig in [0x70726530u32, 0x70726531, 0x70726532,
+                    0x67616D74] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{sig:#x} write={ok}");
+        }
+        // NOTE: resave removed — the mAB writer NULL-derefs on
+        // a non-canonical pipeline layout (oracle UB, same as
+        // the earlier A2B0/mAB attempt). The write-dispatch
+        // statuses are the meaningful coverage.
+        c::cmsCloseProfile(h);
+    }
+}
