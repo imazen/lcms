@@ -5826,3 +5826,78 @@ fn cnvrt_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsalpha residual — alpha-channel format arms:
+///   ComputeIncrementsForPlanar/Chunky + _cmsGetFormatterAlpha
+///   via EXTRA_SH>0 formats with/without COPY_ALPHA, planar
+///   vs chunky, 1-2 extra channels, on RGB/CMYK/gray pairs.
+#[test]
+fn alpha_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!(
+                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let gray = open("gray3lcms2.icc");
+        let CA = 0x04000000u32; // COPY_ALPHA
+        let f = |pt: u32, ch: u32, ex: u32,
+                 b: u32, pl: u32| -> u32 {
+            (pt << 16) | (ex << 7) | (ch << 3) |
+            (pl << 12) | b };
+        for (nm, i, fi, o, fo) in [
+            ("rgba-chunky", srgb, f(4, 3, 1, 1, 0),
+             srgb, f(4, 3, 1, 1, 0)),
+            ("rgba-16", srgb, f(4, 3, 1, 2, 0),
+             srgb, f(4, 3, 1, 2, 0)),
+            ("rgba-planar", srgb, f(4, 3, 1, 1, 1),
+             srgb, f(4, 3, 1, 1, 1)),
+            ("rgba-mixed", srgb, f(4, 3, 1, 1, 0),
+             srgb, f(4, 3, 0, 1, 0)),
+            ("rgbxx2", srgb, f(4, 3, 2, 1, 0),
+             srgb, f(4, 3, 2, 1, 0)),
+            ("rgbxx2-pl", srgb, f(4, 3, 2, 2, 1),
+             srgb, f(4, 3, 2, 2, 1)),
+            ("cmyka", cmyk, f(6, 4, 1, 1, 0),
+             cmyk, f(6, 4, 1, 1, 0)),
+            ("cmyka-pl", cmyk, f(6, 4, 1, 2, 1),
+             cmyk, f(6, 4, 1, 2, 1)),
+            ("graya", gray, f(3, 1, 1, 1, 0),
+             gray, f(3, 1, 1, 1, 0)),
+            ("graya-pl", gray, f(3, 1, 1, 2, 1),
+             gray, f(3, 1, 1, 2, 1)),
+            ("rgba->cmyk", srgb, f(4, 3, 1, 1, 0),
+             cmyk, f(6, 4, 0, 1, 0)),
+            ("cmyk->rgba", cmyk, f(6, 4, 0, 1, 0),
+             srgb, f(4, 3, 1, 1, 0)),
+            ("rgba->cmyka", srgb, f(4, 3, 1, 1, 0),
+             cmyk, f(6, 4, 1, 1, 0)),
+        ] {
+            if i.is_null() || o.is_null() {
+                eprintln!("{nm}: null"); continue; }
+            for flags in [0u32, CA] {
+                let t = c::cmsCreateTransform(
+                    i, fi, o, fo, 0, flags);
+                if t.is_null() {
+                    eprintln!("{nm} fl={flags:#x}: REJ");
+                    continue; }
+                // packed buffer with alpha
+                let ib = [0x80u8; 256];
+                let mut ob = [0u8; 256];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 8);
+                let a_in = ib[3];
+                let a_out = ob[3];
+                eprintln!("{nm} fl={flags:#x}: a {a_in}->{a_out}");
+                c::cmsDeleteTransform(t); } }
+        for p in [srgb, cmyk, gray] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
