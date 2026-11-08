@@ -1813,3 +1813,30 @@ fn named_color_nmcl() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// 15-channel modifier matrix on the 'FCLR' devicelink.
+#[test]
+fn fclr_modifier_matrix() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 15];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x46434C52,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("15ch-doswap", (0 << 16) | (1 << 10) | (15 << 3) | 1),
+            ("15ch-swapf", (0 << 16) | (1 << 14) | (15 << 3) | 1),
+            ("15ch-flavor", (0 << 16) | (1 << 13) | (15 << 3) | 1),
+            ("15ch-x1", (0 << 16) | (1 << 7) | (15 << 3) | 1),
+            ("15ch-x2", (0 << 16) | (2 << 7) | (15 << 3) | 1),
+            ("15ch-dbl", (1 << 22) | (0 << 16) | (15 << 3) | 0),
+            ("15ch-hlf", (1 << 22) | (0 << 16) | (15 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
