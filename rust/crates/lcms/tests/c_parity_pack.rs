@@ -1392,3 +1392,32 @@ fn gray_modifier_matrix2() {
         let _ = c::cmsCloseProfile(gray);
     }
 }
+
+/// 2-channel formats on a 2-channel devicelink — the
+/// 2-channel packer bodies.
+#[test]
+fn two_channel_formats() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 2];
+        // '2CLR' (MCH2) devicelink
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x32434C52,
+            curves.as_mut_ptr());
+        eprintln!("dl={}", !dl.is_null());
+        for (name, fmt) in [
+            ("2ch-u8", (0 << 16) | (2 << 3) | 1u32),
+            ("2ch-u16", (0 << 16) | (2 << 3) | 2),
+            ("2ch-flt", (1 << 22) | (0 << 16) | (2 << 3) | 4),
+            ("2ch-dbl", (1 << 22) | (0 << 16) | (2 << 3) | 0),
+            ("2ch-hlf", (1 << 22) | (0 << 16) | (2 << 3) | 2),
+            ("2ch-planar", (0 << 16) | (1 << 12) | (2 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
