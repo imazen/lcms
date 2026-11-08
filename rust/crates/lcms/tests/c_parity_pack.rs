@@ -1059,3 +1059,29 @@ fn half_modifier_matrix() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Lab-format modifier matrix — the Lab packer bodies.
+#[test]
+fn lab_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (name, fmt) in [
+            ("lab-planar", (10 << 16) | (1 << 12) | (3 << 3) | 2u32),
+            ("lab-doswap", (10 << 16) | (1 << 10) | (3 << 3) | 2),
+            ("lab-swapf", (10 << 16) | (1 << 14) | (3 << 3) | 2),
+            ("lab-end16", (10 << 16) | (1 << 11) | (3 << 3) | 2),
+            ("lab-flavor", (10 << 16) | (1 << 13) | (3 << 3) | 2),
+            ("lab-x1", (10 << 16) | (1 << 7) | (3 << 3) | 2),
+            ("lab-x2", (10 << 16) | (2 << 7) | (3 << 3) | 2),
+            ("lab-8", (10 << 16) | (3 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(hi,
+                (4 << 16) | (3 << 3) | 2, lab4, fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(lab4);
+    }
+}
