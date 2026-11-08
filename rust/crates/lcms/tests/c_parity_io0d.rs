@@ -14949,3 +14949,75 @@ fn stream_io_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Header getters/setters + IsTag/IsMatrixShaper + profile-info
+/// reads across classes.
+#[test]
+fn header_getset_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let link = c::cmsCreateInkLimitingDeviceLink(
+            0x434D594B, 50.0);
+        let mut id = [0x55u8; 16];
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (p, name) in [
+            (srgb, "srgb"), (lab, "lab"), (gray, "gray"),
+            (link, "link"), (prof, "place"),
+        ] {
+            if p.is_null() { continue; }
+            let ri = c::cmsGetHeaderRenderingIntent(p);
+            let mut fl = 0u32;
+            c::cmsGetHeaderFlags(p, &mut fl);
+            let mut at = 0u64;
+            c::cmsGetHeaderAttributes(p, &mut at);
+            let cr = c::cmsGetHeaderCreator(p);
+            let mut pid = [0u8; 16];
+            c::cmsGetHeaderProfileID(p, pid.as_mut_ptr());
+            let ev = c::cmsGetEncodedICCversion(p);
+            let ms = c::cmsIsMatrixShaper(p);
+            let it = c::cmsIsTag(p, 0x41324230);
+            let it2 = c::cmsIsTag(p, 0x62616420);
+            eprintln!("{name} ri={ri} fl={fl:#x} at={at:#x} \
+                cr={cr:#x} ev={ev:#x} ms={ms} a2b0={it} bad={it2}");
+            c::cmsSetHeaderRenderingIntent(p, 1);
+            c::cmsSetHeaderFlags(p, 0x100);
+            c::cmsSetHeaderAttributes(p, 0xDEADBEEF);
+            c::cmsSetHeaderProfileID(p, id.as_mut_ptr());
+            let ri2 = c::cmsGetHeaderRenderingIntent(p);
+            let mut fl2 = 0u32;
+            c::cmsGetHeaderFlags(p, &mut fl2);
+            eprintln!("  after-set ri={ri2} fl={fl2:#x}");
+            for info in 0..7u32 {
+                let mut buf = [0u8; 256];
+                let n = c::cmsGetProfileInfo(p, info,
+                    b"en\0".as_ptr() as *const i8,
+                    b"US\0".as_ptr() as *const i8,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let n2 = c::cmsGetProfileInfoASCII(p, info,
+                    b"en\0".as_ptr() as *const i8,
+                    b"US\0".as_ptr() as *const i8,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let n3 = c::cmsGetProfileInfoUTF8(p, info,
+                    b"en\0".as_ptr() as *const i8,
+                    b"US\0".as_ptr() as *const i8,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                if n + n2 + n3 > 0 {
+                    eprintln!("  info{info} {n}/{n2}/{n3}");
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(prof);
+        if !link.is_null() { c::cmsCloseProfile(link); }
+        c::cmsFreeToneCurve(g);
+    }
+}
