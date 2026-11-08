@@ -208,3 +208,26 @@ fn oklab_profile() {
             "oklab save parity");
     }
 }
+
+/// Enumerate the BCHSW profile's tags — the abstract profile's
+/// actual tag list.
+#[test]
+fn bchsw_tags() {
+    unsafe {
+        let ch = c::cmsCreateBCHSWabstractProfile(
+            33, 10.0, 10.0, 0.0, 10.0, 5000, 6500);
+        assert!(!ch.is_null());
+        let mut rh = virt::create_bchsw_abstract_profile(None,
+            33, 10.0, 10.0, 0.0, 10.0, 5000, 6500).unwrap();
+        for i in 0..40u32 {
+            let sig = c::cmsGetTagSignature(ch, i);
+            if sig == 0 { break }
+            // read parity — the float-LUT/MPE readers
+            let c_tag = c::cmsReadTag(ch, sig);
+            let r_tag = profile::cms_read_tag(&mut rh, sig);
+            assert_eq!(c_tag.is_null(), r_tag.is_none(),
+                "bchsw read {sig:#x}");
+        }
+        let _ = c::cmsCloseProfile(ch);
+    }
+}
