@@ -315,6 +315,7 @@ unsafe extern "C" {
     pub fn cmsOpenProfileFromIOhandlerTHR(ctx: *mut c_void, io: Handle) -> *mut c_void;
     pub fn cmsSaveProfileToFile(p: *mut c_void, name: *const i8) -> i32;
     pub fn cmsSaveProfileToIOhandler(p: *mut c_void, io: Handle) -> i32;
+    pub fn cmsGetProfileIOhandler(p: *const c_void) -> Handle;
     pub fn cmsCloseProfile(p: *mut c_void) -> i32;
     pub fn cmsGetTagCount(p: *const c_void) -> i32;
     pub fn cmsGetTagSignature(p: *const c_void, n: u32) -> u32;
