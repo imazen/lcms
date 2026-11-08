@@ -13628,3 +13628,117 @@ fn lutab_read_arms() {
         }
     }
 }
+
+/// _cmsReadWCharArray — dict tags with multi-byte/unicode
+/// values + desc Unicode-count edge forms.
+#[test]
+fn wchar_dict_arms() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    // dict: 'dict' + rsv + u32 count + [name-off,name-len,
+    //   val-off,val-len]*n + ucs2be data
+    fn dict(entries: &[(u32, &[u16])]) -> Vec<u8> {
+        let mut t = Vec::new();
+        t.extend_from_slice(&be32(0x64696374));   // 'dict'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(entries.len() as u32));
+        let mut off = 16 + entries.len() * 16;
+        let mut data = Vec::new();
+        for (name, val) in entries {
+            t.extend_from_slice(&be32(off as u32));
+            t.extend_from_slice(&be32(
+                (name.to_string().len()) as u32 * 2));
+            data.extend_from_slice(&be16(0x0061));
+            data.extend_from_slice(&be16(0x0062));
+            off += 4;
+            t.extend_from_slice(&be32(off as u32));
+            t.extend_from_slice(&be32(val.len() as u32 * 2));
+            for v in *val { data.extend_from_slice(&be16(*v)); }
+            off += val.len() * 2;
+            let _ = name;
+        }
+        t.extend_from_slice(&data);
+        t
+    }
+    unsafe {
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (dict(&[(0x61, &[0x0061, 0x0062]), (0x62,
+                &[0x00E9, 0x4E2D, 0xD83D])]), "dict-unicode"),
+            (dict(&[(0x61, &[0x0061])]), "dict-1"),
+            (dict(&[]), "dict-empty"),
+            (dict(&[(0x61, &[])]), "dict-noval"),
+        ];
+        for (blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteRawTag(prof, 0x6D657461,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6D657461)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        // desc unicode-count edge: big count vs short data
+        let d = {
+            let mut t = Vec::new();
+            t.extend_from_slice(&be32(0x64657363));   // 'desc'
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be32(5));            // ASCII len
+            t.extend_from_slice(b"test");
+            t.extend_from_slice(&[0u8; 252]);         // pad
+            t.extend_from_slice(&be32(0));            // ucode
+            t.extend_from_slice(&be32(200));          // unicode count
+            for _ in 0..200 {
+                t.extend_from_slice(&be16(0x0061));
+            }
+            t.extend_from_slice(&be16(0));            // scriptcode
+            t.extend_from_slice(&[0u8; 67]);
+            t
+        };
+        let d2 = {
+            let mut t = Vec::new();
+            t.extend_from_slice(&be32(0x64657363));
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be32(2));
+            t.extend_from_slice(b"a");
+            t.extend_from_slice(&[0u8; 255]);
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be32(0xFFFFFF));
+            t
+        };
+        for (blob, name) in [(d, "desc-biguc"), (d2, "desc-huge")] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 2.1);
+            let w = c::cmsWriteRawTag(prof, 0x64657363,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x64657363)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
