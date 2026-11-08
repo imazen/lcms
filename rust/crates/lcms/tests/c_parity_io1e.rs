@@ -2977,3 +2977,34 @@ fn header_setters3() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Remaining header setters — flags/attributes/mfr/model/
+/// profileID/creator.
+#[test]
+fn header_setters4() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        c::cmsSetHeaderFlags(h, 0xDEADBEEF);
+        let mut f = 0u32;
+        c::cmsGetHeaderFlags(h, &mut f);
+        eprintln!("flags={f:#x}");
+        c::cmsSetHeaderManufacturer(h, 0x61626364);
+        let m = c::cmsGetHeaderManufacturer(h);
+        eprintln!("mfr={m:#x}");
+        c::cmsSetHeaderModel(h, 0x6D6F6465);
+        let mo = c::cmsGetHeaderModel(h);
+        eprintln!("model={mo:#x}");
+        c::cmsSetHeaderAttributes(h, 0xDEADCAFEu64);
+        let mut attr = 0u64;
+        c::cmsGetHeaderAttributes(h, &mut attr);
+        eprintln!("attr={attr:#x}");
+        let mut id = [0x42u8; 16];
+        c::cmsSetHeaderProfileID(h, id.as_mut_ptr());
+        let mut id2 = [0u8; 16];
+        c::cmsGetHeaderProfileID(h, id2.as_mut_ptr());
+        eprintln!("pid={:#x}", id2[0]);
+        let cr = c::cmsGetHeaderCreator(h);
+        eprintln!("creator={cr:#x}");
+        c::cmsCloseProfile(h);
+    }
+}
