@@ -252,3 +252,32 @@ fn header_field_validation() {
         }
     }
 }
+
+/// Tag-count/table-size validation — unusual tag-table fields
+/// through the parser.
+#[test]
+fn tag_table_size() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the tag-count field @128
+        for (name, val) in [
+            ("count-0", 0u32),
+            ("count-1", 1),
+            ("count-huge", 0xFFFF),
+            ("count-neg", 0xFFFFFFFF),
+        ] {
+            let mut dd = d.clone();
+            dd[128..132].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
