@@ -7823,3 +7823,68 @@ fn multi_item_tag_write_arms() {
         c::cmsFreeNamedColorList(list);
     }
 }
+
+/// Type_NamedColor_Read arms — raw ncl2 tags: count variants,
+/// nDeviceCoords>16 reject, prefix/suffix.
+#[test]
+fn ncl2_read_arms() {
+    unsafe {
+        let mk = |count: u32, ndev: u32,
+                  prefix: &[u8; 32], suffix: &[u8; 32],
+                  colors: &[(u32, [u16; 3], u16)]| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6e636c32u32.to_be_bytes()); // 'ncl2'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&0u32.to_be_bytes()); // vendorFlag
+            t.extend_from_slice(&count.to_be_bytes());
+            t.extend_from_slice(&ndev.to_be_bytes());
+            t.extend_from_slice(prefix);
+            t.extend_from_slice(suffix);
+            for (i, pcs, dev) in colors.iter() {
+                let mut name = [0u8; 32];
+                let nm = format!("color{i}\0");
+                name[..nm.len()].copy_from_slice(nm.as_bytes());
+                t.extend_from_slice(&name);
+                for v in pcs {
+                    t.extend_from_slice(&v.to_be_bytes());
+                }
+                for _ in 0..ndev {
+                    t.extend_from_slice(&dev.to_be_bytes());
+                }
+            }
+            t
+        };
+        let empty_p = [0u8; 32];
+        let mut pfx = [0u8; 32];
+        pfx[..4].copy_from_slice(b"PANT");
+        let mut sfx = [0u8; 32];
+        sfx[..3].copy_from_slice(b"CV\0");
+        let colors3: Vec<_> = (0..3).map(|i|
+            (i, [100u16 + i as u16, 200, 300], 0x1234u16)).collect();
+        for (raw, name) in [
+            (mk(3, 3, &empty_p, &empty_p, &colors3), "3col-3dev"),
+            (mk(3, 3, &pfx, &sfx, &colors3), "prefix-suffix"),
+            (mk(0, 3, &empty_p, &empty_p, &[]), "count0"),
+            (mk(3, 17, &empty_p, &empty_p, &colors3), "dev17"),
+            (mk(3, 0, &empty_p, &empty_p, &colors3), "dev0"),
+            (mk(1, 3, &empty_p, &empty_p, &colors3[..1]), "1col"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x6e636c32,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x6e636c32)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
