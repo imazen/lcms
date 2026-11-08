@@ -22264,3 +22264,55 @@ fn internal_final49_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final50_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // multiprofile on all profile-class + intent + flag
+        //   combos
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), g);
+        for (profs_, name) in [
+            (vec![srgb, lab], "s-l"),
+            (vec![lab, srgb], "l-s"),
+            (vec![gray, lab], "g-l"),
+            (vec![lab, gray], "l-g"),
+            (vec![srgb, gray], "s-g"),
+            (vec![gray, srgb], "g-s"),
+        ] {
+            let mut profs = profs_;
+            for intent in 0..16u32 {
+                for bpc in [0u32, 1] {
+                    for adapt in [0.0f64, 0.5, 1.0] {
+                        let mut bpc_ = [bpc as i32; 4];
+                        let mut intents = [intent; 4];
+                        let mut adapt_ = [adapt; 4];
+                        let t = c::cmsCreateExtendedTransform(
+                            std::ptr::null_mut(), 2,
+                            profs.as_mut_ptr(),
+                            bpc_.as_mut_ptr(),
+                            intents.as_mut_ptr(),
+                            adapt_.as_mut_ptr(),
+                            std::ptr::null_mut(), 0,
+                            r8, r8, 0);
+                        if !t.is_null() {
+                            c::cmsDeleteTransform(t); }
+                    }
+                }
+            }
+            eprintln!("{name} done");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
