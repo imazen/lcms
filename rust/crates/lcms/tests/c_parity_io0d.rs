@@ -23408,3 +23408,119 @@ fn internal_final62_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — _cmsReadDevicelinkLUT /
+///   _cmsReadFloat{Input,Output,Devicelink}Tag internals
+///   via devicelink transforms on float/u8/u16 formats.
+#[test]
+fn internal_final63_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // devicelink profiles with mAB float-ish pipelines
+        for (st, sname) in [
+            (0u32, "cv"), (1, "clut"), (2, "cvclut"),
+            (3, "mat"), (4, "cvmatcv"), (5, "empty"),
+        ] {
+            for sig in [
+                0x41324230u32, 0x42324130,
+            ] {
+                for (ver, vname) in [
+                    (2.0f64, "v2"), (4.4, "v4"),
+                ] {
+                    let dl = c::cmsCreateProfilePlaceholder(
+                        std::ptr::null_mut());
+                    c::cmsSetDeviceClass(dl, 0x6C696E6B);
+                    c::cmsSetColorSpace(dl, 0x52474220);
+                    c::cmsSetPCS(dl, 0x4C616220);
+                    c::cmsSetProfileVersion(dl, ver);
+                    let p = c::cmsPipelineAlloc(
+                        std::ptr::null_mut(), 3, 3);
+                    let trcs = [g, g, g];
+                    let dims = [3u32; 3];
+                    let grid = vec![0x4000u16; 81];
+                    let mat = [1.0f64, 0.0, 0.0, 0.0,
+                        1.0, 0.0, 0.0, 0.0, 1.0];
+                    match st {
+                        0 => { c::cmsPipelineInsertStage(p,
+                            0, c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            trcs.as_ptr() as *mut _)); },
+                        1 => { c::cmsPipelineInsertStage(p,
+                            0,
+                            c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(),
+                            dims.as_ptr(), 3, 3,
+                            grid.as_ptr())); },
+                        2 => {
+                            c::cmsPipelineInsertStage(p, 0,
+                                c::cmsStageAllocToneCurves(
+                                std::ptr::null_mut(), 3,
+                                trcs.as_ptr() as *mut _));
+                            c::cmsPipelineInsertStage(p, 1,
+                                c::cmsStageAllocCLut16bitGranular(
+                                std::ptr::null_mut(),
+                                dims.as_ptr(), 3, 3,
+                                grid.as_ptr()));
+                        },
+                        3 => { c::cmsPipelineInsertStage(p,
+                            0, c::cmsStageAllocMatrix(
+                            std::ptr::null_mut(), 3, 3,
+                            mat.as_ptr(),
+                            std::ptr::null())); },
+                        4 => {
+                            c::cmsPipelineInsertStage(p, 0,
+                                c::cmsStageAllocToneCurves(
+                                std::ptr::null_mut(), 3,
+                                trcs.as_ptr() as *mut _));
+                            c::cmsPipelineInsertStage(p, 1,
+                                c::cmsStageAllocMatrix(
+                                std::ptr::null_mut(), 3, 3,
+                                mat.as_ptr(),
+                                std::ptr::null()));
+                            c::cmsPipelineInsertStage(p, 2,
+                                c::cmsStageAllocToneCurves(
+                                std::ptr::null_mut(), 3,
+                                trcs.as_ptr() as *mut _));
+                        },
+                        _ => {},
+                    }
+                    c::cmsWriteTag(dl, sig, p as *const _);
+                    // float input format on dl
+                    for (fin, fout, fname) in [
+                        ((4u32 << 16) | (3 << 3) | 1,
+                            (4u32 << 16) | (3 << 3) | 1,
+                            "u8"),
+                        ((4u32 << 16) | (3 << 3) | 2,
+                            (4u32 << 16) | (3 << 3) | 2,
+                            "u16"),
+                        ((4u32 << 16) | (1 << 22)
+                            | (3 << 3) | 4,
+                            (4u32 << 16) | (1 << 22)
+                            | (3 << 3) | 4, "flt"),
+                        ((4u32 << 16) | (1 << 22)
+                            | (3 << 3) | 8,
+                            (4u32 << 16) | (1 << 22)
+                            | (3 << 3) | 8, "dbl"),
+                    ] {
+                        let t = c::cmsCreateTransform(dl,
+                            fin, srgb, fout, 0, 0);
+                        eprintln!("{sname} {sig:#x} {vname} \
+                            {fname} t={}", !t.is_null());
+                        if !t.is_null() {
+                            c::cmsDeleteTransform(t); }
+                        // dl→dl float
+                        let t2 = c::cmsCreateTransform(dl,
+                            fin, dl, fout, 0, 0);
+                        if !t2.is_null() {
+                            c::cmsDeleteTransform(t2); }
+                    }
+                    c::cmsCloseProfile(dl);
+                    c::cmsPipelineFree(p);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
