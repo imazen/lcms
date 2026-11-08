@@ -457,3 +457,51 @@ fn named_color_stage() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// MLU op branches — cmsMLUsetUTF8/getUTF8/setWide/getWide/setASCII/
+/// getTranslation on multi-entry MLUs + growth arms.
+#[test]
+fn mlu_ops_branches() {
+    unsafe {
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 2);
+        assert!(!m.is_null());
+        // UTF8 + wide + ascii sets on multiple langs
+        c::cmsMLUsetUTF8(m, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            b"English\0".as_ptr());
+        let wstr: [i32; 5] = [0x57, 0x69, 0x64, 0x65, 0];
+        c::cmsMLUsetWide(m, b"fr\0".as_ptr(), b"FR\0".as_ptr(),
+            wstr.as_ptr() as *const i32);
+        c::cmsMLUsetASCII(m, b"de\0".as_ptr(), b"DE\0".as_ptr(),
+            b"Deutsch\0".as_ptr());
+        // gets
+        let mut buf = vec![0u8; 256];
+        let n = c::cmsMLUgetUTF8(m, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            buf.as_mut_ptr(), buf.len() as u32);
+        eprintln!("getUTF8 n={n} {:?}", 
+            std::ffi::CStr::from_ptr(buf.as_ptr() as *const i8));
+        let mut wbuf = vec![0i32; 256];
+        let n2 = c::cmsMLUgetWide(m, b"fr\0".as_ptr(), b"FR\0".as_ptr(),
+            wbuf.as_mut_ptr(), (wbuf.len() * 4) as u32);
+        eprintln!("getWide n={n2}");
+        let mut abuf = vec![0u8; 256];
+        let n3 = c::cmsMLUgetASCII(m, b"de\0".as_ptr(), b"DE\0".as_ptr(),
+            abuf.as_mut_ptr(), abuf.len() as u32);
+        eprintln!("getASCII n={n3}");
+        // getTranslation fallback (lang not present)
+        let mut ol = [0u8; 4];
+        let mut oc = [0u8; 4];
+        let n4 = c::cmsMLUgetTranslation(m, b"zz\0".as_ptr(),
+            b"ZZ\0".as_ptr(), ol.as_mut_ptr(), oc.as_mut_ptr());
+        eprintln!("getTrans-miss n={n4}");
+        let tc = c::cmsMLUtranslationsCount(m);
+        eprintln!("translations={tc}");
+        // dup + more entries (growth past initial 2)
+        let dp = c::cmsMLUdup(m);
+        c::cmsMLUsetUTF8(dp, b"ja\0".as_ptr(), b"JP\0".as_ptr(),
+            b"j\0".as_ptr());
+        let cnt = c::cmsMLUtranslationsCount(dp);
+        eprintln!("dup entries={cnt}");
+        if !dp.is_null() { c::cmsMLUfree(dp); }
+        c::cmsMLUfree(m);
+    }
+}
