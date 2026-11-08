@@ -15455,3 +15455,122 @@ fn darker_colorant_arms() {
         }
     }
 }
+
+/// _cmsHandleExtraChannels (alpha/extra-channel copy-in/out) +
+/// _cmsSetProfileUserData + _cmsReadFloatInputTag (input-class
+/// float profiles) arms.
+#[test]
+fn extra_chan_floatin_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let enc = |cs: u32, ch: u32, b: u32, flags: u32| {
+            flags | (cs << 16) | (ch << 3) | b
+        };
+        const EXTRA: u32 = 1 << 7;
+        const FLOAT: u32 = 1 << 22;
+        const PLANAR: u32 = 1 << 12;
+        const SWAPFIRST: u32 = 1 << 14;
+        // extra-channel formats — alpha/extra in various positions
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, enc(4, 3, 1, EXTRA), enc(10, 3, 1, 0),
+                "ra->lab"),
+            (srgb, lab, enc(4, 4, 1, EXTRA), enc(10, 3, 1, 0),
+                "rgba->lab"),
+            (srgb, lab, enc(4, 3, 1, EXTRA | PLANAR),
+                enc(10, 3, 1, 0), "ra-pl->lab"),
+            (srgb, lab, enc(4, 4, 2, EXTRA | PLANAR),
+                enc(10, 3, 1, 0), "rgba16pl->lab"),
+            (lab, srgb, enc(10, 3, 1, 0),
+                enc(4, 3, 1, EXTRA), "lab->ra"),
+            (lab, srgb, enc(10, 3, 1, 0),
+                enc(4, 4, 1, EXTRA), "lab->rgba"),
+            (lab, srgb, enc(10, 3, 1, 0),
+                enc(4, 4, 1, EXTRA | SWAPFIRST), "lab->argb"),
+            (gray, srgb, enc(3, 1, 1, EXTRA),
+                enc(4, 3, 1, 0), "ga->rgb"),
+            (srgb, lab, enc(4, 3, 4, FLOAT | EXTRA),
+                enc(10, 3, 1, 0), "rflt-a->lab"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp,
+                of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 32];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // _cmsSetProfileUserData + GetProfileUserData
+        let mut ud = 0xdeadbeefu32;
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::_cmsSetProfileUserData(prof,
+            &mut ud as *mut u32 as *mut _,
+            std::ptr::null_mut());
+        let ud2 = c::_cmsGetProfileUserData(prof);
+        eprintln!("ud get={ud2:?}");
+        c::_cmsSetProfileUserData(prof,
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let ud3 = c::_cmsGetProfileUserData(prof);
+        eprintln!("ud get2={ud3:?}");
+        c::cmsCloseProfile(prof);
+        // _cmsReadFloatInputTag — input-class profiles with
+        //   float mAB pipelines
+        for (cs, pcs, name) in [
+            (0x52474220u32, 0x58595A20, "rgb->xyz"),
+            (0x52474220, 0x4C616220, "rgb->lab"),
+            (0x4C616220, 0x58595A20, "lab->xyz"),
+            (0x58595A20, 0x4C616220, "xyz->lab"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            let dims = [2u32; 3];
+            let grid = vec![0.5f32; 24];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocCLutFloatGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    grid.as_ptr()));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let w = c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            let r8 = (4u32 << 16) | (3 << 3) | 1;
+            let l8 = (10u32 << 16) | (3 << 3) | 1;
+            let x8 = (9u32 << 16) | (3 << 3) | 1;
+            let fmt = match cs {
+                0x4C616220 => l8,
+                0x58595A20 => x8,
+                _ => r8,
+            };
+            let t = c::cmsCreateTransform(prof, fmt, srgb,
+                r8, 0, 0);
+            eprintln!("{name} w={w} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 8];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
