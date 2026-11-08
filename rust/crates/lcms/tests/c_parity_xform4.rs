@@ -182,3 +182,22 @@ fn gamut_check_transform() {
     }
 }
 
+
+/// cmsGetTransformContextID — the transform context getter.
+#[test]
+fn transform_context_id() {
+    unsafe {
+        let h1 = c::cmsCreate_sRGBProfile();
+        let h2 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let cs: u32 = (4 << 16) | (3 << 3) | 2;
+        let co: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(h1, cs, h2, co, 0, 0);
+        assert!(!ct.is_null());
+        // NULL ctx -> NULL transform ctx id
+        assert!(c::cmsGetTransformContextID(ct).is_null(),
+            "null ctx id");
+        c::cmsDeleteTransform(ct);
+        let _ = c::cmsCloseProfile(h1);
+        let _ = c::cmsCloseProfile(h2);
+    }
+}

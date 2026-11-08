@@ -585,6 +585,7 @@ unsafe extern "C" {
     pub fn cmsCreateTransform(input: *mut c_void, input_format: u32, output: *mut c_void, output_format: u32, intent: u32, flags: u32) -> *mut c_void;
     pub fn cmsDoTransform(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32);
     pub fn cmsDeleteTransform(t: *mut c_void);
+    pub fn cmsGetTransformContextID(t: *const c_void) -> *mut c_void;
     pub fn cmsGetTransformInputColorants(t: *mut c_void) -> Handle;
     pub fn cmsGetTransformOutputColorants(t: *mut c_void) -> Handle;
     pub fn cmsGetNamedColorList(t: *mut c_void) -> Handle;
