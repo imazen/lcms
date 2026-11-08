@@ -575,3 +575,62 @@ fn corpus_all_sig_reads() {
         }
     }
 }
+
+/// Write-then-read on the remaining sigs — clrt/clot/targ/
+/// ndin/resp payloads through the tag machinery.
+#[test]
+fn remaining_sig_writes() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // clrt — colorant table (cmsNAMEDCOLORLIST)
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 3, 3,
+            b"pre\0".as_ptr() as *const _,
+            b"suf\0".as_ptr() as *const _);
+        let mut pcs = [0u16; 3];
+        let mut dev = [0u16; 16];
+        c::cmsAppendNamedColor(ncl,
+            b"R\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        c::cmsAppendNamedColor(ncl,
+            b"G\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        c::cmsAppendNamedColor(ncl,
+            b"B\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        let ok1 = c::cmsWriteTag(h, 0x636C7274,
+            ncl as *mut std::ffi::c_void); // 'clrt'
+        let ok2 = c::cmsWriteTag(h, 0x636C6F74,
+            ncl as *mut std::ffi::c_void); // 'clot'
+        // targ — charTarget takes a text string
+        let targ = b"IT8.7/2\0";
+        let ok3 = c::cmsWriteTag(h, 0x74617267,
+            targ.as_ptr() as *const std::ffi::c_void);
+        // ndin — ncl2-type display data
+        let ok4 = c::cmsWriteTag(h, 0x6E64696E,
+            ncl as *mut std::ffi::c_void); // 'ndin'
+        // resp — response curve set
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let ok5 = c::cmsWriteTag(h, 0x72657370,
+            g as *mut std::ffi::c_void); // 'resp'
+        eprintln!("clrt={ok1} clot={ok2} targ={ok3} ndin={ok4} \
+            resp={ok5}");
+        // resave + read
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x636C7274u32, 0x636C6F74, 0x74617267,
+                    0x6E64696E, 0x72657370] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
