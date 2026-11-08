@@ -24780,3 +24780,100 @@ fn internal_final74_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — float devicelink-tag dup path
+///   (D2B0/B2D0 on link profiles) + NormalizeToXyzFloat
+///   on XYZ-space float input/output tags.
+#[test]
+fn internal_final75_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let trcs = [g, g, g];
+        // link profile with float-devicelink tags D2B0/B2D0
+        for (sig, name) in [
+            (0x44324230u32, "D2B0"), (0x42324430, "B2D0"),
+            (0x44324231, "D2B1"), (0x42324431, "B2D1"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6C696E6B);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    trcs.as_ptr() as *mut _));
+            let dims = [3u32; 15];
+            let grid = vec![0.5f32; 27 * 3];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLutFloatGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    3, 3, grid.as_ptr()));
+            let w = c::cmsWriteTag(prof, sig,
+                p as *const _);
+            // link as INPUT → _cmsReadDevicelinkLUT
+            for int_ in [0u32, 1, 2, 3] {
+                let fin = (0u32 << 16) | (3 << 3) | 1;
+                let t = c::cmsCreateTransform(prof, fin,
+                    srgb, fin, int_, 0);
+                eprintln!("{name} int{int_} w={w} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        // XYZ-space profiles with float tags →
+        //   NormalizeToXyzFloat on input/output
+        for (dir, name) in [
+            (0x41324230u32, "A2B0-in"),
+            (0x42324130, "B2A0-out"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x58595A20);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let dims = [3u32; 15];
+            let grid = vec![0.5f32; 27 * 3];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocCLutFloatGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    3, 3, grid.as_ptr()));
+            // float tags A2B0f/B2A0f (mpet/curv types
+            //   used for float: D2B/A2B with float data)
+            let fsig = if dir == 0x41324230 {
+                0x41324630u32 } else { 0x42324630 };
+            c::cmsWriteTag(prof, fsig, p as *const _);
+            c::cmsWriteTag(prof, dir, p as *const _);
+            for int_ in [0u32, 1] {
+                let fin = (0u32 << 16) | (3 << 3) | 1;
+                let t = c::cmsCreateTransform(prof, fin,
+                    srgb, fin, int_, 0);
+                eprintln!("xyz {name} int{int_} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
+                let t2 = c::cmsCreateTransform(srgb, fin,
+                    prof, fin, int_, 0);
+                if !t2.is_null() {
+                    c::cmsDeleteTransform(t2);
+                }
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
