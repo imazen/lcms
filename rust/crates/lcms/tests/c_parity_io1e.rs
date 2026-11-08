@@ -2293,3 +2293,30 @@ fn struct_sig_resave2() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'bfd '/'cicp'/'rigs'/'smmm'/'clid'/'ciid'/'ceid' — the
+/// remaining struct-sig writes.
+#[test]
+fn final_struct_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // a ucrbg payload on 'bfd '
+        #[repr(C)]
+        struct UcrBg {
+            ucr: *mut std::ffi::c_void,
+            bg: *mut std::ffi::c_void,
+            desc: *mut std::ffi::c_void,
+        }
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let ucrbg = UcrBg {
+            ucr: g as *mut _, bg: g as *mut _,
+            desc: mlu as *mut _,
+        };
+        let ok = c::cmsWriteTag(h, 0x62666420,
+            &ucrbg as *const _ as *mut std::ffi::c_void);
+        eprintln!("bfd write={ok}");
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
