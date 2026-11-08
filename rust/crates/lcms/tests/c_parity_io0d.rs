@@ -6000,3 +6000,56 @@ fn view_meas_calt_writes() {
         }
     }
 }
+
+/// Multi-item numeric/XYZ/signature array reads — raw tags with
+/// 2-3 entries hit the nItems>1 loops in the type readers.
+#[test]
+fn multi_item_array_reads() {
+    unsafe {
+        // wtpt with 3 XYZ triples (nItems=3)
+        let mut t = Vec::new();
+        t.extend_from_slice(&0x58595A20u32.to_be_bytes()); // 'XYZ '
+        t.extend_from_slice(&[0; 4]);
+        for _ in 0..3 {
+            t.extend_from_slice(&0x0000F6D6u32.to_be_bytes());
+            t.extend_from_slice(&0x00010000u32.to_be_bytes());
+            t.extend_from_slice(&0x0000D32Du32.to_be_bytes());
+        }
+        // lumi with 2 XYZ triples
+        let mut t2 = Vec::new();
+        t2.extend_from_slice(&0x58595A20u32.to_be_bytes());
+        t2.extend_from_slice(&[0; 4]);
+        for _ in 0..2 {
+            t2.extend_from_slice(&0x000031CCu32.to_be_bytes());
+            t2.extend_from_slice(&0x00010000u32.to_be_bytes());
+            t2.extend_from_slice(&0x00000FA2u32.to_be_bytes());
+        }
+        // bkpt with bad XYZ type sig (wrong type -> reject or parse)
+        let mut t3 = Vec::new();
+        t3.extend_from_slice(&0x74657874u32.to_be_bytes()); // 'text'
+        t3.extend_from_slice(&[0; 4]);
+        t3.extend_from_slice(b"wrongtype\0");
+        for (sig, raw, name) in [
+            (0x77747074u32, &t, "wtpt-x3"),
+            (0x6c756d69, &t2, "lumi-x2"),
+            (0x626b7074, &t3, "bkpt-text"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, sig,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
