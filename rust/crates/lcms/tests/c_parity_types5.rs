@@ -3113,3 +3113,31 @@ fn mpe_element_types4() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'mpet' write on the devicelinks — the real MPE
+/// serialization on a working profile.
+#[test]
+fn mpet_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        // build a canonical mAB pipeline
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let curves2 = [g, g, g];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves2.as_ptr()));
+        for (sig, name) in [
+            (0x6D706574u32, "mpet"), (0x6D614220u32, "maB "),
+            (0x6D624120u32, "mbA ")] {
+            let ok = c::cmsWriteTag(dl, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(dl);
+    }
+}
