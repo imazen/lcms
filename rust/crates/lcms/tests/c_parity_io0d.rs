@@ -14820,3 +14820,73 @@ fn ctx_dup_plugin_arms() {
     unsafe { waitpid(pid, &mut st, 0); }
     eprintln!("ctxdup child st={st}");
 }
+
+/// WriteMatrix (mAB matrix-element serialization) +
+/// SetMatShaper/CurvesAlloc via matshaper-optimized transforms.
+#[test]
+fn writematrix_matshaper_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // mAB with matrix — API pipeline {A curves, matrix,
+        //   B curves} serializes the M offset
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x4C616220);
+        c::cmsSetProfileVersion(prof, 4.4);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        let mat = [1.0f64, 0.1, 0.0, 0.05, 1.0, 0.02,
+            0.0, 0.03, 1.0];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        let w = c::cmsWriteTag(prof, 0x41324230,
+            p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let rd = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x41324230)
+        } else { std::ptr::null_mut() };
+        eprintln!("mab-mat w={w} s={s} rd={}", !rd.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+        // matshaper-optimized transforms — SetMatShaper/
+        //   CurvesAlloc internals (8-bit RGB->RGB abs intent)
+        let srgb = c::cmsCreate_sRGBProfile();
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        for intent in [0u32, 1, 3] {
+            for flags in [0u32, 0x200 /* NOOPT */,
+                0x0400 /* HIGHRES */] {
+                let t = c::cmsCreateTransform(srgb, r8, srgb,
+                    r8, intent, flags);
+                eprintln!("matsh i{intent} f{flags:#x} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
