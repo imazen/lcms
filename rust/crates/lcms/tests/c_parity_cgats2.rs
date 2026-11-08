@@ -2222,3 +2222,46 @@ fn cube_parse_arms2() {
         }
     }
 }
+
+/// ParseFloatNumber — IT8 data-row float edge forms.
+#[test]
+fn it8_parsefloat_arms() {
+    unsafe {
+        let forms: Vec<(&str, &str)> = vec![
+            ("1.5", "simple"),
+            ("1.5e3", "sci"),
+            ("1.5e-3", "sci-neg"),
+            ("1.5e+10", "sci-big"),
+            (".5", "lead-dot"),
+            ("-.5", "neg-lead"),
+            ("1e-300", "underflow"),
+            ("1e300", "overflow"),
+            ("1.7976931348623157e308", "max"),
+            ("2.2250738585072014e-308", "min"),
+            ("0.0", "zero"),
+            ("-0.0", "negzero"),
+            ("1.5E3", "sci-cap"),
+            ("1_000.5", "underscore"),
+            ("  3.14  ", "space"),
+            ("1.5e", "trunc"),
+            ("1.5e-", "trunc-sign"),
+            ("nan", "nan"),
+            ("inf", "inf"),
+        ];
+        for (tok, name) in &forms {
+            let doc = format!("IT8FILE\nNUMBER_OF_FIELDS 1\n\
+                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n{tok}\nEND_DATA\n");
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name}({tok}) ok={}", !p.is_null());
+            if !p.is_null() {
+                let v = c::cmsIT8GetDataDbl(p,
+                    b"A\0".as_ptr() as *const i8,
+                    b"A\0".as_ptr() as *const i8);
+                eprintln!("  val={v}");
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}

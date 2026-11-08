@@ -12545,3 +12545,44 @@ fn slice_interp_arms() {
         }
     }
 }
+
+/// cmsMD5computeID — profile ID digest on saved/loaded profiles.
+#[test]
+fn md5_arms() {
+    unsafe extern "C" {
+        fn cmsMD5computeID(p: *mut std::ffi::c_void) -> i32;
+    }
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        for (p, name) in [
+            (srgb, "srgb"), (lab, "lab"), (cmyk, "cmyk"),
+        ] {
+            if p.is_null() { continue; }
+            let r = cmsMD5computeID(p);
+            eprintln!("md5 {name}={r}");
+            // re-compute after save+reload
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            if c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n) != 0 {
+                let rp = c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n);
+                if !rp.is_null() {
+                    let r2 = cmsMD5computeID(rp);
+                    eprintln!("md5 {name}-reloaded={r2}");
+                    c::cmsCloseProfile(rp);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
