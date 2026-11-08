@@ -1168,3 +1168,30 @@ fn clut_granular2() {
         }
     }
 }
+
+/// Matrix internals on more combos — the matrix machinery.
+#[test]
+fn matrix_variants2() {
+    unsafe {
+        let ident = [
+            1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        let scale2 = [
+            2.0,0.0,0.0, 0.0,2.0,0.0, 0.0,0.0,2.0];
+        let zero = [0.0; 9];
+        for (name, m) in [
+            ("ident", ident.as_ptr()),
+            ("scale2", scale2.as_ptr()),
+            ("zero", zero.as_ptr())] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let stage = c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3, m,
+                std::ptr::null());
+            eprintln!("{name} alloc={}", !stage.is_null());
+            if !stage.is_null() {
+                c::cmsPipelineInsertStage(pl, 1, stage);
+            }
+            c::cmsPipelineFree(pl);
+        }
+    }
+}
