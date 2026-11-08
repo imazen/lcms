@@ -2144,3 +2144,81 @@ fn it8_header_pair_arms() {
         }
     }
 }
+
+/// ParseCube — .cube file arms: TITLE, LUT_1D_SIZE, LUT_3D_SIZE,
+/// DOMAIN_*, VIDEO_RANGE rejects, malformed rows/sizes.
+#[test]
+fn cube_parse_arms2() {
+    unsafe {
+        let mk = |body: &str| -> std::path::PathBuf {
+            let mut f = std::env::temp_dir();
+            f.push(format!("devin_cube_{}.cube", std::process::id()));
+            let mut path = f.clone();
+            path.set_file_name(format!(
+                "devin_cube_{}_{:x}.cube", std::process::id(),
+                body.len() ^ (body.as_ptr() as usize & 0xffff)));
+            std::fs::write(&path, body).unwrap();
+            path
+        };
+        let variants: Vec<(String, &str)> = vec![
+            // full 1D shaper + 3D LUT
+            ("TITLE \"full\"\nLUT_1D_SIZE 2\nLUT_3D_SIZE 2\n\
+              DOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n\
+              0 0 0\n1 1 1\n\
+              0 0 0\n1 0 0\n0 1 0\n0 0 1\n1 1 0\n1 0 1\n0 1 1\n\
+              1 1 1\n".into(), "full"),
+            // 1D shaper only
+            ("LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".into(), "1d-only"),
+            // 3D LUT only
+            ("LUT_3D_SIZE 2\n\
+              0 0 0\n1 0 0\n0 1 0\n0 0 1\n\
+              1 1 0\n1 0 1\n0 1 1\n1 1 1\n".into(), "3d-only"),
+            // shaper 2 + lut 2 + non-default domain
+            ("TITLE \"dom\"\nLUT_1D_SIZE 2\nLUT_3D_SIZE 2\n\
+              DOMAIN_MIN -0.5 -0.5 -0.5\nDOMAIN_MAX 0.9 0.9 0.9\n\
+              0 0 0\n1 1 1\n\
+              0 0 0\n1 0 0\n0 1 0\n0 0 1\n\
+              1 1 0\n1 0 1\n0 1 1\n1 1 1\n".into(), "domain"),
+            // out-of-range sizes
+            ("LUT_1D_SIZE 1\n".into(), "s1d-too-small"),
+            ("LUT_1D_SIZE 70000\n".into(), "s1d-too-big"),
+            ("LUT_3D_SIZE 1\n".into(), "s3d-too-small"),
+            ("LUT_3D_SIZE 66\n".into(), "s3d-too-big"),
+            // input-range not 0..1 → reject
+            ("LUT_1D_SIZE 2\nLUT_1D_INPUT_RANGE 0 2\n\
+              0 0 0\n1 1 1\n".into(), "rng1d"),
+            ("LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0.5 1\n\
+              0 0 0\n".into(), "rng3d"),
+            // video range → unsupported
+            ("LUT_IN_VIDEO_RANGE 0 1\n".into(), "vin"),
+            ("LUT_OUT_VIDEO_RANGE 0 1\n".into(), "vout"),
+            // malformed data rows
+            ("LUT_1D_SIZE 2\n0 0\n".into(), "row-short"),
+            ("LUT_1D_SIZE 2\n0 0 0\n".into(), "rows-few"),
+            // extra tokens → extra-symbols reject
+            ("LUT_1D_SIZE 2\n0 0 0\n1 1 1\ngarbage\n".into(),
+                "extra"),
+            // title + eoln-only + empty
+            ("TITLE \"t\"\n\n\nLUT_1D_SIZE 2\n0 0 0\n1 1 1\n"
+                .into(), "title-eol"),
+            ("".into(), "empty"),
+        ];
+        for (body, name) in &variants {
+            let path = mk(body);
+            let cstr = std::ffi::CString::new(
+                path.to_str().unwrap()).unwrap();
+            let p = c::cmsCreateDeviceLinkFromCubeFile(
+                cstr.as_ptr());
+            eprintln!("{name} prof={}", !p.is_null());
+            if !p.is_null() {
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = c::cmsSaveProfileToMem(p,
+                    buf.as_mut_ptr() as *mut _, &mut n);
+                eprintln!("{name} save={s}");
+                c::cmsCloseProfile(p);
+            }
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
