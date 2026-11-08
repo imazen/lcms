@@ -671,3 +671,27 @@ fn lab_xyz_elements() {
         c::cmsPipelineFree(cp);
     }
 }
+
+/// cmsStageInputChannels + cmsStageOutputChannels — the stage
+/// channel getters.
+#[test]
+fn stage_channels() {
+    unsafe {
+        for nch in [1u32, 3, 4, 8, 15] {
+            let st = c::cmsStageAllocIdentity(std::ptr::null_mut(),
+                nch);
+            assert!(!st.is_null());
+            assert_eq!(c::cmsStageInputChannels(st), nch, "ich {nch}");
+            assert_eq!(c::cmsStageOutputChannels(st), nch, "och {nch}");
+            c::cmsStageFree(st);
+        }
+        // a matrix stage with different in/out
+        let m = c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 4,
+            [1.0; 12].as_ptr(), std::ptr::null());
+        assert!(!m.is_null());
+        let ci = c::cmsStageInputChannels(m);
+        let co = c::cmsStageOutputChannels(m);
+        eprintln!("matrix ich={ci} och={co}");
+        c::cmsStageFree(m);
+    }
+}
