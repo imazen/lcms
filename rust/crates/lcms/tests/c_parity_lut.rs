@@ -5717,3 +5717,69 @@ fn lut_pipe_shapes_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmslut residual — stage-level eval via pipeline
+///   eval on each stage type + 16/float paths.
+#[test]
+fn lut_stageeval_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // each stage type through a pipeline eval
+        let tcs = [g, g, g];
+        let stages: Vec<(*mut std::ffi::c_void, &str)> = vec![
+            (c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                tcs.as_ptr() as *mut _), "cv"),
+            (c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+                 0.0, 0.0, 1.0].as_ptr(),
+                std::ptr::null()), "mat"),
+            (c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), [3u32; 3].as_ptr(),
+                3, 3,
+                vec![0x8000u16; 27 * 3].as_ptr()), "clut"),
+            (c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), [3u32; 3].as_ptr(),
+                3, 3,
+                vec![0.5f32; 27 * 3].as_ptr()), "fclut"),
+            (c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 3), "ident"),
+        ];
+        for (st, name) in &stages {
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(pipe, 0, *st);
+            // eval via a transform
+            let lp = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(lp, 0x6C696E6B);
+            c::cmsSetColorSpace(lp, 0x52474220);
+            c::cmsSetPCS(lp, 0x4C616220);
+            c::cmsSetProfileVersion(lp, 4.4);
+            c::cmsWriteTag(lp, 0x41324230,
+                pipe as *const _);
+            let lab4 = c::cmsCreateLab4Profile(
+                std::ptr::null_mut());
+            let frgb = (4u32 << 16) | (3 << 3) | 2;
+            let flab = (10u32 << 16) | (3 << 3) | 2;
+            for fl in [0u32, 0x4000] {
+                let t = c::cmsCreateTransform(lp, frgb,
+                    lab4, flab, 0, fl);
+                if !t.is_null() {
+                    let src = [0x8000u16; 3];
+                    let mut dst = [0u16; 3];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            eprintln!("{name} eval ok");
+            c::cmsCloseProfile(lp);
+            c::cmsCloseProfile(lab4);
+            c::cmsPipelineFree(pipe);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
