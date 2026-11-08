@@ -1821,3 +1821,43 @@ fn curve_point_counts() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_Chromaticity internals — 'chrm' bodies on different
+/// channel counts.
+#[test]
+fn chromaticity_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for nch in [2u16, 3, 4, 6] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"chrm");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&nch.to_be_bytes());
+            b.extend_from_slice(&1u16.to_be_bytes()); // channels
+            for i in 0..nch {
+                // xy per channel — s15f16
+                b.extend_from_slice(
+                    &(0x5000u32 + (i as u32) * 0x1000)
+                        .to_be_bytes());
+                b.extend_from_slice(
+                    &(0x5300u32).to_be_bytes());
+            }
+            let ok = c::cmsWriteRawTag(h, 0x6368726D,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x6368726D);
+            eprintln!("chrm nch={nch} write={ok} read={}",
+                r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
