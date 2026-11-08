@@ -918,3 +918,42 @@ cmssamp 122, cmsvirt 118, cmsgamma 109. Function coverage holds
 at 95.03% — the ~62 uncovered functions are unreachable-by-API
 internals (plugin shims, reserved paths, dead branches) and the
 line mass is branch detail inside covered functions.
+
+### round 22 — conversion-chain internals + optimizer dispatch + tag-reader deep arms
+
+77.01% lines / 95.27% fns / 85.43% regions / 69.30% branches.
+
+| file | lines r21 | lines r22 | delta |
+|---|---|---|---|
+| cmscnvrt.c | 68.65% | 74.96% | +6.31 (CHAD2Temp/Temp2CHAD/ComputeAbsoluteIntent + proofing/named chains) |
+| cmsxform.c | 85.18% | 87.68% | +2.50 (UnrollNothing/PackNothing + CachedXFORMGamutCheck + ChangeBuffersFormat) |
+| cmscgats.c | 78.12% | 79.66% | +1.54 (satob + lexer value arms) |
+| cmsgmt.c | 80.44% | 84.13% | +3.69 |
+| cmstypes.c | 66.47% | 66.87% | +0.40 (Decide*/crdi/pseq/dict-wchar/vcgt/mhc2/ucrbg/chrm/clrt/mft/mAB/mBA deep arms) |
+| cmsalpha.c | 86.61% | 86.61% | 0 (16SE/HLF/FLT alpha arms covered but lines unchanged) |
+
+~25 gates landed since round 21: pack_optimized_cells (RGB8
+swap/extra/swapfirst via OptimizeMatrixShaper), cnvt_chad_temp
+(D50/D65 absolute-intent), tag_dup_internals (read-each-tag-twice
+-> all Type_*_Dup), mpe_dup_internals (GenericMPEdup),
+unroll_word_double_arms (float/u16-word packers), xform_nothing_
+gamut (UnrollNothing/PackNothing + CachedXFORMGamutCheck),
+alpha_format_cells (16SE/HLF/FLT/DBL conversions), it8_satob_arms
+(21 numeric forms), wchar_surrogate_internals (CJK/emoji MLU),
+decide_type_arms (v2/v4 text + para/multiseg/inverted curves),
+crdi_read_arms, pseq_embedded_text_arms, ps2_gray_colorant
+(ExtractGray2Y/BuildColorantList), context_lifecycle_internals
+(_cmsFindMemoryPlugin + DupContext).
+
+cmspack stayed flat despite the optimized-cell gate — the
+Pack*Optimized cells need OptimizeMatrixShaper to fire, which
+requires the joined pipeline to be exactly curve-matrix-(matrix)-
+curve shape AND 8-bit input; the argb transform didn't produce
+that exact pattern. The remaining pack mass is per-branch detail
+inside covered bodies plus the unreachable-by-API cells.
+
+Remaining mass (uncovered lines): cmspack 574, cmstypes 552→538
+regions, cmscgats 286, cmsopt 169, cmsio0 145, cmsio1 134,
+cmssamp 122, cmsvirt 118, cmsgamma 107, cmscnvrt 96 (was 148).
+Function coverage: 95.27% — the ~59 uncovered fns are
+unreachable-by-API internals.
