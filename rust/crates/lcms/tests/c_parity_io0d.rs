@@ -1026,3 +1026,34 @@ fn flags_attributes_fields() {
         }
     }
 }
+
+/// Model/manufacturer/creator machinery — unusual header
+/// fields.
+#[test]
+fn model_manufacturer_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate model (offset 28) + manufacturer (offset 40)
+        // + creator (offset 80)
+        for (name, off, v) in [
+            ("model-0", 28, 0u32),
+            ("model-huge", 28, 0xFFFFFFFFu32),
+            ("mfr-0", 40, 0u32),
+            ("mfr-huge", 40, 0xFFFFFFFFu32),
+            ("creator-0", 80, 0u32),
+            ("creator-huge", 80, 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
