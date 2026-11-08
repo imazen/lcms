@@ -3590,3 +3590,32 @@ fn mab_reader_error_paths() {
         }
     }
 }
+
+/// Header setters/getters 2 — SetColorSpace/PCS/DeviceClass/
+/// ProfileVersion + GetDeviceClass/ProfileVersion round-trips.
+#[test]
+fn header_setters_2() {
+    unsafe {
+        let p = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        for cs in [0x52474220u32, 0x434D594B, 0x4C616220,
+                   0x58595A20, 0x6E636C32] {
+            c::cmsSetColorSpace(p, cs);
+            eprintln!("cs={:#x} get={:#x}", cs, c::cmsGetColorSpace(p));
+        }
+        for pcs in [0x4C616220u32, 0x58595A20] {
+            c::cmsSetPCS(p, pcs);
+            eprintln!("pcs={:#x} get={:#x}", pcs, c::cmsGetPCS(p));
+        }
+        for cls in [0x6d6e7472u32, 0x6c696e6b, 0x61627374,
+                    0x6e6d636c, 0x73706163] {
+            c::cmsSetDeviceClass(p, cls);
+            eprintln!("cls={:#x} get={:#x}", cls,
+                c::cmsGetDeviceClass(p));
+        }
+        for v in [2.2f64, 4.3, 4.4] {
+            c::cmsSetProfileVersion(p, v);
+            eprintln!("v={v} get={:#x}", c::cmsGetEncodedICCversion(p));
+        }
+        c::cmsCloseProfile(p);
+    }
+}
