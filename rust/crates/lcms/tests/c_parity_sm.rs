@@ -534,3 +534,32 @@ fn sm_internals2() {
         }
     }
 }
+
+/// RootOfLeastSquaresFitQuadraticCurve — needs a CLUT-based
+/// output profile: prtr class + CMYK + B2A0 LUT.
+#[test]
+fn quadratic_bp_internals() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        // check which corpus profiles are CLUT-based first
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // only output-side CLUT profiles hit the quadratic fit —
+        // nullcms2 is output-CLUT; others are input-CLUT
+        for f in ["nullcms2.icc", "limitlcms2.icc", "linlcms2.icc",
+                  "lcms2link2.icc", "lcms2link.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in 0..4u32 {
+                let mut bp = [0.0f64; 3];
+                let r = c::cmsDetectDestinationBlackPoint(
+                    bp.as_mut_ptr() as *mut _, p, intent, 0);
+                eprintln!("{f} i{intent} r={r} bp=({:.3},{:.3},{:.3})",
+                    bp[0], bp[1], bp[2]);
+            }
+            c::cmsCloseProfile(p);
+        }
+    }
+}
