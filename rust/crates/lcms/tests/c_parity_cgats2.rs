@@ -259,3 +259,68 @@ fn writer_malformed() {
         }
     }
 }
+
+/// Multi-table / enum / index-column / dbl-format paths (FFI exists; Rust
+/// side coverage where the API exists).
+#[test]
+fn multitables_and_enums() {
+    let ch = unsafe { c_build_lean() };
+    let mut it8 = r_build_lean();
+    unsafe {
+        // enum properties + data formats: compare sets, not order (impl detail)
+        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let cn = c::cmsIT8EnumProperties(ch, &mut names);
+        let c_props: std::collections::BTreeSet<String> = (0..cn)
+            .map(|i| c_getstr(*names.offset(i as isize)).unwrap_or_default())
+            .collect();
+        let r_props: std::collections::BTreeSet<String> = it8
+            .enum_properties()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(c_props, r_props, "enum properties");
+
+        let mut df: *mut *mut i8 = std::ptr::null_mut();
+        let cd = c::cmsIT8EnumDataFormat(ch, &mut df);
+        let c_fmt: Vec<String> = (0..cd)
+            .map(|i| c_getstr(*df.offset(i as isize)).unwrap_or_default())
+            .collect();
+        let r_fmt: Vec<String> = it8.enum_data_format().into_iter().map(|s| s.to_string()).collect();
+        assert_eq!(c_fmt, r_fmt, "enum data format");
+
+        // multi-property getter
+        assert_eq!(
+            c_getstr(c::cmsIT8GetPropertyMulti(ch, cstr("MULTI"), cstr("sub1"))),
+            it8.get_property_multi("MULTI", "sub1"),
+            "property multi"
+        );
+
+        // index column
+        assert_eq!(
+            c::cmsIT8SetIndexColumn(ch, cstr("LAB_L")),
+            it8.set_index_column("LAB_L") as i32,
+            "set index column"
+        );
+        // define dbl format — affects subsequent dbl writes identically?
+        c::cmsIT8DefineDblFormat(ch, cstr("%.2f"));
+        it8.define_dbl_format("%.2f");
+        // write a dbl on both and compare resave
+        assert_eq!(
+            c::cmsIT8SetPropertyDbl(ch, cstr("D2"), 1.5) != 0,
+            it8.set_property_dbl("D2", 1.5)
+        );
+        let cs = c_save(ch);
+        let rs = it8.save_to_mem();
+        assert_eq!(cs, rs, "save after dbl format");
+
+        // multi-table: add a second table via SetTableByLabel on both
+        let ct = c::cmsIT8SetTableByLabel(
+            ch,
+            cstr("DATA"),
+            cstr("SAMPLE_ID"),
+            std::ptr::null(),
+        );
+        let rt = it8.set_table_by_label("DATA", "SAMPLE_ID", "");
+        assert_eq!(ct, rt, "set table by label");
+    }
+}

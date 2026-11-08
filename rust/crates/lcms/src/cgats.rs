@@ -295,6 +295,60 @@ fn xpow10(n: i32) -> f64 {
     10f64.powi(n)
 }
 
+/// `snprintf(buf, fmt, val)` for the dbl-formatter spec — handles the
+/// printf specs C uses (%[flags][width][.prec]{f,e,E,g,G}); falls back to
+/// Display for anything else.
+fn format_dbl(fmt: &str, val: f64) -> String {
+    let Some(spec) = fmt.strip_prefix('%') else {
+        return format!("{val}");
+    };
+    // parse optional precision
+    let (prec, conv) = match spec.find(|c: char| c.is_alphabetic()) {
+        Some(i) => {
+            let prec = spec[..i]
+                .rfind('.')
+                .map(|d| spec[d + 1..i].parse::<usize>().ok())
+                .flatten();
+            (prec, spec.as_bytes()[i])
+        }
+        None => (None, b'g'),
+    };
+    match conv {
+        b'f' | b'F' => match prec {
+            Some(p) => format!("{val:.p$}"),
+            None => format!("{val:.6}"),
+        },
+        b'e' | b'E' => {
+            let s = match prec {
+                Some(p) => format!("{val:.p$e}"),
+                None => format!("{val:e}"),
+            };
+            if conv == b'E' {
+                s.to_uppercase()
+            } else {
+                s
+            }
+        }
+        // %g = %e when exp < -4 or >= precision, else %f; strips trailing zeros
+        b'g' | b'G' => {
+            let p = prec.unwrap_or(6).max(1);
+            let exp = val.abs().log10().floor() as i32;
+            let s = if val != 0.0 && (exp < -4 || exp >= p as i32) {
+                format!("{val:.p$e}")
+            } else {
+                format!("{val:.p$}")
+            };
+            let mut s = s;
+            if s.contains('.') {
+                while s.ends_with('0') { s.pop(); }
+                if s.ends_with('.') { s.pop(); }
+            }
+            if conv == b'G' { s.to_uppercase() } else { s }
+        }
+        _ => format!("{val}"),
+    }
+}
+
 /// `ParseFloatNumber`
 pub fn parse_float_number(buf: &str) -> f64 {
     let mut dnum = 0.0f64;
@@ -588,8 +642,7 @@ impl It8 {
 
     /// `cmsIT8SetPropertyDbl`
     pub fn set_property_dbl(&mut self, key: &str, val: f64) -> bool {
-        // C formats via DoubleFormatter — approximate with %.*g
-        let s = format!("{val}");
+        let s = format_dbl(&self.double_formatter, val);
         self.add_to_list(true, key, None, Some(&s), WriteMode::Uncooked)
     }
 
