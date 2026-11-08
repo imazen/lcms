@@ -3,6 +3,7 @@
 //! accept/reject on both sides.
 
 use lcms::{profile, virt, xform};
+use std::ffi::c_void;
 use lcms_cref as c;
 
 fn corpus() -> Vec<Vec<u8>> {
@@ -105,5 +106,51 @@ fn virtual_transform_combos() {
                 "virt {in_fmt:#x}->{out_fmt:#x}");
             if !ct.is_null() { c::cmsDeleteTransform(ct) };
         }
+    }
+}
+
+/// Multi-colorspace transform chains: sRGB↔Lab4↔XYZ↔Gray — the
+/// link-construction paths through different PCS conversions.
+#[test]
+fn colorspace_chains() {
+    unsafe {
+        let fmts = [
+            ((6u32 << 16) | (3 << 3) | 1, "RGB16"),
+            ((10u32 << 16) | (3 << 3) | 1, "Lab16"),
+            ((9u32 << 16) | (3 << 3) | 0, "XYZ8"),
+            ((1u32 << 16) | (1 << 3) | 1, "Gray16"),
+        ];
+        let profiles: Vec<(*mut c_void, Option<Box<lcms::profile::IccProfile>>)> = vec![
+            (c::cmsCreate_sRGBProfile(), virt::create_srgb_profile(None)),
+            (c::cmsCreateLab4Profile(std::ptr::null_mut()), virt::create_lab4_profile(None, None)),
+            (c::cmsCreateXYZProfile(), virt::create_xyz_profile(None)),
+        ];
+        for (i, (ch1, _)) in profiles.iter().enumerate() {
+            for (j, (ch2, _)) in profiles.iter().enumerate() {
+                for &(in_fmt, _) in &fmts[..3] {
+                    for &(out_fmt, _) in &fmts[..3] {
+                        let ct = c::cmsCreateTransform(*ch1, in_fmt, *ch2, out_fmt, 0, 0);
+                        let mut ps = vec![
+                            match i { 0 => virt::create_srgb_profile(None).unwrap(),
+                                      1 => virt::create_lab4_profile(None, None).unwrap(),
+                                      _ => virt::create_xyz_profile(None).unwrap() },
+                            match j { 0 => virt::create_srgb_profile(None).unwrap(),
+                                      1 => virt::create_lab4_profile(None, None).unwrap(),
+                                      _ => virt::create_xyz_profile(None).unwrap() },
+                        ];
+                        let mut bpc = [false; 2];
+                        let intents = [0u32; 2];
+                        let adapt = [1.0f64; 2];
+                        let rt = xform::create_extended_transform(
+                            None, &mut ps, &mut bpc, &intents, &adapt,
+                            None, 0, in_fmt, out_fmt, 0);
+                        assert_eq!(ct.is_null(), rt.is_none(),
+                            "chain {i}->{j} {in_fmt:#x}->{out_fmt:#x}");
+                        if !ct.is_null() { c::cmsDeleteTransform(ct) }
+                    }
+                }
+            }
+        }
+        for (ch, _) in profiles { let _ = c::cmsCloseProfile(ch); }
     }
 }
