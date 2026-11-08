@@ -3079,3 +3079,37 @@ fn mpe_element_types3() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// MPE element types on more combos — the MPE element
+/// serialization internals.
+#[test]
+fn mpe_element_types4() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // build a canonical mAB pipeline: curve -> matrix -> CLUT
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let curves = [g, g, g];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr()));
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0].as_ptr(),
+                std::ptr::null()));
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), 2, 3, 3,
+                std::ptr::null()));
+        for (sig, name) in [
+            (0x6D706574u32, "mpet"), (0x6D614220u32, "maB "),
+            (0x6D624120u32, "mbA "), (0x6D704220u32, "mpB ")] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
