@@ -5543,3 +5543,84 @@ fn lab_xyz_chain_arms() {
         }
     }
 }
+
+/// cmsopt residual — optimizer dispatch arms:
+///   OptimizeByComputingLinearization (chunky RGB in only),
+///   OptimizeByResampling (FORCE_CLUT flag), PatchLUT via
+///   FixWhiteMisalignment at in-channels 1/3/4,
+///   OptimizeByJoiningCurves + CurvesAlloc 8-bit arm
+///   (all-curves pipelines), named-color early return,
+///   ABSOLUTE intent -> NOWHITEONWHITEFIXUP arm.
+#[test]
+fn opt_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!(
+                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let gray = open("gray3lcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let f = |pt: u32, ch: u32, b: u32| -> u32 {
+            (pt << 16) | (ch << 3) | b };
+        let FC = 0x0002u32;   // FORCE_CLUT
+        let NOW = 0x0004u32;  // NOWHITEONWHITEFIXUP
+        let NOO = 0x0100u32;  // NOOPTIMIZE
+        let sweep = |nm: &str, i: *mut c_void, fi: u32,
+                     o: *mut c_void, fo: u32| {
+            if i.is_null() || o.is_null() {
+                eprintln!("{nm}: null"); return; }
+            for intent in 0u32..4 {
+                for flags in [0u32, FC, NOW, NOO, FC | NOW] {
+                    let t = c::cmsCreateTransform(
+                        i, fi, o, fo, intent, flags);
+                    if t.is_null() {
+                        eprintln!("{nm} i{intent} fl={flags:#x}: REJ");
+                        continue; }
+                    let ib = [0x4000u16; 32];
+                    let mut ob = [0u16; 32];
+                    c::cmsDoTransform(t,
+                        ib.as_ptr() as *const c_void,
+                        ob.as_mut_ptr() as *mut c_void, 4);
+                    c::cmsDeleteTransform(t); } }
+            eprintln!("{nm}: swept");
+        };
+        // RGB-input transforms -> OptimizeByComputingLinearization
+        //   + FixWhiteMisalignment (nChannelsIn==3)
+        sweep("rgb->cmyk", srgb, f(4, 3, 2), cmyk, f(6, 4, 2));
+        sweep("rgb->cmyk-8bit", srgb, f(4, 3, 1), cmyk, f(6, 4, 1));
+        sweep("rgb->rgb", srgb, f(4, 3, 2), srgb, f(4, 3, 2));
+        sweep("rgb->rgb-8bit", srgb, f(4, 3, 1), srgb, f(4, 3, 1));
+        // CMYK input + FORCE_CLUT -> OptimizeByResampling
+        //   + PatchLUT nChannelsIn==4
+        sweep("cmyk->lab", cmyk, f(6, 4, 2), lab4, f(10, 3, 2));
+        sweep("cmyk->srgb", cmyk, f(6, 4, 2), srgb, f(4, 3, 2));
+        // gray input -> PatchLUT nChannelsIn==1
+        sweep("gray->srgb", gray, f(3, 1, 2), srgb, f(4, 3, 2));
+        sweep("gray->lab", gray, f(3, 1, 2), lab4, f(10, 3, 2));
+        // all-curves pipelines (gray<->gray via kTRC)
+        //   -> OptimizeByJoiningCurves + 8-bit CurvesAlloc
+        sweep("gray->gray", gray, f(3, 1, 2), gray, f(3, 1, 2));
+        sweep("gray->gray-8", gray, f(3, 1, 1), gray, f(3, 1, 1));
+        // ABSOLUTE intent on RGB -> NOWHITEONWHITEFIXUP arm
+        for intent in [3u32, 1] {
+            let t = c::cmsCreateTransform(srgb,
+                f(4, 3, 2), cmyk, f(6, 4, 2), intent, 0);
+            eprintln!("abs i{intent}: {}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 32];
+                let mut ob = [0u16; 32];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 4);
+                c::cmsDeleteTransform(t); } }
+        for p in [srgb, cmyk, gray, lab4] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
