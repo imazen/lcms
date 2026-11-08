@@ -1861,3 +1861,61 @@ fn chromaticity_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_Data/Signature/DateTime on more sigs — variable-body
+/// validation on the remaining sigs.
+#[test]
+fn data_sig_datetime_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // 'data' body — flag + data bytes
+        for (sig, name) in [(0x73637264u32, "scrd"),
+                            (0x6473636Du32, "dscm"),
+                            (0x76696C6Cu32, "vill"),
+                            (0x72696730u32, "rig0")] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"data");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&0u32.to_be_bytes()); // flag
+            b.extend_from_slice(b"payload");
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        // 'sig ' body on more sigs
+        for sig in [0x74656368u32, 0x72696730, 0x63696973,
+                    0x76756564, 0x76696577] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"sig ");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&0x666F7461u32.to_be_bytes());
+            let ok = c::cmsWriteRawTag(h, sig,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("sig {sig:#x} write={ok} read={}",
+                r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
