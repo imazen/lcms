@@ -720,3 +720,45 @@ END_DATA"#.as_bytes(),
         }
     }
 }
+
+/// IT8 API bodies — SetData variant types, GetData, Enum,
+/// FindDataFormat, GetPatchByName.
+#[test]
+fn it8_data_arms2() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(h, b"CGATS.5\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 1, b"HEX\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 2, b"NUM\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 3, b"STR\0".as_ptr() as *const i8);
+        // SetData variants — string/dbl/uncooked/hex
+        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
+            b"ID\0".as_ptr() as *const i8, b"r1\0".as_ptr() as *const i8);
+        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
+            b"HEX\0".as_ptr() as *const i8, b"0xAB\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataDbl(h, b"r1\0".as_ptr() as *const i8,
+            b"NUM\0".as_ptr() as *const i8, 1.5);
+        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
+            b"STR\0".as_ptr() as *const i8, b"str\0".as_ptr() as *const i8);
+        // GetData variants
+        let hx = c::cmsIT8GetData(h, b"r1\0".as_ptr() as *const i8,
+            b"HEX\0".as_ptr() as *const i8);
+        let d = c::cmsIT8GetDataDbl(h, b"r1\0".as_ptr() as *const i8,
+            b"NUM\0".as_ptr() as *const i8);
+        // Enum data formats + rowcol access
+        let mut names = [std::ptr::null_mut(); 8];
+        let nf = c::cmsIT8EnumDataFormat(h, names.as_mut_ptr());
+        let rc = c::cmsIT8GetDataRowCol(h, 0, 2);
+        let rcd = c::cmsIT8GetDataRowColDbl(h, 0, 2);
+        // property arms
+        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8,
+            0xFF);
+        c::cmsIT8SetPropertyUncooked(h, b"PU\0".as_ptr() as *const i8,
+            b"raw\0".as_ptr() as *const i8);
+        let pv = c::cmsIT8GetProperty(h, b"PHEX\0".as_ptr() as *const i8);
+        eprintln!("hex={} num={d} nf={nf} rc={:?} rcd={rcd} pv={:?}",
+            hx.is_null(), rc, pv);
+        c::cmsIT8Free(h);
+    }
+}
