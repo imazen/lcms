@@ -1777,3 +1777,44 @@ fn corpus_multiprofile() {
         let _ = (argb, srgb, lab, cmyk);
     }
 }
+
+/// Corpus multiprofile chains with matching formats —
+/// real profiles through cmsCreateMultiprofileTransform.
+#[test]
+fn corpus_multiprofile2() {
+    unsafe {
+        let argb = c::cmsOpenProfileFromFile(
+            b"../../aRGBlcms2.icc\0".as_ptr() as _,
+            b"r\0".as_ptr() as _);
+        let srgb = c::cmsOpenProfileFromFile(
+            b"../../sRGBlcms2.icc\0".as_ptr() as _,
+            b"r\0".as_ptr() as _);
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let cmyk = c::cmsOpenProfileFromFile(
+            b"../../lcms2cmyk.icc\0".as_ptr() as _,
+            b"r\0".as_ptr() as _);
+        let rgb_fmt = (4 << 16) | (3 << 3) | 1u32;
+        let lab_fmt = (10 << 16) | (3 << 3) | 1;
+        let cmyk_fmt = (6 << 16) | (4 << 3) | 1;
+        for (name, mut profs, inf, outf) in [
+            ("srgb-lab-cmyk",
+             vec![srgb, lab, cmyk] as Vec<*mut _>,
+             rgb_fmt, cmyk_fmt),
+            ("argb-lab-cmyk",
+             vec![argb, lab, cmyk] as Vec<*mut _>,
+             rgb_fmt, cmyk_fmt),
+            ("srgb-lab-argb",
+             vec![srgb, lab, argb] as Vec<*mut _>,
+             rgb_fmt, rgb_fmt),
+            ("cmyk-lab-srgb",
+             vec![cmyk, lab, srgb] as Vec<*mut _>,
+             cmyk_fmt, rgb_fmt)] {
+            let n = profs.len() as i32;
+            let t = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), n, inf, outf, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        let _ = (argb, srgb, lab, cmyk);
+    }
+}
