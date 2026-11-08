@@ -512,3 +512,33 @@ fn stride_combos() {
         c::cmsDeleteTransform(ct);
     }
 }
+
+/// cmsDoTransformLineStride — multi-row strided buffers
+/// through a transform.
+#[test]
+fn line_stride_variants() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        assert!(!ct.is_null());
+        // (ppl, lines, bpl_in, bpl_out) combos — the stride
+        // machinery walks rows at the byte strides
+        let inp = vec![0x55u16; 96];
+        let mut co = vec![0u16; 96];
+        for (ppl, lines, bpl_in, bpl_out) in
+            [(4u32, 2u32, 48u32, 48u32), (8, 1, 48, 48),
+             (1, 8, 16, 16), (2, 4, 32, 32)] {
+            co.fill(0);
+            c::cmsDoTransformLineStride(ct,
+                inp.as_ptr() as _, co.as_mut_ptr() as *mut _,
+                ppl, lines, bpl_in, bpl_out, 6, 6);
+        }
+        c::cmsDeleteTransform(ct);
+    }
+}
