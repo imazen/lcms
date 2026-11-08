@@ -7220,3 +7220,51 @@ fn chrm_clrt_read_arms() {
         }
     }
 }
+
+/// Type_*_Dup batch — cmsDupProfile copies every written tag
+/// type through its Dup handler.
+#[test]
+fn tag_dup_internals() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "labv4lcms2.icc",
+                  "aRGBlcms2.icc", "graylcms2.icc", "xyzlcms2.icc",
+                  "brightness.icc", "lcms2link.icc", "nullcms2.icc",
+                  "limitlcms2.icc", "linlcms2.icc", "bchslcms2.icc",
+                  "glablcms2.icc", "gray3lcms2.icc", "labv2lcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            // reading a tag twice hits Type_*_Dup on the cached
+            // object
+            let n = c::cmsGetTagCount(p);
+            for i in 0..n.max(0) as u32 {
+                let sig = c::cmsGetTagSignature(p, i);
+                let t1 = c::cmsReadTag(p, sig);
+                let t2 = c::cmsReadTag(p, sig);
+                let _ = (t1, t2);
+            }
+            eprintln!("{f} tags={n}");
+            c::cmsCloseProfile(p);
+        }
+        // virtual profiles dup every tag type they write
+        for (p, name) in [
+            (c::cmsCreate_sRGBProfile(), "srgb"),
+            (c::cmsCreateLab4Profile(std::ptr::null_mut()), "lab4"),
+            (c::cmsCreateXYZProfile(), "xyz"),
+            (c::cmsCreateNULLProfile(), "null"),
+        ] {
+            let n = c::cmsGetTagCount(p);
+            for i in 0..n.max(0) as u32 {
+                let sig = c::cmsGetTagSignature(p, i);
+                let t1 = c::cmsReadTag(p, sig);
+                let t2 = c::cmsReadTag(p, sig);
+                let _ = (t1, t2);
+            }
+            eprintln!("{name} tags={n}");
+            c::cmsCloseProfile(p);
+        }
+    }
+}
