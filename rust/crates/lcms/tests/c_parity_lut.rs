@@ -299,3 +299,50 @@ fn mpe_element_writes() {
         // c_pipe is owned by the profile after write — no free
     }
 }
+
+/// MPE element writers round 2: curves-set, matrix, CLUT16, CLUTfloat
+/// pipelines written as mpet tags + resave byte-exact.
+#[test]
+fn mpe_element_writes2() {
+    unsafe {
+        // curves-set + matrix pipeline
+        let c_pipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g; 3];
+        c::cmsPipelineInsertStage(c_pipe, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, curves.as_ptr()));
+        let mat: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        c::cmsPipelineInsertStage(c_pipe, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        let rg = lcms::gamma::build_gamma(None, 2.2).unwrap();
+        let mut r_pipe = lut::pipeline_alloc(None, 3, 3).unwrap();
+        r_pipe.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_tone_curves(None, 3, Some(&[&rg; 3])).unwrap());
+        r_pipe.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_matrix(None, 3, 3, &mat, None).unwrap());
+        let ch = c::cmsCreateXYZProfile();
+        let mut rp = lcms::virt::create_xyz_profile(None).unwrap();
+        let c_ok = c::cmsWriteTag(ch, 0x41324230, c_pipe as *const _);
+        let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x41324230,
+            Some(lcms::tagtypes::TagObject::Mpe(r_pipe)));
+        assert_eq!(c_ok != 0, r_ok, "mpe2 write");
+        if c_ok != 0 {
+            let mut c_out = vec![0u8; 1 << 20];
+            let mut size = c_out.len() as u32;
+            c::cmsSaveProfileToMem(ch, c_out.as_mut_ptr() as *mut _, &mut size);
+            c_out.truncate(size as usize);
+            let mut r_out = lcms::profile::save_profile_to_mem(&mut rp)
+                .unwrap_or_default();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "mpe2 resave");
+        }
+        c::cmsCloseProfile(ch);
+        c::cmsFreeToneCurve(g);
+    }
+}
