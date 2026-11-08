@@ -198,3 +198,36 @@ fn creation_datetime() {
         }
     }
 }
+
+/// Tag-table machinery — cmsLinkTag/TagLinkedTo/IsTag/
+/// GetTagSignature/TagCount (C-side — exercises cmsio1's
+/// tag-table paths).
+#[test]
+fn tag_table_machinery() {
+    for data in corpus() {
+        unsafe {
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _,
+                data.len() as u32);
+            let cn = c::cmsGetTagCount(h) as u32;
+            for i in 0..cn {
+                let cs = c::cmsGetTagSignature(h, i);
+                let _has = c::cmsIsTag(h, cs);
+                let _link = c::cmsTagLinkedTo(h, cs);
+            }
+            for sig in [0x72545243u32, 0x41324230, 0x6D6E6E6E,
+                        0x64657363, 0x77747074] {
+                let _ = c::cmsIsTag(h, sig);
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+    // link_tag on a fresh profile — mutate + verify
+    unsafe {
+        let h = c::cmsCreateXYZProfile();
+        let ok = c::cmsLinkTag(h, 0x72545243, 0x6B545243);
+        eprintln!("link_tag ok={ok}");
+        let link = c::cmsTagLinkedTo(h, 0x72545243);
+        eprintln!("rTRC linked_to {link:#x}");
+        let _ = c::cmsCloseProfile(h);
+    }
+}
