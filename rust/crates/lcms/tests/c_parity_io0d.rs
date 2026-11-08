@@ -16875,3 +16875,129 @@ fn alpha_named_md5_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmstypes/cmsio0/cmsio1 residual — unusual tag payloads +
+///   profile IO edge cases + LUT-builder internals.
+#[test]
+fn cmstypes_io_residual_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // unusual tag payloads — typed structs per sig
+        let mlu2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu2, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"d\0".as_ptr());
+        let xyzv = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let mat9 = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0];
+        let clro2 = c::CiexyYTriple {
+            Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+            Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        };
+        for (sig, payload_sz, name) in [
+            (0x64657363u32, 24, "desc-big"),
+            (0x64657363, 1, "desc-tiny"),
+            (0x77747074, 24, "wtpt-big"),
+            (0x77747074, 4, "wtpt-tiny"),
+            (0x6B545243, 8, "ktrc"),
+            (0x72545243, 8, "rtrc"),
+            (0x67545243, 8, "gtrc"),
+            (0x62545243, 8, "btrc"),
+            (0x7258595A, 24, "rxyz"),
+            (0x6758595A, 24, "gxyz"),
+            (0x6258595A, 24, "bxyz"),
+            (0x63686164, 72, "chad-mat"),
+            (0x63686164, 36, "chad-half"),
+            (0x636C726F, 36, "clro"),
+            (0x62726B74, 24, "bkpt"),
+            (0x6C756D69, 24, "lumi"),
+            (0x76696577, 24, "view"),
+            (0x74656368, 4, "tech-sig"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            let w = match sig {
+                0x64657363 => c::cmsWriteTag(prof, sig,
+                    mlu2 as *const _),
+                0x6B545243 | 0x72545243 | 0x67545243
+                    | 0x62545243 => c::cmsWriteTag(prof, sig,
+                        g as *const _),
+                0x77747074 | 0x7258595A | 0x6758595A
+                    | 0x6258595A | 0x62726B74 | 0x6C756D69
+                    | 0x76696577 => c::cmsWriteTag(prof, sig,
+                        &xyzv as *const c::CieXyz
+                            as *const _),
+                0x63686164 => c::cmsWriteTag(prof, sig,
+                    mat9.as_ptr() as *const _),
+                0x636C726F => c::cmsWriteTag(prof, sig,
+                    &clro2 as *const c::CiexyYTriple
+                        as *const _),
+                0x74656368 => {
+                    let tsig = 0x43505320u32;
+                    c::cmsWriteTag(prof, sig,
+                        &tsig as *const u32 as *const _)
+                },
+                _ => 0,
+            };
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            let r = if !rp.is_null() {
+                let t = c::cmsReadTag(rp, sig);
+                let ok = !t.is_null();
+                c::cmsCloseProfile(rp);
+                ok
+            } else { false };
+            eprintln!("{name} sig={sig:#x} sz={payload_sz} \
+                w={w} s={s} r={r}");
+            c::cmsCloseProfile(prof);
+        }
+        // tone-curve tag variants
+        for (tg, name) in [
+            (1.0f64, "g10"), (2.2, "g22"), (0.5, "g05"),
+            (0.0, "g00"), (-1.0, "g-1"), (1e6, "ghuge"),
+            (1e-6, "gtiny"), (f64::NAN, "gnan"),
+            (f64::INFINITY, "ginf"),
+        ] {
+            let tc = c::cmsBuildGamma(std::ptr::null_mut(), tg);
+            if tc.is_null() {
+                eprintln!("{name} null");
+                continue;
+            }
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x47524159);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 2.4);
+            let w = c::cmsWriteTag(prof, 0x6B545243,
+                tc as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rp={}",
+                !rp.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsFreeToneCurve(tc);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
