@@ -3141,3 +3141,25 @@ fn mpet_devicelink() {
         c::cmsCloseProfile(dl);
     }
 }
+
+/// Write dispatch on a stage-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_stage() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let stage = c::cmsStageAllocIdentity(
+            std::ptr::null_mut(), 3);
+        for (sig, name) in [
+            (0x41324230u32, "A2B0"), (0x42324130u32, "B2A0"),
+            (0x67616D74u32, "gamt"), (0x70726530u32, "pre0"),
+            (0x70726531u32, "pre1"), (0x70726532u32, "pre2"),
+            (0x6D706574u32, "mpet"), (0x6D614220u32, "maB ")] {
+            let ok = c::cmsWriteTag(h, sig,
+                stage as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsStageFree(stage);
+        c::cmsCloseProfile(h);
+    }
+}
