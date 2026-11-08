@@ -26067,3 +26067,38 @@ fn internal_texttag_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0 residual — ReadRawTag size-probe + multi-
+///   tag SearchTag + GetTagCount/Signature bounds.
+#[test]
+fn internal_rawtag_probe_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // ReadRawTag: size query (NULL buf) then exact/
+        //   under/over buffers
+        for tag in [0x64657363u32, 0x63707274,
+                    0x77747074, 0x6258595A,
+                    0x6B545243, 0x7A7A7A7A] {
+            let nq = c::cmsReadRawTag(srgb, tag,
+                std::ptr::null_mut(), 0);
+            let mut b = vec![0u8; nq as usize + 16];
+            for extra in [0u32, 1, 8, 64] {
+                let n = c::cmsReadRawTag(srgb, tag,
+                    b.as_mut_ptr() as *mut _,
+                    nq + extra);
+                if extra == 0 && nq > 0 {
+                    eprintln!("tag{tag:#x} nq={nq} n={n}"); }
+            }
+        }
+        // tag count + signature at bounds
+        let cnt = c::cmsGetTagCount(srgb);
+        eprintln!("count={cnt}");
+        for i in [-2i32, -1, 0, cnt as i32 - 1,
+                  cnt as i32, cnt as i32 + 1, 0x7FFFFFFF] {
+            let sig = c::cmsGetTagSignature(srgb,
+                i as u32);
+            eprintln!("sig[{i}]={sig:#x}");
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
