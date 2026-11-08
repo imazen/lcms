@@ -872,3 +872,88 @@ fn sm_destbp_desat_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmscam02/cmswtpnt residual — CIECAM02 surround
+///   variants + extreme LA, WhitePointFromTemp edge
+///   K values, AdaptToIlluminant, TempFromWhitePoint,
+///   AdaptationState set/get.
+#[test]
+fn sm_cam02_tail_arms() {
+    unsafe {
+        // CIECAM02 across surrounds + LA extremes
+        for (sur, la, yb, name) in [
+            (0u32, 20.0, 20.0, "avg-la20"),
+            (1, 20.0, 20.0, "dim-la20"),
+            (2, 20.0, 20.0, "dark-la20"),
+            (0, 100.0, 20.0, "avg-la100"),
+            (0, 400.0, 20.0, "avg-la400"),
+            (0, 20.0, 1.0, "avg-yb1"),
+            (0, 20.0, 100.0, "avg-yb100"),
+            (0, 20.0, 0.01, "avg-yb-tiny"),
+            (0, 1.0, 20.0, "avg-la1"),
+            (0, 318.31, 20.0, "avg-la-pi2"),
+        ] {
+            let mut vc = c::ViewingConditions {
+                white_point: c::CieXyz {
+                    X: 95.047, Y: 100.0, Z: 108.883 },
+                yb: yb, la: la,
+                surround: sur, d_value: 1.0 };
+            let m = c::cmsCIECAM02Init(
+                std::ptr::null_mut(), &vc);
+            if m.is_null() {
+                eprintln!("{name} init=0"); continue; }
+            let src = c::CieXyz { X: 40.0, Y: 30.0,
+                Z: 20.0 };
+            let mut jch = c::JCh::default();
+            c::cmsCIECAM02Forward(m, &src, &mut jch);
+            let mut xyz = c::CieXyz::default();
+            c::cmsCIECAM02Reverse(m, &jch, &mut xyz);
+            eprintln!("{name} j={:.3} c={:.3} h={:.3} \
+                -> ({:.3},{:.3},{:.3})",
+                jch.j, jch.c_, jch.h,
+                xyz.X, xyz.Y, xyz.Z);
+            c::cmsCIECAM02Done(m);
+        }
+        // WhitePointFromTemp sweep incl. edge K
+        let mut wpxy = c::CiexyY::default();
+        for tk in [1000.0f64, 2500.0, 4000.0, 6500.0,
+                   10000.0, 15000.0, 40000.0] {
+            let ok = c::cmsWhitePointFromTemp(&mut wpxy, tk);
+            eprintln!("wp {tk}K ok={ok} \
+                x={:.4} y={:.4}", wpxy.x, wpxy.y);
+        }
+        // TempFromWhitePoint round-trip
+        for wp in [(0.3127f64, 0.3290),
+                   (0.3457, 0.3585), (0.4, 0.4),
+                   (0.24, 0.23), (0.5, 0.3)] {
+            wpxy.x = wp.0; wpxy.y = wp.1; wpxy.Y = 1.0;
+            let mut tk = 0.0f64;
+            let ok = c::cmsTempFromWhitePoint(&mut tk, &wpxy);
+            eprintln!("xy({},{}) -> {}K ok={ok}",
+                wp.0, wp.1, tk);
+        }
+        // AdaptationState set/get + AdaptToIlluminant
+        let old = c::cmsSetAdaptationState(1.0);
+        let mut xyz = c::CieXyz { X: 95.047, Y: 100.0,
+            Z: 108.883 };
+        let mut out = c::CieXyz::default();
+        let d65 = c::CieXyz { X: 95.047, Y: 100.0,
+            Z: 108.883 };
+        let d50 = c::CieXyz { X: 96.42, Y: 100.0,
+            Z: 82.49 };
+        let a = c::CieXyz { X: 109.85, Y: 100.0,
+            Z: 35.585 };
+        for (wp2, name) in [(d50, "d50"), (a, "A"),
+                            (d65, "d65")] {
+            let ok = c::cmsAdaptToIlluminant(&mut out,
+                &d65, &wp2, &xyz);
+            eprintln!("adapt {name} ok={ok} \
+                ({:.3},{:.3},{:.3})", out.X, out.Y, out.Z);
+        }
+        for ds in [0.0f64, 0.5, 1.0, -1.0, 2.0] {
+            let st = c::cmsSetAdaptationState(ds);
+            eprintln!("astate {ds} -> {st}");
+        }
+        let _ = c::cmsSetAdaptationState(old);
+    }
+}
