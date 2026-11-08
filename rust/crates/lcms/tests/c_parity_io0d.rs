@@ -11864,3 +11864,109 @@ fn cvst_read_arms() {
         }
     }
 }
+
+/// Type_Text_Description_Read — raw v2 `desc` tags: ASCII-only,
+/// +Unicode, +ScriptCode, malformed count/sig variants.
+#[test]
+fn desc_read_arms2() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    fn desc(ascii: &[u8], ucs2: &[u16], sccode: u16,
+        sccount: u8, mac: &[u8], sig_override: u32) -> Vec<u8> {
+        let mut t = Vec::new();
+        let sig = if sig_override == 0 { 0x64657363 }
+            else { sig_override };
+        t.extend_from_slice(&be32(sig));       // 'desc'
+        t.extend_from_slice(&be32(0));
+        t.extend_from_slice(&be32(ascii.len() as u32 + 1));
+        let mut a = [0u8; 256];
+        for (i, b) in ascii.iter().enumerate() {
+            if i < 255 { a[i] = *b; }
+        }
+        t.extend_from_slice(&a);
+        if !ucs2.is_empty() || sccode != 0 || sccount != 0 {
+            t.extend_from_slice(&be32(1));     // UnicodeCode
+            t.extend_from_slice(&be32(ucs2.len() as u32));
+            for u in ucs2 {
+                t.extend_from_slice(&be16(*u));
+            }
+            t.extend_from_slice(&be16(sccode));
+            t.push(sccount);
+            let mut m = [0u8; 67];
+            for (i, b) in mac.iter().enumerate() {
+                if i < 67 { m[i] = *b; }
+            }
+            t.extend_from_slice(&m);
+        }
+        t
+    }
+    unsafe {
+        let variants: Vec<(Vec<u8>, &str)> = vec![
+            (desc(b"plain", &[], 0, 0, &[], 0), "ascii-only"),
+            (desc(b"with uni", &[0x0041, 0x00E9, 0x263A], 0, 0,
+                &[], 0), "unicode"),
+            (desc(b"with sc", &[0x0041], 5, 3,
+                b"mac", 0), "scriptcode"),
+            (desc(b"all fields", &[0x0041, 0x00E9], 7, 5,
+                b"abcde", 0), "all"),
+            (desc(b"", &[0x0041], 0, 0, &[], 0), "empty-ascii"),
+            // UnicodeCount=0 but UnicodeCode=1
+            ({ let mut t = Vec::new();
+                t.extend_from_slice(&be32(0x64657363u32));
+                t.extend_from_slice(&be32(0));
+                t.extend_from_slice(&be32(2));
+                let mut a = [0u8; 256];
+                a[0] = b'x';
+                t.extend_from_slice(&a);
+                t.extend_from_slice(&be32(1));
+                t.extend_from_slice(&be32(0));
+                t.extend_from_slice(&be16(0));
+                t.push(0);
+                t.extend_from_slice(&[0u8; 67]);
+                t }, "uni-count0"),
+            // wrong type sig → reject
+            (desc(b"x", &[], 0, 0, &[], 0x62616420), "badsig"),
+            // huge UnicodeCount → OOB read reject
+            ({ let mut t = Vec::new();
+                t.extend_from_slice(&be32(0x64657363u32));
+                t.extend_from_slice(&be32(0));
+                t.extend_from_slice(&be32(2));
+                t.extend_from_slice(&[0u8; 256]);
+                t.extend_from_slice(&be32(1));
+                t.extend_from_slice(&be32(0xFFFF));
+                t.extend_from_slice(&be16(0));
+                t.push(0);
+                t.extend_from_slice(&[0u8; 67]);
+                t }, "huge-uni"),
+            // ASCII len = 0
+            ({ let mut t = Vec::new();
+                t.extend_from_slice(&be32(0x64657363u32));
+                t.extend_from_slice(&be32(0));
+                t.extend_from_slice(&be32(0));
+                t.extend_from_slice(&[0u8; 256]);
+                t }, "asciilen0"),
+        ];
+        for (blob, name) in &variants {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 2.1);
+            let w = c::cmsWriteRawTag(prof, 0x64657363,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x64657363)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
