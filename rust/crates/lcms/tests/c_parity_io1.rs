@@ -80,3 +80,48 @@ fn corpus_intent_matrix() {
         }
     }
 }
+
+/// BuildRGBInputMatrixShaper Lab-PCS arm — a matrix-shaper profile
+/// with cmsSigLabData PCS appends the _cmsStageAllocXYZ2Lab stage.
+/// Construct: placeholder + Lab PCS + rXYZ/gXYZ/bXYZ + rTRC..bTRC.
+#[test]
+fn matrix_shaper_lab_pcs() {
+    unsafe {
+        let p = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6d6e7472); // 'mntr'
+        c::cmsSetColorSpace(p, 0x52474220);  // 'RGB '
+        c::cmsSetPCS(p, 0x4C616220);          // 'Lab '
+        // media white point (required)
+        #[repr(C)] struct Xyz0 { x: f64, y: f64, z: f64 }
+        let wp = Xyz0 { x: 0.9642, y: 1.0, z: 0.8249 };
+        c::cmsWriteTag(p, 0x77747074, &wp as *const _ as *const _);
+        // XYZ colorant tags (sRGB primaries -> XYZ)
+        for (sig, xyz) in [
+            (0x7258595Au32, [0.436, 0.2225, 0.0139]),   // 'rXYZ'
+            (0x6758595Au32, [0.385, 0.7169, 0.0971]),   // 'gXYZ'
+            (0x6258595Au32, [0.143, 0.0606, 0.714]),    // 'bXYZ'
+        ] {
+            #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+            let v = Xyz { x: xyz[0], y: xyz[1], z: xyz[2] };
+            c::cmsWriteTag(p, sig, &v as *const _ as *const _);
+        }
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for sig in [0x72545243u32, 0x67545243, 0x62545243] { // rTRC/gTRC/bTRC
+            c::cmsWriteTag(p, sig, g as *const _);
+        }
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let t = c::cmsCreateTransform(p, 0x00ff04, lab,
+            0x0a0702, 0, 0);
+        eprintln!("labpcs t={}", !t.is_null());
+        if !t.is_null() {
+            let inp = [128u8, 200, 50];
+            let mut out = [0u16; 3];
+            c::cmsDoTransform(t, inp.as_ptr() as *const _,
+                out.as_mut_ptr() as *mut _, 1);
+            eprintln!("  out={out:?}");
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(p);
+        c::cmsCloseProfile(lab);
+    }
+}
