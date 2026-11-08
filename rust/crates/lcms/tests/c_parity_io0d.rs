@@ -1912,3 +1912,31 @@ fn truncated_profile() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Tag-count bounds — mutate the tag count field then
+/// open (the table-bounds validation machinery).
+#[test]
+fn tag_count_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let orig = vec![0u8; n as usize];
+        let mut buf = orig.clone();
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // tag count is a u32be at offset 128
+        for (name, val) in [
+            ("zero", 0u32), ("one", 1), ("real", 11),
+            ("huge", 0x7fffffff), ("max", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[128..132].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} cnt={val} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
