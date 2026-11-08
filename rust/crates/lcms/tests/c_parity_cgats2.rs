@@ -570,3 +570,28 @@ fn it8_multi_table() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// Property enumeration — cmsIT8EnumProperties/Multi
+/// machinery.
+#[test]
+fn it8_enum_props() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetPropertyStr(h,
+            b"ORIGINATOR\0".as_ptr() as _,
+            b"test\0".as_ptr() as _);
+        c::cmsIT8SetPropertyDbl(h,
+            b"GAMMA\0".as_ptr() as _, 2.2);
+        c::cmsIT8SetPropertyHex(h,
+            b"FLAG\0".as_ptr() as _, 0xDEAD);
+        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let n = c::cmsIT8EnumProperties(h, &mut names);
+        eprintln!("enum={n}");
+        // enum multi on a prop
+        let mut mn: *mut *mut i8 = std::ptr::null_mut();
+        let n2 = c::cmsIT8EnumPropertyMulti(h,
+            b"ORIGINATOR\0".as_ptr() as _, &mut mn);
+        eprintln!("enummulti={n2}");
+        c::cmsIT8Free(h);
+    }
+}
