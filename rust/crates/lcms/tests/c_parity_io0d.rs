@@ -3479,3 +3479,32 @@ fn header_datetime() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// Malformed tag reads — truncated/corrupt tag bytes feed the
+/// readers' error paths (the biggest uncovered-line class).
+#[test]
+fn malformed_tag_reads() {
+    unsafe {
+        // hand-built minimal profiles with truncated tag payloads
+        for sig in [0x72545243u32, 0x77747074, 0x64657363,
+                    0x6e636c32, 0x70696d63, 0x7363726E] {
+            // craft a fake tag-table entry pointing at short data
+            let hlen = 128 + 4 + 12 + 32;
+            let mut hdr = vec![0u8; hlen];
+            // profile size
+            hdr[0..4].copy_from_slice(&(hlen as u32).to_be_bytes());
+            hdr[36..40].copy_from_slice(b"acsp");
+            let n_tags = hdr.len() - 128 - 4;
+            hdr[128..132].copy_from_slice(&1u32.to_be_bytes());
+            hdr[132..136].copy_from_slice(&sig.to_be_bytes());
+            hdr[136..140].copy_from_slice(&144u32.to_be_bytes());
+            hdr[140..144].copy_from_slice(&8u32.to_be_bytes()); // 8-byte payload
+            let p = c::cmsOpenProfileFromMem(
+                hdr.as_ptr() as *const _, hdr.len() as u32);
+            if p.is_null() { eprintln!("sig{sig:#x} open=null"); continue; }
+            let tag = c::cmsReadTag(p, sig);
+            eprintln!("sig{sig:#x} tag={}", !tag.is_null());
+            c::cmsCloseProfile(p);
+        }
+    }
+}
