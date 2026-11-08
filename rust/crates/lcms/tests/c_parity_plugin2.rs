@@ -32,7 +32,21 @@ const SIGS: &[(u32, &str)] = &[
 
 #[test]
 fn plugin_validation_arms() {
-    unsafe {
+    // Registered plugins persist in the global context —
+    // fork-isolate so handlers can't poison later tests
+    unsafe extern "C" { fn fork() -> i32;
+        fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+        fn _exit(code: i32) -> !;
+        fn dlsym(h: *mut std::ffi::c_void,
+            n: *const i8) -> *mut std::ffi::c_void; }
+    let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+        let f = dlsym(std::ptr::null_mut(),
+            b"__llvm_profile_write_file\0".as_ptr() as *const i8);
+        if f.is_null() { None } else { Some(std::mem::transmute(f)) }
+    };
+    let pid = unsafe { fork() };
+    if pid == 0 {
+        unsafe {
         // bad magic → reject
         let mut p = PluginBase { magic: 0xDEADBEEF,
             expected_version: 2200, ty: 0x6D656D48,
@@ -114,5 +128,12 @@ fn plugin_validation_arms() {
                 m3.as_mut_ptr() as *mut c_void);
             eprintln!("sig {sig:#x}={rr}");
         }
+            if let Some(f) = flush { f(); }
+            _exit(0);
+        }
     }
+    let mut st = 0i32;
+    unsafe { waitpid(pid, &mut st, 0); }
+    eprintln!("plugin_validation child st={st}");
+
 }

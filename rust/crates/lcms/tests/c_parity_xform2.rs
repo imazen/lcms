@@ -4086,33 +4086,41 @@ fn plugin_valid_arms() {
         }
         v
     }
-    unsafe {
-        // each plugin type sig → registration dispatch arm
-        for sig in [
-            0x6D656D48u32, // memH
-            0x696E7048,    // inpH
-            0x70617248,    // parH
-            0x66726D48,    // frmH
-            0x74797048,    // typH
-            0x74616748,    // tagH
-            0x696E7448,    // intH
-            0x6D706548,    // mpeH
-            0x6F707448,    // optH
-            0x7A666D48,    // xfmH
-            0x6D747A48,    // mtxH
-            0x70726C48,    // prlH
-            0x68647248,    // hdrH
-        ] {
-            for paylen in [0usize, 16, 40, 64, 96] {
-                let mut pl = mk(sig, paylen);
-                let r = c::cmsPluginTHR(std::ptr::null_mut(),
-                    pl.as_mut_ptr() as *mut _);
-                if paylen == 0 {
-                    eprintln!("sig {sig:#x} len{paylen} r={r}");
+    // Registered plugins persist in the global context — run
+    // inside a forked child so bogus handlers can't leak into
+    // later tests in this binary
+    unsafe extern "C" { fn fork() -> i32;
+        fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+        fn _exit(code: i32) -> !;
+        fn dlsym(h: *mut std::ffi::c_void,
+            n: *const i8) -> *mut std::ffi::c_void; }
+    let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+        let f = dlsym(std::ptr::null_mut(),
+            b"__llvm_profile_write_file\0".as_ptr() as *const i8);
+        if f.is_null() { None } else { Some(std::mem::transmute(f)) }
+    };
+    let pid = unsafe { fork() };
+    if pid == 0 {
+        unsafe {
+            for sig in [
+                0x6D656D48u32, 0x696E7048, 0x70617248, 0x66726D48,
+                0x74797048, 0x74616748, 0x696E7448, 0x6D706548,
+                0x6F707448, 0x7A666D48, 0x6D747A48, 0x70726C48,
+                0x68647248,
+            ] {
+                for paylen in [0usize, 16, 40, 64, 96] {
+                    let mut pl = mk(sig, paylen);
+                    c::cmsPluginTHR(std::ptr::null_mut(),
+                        pl.as_mut_ptr() as *mut _);
                 }
             }
+            if let Some(f) = flush { f(); }
+            _exit(0);
         }
     }
+    let mut st = 0i32;
+    unsafe { waitpid(pid, &mut st, 0); }
+    eprintln!("plugin_valid child st={st}");
 }
 
 /// cmsPluginTHR — valid-plugin registrations: real fn ptrs per
@@ -4164,7 +4172,20 @@ fn plugin_real_arms() {
         }
         v
     }
-    unsafe {
+    // Fork-isolate: registered plugins persist globally
+    unsafe extern "C" { fn fork() -> i32;
+        fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+        fn _exit(code: i32) -> !;
+        fn dlsym(h: *mut std::ffi::c_void,
+            n: *const i8) -> *mut std::ffi::c_void; }
+    let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+        let f = dlsym(std::ptr::null_mut(),
+            b"__llvm_profile_write_file\0".as_ptr() as *const i8);
+        if f.is_null() { None } else { Some(std::mem::transmute(f)) }
+    };
+    let pid = unsafe { fork() };
+    if pid == 0 {
+        unsafe {
         // memH — valid alloc/free/realloc
         let mut pl = base(0x6D656D48);
         let b = pl.as_mut_ptr() as *mut usize;
@@ -4277,7 +4298,14 @@ fn plugin_real_arms() {
         let r = c::cmsPluginTHR(std::ptr::null_mut(),
             pl.as_mut_ptr() as *mut _);
         eprintln!("hdrH r={r}");
+            if let Some(f) = flush { f(); }
+            _exit(0);
+        }
     }
+    let mut st = 0i32;
+    unsafe { waitpid(pid, &mut st, 0); }
+    eprintln!("plugin_real child st={st}");
+
 }
 
 /// RootOfLeastSquaresFitQuadraticCurve — DetectBlackPoint/Dest
