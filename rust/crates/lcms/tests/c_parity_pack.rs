@@ -5353,3 +5353,71 @@ fn float_lut_arms() {
                 c::cmsCloseProfile(*p); } }
     }
 }
+
+/// cmscnvrt residual — BlackPreservingKOnlyIntents /
+///   BlackPreservingKPlaneIntents via CMYK transforms at
+///   intents 10-15 + default intents 0-9 on prtr/link.
+#[test]
+fn preserve_k_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let path = concat!(
+                env!("CARGO_MANIFEST_DIR"), "/../../", "\0");
+            let p = format!("{}{}", &path[..path.len()-1], n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                b"r\0".as_ptr() as *const _)
+        };
+        let cmyk = open("lcms2cmyk.icc");
+        let link = open("lcms2link.icc");
+        let srgb = open("sRGBlcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        // CMYK -> Lab and Lab -> CMYK at intents 0-15
+        for (nm, i, fi, o, fo) in [
+            ("cmyk", cmyk, f16(6, 4), lab4, f16(10, 3)),
+            ("lab4", lab4, f16(10, 3), cmyk, f16(6, 4)),
+            ("cmyk", cmyk, f16(6, 4), srgb, f16(4, 3)),
+            ("srgb", srgb, f16(4, 3), cmyk, f16(6, 4)),
+            ("link", link, f16(6, 4), link, f16(6, 4)),
+            ("cmyk", cmyk, f16(6, 4), cmyk, f16(6, 4)),
+        ] {
+            if i.is_null() || o.is_null() {
+                eprintln!("{nm}: null prof"); continue; }
+            for intent in 0u32..16 {
+                let t = c::cmsCreateTransform(
+                    i, fi, o, fo, intent, 0);
+                if t.is_null() {
+                    eprintln!("{nm} i{intent}: REJ");
+                    continue; }
+                let ib = [0x4000u16; 32];
+                let mut ob = [0u16; 32];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 4);
+                c::cmsDeleteTransform(t);
+                eprintln!("{nm} i{intent}: ok"); }
+        }
+        // proofing transforms — proof chain intents too
+        for intent in 10u32..16 {
+            let t = c::cmsCreateProofingTransform(
+                cmyk, f16(6, 4),
+                srgb, f16(4, 3),
+                cmyk, intent, 0, 0);
+            eprintln!("proof i{intent}: {}",
+                !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 32];
+                let mut ob = [0u16; 32];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 4);
+                c::cmsDeleteTransform(t); }
+        }
+        for p in [cmyk, link, srgb, lab4] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
