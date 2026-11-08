@@ -14609,3 +14609,70 @@ fn clr_curve_text_arms() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// _cmsReadFloatOutputTag — Lab/XYZ normalize-stage insertion
+/// on float-output profiles.
+#[test]
+fn float_output_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let srgb = c::cmsCreate_sRGBProfile();
+        for (cs, pcs, name) in [
+            (0x4C616220u32, 0x58595A20, "lab->xyz"),
+            (0x58595A20, 0x4C616220, "xyz->lab"),
+            (0x4C616220, 0x4C616220, "lab->lab"),
+            (0x58595A20, 0x58595A20, "xyz->xyz"),
+            (0x52474220, 0x4C616220, "rgb->lab"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x70727472);   // 'prtr'
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            // float mpet pipeline — forces the float tag path
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let dims = [2u32; 3];
+            let grid = vec![0.5f32; 8 * 3];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocCLutFloatGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    3, 3, grid.as_ptr()));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let w = c::cmsWriteTag(prof, 0x42324130,
+                p as *const _);
+            let l8 = (10u32 << 16) | (3 << 3) | 1;
+            let x8 = (9u32 << 16) | (3 << 3) | 1;
+            let r8 = (4u32 << 16) | (3 << 3) | 1;
+            let fmt = match cs {
+                0x4C616220 => l8,
+                0x58595A20 => x8,
+                _ => r8,
+            };
+            for (outp, ofmt) in [
+                (srgb, r8),
+            ] {
+                // profile as OUTPUT — drives the b2a output path
+                let t = c::cmsCreateTransform(outp, ofmt,
+                    prof, fmt, 0, 0);
+                eprintln!("{name} w={w} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
