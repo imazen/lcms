@@ -6916,3 +6916,97 @@ fn float_tag_precedence() {
             c::cmsCloseProfile(srgb); }
     }
 }
+
+/// cmsio1 residual — _cmsReadFloat*Tag bodies: valid mpet
+///   blobs (cvst element) under DToB0/BToD0 + the devicelink
+///   float tag -> real float-tag pipeline reads.
+#[test]
+fn float_tag_body_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        // mpet w/ one 'cvst' elem: hdr + elem dir + elem
+        let mk = |inc: u16, outc: u16| -> Vec<u8> {
+            let mut b = b"mpet".to_vec();
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&inc.to_be_bytes());
+            b.extend_from_slice(&outc.to_be_bytes());
+            b.extend_from_slice(&1u32.to_be_bytes());
+            // elem dir: off(=hdr 16 + dir 8) + size
+            let el_off = 16u32 + 8;
+            // cvst elem: sig+res + in/out u16 + pos table +
+            //   one samf-segment curve per channel... the
+            //   simplest valid cvst: 1 curve at 1 entry.
+            // Actually use 'matf' — simpler: 3x3 doubles.
+            let mut el = b"matf".to_vec();
+            el.extend_from_slice(&[0; 4]);
+            el.extend_from_slice(&inc.to_be_bytes());
+            el.extend_from_slice(&outc.to_be_bytes());
+            for _ in 0..(inc as u32 * outc as u32) {
+                el.extend_from_slice(
+                    &1.0f64.to_be_bytes()); }
+            for _ in 0..outc {
+                el.extend_from_slice(
+                    &0.0f64.to_be_bytes()); }
+            b.extend_from_slice(&el_off.to_be_bytes());
+            b.extend_from_slice(
+                &(el.len() as u32).to_be_bytes());
+            b.extend_from_slice(&el);
+            b
+        };
+        for (cls, tag, nm) in [
+            (0x6D6E7472u32, 0x44324230, "mntr D2B0"),
+            (0x6D6E7472, 0x42324430, "mntr B2D0"),
+            (0x6C696E6B, 0x44324230, "link D2B0"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, cls);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            let blob = mk(3, 3);
+            c::cmsWriteRawTag(p, tag,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                sb.as_mut_ptr() as *mut _, &mut sn);
+            let p2 = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn)
+            } else { p };
+            let ti = c::cmsCreateTransform(p2,
+                f16(4, 3), srgb, f16(4, 3), 0, 0);
+            let to = c::cmsCreateTransform(srgb,
+                f16(4, 3), p2, f16(4, 3), 0, 0);
+            eprintln!("{nm} sv={sv} in={} out={}",
+                !ti.is_null(), !to.is_null());
+            if !ti.is_null() {
+                let ib = [0x4000u16; 8];
+                let mut ob = [0u16; 8];
+                c::cmsDoTransform(ti,
+                    ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ti); }
+            if !to.is_null() {
+                let ib = [0x4000u16; 8];
+                let mut ob = [0u16; 8];
+                c::cmsDoTransform(to,
+                    ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(to); }
+            if p2 != p { c::cmsCloseProfile(p2); }
+            c::cmsCloseProfile(p); }
+        if !srgb.is_null() {
+            c::cmsCloseProfile(srgb); }
+    }
+}
