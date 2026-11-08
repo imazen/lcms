@@ -3754,3 +3754,50 @@ fn unroll_words_cells() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Unroll*Double/FloatTo16/ToFloat arms — double + float input
+/// formats on gray/lab/xyz profiles.
+#[test]
+fn unroll_double_float_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let fl = 1u32 << 22;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        // double (BYTES=0 + FLOAT) and f32 input
+        let df = |cs: u32, ch: u32| (cs << 16) | (ch << 3) | 0 | fl;
+        let ff = |cs: u32, ch: u32| (cs << 16) | (ch << 3) | 4 | fl;
+        for (inp, outp, if_, of_, name) in [
+            (gray, lab, df(3, 1), l16, "gray-dbl"),
+            (gray, lab, ff(3, 1), l16, "gray-flt"),
+            (lab, srgb, df(10, 3), r16, "lab-dbl"),
+            (lab, srgb, ff(10, 3), r16, "lab-flt"),
+            (xyz, srgb, df(9, 3), r16, "xyz-dbl"),
+            (xyz, srgb, ff(9, 3), r16, "xyz-flt"),
+            (srgb, lab, df(4, 3), l16, "rgb-dbl"),
+            (srgb, lab, ff(4, 3), l16, "rgb-flt"),
+            (srgb, lab, df(4, 4), l16, "rgba-dbl"),
+            (srgb, lab, ff(4, 4), l16, "rgba-flt"),
+        ] {
+            if inp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 64];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}

@@ -957,3 +957,18 @@ regions, cmscgats 286, cmsopt 169, cmsio0 145, cmsio1 134,
 cmssamp 122, cmsvirt 118, cmsgamma 107, cmscnvrt 96 (was 148).
 Function coverage: 95.27% — the ~59 uncovered fns are
 unreachable-by-API internals.
+
+### unreachable-by-API cells (documented, not forced)
+
+- `cmspack.c:Pack3Bytes*Optimized` (6 fns, ~50 lines) — dead
+  upstream code. `_cmsGetStockOutputFormatter` strips
+  `OPTIMIZED_SH(1)` before the table lookup ("Optimization is
+  only a hint"), so the optimized packer entries at
+  OutputFormatters16[0-5] can never match through the public
+  API. Only reachable via a custom cmsPluginFormatters factory
+  that returns them directly.
+- `cmsopt.c:Prelin16dup`/`Prelin8dup` — the dup pointers for
+  optimized pipelines; run only when an *already-optimized*
+  pipeline is cloned internally, which the public API doesn't
+  expose (cmsPipelineDup on a manually-built pipeline doesn't
+  carry optimizer state).
