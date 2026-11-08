@@ -2874,7 +2874,7 @@ fn save_as_8bits_flag() {
 #[test]
 fn n_input_clut_eval() {
     unsafe {
-        for nin in [4u32, 5, 6, 7, 8] {
+        for nin in [4u32, 5, 6, 7, 8, 9, 11, 13, 15] {
             let n_cells = (2usize).pow(nin) * 3;
             let tab: Vec<u16> = (0..n_cells)
                 .map(|i| (i * 5) as u16).collect();
