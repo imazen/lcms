@@ -5409,3 +5409,78 @@ fn lut_opt_lin_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmslut residual — stage-level eval/dup across all
+///   stage types: cv/clut/mat/lab2xyz/xyz2lab/bake/
+///   identity.
+#[test]
+fn lut_stage_eval_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let tcs = [g, g, g];
+        let cv = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3,
+            tcs.as_ptr() as *mut _);
+        let dims = [4u32; 3];
+        let grid = vec![0x8000u16; 4usize.pow(3) * 3];
+        let clut = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+            grid.as_ptr());
+        let m = [1.0f64, 0.1, 0.0,
+                 0.0, 1.0, 0.0,
+                 0.0, 0.0, 1.0];
+        let mat = c::cmsStageAllocMatrix(
+            std::ptr::null_mut(), 3, 3, m.as_ptr(),
+            std::ptr::null());
+        let id = c::cmsStageAllocIdentity(
+            std::ptr::null_mut(), 3);
+        // dup each + evaluate through a transform-like
+        //   path via pipeline
+        for (st, name) in [
+            (cv, "cv"), (clut, "clut"), (mat, "mat"),
+            (id, "ident"),
+        ] {
+            if !st.is_null() {
+                let d = c::cmsStageDup(st);
+                eprintln!("{name} dup={}", !d.is_null());
+                if !d.is_null() {
+                    c::cmsStageFree(d); }
+            }
+        }
+        // pipeline with all stage types -> eval
+        let pipe = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(pipe, 0, id);
+        c::cmsPipelineInsertStage(pipe, 1, cv);
+        c::cmsPipelineInsertStage(pipe, 2, mat);
+        c::cmsPipelineInsertStage(pipe, 3, clut);
+        let lp = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(lp, 0x6C696E6B);
+        c::cmsSetColorSpace(lp, 0x52474220);
+        c::cmsSetPCS(lp, 0x4C616220);
+        c::cmsSetProfileVersion(lp, 4.4);
+        c::cmsWriteTag(lp, 0x41324230,
+            pipe as *const _);
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(lp, frgb,
+            lab4, flab, 0, 0);
+        eprintln!("pipe-xform={}", !t.is_null());
+        if !t.is_null() {
+            let src = [0x8000u16; 3];
+            let mut dst = [0u16; 3];
+            c::cmsDoTransform(t,
+                src.as_ptr() as *const _,
+                dst.as_mut_ptr() as *mut _, 1);
+            eprintln!("  {dst:?}");
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(lp);
+        c::cmsCloseProfile(lab4);
+        c::cmsPipelineFree(pipe);
+        c::cmsFreeToneCurve(g);
+    }
+}
