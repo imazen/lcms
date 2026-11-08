@@ -2829,3 +2829,33 @@ fn profile_info_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Profile-info locale machinery — more languages.
+#[test]
+fn profile_info_locales() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // add MLU entries for other locales first
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 2);
+        c::cmsMLUsetWide(mlu, b"en\0".as_ptr() as _,
+            b"US\0".as_ptr() as _,
+            &[0x45u16, 0x6E, 0x67] as *const u16 as _);
+        c::cmsMLUsetWide(mlu, b"fr\0".as_ptr() as _,
+            b"FR\0".as_ptr() as _,
+            &[0x46u16, 0x72] as *const u16 as _);
+        c::cmsWriteTag(h, 0x64657363, mlu as *mut _);
+        for (lang, cntry, name) in [
+            (b"en\0" as &[u8], b"US\0", "en-US"),
+            (b"fr\0", b"FR\0", "fr-FR"),
+            (b"de\0", b"DE\0", "de-DE"),
+            (b"en\0", b"GB\0", "en-GB"),
+            (b"\0\0\0", b"\0\0\0", "none")] {
+            let mut buf = [0u16; 64];
+            let n = c::cmsGetProfileInfo(h, 0,
+                lang.as_ptr() as _, cntry.as_ptr() as _,
+                buf.as_mut_ptr() as *mut _, 64);
+            eprintln!("{name} n={n}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
