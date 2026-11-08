@@ -438,3 +438,4 @@ fn packed_byte_formats() {
         }
     }
 }
+

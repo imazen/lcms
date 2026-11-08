@@ -309,3 +309,45 @@ fn flag_branches() {
         }
     }
 }
+
+/// The remaining transform flags — NOCACHE/BPC/NOWHITE/HIGHRES/
+/// LOWRES/CLUT_PRE/CLUT_POST/GRIDPOINTS each reshape the
+/// pipeline construction.
+#[test]
+fn remaining_flags() {
+    unsafe {
+        let profiles: Vec<(*mut std::ffi::c_void,
+                           *mut std::ffi::c_void)> = vec![
+            (c::cmsCreate_sRGBProfile(),
+             c::cmsCreateLab4Profile(std::ptr::null_mut())),
+            (c::cmsCreateLab4Profile(std::ptr::null_mut()),
+             c::cmsCreate_sRGBProfile()),
+        ];
+        for (h, lab) in profiles {
+            let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+            let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            for (name, fl) in [
+                ("nocache", 0x0040u32),
+                ("bpc", 0x2000),
+                ("nowhite", 0x0004),
+                ("highres", 0x0400),
+                ("lowres", 0x0800),
+                ("clut_pre", 0x0010),
+                ("clut_post", 0x0001),
+                ("gridpts16", 16 << 16),
+                ("bpc_nocache", 0x2000 | 0x0040),
+            ] {
+                let ct = c::cmsCreateTransform(h, in_fmt, lab,
+                    out_fmt, 0, fl);
+                if ct.is_null() { continue; }
+                let inp = [30000u16, 40000, 50000];
+                let mut co = [0u16; 3];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+            c::cmsCloseProfile(h);
+            c::cmsCloseProfile(lab);
+        }
+    }
+}
