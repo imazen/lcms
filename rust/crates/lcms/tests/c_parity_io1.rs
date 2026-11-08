@@ -1327,3 +1327,44 @@ fn float_reader_combos() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Float-tag reader internals — DToB/BToD on different
+/// channel-count + PCS combos.
+#[test]
+fn float_reader_combos2() {
+    unsafe {
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (nch, pcs, sig, name) in [
+            (3u32, 0x4C616220, 0x44324230, "3ch-lab-D2B"),
+            (3, 0x58595A20, 0x44324230, "3ch-xyz-D2B"),
+            (4, 0x4C616220, 0x44324230, "4ch-lab-D2B"),
+            (3, 0x4C616220, 0x42324430, "3ch-lab-B2D"),
+        ] {
+            let ftab: Vec<f32> = (0..(4usize.pow(nch) * 3))
+                .map(|i| i as f32 / 12.0).collect();
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 4,
+                    nch, 3, ftab.as_ptr()));
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6d6e7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, sig, p as *const _);
+            let f = (4u32 << 16) | (nch << 3) | 2;
+            let (inp, outp, if_, of) = if sig == 0x42324430 {
+                (lab, prof, l16, f)
+            } else {
+                (prof, lab, f, l16)
+            };
+            let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
