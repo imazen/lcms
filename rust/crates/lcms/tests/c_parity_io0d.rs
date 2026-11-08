@@ -544,3 +544,33 @@ fn magic_mutations() {
         }
     }
 }
+
+/// Profile-size mutations — the size-field machinery.
+#[test]
+fn size_mutations() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // profile size @0-4
+        for (name, val) in [
+            ("size-0", 0u32),
+            ("size-127", 127),
+            ("size-128", 128),
+            ("size-129", 129),
+            ("size-big", 0x10000u32),
+            ("size-huge", 0xFFFFFFFFu32),
+        ] {
+            let mut dd = d.clone();
+            dd[0..4].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
