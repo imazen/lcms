@@ -420,3 +420,26 @@ fn iohandler_variants() {
         c::cmsCloseProfile(p2);
     }
 }
+
+/// Truncated-profile open parity — open at every truncation point
+/// exercises the size/bounds validation deeper than a single cut.
+#[test]
+fn truncated_open_matrix() {
+    unsafe {
+        let h = c::cmsCreateXYZProfile();
+        let mut bytes = vec![0u8; 1 << 20];
+        let mut size = bytes.len() as u32;
+        c::cmsSaveProfileToMem(h, bytes.as_mut_ptr() as *mut _, &mut size);
+        bytes.truncate(size as usize);
+        let _ = c::cmsCloseProfile(h);
+        // truncate at every 64-byte boundary + a few odd points
+        for cut in (0..=bytes.len()).step_by(64)
+            .chain([0usize, 1, 127, 128, 129, 255, 384]) {
+            let sub = &bytes[..cut];
+            let ch = c::cmsOpenProfileFromMem(sub.as_ptr() as _, cut as u32);
+            let rp = profile::open_profile_from_mem(None, sub);
+            assert_eq!(ch.is_null(), rp.is_none(), "cut {cut}");
+            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+        }
+    }
+}
