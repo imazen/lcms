@@ -1943,3 +1943,37 @@ fn multich_packers2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Float packers — odd/missing channel counts
+/// (5/7/9-14) via linearization devicelinks.
+#[test]
+fn multich_float_packers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for n in [5u32, 7, 9, 10, 11, 12, 13, 14] {
+            let mut curves = vec![g; n as usize];
+            let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(),
+                match n {
+                    5 => 0x35434C52, 7 => 0x37434C52,
+                    9 => 0x39434C52, 10 => 0x41434C52,
+                    11 => 0x42434C52, 12 => 0x43434C52,
+                    13 => 0x44434C52, 14 => 0x45434C52,
+                    _ => 0x46434C52,
+                },
+                curves.as_mut_ptr());
+            // FLOAT_SH=22, bytes=4 (flt=4, dbl=8, half=2+float)
+            for (name, bytes, flt) in [
+                ("flt", 4u32, 1u32 << 22),
+                ("dbl", 8, 1 << 22)] {
+                let fmt = (0 << 16) | (n << 3) | bytes | flt;
+                let t = c::cmsCreateTransform(dl, fmt,
+                    dl, fmt, 0, 0);
+                eprintln!("{n}ch-{name} t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(dl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
