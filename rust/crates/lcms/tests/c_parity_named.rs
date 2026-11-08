@@ -505,3 +505,46 @@ fn mlu_ops_branches() {
         c::cmsMLUfree(m);
     }
 }
+
+/// MLU serialization — multi-entry MLU through a profile tag ->
+/// ReadMlu/WriteMlu bodies (entry-count, offset-alignment, UTF16
+/// blocks), padded/odd-length strings.
+#[test]
+fn mlu_serialization_blocks() {
+    unsafe {
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        // entries with varied lengths -> offset alignment arms
+        for (lang, ctry, txt) in [
+            ("en", "US", "a"),
+            ("fr", "FR", "longer text here"),
+            ("de", "DE", "x"),
+            ("ja", "JP", "even"),
+        ] {
+            let langz = format!("{lang}\0");
+            let ctryz = format!("{ctry}\0");
+            let txtz = format!("{txt}\0");
+            c::cmsMLUsetUTF8(m, langz.as_ptr(), ctryz.as_ptr(),
+                txtz.as_ptr());
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(prof, 0x64657363, m as *const _); // 'desc'
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x64657363)
+        } else { std::ptr::null_mut() };
+        eprintln!("mlu write->read={}", !tag.is_null());
+        if !tag.is_null() {
+            let cnt = c::cmsMLUtranslationsCount(tag);
+            eprintln!("  entries={cnt}");
+        }
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsMLUfree(m);
+    }
+}
