@@ -1227,36 +1227,36 @@ arms only reachable via a patched Write callback).
 
 `TOTAL: 81.02% lines / 95.59% fns / 87.91% regions / 74.52% branches`
 (up from run8's 81.22/95.59/87.78/74.60 — regions +0.13, branches
--0.08, lines -0.20 as more reject paths were exercised and added
-uncovered-error line hits)
+-0.08, lines -0.20 as more reject paths were exercised)
 
 | file | lines | fns | regions | branches |
 |---|---|---|---|---|
-| cmstypes.c | 73.41% | 99.07% | 86.24% | 69.72% |
-| cmspack.c | — | — | — | — |
-| cmsio0.c | — | — | — | — |
-| cmsopt.c | — | — | — | — |
-| cmslut.c | — | — | — | — |
-| cmsvirt.c | 73.43% | 100% | 85.43% | 56.74% |
-| cmscnvrt.c | — | — | — | — |
-| cmsnamed.c | — | — | — | — |
-| cmsxform.c | 88.57% | 100% | 91.46% | 81.47% |
-| cmsintrp.c | — | — | — | — |
-| cmspcs.c | — | — | — | — |
-| cmsmtrx.c | — | — | — | — |
-| cmscam02.c | — | — | — | — |
-| cmswtpnt.c | 93.55% | 100% | 99.33% | 83.33% |
+| cmsalpha.c | 86.61% | 85.37% | 86.85% | 77.68% |
+| cmscam02.c | 91.26% | 100% | 98.05% | 84.00% |
+| cmscgats.c | 84.43% | 98.99% | 88.50% | 77.66% |
+| cmscnvrt.c | 77.93% | 100% | 87.60% | 69.79% |
+| cmserr.c | 84.38% | 100% | 89.62% | 70.59% |
+| cmsgamma.c | 88.01% | 100% | 91.87% | 80.88% |
+| cmsgmt.c | 85.98% | 100% | 89.94% | 67.12% |
+| cmshalf.c | 100% | 100% | 100% | — |
+| cmsintrp.c | 98.50% | 100% | 98.85% | 96.90% |
+| cmsio0.c | 84.73% | 100% | 91.10% | 78.95% |
+| cmsio1.c | 80.80% | 100% | 79.48% | 68.93% |
+| cmslut.c | 83.89% | 100% | 92.29% | 75.62% |
+| cmsmd5.c | 94.59% | 100% | 97.06% | 63.64% |
+| cmsmtrx.c | 100% | 100% | 100% | 100% |
+| cmsnamed.c | 83.03% | 100% | 95.38% | 76.06% |
+| cmsopt.c | 83.32% | 95.45% | 86.07% | 75.44% |
+| cmspack.c | 70.80% | 95.65% | 74.00% | 68.45% |
+| cmspcs.c | 97.17% | 100% | 98.67% | 94.84% |
 | cmsplugin.c | 81.37% | 100% | 91.31% | 74.04% |
 | cmsps2.c | 89.41% | 100% | 92.69% | 79.13% |
 | cmssamp.c | 86.01% | 100% | 87.89% | 67.12% |
 | cmssm.c | 90.70% | 100% | 96.05% | 86.73% |
-| cmsio1.c | — | — | — | — |
-| cmsio2.c | — | — | — | — |
-| cmserr0.c | — | — | — | — |
-| cmscgats.c | — | — | — | — |
-| cmsalpha.c | — | — | — | — |
-| cmslut.c | — | — | — | — |
-| cmsmd5.c | — | — | — | — |
+| cmstypes.c | 73.41% | 99.07% | 86.24% | 69.72% |
+| cmsvirt.c | 73.43% | 100% | 85.43% | 56.74% |
+| cmswtpnt.c | 93.55% | 100% | 99.33% | 83.33% |
+| cmsxform.c | 88.57% | 100% | 91.46% | 81.47% |
 
 (~30 gates landed since run8: internal_final8-35, pack_alpha,
 type_read_err, fileio_err, opt_deep, lindevlink,
