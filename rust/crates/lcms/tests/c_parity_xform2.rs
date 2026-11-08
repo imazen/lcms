@@ -1418,3 +1418,31 @@ fn nonegatives_abstract_devicelink() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Transform accessors + stride variants — LineStride/Stride
+/// DoTransform, GetTransformContextID.
+#[test]
+fn transform_accessors_strides() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(srgb, r16, lab, l16, 0, 0);
+        if !t.is_null() {
+            // LineStride — per-line stride args
+            let ib = [0x80u8; 64];
+            let mut ob = [0u8; 64];
+            c::cmsDoTransformLineStride(t, ib.as_ptr() as *const _,
+                ob.as_mut_ptr() as *mut _, 2, 2, 12, 12, 6, 6);
+            let cid = c::cmsGetTransformContextID(t);
+            eprintln!("linestride done ctx={}", !cid.is_null());
+            // Stride
+            c::cmsDoTransformStride(t, ib.as_ptr() as *const _,
+                ob.as_mut_ptr() as *mut _, 2, 0);
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
