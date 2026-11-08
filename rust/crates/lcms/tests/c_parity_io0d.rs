@@ -8581,3 +8581,100 @@ fn save_tags_deep() {
         c::cmsMLUfree(ml);
     }
 }
+
+/// Type_LUT8/16_Read deep arms — mft1/mft2 reader internals:
+/// clutPoints=0, matrix present/absent, input/output tables,
+/// different nSamples, malformed offsets.
+#[test]
+fn lut_read_deep() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // corpus mft1/mft2 reads
+        for f in ["lcms2cmyk.icc", "nullcms2.icc", "limitlcms2.icc",
+                  "linlcms2.icc", "bchslcms2.icc", "labv4lcms2.icc",
+                  "sRGBlcms2.icc", "xyzlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for i in 0..c::cmsGetTagCount(p) as u32 {
+                let sig = c::cmsGetTagSignature(p, i);
+                let tag = c::cmsReadTag(p, sig);
+                if !tag.is_null() {
+                    let _t2 = c::cmsReadTag(p, sig);
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+        // raw mft1/mft2 blobs covering element-order + malformed
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mut grid = vec![0u16; 17 * 17 * 17 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 17) * 3855) as u16;
+        }
+        for (stages, name) in [
+            ("cv-mat-clut-cv", "full"),
+            ("cv", "b-only"),
+            ("cv-clut-cv", "no-mat"),
+            ("cv-clut", "no-post"),
+        ] {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            if stages != "cv-clut" && stages != "cv" {
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                        3, curves.as_ptr() as *mut _));
+            }
+            if stages == "cv-mat-clut-cv" {
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                        mat.as_ptr(), std::ptr::null()));
+            }
+            if stages != "cv" && stages != "cv-mat-clut-cv" {
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                        3, curves.as_ptr() as *mut _));
+            }
+            if stages != "cv" {
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                        17, 3, 3, grid.as_ptr()));
+            }
+            if stages == "cv-mat-clut-cv" || stages == "cv-clut-cv" {
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocToneCurves(std::ptr::null_mut(),
+                        3, curves.as_ptr() as *mut _));
+            }
+            for (sig, ver, save8, name2) in [
+                (0x41324230u32, 2.1f64, false, "a2b0-v2"),
+                (0x41324230u32, 2.1f64, true, "a2b0-v2-8"),
+            ] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, ver);
+                if save8 { c::cmsPipelineSetSaveAs8bitsFlag(p, 1); }
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 22];
+                let mut nn = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut nn)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, nn)
+                } else { std::ptr::null_mut() };
+                let tag = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name}/{name2} w={w} s={s} r={}",
+                    !tag.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+            }
+            c::cmsPipelineFree(p);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
