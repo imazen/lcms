@@ -83,3 +83,44 @@ fn save_to_file_iohandler() {
         let _ = std::fs::remove_file(&tmp);
     }
 }
+
+/// corrupt-profile mutations — byte-level corruption exercises
+/// the parser's validation branches.
+#[test]
+fn corrupt_profile_bytes() {
+    unsafe {
+        let base = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(base, std::ptr::null_mut(), &mut cn);
+        let mut good = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(base, good.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(base);
+        // byte mutations at parser-relevant offsets
+        for (name, off, val) in [
+            ("size-hi", 0u32, 0xFF),
+            ("size-lo", 3, 0x00),
+            ("cmm", 4, 0xFF),
+            ("version-hi", 8, 0x05),
+            ("class", 12, 0xFF),
+            ("cs", 16, 0xFF),
+            ("pcs", 20, 0xFF),
+            ("sig", 36, 0xFF),
+            ("ntags", 128, 0xFF),
+            ("tag-off", 136, 0xFF),
+            ("tag-size", 140, 0xFF),
+        ] {
+            let mut d = good.clone();
+            d[off as usize] = val;
+            let h = c::cmsOpenProfileFromMem(d.as_ptr() as _,
+                d.len() as u32);
+            let ok = !h.is_null();
+            eprintln!("{name} off={off} open={ok}");
+            if ok {
+                // read a tag — may reject on the corrupted field
+                let _ = c::cmsReadTag(h, 0x64657363);
+                c::cmsCloseProfile(h);
+            }
+        }
+    }
+}
