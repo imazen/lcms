@@ -665,7 +665,7 @@ impl It8 {
         }
         let ns = self.get_table().n_samples;
         if n >= ns {
-            self.syn_error("Invalid or more than NUMBER_OF_FIELDS fields");
+            self.syn_error("Invalid or more than NUMBER_OF_FIELDS fields.");
             return false;
         }
         self.get_table_mut().data_format[n] = Some(label.to_string());
@@ -927,11 +927,14 @@ impl It8 {
 
     /// `SynError`
     fn syn_error(&mut self, txt: &str) -> bool {
-        let mut b = txt.to_string();
-        if self.lineno > 1 {
-            b.push_str(&format!(" (line {})", self.lineno));
-        }
-        crate::err::signal_error(self.ctx.as_ref(), crate::types::ERROR_READ, &b);
+        // C cmscgats.c:574 — "%s: Line %d, %s" with FileName "" for
+        // mem/alloc docs, code cmsERROR_CORRUPTION_DETECTED.
+        let b = format!(": Line {}, {}", self.lineno, txt);
+        crate::err::signal_error(
+            self.ctx.as_ref(),
+            crate::types::ERROR_CORRUPTION_DETECTED,
+            &b,
+        );
         self.sy = Symbol::SynError;
         false
     }

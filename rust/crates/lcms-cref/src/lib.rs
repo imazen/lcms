@@ -618,6 +618,15 @@ unsafe extern "C" {
     pub fn cmsIT8DefineDblFormat(h: *mut c_void, formatter: *const i8);
     pub fn cmsIT8SetTable(h: *mut c_void, n_table: u32) -> i32;
     pub fn cmsIT8GetPropertyMulti(h: *mut c_void, key: *const i8, subkey: *const i8) -> *const i8;
+    // --- context + error handling ---
+    pub fn cmsCreateContext(plugins: *mut c_void, user_data: *mut c_void) -> *mut c_void;
+    pub fn cmsDeleteContext(ctx: *mut c_void);
+    pub fn cmsDupContext(ctx: *mut c_void, new_user_data: *mut c_void) -> *mut c_void;
+    pub fn cmsGetContextUserData(ctx: *mut c_void) -> *mut c_void;
+    pub fn cmsSetLogErrorHandler(fn_: *mut c_void);
+    pub fn cmsSetLogErrorHandlerTHR(ctx: *mut c_void, fn_: *mut c_void);
+    pub fn cmsLogError(ctx: *mut c_void, code: u32, text: *const i8);
+    pub fn cmsGetLogErrorHandler(ctx: *mut c_void) -> *mut c_void;
     // --- gbd / gamut boundary descriptor ---
     pub fn cmsGBDAlloc(ctx: *mut c_void) -> *mut c_void;
     pub fn cmsGBDFree(gbd: *mut c_void);
