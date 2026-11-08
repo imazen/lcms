@@ -4114,3 +4114,168 @@ fn plugin_valid_arms() {
         }
     }
 }
+
+/// cmsPluginTHR — valid-plugin registrations: real fn ptrs per
+/// type (register-internal validation + list-append arms).
+#[test]
+fn plugin_real_arms() {
+    unsafe extern "C" fn m_malloc(_c: *mut std::ffi::c_void,
+        n: usize) -> *mut std::ffi::c_void {
+        unsafe {
+            let p = libc_malloc(n);
+            p
+        }
+    }
+    unsafe extern "C" fn m_free(_c: *mut std::ffi::c_void,
+        p: *mut std::ffi::c_void) {
+        unsafe { libc_free(p); }
+    }
+    unsafe extern "C" fn m_realloc(_c: *mut std::ffi::c_void,
+        p: *mut std::ffi::c_void, n: usize)
+        -> *mut std::ffi::c_void {
+        unsafe { libc_realloc(p, n) }
+    }
+    unsafe extern "C" {
+        fn malloc(n: usize) -> *mut std::ffi::c_void;
+        fn free(p: *mut std::ffi::c_void);
+        fn realloc(p: *mut std::ffi::c_void, n: usize)
+            -> *mut std::ffi::c_void;
+    }
+    unsafe extern "C" fn libc_malloc(n: usize)
+        -> *mut std::ffi::c_void {
+        unsafe { malloc(n) }
+    }
+    unsafe extern "C" fn libc_free(p: *mut std::ffi::c_void) {
+        unsafe { free(p) }
+    }
+    unsafe extern "C" fn libc_realloc(p: *mut std::ffi::c_void,
+        n: usize) -> *mut std::ffi::c_void {
+        unsafe { realloc(p, n) }
+    }
+    // base: magic u32, expected u32, type u32, sig u32,
+    // saveRevisionReported u32, Next ptr — 5×u32+ptr = 32B
+    fn base(sig: u32) -> Vec<u64> {
+        let mut v = vec![0u64; 80];
+        let b = v.as_mut_ptr() as *mut u8;
+        unsafe {
+            *(b as *mut u32) = 0x61637070;      // 'acpp'
+            *(b as *mut u32).add(1) = 2100;
+            *(b as *mut u32).add(2) = sig;
+        }
+        v
+    }
+    unsafe {
+        // memH — valid alloc/free/realloc
+        let mut pl = base(0x6D656D48);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        *b.add(5) = m_free as usize;
+        *b.add(6) = m_realloc as usize;
+        *b.add(7) = m_malloc as usize;          // MallocZero
+        *b.add(8) = m_malloc as usize;          // Calloc
+        *b.add(9) = m_malloc as usize;          // Dup
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("memH r={r}");
+        // inpH — interpolation factory
+        let mut pl = base(0x696E7048);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;          // factory ptr
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("inpH r={r}");
+        // parH — nFunctions + evaluator
+        let mut pl = base(0x70617248);
+        let b = pl.as_mut_ptr() as *mut u8;
+        *(b as *mut u32).add(8) = 1;            // nFunctions
+        *(b as *mut u32).add(9) = 200;          // FunctionTypes[0]
+        *(b as *mut u32).add(9 + 256) = 2;      // ParamCount[0]
+        let bu = pl.as_mut_ptr() as *mut usize;
+        *bu.add(70) = m_malloc as usize;        // Evaluator
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("parH r={r}");
+        // frmH — formatter factory
+        let mut pl = base(0x66726D48);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("frmH r={r}");
+        // typH — tag type handler
+        let mut pl = base(0x74797048);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;          // ReadPtr
+        *b.add(5) = m_malloc as usize;          // WritePtr
+        *b.add(6) = m_malloc as usize;          // DupPtr
+        *b.add(7) = m_malloc as usize;          // FreePtr
+        *b.add(8) = 0x74657874;                 // Sig 'text'
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("typH r={r}");
+        // tagH — tag descriptor
+        let mut pl = base(0x74616748);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = 0x74657874;                 // Sig
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("tagH r={r}");
+        // intH — intent pipeline factory
+        let mut pl = base(0x696E7448);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = 0x1234;                     // intent
+        *b.add(5) = 0;                          // desc
+        *b.add(6) = m_malloc as usize;          // Link
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("intH r={r}");
+        // mpeH — MPE element handler
+        let mut pl = base(0x6D706548);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        *b.add(5) = m_malloc as usize;
+        *b.add(6) = m_malloc as usize;
+        *b.add(7) = m_malloc as usize;
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("mpeH r={r}");
+        // optH — optimizer factory
+        let mut pl = base(0x6F707448);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("optH r={r}");
+        // xfmH — transform factory
+        let mut pl = base(0x7A666D48);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("xfmH r={r}");
+        // mtxH — mutex create/lock/unlock/destroy
+        let mut pl = base(0x6D747A48);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        *b.add(5) = m_malloc as usize;
+        *b.add(6) = m_malloc as usize;
+        *b.add(7) = m_malloc as usize;
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("mtxH r={r}");
+        // prlH — parallelization
+        let mut pl = base(0x70726C48);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("prlH r={r}");
+        // hdrH — profile header handler
+        let mut pl = base(0x68647248);
+        let b = pl.as_mut_ptr() as *mut usize;
+        *b.add(4) = m_malloc as usize;
+        let r = c::cmsPluginTHR(std::ptr::null_mut(),
+            pl.as_mut_ptr() as *mut _);
+        eprintln!("hdrH r={r}");
+    }
+}
