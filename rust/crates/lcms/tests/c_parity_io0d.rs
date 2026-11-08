@@ -13170,3 +13170,99 @@ fn mpe_elem_read_arms() {
         }
     }
 }
+
+/// Type_vcgt_Write — formula path (all 3 curves parametric-5) +
+/// table path (non-parametric) + mixed.
+#[test]
+fn vcgt_write_arms() {
+    unsafe {
+        let g5 = c::cmsBuildParametricToneCurve(
+            std::ptr::null_mut(), 5,
+            [2.2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                .as_ptr());
+        let g5b = c::cmsBuildParametricToneCurve(
+            std::ptr::null_mut(), 5,
+            [2.4, 0.9, 0.1, 0.0, 0.0, 0.02, 0.0, 0.0, 0.0, 0.0]
+                .as_ptr());
+        let gtab = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5,
+            [0u16, 0x2000, 0x8000, 0xd000, 0xffff].as_ptr());
+        let g1 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        for (curves, name) in [
+            ([g5, g5, g5], "all-formula"),
+            ([g5, g5b, g5], "mixed-formula"),
+            ([gtab, gtab, gtab], "all-table"),
+            ([g5, gtab, g1], "mixed"),
+            ([g1, g1, g1], "gamma-1.8"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let arr = curves;
+            let w = c::cmsWriteTag(prof, 0x76636774,
+                arr.as_ptr() as *mut _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x76636774)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        for tc in [g5, g5b, gtab, g1] {
+            c::cmsFreeToneCurve(tc);
+        }
+    }
+}
+
+/// Type_UcrBg_Write — cmsUcrBg struct via bfd tag.
+#[test]
+fn ucrbg_write_arms() {
+    unsafe {
+        let tv = [0u16, 0x2000, 0x8000, 0xd000, 0xffff];
+        let ucr = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5, tv.as_ptr());
+        let bg = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5,
+            [0u16, 0x4000, 0xa000, 0xe000, 0xffff].as_ptr());
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"ucrbg desc\0".as_ptr());
+        // cmsUcrBg { ToneCurve *Ucr, *Bg; cmsMLU *Desc; }
+        let ucrbg = [ucr as *mut std::ffi::c_void,
+            bg as *mut std::ffi::c_void, mlu];
+        for ver in [4.4f64, 2.1] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            let w = c::cmsWriteTag(prof, 0x62666420,
+                ucrbg.as_ptr() as *mut _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let rd = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x62666420)
+            } else { std::ptr::null_mut() };
+            eprintln!("v{ver} w={w} s={s} rd={}", !rd.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsFreeToneCurve(ucr);
+        c::cmsFreeToneCurve(bg);
+        c::cmsMLUfree(mlu);
+    }
+}
