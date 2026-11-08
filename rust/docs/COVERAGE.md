@@ -1389,3 +1389,49 @@ profraw; cmstypes reads understated. Payloads removed; see run13.
 (~20 gates landed since run11: type_read32-39, internal_final60-74,
 pack_chgfmt_float16, cgats num/bin, plugin-dup verification; plus
 the corrupt-desc crash fix unblocking types4 under coverage)
+
+## run15 (2026-11-08)
+
+TOTAL: **82.38% lines / 95.59% functions / 89.28% regions / 76.53% branches**
+(up from run13's 82.02/95.59/88.71/75.95 — the corrupted run14 excluded;
+types4/ps2 crashes since fixed)
+
+| file | lines | fns | regions | branches |
+|---|---|---|---|---|
+| cmsalpha.c | 86.61% | 85.37% | 86.85% | 77.68% |
+| cmscam02.c | 91.26% | 100% | 98.05% | 84.00% |
+| cmscgats.c | 88.15% | 98.99% | 91.39% | 82.02% |
+| cmscnvrt.c | 82.84% | 100% | 91.47% | 75.94% |
+| cmserr.c | 88.67% | 100% | 93.99% | 75.00% |
+| cmsgamma.c | 91.04% | 100% | 95.10% | 83.18% |
+| cmsgmt.c | 86.35% | 100% | 89.94% | 68.49% |
+| cmshalf.c | 100% | 100% | 100% | — |
+| cmsintrp.c | 98.66% | 100% | 98.97% | 97.24% |
+| cmsio0.c | 85.35% | 100% | 91.69% | 79.32% |
+| cmsio1.c | 81.60% | 100% | 80.35% | 70.41% |
+| cmslut.c | 84.95% | 100% | 93.33% | 77.11% |
+| cmsmd5.c | 94.59% | 100% | 97.06% | 63.64% |
+| cmsmtrx.c | 100% | 100% | 100% | 100% |
+| cmsnamed.c | 83.03% | 100% | 95.53% | 76.60% |
+| cmsopt.c | 85.46% | 95.45% | 88.80% | 77.89% |
+| cmspack.c | 72.40% | 95.65% | 75.94% | 72.56% |
+| cmspcs.c | 97.43% | 100% | 98.67% | 95.11% |
+| cmsplugin.c | 85.59% | 100% | 93.19% | 78.37% |
+| cmsps2.c | 89.41% | 100% | 92.69% | 79.13% |
+| cmssamp.c | 86.01% | 100% | 87.89% | 67.12% |
+| cmssm.c | 90.70% | 100% | 96.05% | 86.73% |
+| cmstypes.c | 74.20% | 99.07% | 87.55% | 71.45% |
+| cmsvirt.c | 73.43% | 100% | 85.43% | 57.25% |
+| cmswtpnt.c | 93.55% | 100% | 99.33% | 86.67% |
+| cmsxform.c | 88.75% | 100% | 92.08% | 81.47% |
+
+(~20 gates landed since run13: internal_final75-83, cgats label/
+symbol/cube arms, pack planar+optimized formatters, alpha SE/planar,
+xform parallel+gamut, ps2 named+lock fix, gamma smooth/reverse/join,
+lut interp/gbd/cam/md5 + patchlut + mat-ident, sm destbp/desat,
+types4 vcgt/mft1/mpet/mhc2/dict/lut8-write arms)
+
+Note: c_parity_cam02 and c_parity_pcs intermittently fail under the
+instrumented coverage build only (timing-sensitive shared-static
+race like the ps2 one, now investigated); they pass on the normal
+build every time. Their profraw loss understates those two files.
