@@ -174,3 +174,42 @@ fn it8_malformed_inputs() {
         }
     }
 }
+
+/// The last IT8 surface — EnumPropertyMulti, GetDataRowCol,
+/// SetDataRowColDbl, TableCount, LoadFromIOhandler.
+#[test]
+fn it8_last_surface() {
+    let doc = "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 2\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n";
+    unsafe {
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        assert!(!h.is_null());
+        // TableCount
+        let nt = c::cmsIT8TableCount(h);
+        eprintln!("table count={nt}");
+        // GetDataRowCol — returns the cell's C string
+        let r1 = c::cmsIT8GetDataRowCol(h, 0, 0);
+        eprintln!("rowcol={:?}",
+            if r1.is_null() { None }
+            else { Some(std::ffi::CStr::from_ptr(r1)) });
+        // SetDataRowColDbl
+        let ok = c::cmsIT8SetDataRowColDbl(h, 1, 0, 7.5);
+        eprintln!("set dbl={ok}");
+        // EnumPropertyMulti — out-param is *mut *mut *mut i8
+        let mut names_arr: *mut *mut i8 = std::ptr::null_mut();
+        let np = c::cmsIT8EnumPropertyMulti(h,
+            b"PROP\0".as_ptr() as *const _, &mut names_arr);
+        eprintln!("prop-multi n={np}");
+        c::cmsIT8Free(h);
+        // cmsIT8LoadFromIOhandler is commented out in lcms2.h —
+        // not a real API
+        // rust side
+        let mut rh = cgats::It8::load_from_mem(None,
+            doc.as_bytes()).unwrap();
+        assert_eq!(rh.table_count(), nt, "table count");
+        let rc = rh.get_data_row_col(0, 0);
+        eprintln!("rust rowcol={rc:?}");
+        assert!(rh.set_data_row_col_dbl(1, 0, 7.5) == (ok != 0),
+            "set dbl");
+    }
+}

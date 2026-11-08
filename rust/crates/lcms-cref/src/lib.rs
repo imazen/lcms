@@ -647,6 +647,7 @@ unsafe extern "C" {
     pub fn cmsIT8EnumProperties(h: *mut c_void, names: *mut *mut *mut i8) -> u32;
     pub fn cmsIT8EnumPropertyMulti(h: *mut c_void, prop: *const i8, names: *mut *mut *mut i8) -> u32;
     pub fn cmsIT8GetDataRowCol(h: *mut c_void, row: i32, col: i32) -> *const i8;
+    pub fn cmsIT8TableCount(h: *mut c_void) -> u32;
     pub fn cmsIT8GetDataRowColDbl(h: *mut c_void, row: i32, col: i32) -> f64;
     pub fn cmsIT8SetDataRowCol(h: *mut c_void, row: i32, col: i32, val: *const i8) -> i32;
     pub fn cmsIT8SetDataRowColDbl(h: *mut c_void, row: i32, col: i32, val: f64) -> i32;
