@@ -15256,3 +15256,54 @@ fn stage_slice_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Remaining profile-creation fns — XYZ/NULL/RGB-primaries/
+/// gray variants.
+#[test]
+fn create_profile_arms2() {
+    unsafe {
+        // XYZ profile
+        let xyz = c::cmsCreateXYZProfile();
+        let nul = c::cmsCreateNULLProfile();
+        eprintln!("xyz={} null={}", !xyz.is_null(), !nul.is_null());
+        if !xyz.is_null() { c::cmsCloseProfile(xyz); }
+        if !nul.is_null() { c::cmsCloseProfile(nul); }
+        // RGB with custom primaries/transfer
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // cmsCIExyY: x, y, Y
+        let mut wp = [0.3127f64, 0.3290, 1.0];
+        // cmsCIExyYTRIPLE: Red{x,y,Y} Green Blue
+        let mut prim = [
+            0.6400f64, 0.3300, 1.0,   // red
+            0.3000, 0.6000, 1.0,      // green
+            0.1500, 0.0600, 1.0,      // blue
+        ];
+        let trc = [g, g, g];
+        let rgb = c::cmsCreateRGBProfile(wp.as_mut_ptr()
+            as *const _, prim.as_mut_ptr() as *const _,
+            trc.as_ptr() as *const *mut _);
+        eprintln!("rgb={}", !rgb.is_null());
+        if !rgb.is_null() {
+            let r8 = (4u32 << 16) | (3 << 3) | 1;
+            let srgb = c::cmsCreate_sRGBProfile();
+            let t = c::cmsCreateTransform(srgb, r8, rgb, r8, 0, 0);
+            eprintln!("rgb->srgb t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(srgb);
+            c::cmsCloseProfile(rgb);
+        }
+        // NULL primaries/wide-gamut variants
+        for (wp2, name) in [
+            ([0.3457f64, 0.3585, 1.0], "d50"),
+            ([0.0, 0.0, 0.0], "zero"),
+        ] {
+            let mut w = wp2;
+            let p = c::cmsCreateRGBProfile(w.as_mut_ptr()
+                as *const _, prim.as_mut_ptr() as *const _,
+                trc.as_ptr() as *const *mut _);
+            eprintln!("rgb-{name}={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
