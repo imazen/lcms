@@ -6639,3 +6639,48 @@ fn dict_wchar_deep() {
         c::cmsDictFree(d);
     }
 }
+
+/// io0 save/open edge internals — IOhandler round-trips, buffer
+/// sizing, raw-tag reads on missing tags.
+#[test]
+fn io0_edge_internals() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        // save to mem -> open via IOhandler
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("save={s} n={n}");
+        let io = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+            buf.as_ptr() as *mut _, n, b"r\0".as_ptr());
+        let rp = if !io.is_null() {
+            c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io)
+        } else { std::ptr::null_mut() };
+        eprintln!("io-open={}", !rp.is_null());
+        // read raw tag on present + missing tags
+        let mut raw = [0u8; 64];
+        let r1 = c::cmsReadRawTag(rp, 0x77747074,
+            raw.as_mut_ptr() as *mut _, 64);
+        eprintln!("raw-wtpt={r1}");
+        let r2 = c::cmsReadRawTag(rp, 0x78787878,
+            raw.as_mut_ptr() as *mut _, 64);
+        eprintln!("raw-missing={r2}");
+        // write tag on the IOhandler-opened profile then re-save
+        let io2 = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
+            buf.as_mut_ptr() as *mut _, buf.len() as u32,
+            b"w\0".as_ptr());
+        let mut n2 = 0u32;
+        let s2 = c::cmsSaveProfileToIOhandler(rp, io2);
+        let _ = n2;
+        eprintln!("save-ioh={s2}");
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        // cmsReadRawTag with NULL buffer returns needed size
+        let rp2 = c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n);
+        let r3 = c::cmsReadRawTag(rp2, 0x77747074,
+            std::ptr::null_mut(), 0);
+        eprintln!("raw-size={r3}");
+        if !rp2.is_null() { c::cmsCloseProfile(rp2); }
+        c::cmsCloseProfile(prof);
+    }
+}
