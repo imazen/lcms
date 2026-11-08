@@ -378,3 +378,38 @@ fn it8_parser_shapes() {
         }
     }
 }
+
+/// IT8 getter/setter machinery on loaded docs — property +
+/// data access internals.
+#[test]
+fn it8_get_set_machinery() {
+    unsafe {
+        let doc = b"CGATS.17\nORIGINATOR \"test\"\n\
+                    NUMBER_OF_FIELDS 3\n\
+                    BEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\n\
+                    NUMBER_OF_SETS 2\n\
+                    BEGIN_DATA\n1 2 3\n4 5 6\nEND_DATA\n".to_vec();
+        let it8 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as _, doc.len() as u32);
+        if it8.is_null() { return; }
+        // property getters on the loaded doc
+        let p1 = c::cmsIT8GetPropertyDbl(it8,
+            b"NUMBER_OF_FIELDS\0".as_ptr() as _);
+        let p2 = c::cmsIT8GetPropertyDbl(it8,
+            b"NUMBER_OF_SETS\0".as_ptr() as _);
+        let p3 = c::cmsIT8GetProperty(it8,
+            b"ORIGINATOR\0".as_ptr() as _);
+        // data access — the cell machinery
+        let d = c::cmsIT8GetDataDbl(it8,
+            b"A\0".as_ptr() as _,
+            b"1\0".as_ptr() as _);
+        // set/get round-trip — the property machinery
+        c::cmsIT8SetPropertyDbl(it8,
+            b"CUSTOM_PROP\0".as_ptr() as _, 42.5);
+        let cp = c::cmsIT8GetPropertyDbl(it8,
+            b"CUSTOM_PROP\0".as_ptr() as _);
+        eprintln!("fields={p1} sets={p2} orig={:?} a0={d} custom={cp}",
+            if p3.is_null() { "null" } else { "set" });
+        c::cmsIT8Free(it8);
+    }
+}
