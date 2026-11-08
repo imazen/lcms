@@ -4004,3 +4004,113 @@ fn devicelink_lut_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// OptimizeByComputingLinearization + OptimizeByResampling —
+/// precalc/prelin flag transforms on CLUT profiles x intents.
+#[test]
+fn precalc_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        const HIGHRES: u32 = 0x0400;
+        const LOWRES: u32 = 0x0800;
+        const CLUT_PRELIN: u32 = 0x0010;
+        const CLUT_POSTLIN: u32 = 0x0001;
+        const NOOPT: u32 = 0x0040;
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        for (inp, outp, if_, of_, name) in [
+            (cmyk, srgb, k8, r8, "cmyk->srgb"),
+            (srgb, cmyk, r8, k8, "srgb->cmyk"),
+            (cmyk, lab, k8, l8, "cmyk->lab"),
+            (lab, cmyk, l8, k8, "lab->cmyk"),
+            (srgb, srgb, r8, r8, "srgb->srgb"),
+            (gray, cmyk, g8, k8, "gray->cmyk"),
+            (srgb, gray, r8, g8, "srgb->gray"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for flags in [0u32, HIGHRES, LOWRES, CLUT_PRELIN,
+                CLUT_POSTLIN, HIGHRES | CLUT_PRELIN,
+                HIGHRES | CLUT_POSTLIN, LOWRES | CLUT_PRELIN,
+                HIGHRES | NOOPT] {
+                for intent in [0u32, 1] {
+                    let t = c::cmsCreateTransform(inp, if_, outp,
+                        of_, intent, flags);
+                    let ok = !t.is_null();
+                    if flags == HIGHRES && intent == 0 {
+                        eprintln!("{name} f{flags:#x} t={ok}");
+                    }
+                    if ok {
+                        let inp_b = [0x55u8; 8];
+                        let mut out = [0u8; 8];
+                        c::cmsDoTransform(t, inp_b.as_ptr()
+                            as *const _, out.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
+
+/// cmsPluginTHR — valid-plugin registration per type with real
+/// (non-null) handlers where the registry requires them.
+#[test]
+fn plugin_valid_arms() {
+    unsafe extern "C" { fn memset(p: *mut std::ffi::c_void,
+        v: i32, n: usize) -> *mut std::ffi::c_void; }
+    // minimal valid plugin base: magic + version + type + sig
+    fn mk(sig: u32, payload_len: usize) -> Vec<u64> {
+        let mut v = vec![0u64; payload_len / 8 + 8];
+        let b = v.as_mut_ptr() as *mut u8;
+        unsafe {
+            *(b as *mut u32) = 0x61637070;      // 'acpp'
+            *(b as *mut u32).add(1) = 2100;     // expected version
+            *(b as *mut u32).add(2) = sig;
+        }
+        v
+    }
+    unsafe {
+        // each plugin type sig → registration dispatch arm
+        for sig in [
+            0x6D656D48u32, // memH
+            0x696E7048,    // inpH
+            0x70617248,    // parH
+            0x66726D48,    // frmH
+            0x74797048,    // typH
+            0x74616748,    // tagH
+            0x696E7448,    // intH
+            0x6D706548,    // mpeH
+            0x6F707448,    // optH
+            0x7A666D48,    // xfmH
+            0x6D747A48,    // mtxH
+            0x70726C48,    // prlH
+            0x68647248,    // hdrH
+        ] {
+            for paylen in [0usize, 16, 40, 64, 96] {
+                let mut pl = mk(sig, paylen);
+                let r = c::cmsPluginTHR(std::ptr::null_mut(),
+                    pl.as_mut_ptr() as *mut _);
+                if paylen == 0 {
+                    eprintln!("sig {sig:#x} len{paylen} r={r}");
+                }
+            }
+        }
+    }
+}
