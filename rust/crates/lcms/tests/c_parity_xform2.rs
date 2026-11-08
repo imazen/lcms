@@ -3194,3 +3194,83 @@ fn conversion_arms9() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsTransform2DeviceLink — version/class/flag arms: Lab in/out
+/// v2 curve insertion, output-class BToA0, FORCE_CLUT,
+/// 8BITS_DEVICELINK, NOWHITEONWHITEFIXUP, NULL-Lut.
+#[test]
+fn devicelink_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let x8 = (9u32 << 16) | (3 << 3) | 1;
+        let force_clut = 0x0400u32;      // cmsFLAGS_FORCE_CLUT
+        let bits8 = 0x4000u32;         // cmsFLAGS_8BITS_DEVICELINK
+        let nowhite = 0x0080u32;       // cmsFLAGS_NOWHITEONWHITEFIXUP
+        // transform pair × version × flag combos
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, r8, l8, "srgb->lab"),
+            (lab, srgb, l8, r8, "lab->srgb"),
+            (srgb, lab2, r8, l8, "srgb->lab2"),
+            (lab2, srgb, l8, r8, "lab2->srgb"),
+            (srgb, xyz, r8, x8, "srgb->xyz"),
+            (xyz, srgb, x8, r8, "xyz->srgb"),
+            (gray, lab, g8, l8, "gray->lab"),
+            (lab, gray, l8, g8, "lab->gray"),
+            (srgb, cmyk, r8, k8, "srgb->cmyk"),
+            (cmyk, srgb, k8, r8, "cmyk->srgb"),
+            (cmyk, lab, k8, l8, "cmyk->lab"),
+            (lab, cmyk, l8, k8, "lab->cmyk"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for (ver, flags, fname) in [
+                (2.1f64, 0u32, "v2"),
+                (2.1, force_clut, "v2-clut"),
+                (2.1, bits8, "v2-8b"),
+                (2.1, force_clut | bits8, "v2-c8"),
+                (2.1, nowhite, "v2-nw"),
+                (4.0, 0, "v4"),
+                (4.4, 0, "v44"),
+                (4.4, force_clut, "v44-clut"),
+                (4.4, bits8, "v44-8b"),
+                (4.4, force_clut | bits8 | nowhite, "v44-all"),
+            ] {
+                let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                    0, 0);
+                if t.is_null() { continue; }
+                let dl = c::cmsTransform2DeviceLink(t, ver, flags);
+                eprintln!("{name}/{fname} dl={}", !dl.is_null());
+                if !dl.is_null() {
+                    let mut buf = vec![0u8; 1 << 22];
+                    let mut n = buf.len() as u32;
+                    let s = c::cmsSaveProfileToMem(dl,
+                        buf.as_mut_ptr() as *mut _, &mut n);
+                    let _ = s;
+                    c::cmsCloseProfile(dl);
+                }
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
