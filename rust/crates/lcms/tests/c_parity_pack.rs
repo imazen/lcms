@@ -2007,3 +2007,33 @@ fn multich_half_packers() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Extra-channel packers — EXTRA_SH on odd/missing
+/// channel counts via linearization devicelinks.
+#[test]
+fn multich_extra_packers() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for n in [3u32, 5, 7] {
+            let mut curves = vec![g; n as usize];
+            let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(),
+                match n {
+                    3 => 0x52474220, 5 => 0x35434C52,
+                    _ => 0x37434C52,
+                },
+                curves.as_mut_ptr());
+            // EXTRA_SH=7 — 1/2 extra channels
+            for (name, extra) in [("x1", 1u32), ("x2", 2)] {
+                let fmt = (0 << 16) | (n << 3) | 1
+                    | (extra << 7);
+                let t = c::cmsCreateTransform(dl, fmt,
+                    dl, fmt, 0, 0);
+                eprintln!("{n}ch-{name} t={}", !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(dl);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
