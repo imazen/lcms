@@ -484,3 +484,31 @@ fn optimizer_shape_variants() {
         let _ = c::cmsCloseProfile(lab4);
     }
 }
+
+/// Strided transforms on unusual stride/count combos — the
+/// stride machinery.
+#[test]
+fn stride_combos() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        assert!(!ct.is_null());
+        // cmsDoTransformStride — different strides + counts
+        let inp = vec![30000u16, 40000, 50000, 10000, 20000,
+                       30000, 50000, 60000, 7000];
+        let mut co = vec![0u16; 12];
+        for (size, stride) in [(1u32, 6u32), (2, 12), (3, 24),
+                               (2, 3), (1, 0)] {
+            c::cmsDoTransformStride(ct,
+                inp.as_ptr() as _, co.as_mut_ptr() as *mut _,
+                size, stride);
+        }
+        c::cmsDeleteTransform(ct);
+    }
+}
