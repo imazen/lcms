@@ -773,3 +773,49 @@ fn flags_attr_intent() {
         }
     }
 }
+
+/// Remaining open variants — memory/file/stream/IOhandler
+/// combos.
+#[test]
+fn remaining_open_variants() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // memory variants
+        let m1 = c::cmsOpenProfileFromMem(
+            d.as_ptr() as _, cn);
+        let m2 = c::cmsOpenProfileFromMemTHR(
+            std::ptr::null_mut(),
+            d.as_ptr() as _, cn);
+        eprintln!("mem={} thr={}", !m1.is_null(), !m2.is_null());
+        // IOhandler variants
+        let ioh = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            d.as_ptr() as *mut _, cn, b"r ".as_ptr() as _);
+        let p = c::cmsOpenProfileFromIOhandlerTHR(
+            std::ptr::null_mut(), ioh);
+        eprintln!("iohandler={}", !p.is_null());
+        // file variant — write then open
+        let path = b"/tmp/ccov-open.icc\0";
+        let f = c::cmsOpenIOhandlerFromFile(
+            std::ptr::null_mut(),
+            path.as_ptr() as _, b"wb\0".as_ptr() as _);
+        if !f.is_null() {
+            c::cmsSaveProfileToIOhandler(h, f);
+            let _ = f; // the handler closes on its own
+        }
+        let h2 = c::cmsOpenProfileFromFile(
+            path.as_ptr() as _, b"r ".as_ptr() as _);
+        eprintln!("file={}", !h2.is_null());
+        let _ = std::fs::remove_file("/tmp/ccov-open.icc");
+        if !m1.is_null() { c::cmsCloseProfile(m1); }
+        if !m2.is_null() { c::cmsCloseProfile(m2); }
+        if !p.is_null() { c::cmsCloseProfile(p); }
+        if !h2.is_null() { c::cmsCloseProfile(h2); }
+    }
+}
