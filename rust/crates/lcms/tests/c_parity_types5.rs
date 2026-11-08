@@ -2977,3 +2977,43 @@ fn final_type_writes() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Remaining array-type sigs — the array-type dispatch on
+/// more type bodies.
+#[test]
+fn array_type_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (ty, name) in [
+            (b"nui8" as &[u8], "nui8"), (b"nui16", "nui16"),
+            (b"nui32", "nui32"), (b"nui64", "nui64"),
+            (b"uf32", "uf32"), (b"uf64", "uf64"),
+            (b"s15f", "s15f"), (b"ut16", "ut16"),
+            (b"ut32", "ut32"), (b"uif8", "uif8"),
+            (b"uif16", "uif16"), (b"uif32", "uif32"),
+            (b"uif64", "uif64"), (b"sf32", "sf32"),
+            (b"uf16", "uf16")] {
+            // an array body on 'meta' — the array-type dispatch
+            let mut b = Vec::new();
+            b.extend_from_slice(ty);
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&2u32.to_be_bytes()); // count
+            b.extend_from_slice(&[0u8; 16]); // element data
+            let ok = c::cmsWriteRawTag(h, 0x6D657461,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x6D657461);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+    }
+}
