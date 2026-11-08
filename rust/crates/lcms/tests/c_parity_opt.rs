@@ -485,3 +485,48 @@ fn opt_eval_internals() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Float optimizer internals — float transforms under all opt
+/// flags call the precalculated float evaluators.
+#[test]
+fn opt_float_eval_internals() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let fl = 1u32 << 22;
+        let rfl = (4u32 << 16) | (3 << 3) | 4 | fl;
+        let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
+        let gfl = (3u32 << 16) | (1 << 3) | 4 | fl;
+        for f in [0x0002u32, 0x0040, 0x0200, 0x0002 | 0x0040,
+                  0x0002 | 0x0200, 0xffff] {
+            for (inp, outp, if_, of_, name) in [
+                (srgb, lab, rfl, lfl, "rgb-lab"),
+                (lab, srgb, lfl, rfl, "lab-rgb"),
+                (gray, lab, gfl, lfl, "gray-lab"),
+                (srgb, gray, rfl, gfl, "rgb-gray"),
+                (srgb, srgb, rfl, rfl, "rgb-rgb"),
+            ] {
+                let t = c::cmsCreateTransform(inp, if_, outp, of_,
+                    0, f);
+                if !t.is_null() {
+                    let ib = [0.5f32; 4];
+                    let mut ob = [0.5f32; 4];
+                    for v in [0.1f32, 0.5, 0.9] {
+                        let mut inp_ = [v; 4];
+                        c::cmsDoTransform(t, inp_.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _, 1);
+                    }
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            eprintln!("flags={f:#x} done");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
