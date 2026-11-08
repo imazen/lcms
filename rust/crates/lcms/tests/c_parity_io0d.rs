@@ -25597,3 +25597,84 @@ fn internal_final83_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0 residual — cmsWriteTag error arms:
+///   WriteTag on sig already WriteRawTag'd ("already
+///   saved as RAW"), unsupported-type for tag,
+///   unknown sig, ReadRawTag small-buffer clamp,
+///   WriteRawTag overwrite+read round-trips.
+#[test]
+fn internal_final84_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x58595A20);
+        c::cmsSetProfileVersion(p, 4.4);
+        // WriteRawTag then WriteTag same sig -> RAW err
+        let raw = [0x63u8, 0x75, 0x72, 0x76,
+            0, 0, 0, 0, 0, 0, 0, 1, 0x80, 0];
+        let w1 = c::cmsWriteRawTag(p, 0x6B545243,
+            raw.as_ptr() as *const _, raw.len() as u32);
+        let w2 = c::cmsWriteTag(p, 0x6B545243,
+            g as *const _);
+        eprintln!("raw-then-typed w1={w1} w2={w2}");
+        // unknown sig write
+        let w5 = c::cmsWriteTag(p, 0x7A7A7A7A,
+            g as *const _);
+        eprintln!("curve->zzzz w={w5}");
+        // ReadRawTag small-buffer clamp
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let pr = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        if !pr.is_null() {
+            for sz in [0u32, 1, 4, 6, 8, 12, 14, 16,
+                       64, 1024] {
+                let mut rb = [0xFFu8; 1024];
+                let rn = c::cmsReadRawTag(pr, 0x6B545243,
+                    rb.as_mut_ptr() as *mut _, sz);
+                eprintln!("  raw-read sz{sz} -> {rn}");
+            }
+            c::cmsCloseProfile(pr);
+        }
+        // WriteRawTag overwrite existing raw tag twice
+        let p2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p2, 0x6D6E7472);
+        c::cmsSetColorSpace(p2, 0x52474220);
+        c::cmsSetPCS(p2, 0x58595A20);
+        c::cmsSetProfileVersion(p2, 4.4);
+        for sz in [10u32, 5, 20] {
+            let rb2 = vec![0xABu8; sz as usize];
+            let w = c::cmsWriteRawTag(p2, 0x6B545243,
+                rb2.as_ptr() as *const _, sz);
+            eprintln!("overwrite sz{sz} w={w}");
+        }
+        let mut n2 = buf.len() as u32;
+        let sv = c::cmsSaveProfileToMem(p2,
+            buf.as_mut_ptr() as *mut _, &mut n2);
+        eprintln!("p2 sv={sv}");
+        // write-tag on a NULL/unknown-tag profile open
+        let p3 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p3, 0x6D6E7472);
+        c::cmsSetColorSpace(p3, 0x52474220);
+        c::cmsSetPCS(p3, 0x58595A20);
+        c::cmsSetProfileVersion(p3, 4.4);
+        for sig in [0x6D6E7472u32, 0x68656164,
+            0x77676774, 0x73706563, 0x70696963] {
+            let w = c::cmsWriteTag(p3, sig,
+                g as *const _);
+            eprintln!("sig {sig:#x} w={w}");
+        }
+        c::cmsCloseProfile(p);
+        c::cmsCloseProfile(p2);
+        c::cmsCloseProfile(p3);
+        c::cmsFreeToneCurve(g);
+    }
+}
