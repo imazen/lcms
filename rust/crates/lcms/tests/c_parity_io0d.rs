@@ -6914,7 +6914,7 @@ fn io0_tag_iteration() {
             let n = c::cmsGetTagCount(p);
             eprintln!("{name} tags={n}");
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i);
+                let sig = c::cmsGetTagSignature(p, i as u32);
                 let ist = c::cmsIsTag(p, sig);
                 let _ = (sig, ist);
             }
@@ -6933,7 +6933,7 @@ fn io0_tag_iteration() {
             if p.is_null() { continue; }
             let n = c::cmsGetTagCount(p);
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i);
+                let sig = c::cmsGetTagSignature(p, i as u32);
                 let _ = sig;
             }
             eprintln!("{f} tags={n}");
@@ -7241,7 +7241,7 @@ fn tag_dup_internals() {
             // object
             let n = c::cmsGetTagCount(p);
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i);
+                let sig = c::cmsGetTagSignature(p, i as u32);
                 let t1 = c::cmsReadTag(p, sig);
                 let t2 = c::cmsReadTag(p, sig);
                 let _ = (t1, t2);
@@ -7258,7 +7258,7 @@ fn tag_dup_internals() {
         ] {
             let n = c::cmsGetTagCount(p);
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i);
+                let sig = c::cmsGetTagSignature(p, i as u32);
                 let t1 = c::cmsReadTag(p, sig);
                 let t2 = c::cmsReadTag(p, sig);
                 let _ = (t1, t2);
@@ -7884,6 +7884,93 @@ fn ncl2_read_arms() {
             } else { std::ptr::null_mut() };
             eprintln!("{name} s={s} read={}", !tag.is_null());
             if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
+
+/// Type_*_Free/Type_*_Dup inner arms — v2 profiles carrying
+/// each tag type read twice + closed so the free/dup bodies run.
+#[test]
+fn tag_free_dup_batch() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // corpus v2 profiles carry desc/curv/para/data/chrm/clro/
+        // calt/mft1/mft2/ncl2/mluc/pseq/meas/mAB/mBA/crdi/mpet/
+        // scrn/view/XYZ/psid tags — reading each twice + closing
+        // covers the Free inner branches; reading twice covers Dup
+        for f in ["labv2lcms2.icc", "sRGBlcms2.icc", "lcms2cmyk.icc",
+                  "graylcms2.icc", "gray3lcms2.icc", "aRGBlcms2.icc",
+                  "glablcms2.icc", "xyzlcms2.icc", "nullcms2.icc",
+                  "limitlcms2.icc", "linlcms2.icc", "bchslcms2.icc",
+                  "lcms2link.icc", "lcms2link2.icc", "brightness.icc",
+                  "labv4lcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            // iterate the tag directory, read each twice
+            let n = c::cmsGetTagCount(p);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(p, i as u32);
+                let t1 = c::cmsReadTag(p, sig);
+                let t2 = c::cmsReadTag(p, sig);
+                let _ = (t1, t2);
+            }
+            c::cmsCloseProfile(p);
+        }
+        // also write+read each raw-tag type on a v2 profile
+        for (raw, sig) in [
+            ({let mut v = Vec::new();
+              v.extend_from_slice(&0x64657363u32.to_be_bytes());
+              v.extend_from_slice(&[0; 4]);
+              v.extend_from_slice(&5u32.to_be_bytes());
+              v.extend_from_slice(b"abcd\0");
+              v.extend_from_slice(&[0; 3]); v }, 0x64657363u32),
+            ({let mut v = Vec::new();
+              v.extend_from_slice(&0x63757276u32.to_be_bytes());
+              v.extend_from_slice(&[0; 4]);
+              v.extend_from_slice(&4u32.to_be_bytes());
+              for i in 0..4u16 {
+                  v.extend_from_slice(&(i * 16384).to_be_bytes());
+              } v }, 0x72545243u32),
+            ({let mut v = Vec::new();
+              v.extend_from_slice(&0x70617261u32.to_be_bytes());
+              v.extend_from_slice(&[0; 4]);
+              v.extend_from_slice(&1u16.to_be_bytes());
+              v.extend_from_slice(&[0; 2]);
+              for vv in [0x00023333u32, 0, 0, 0, 0] {
+                  v.extend_from_slice(&vv.to_be_bytes());
+              } v }, 0x72545243u32),
+            ({let mut v = Vec::new();
+              v.extend_from_slice(&0x64617461u32.to_be_bytes());
+              v.extend_from_slice(&[0; 4]);
+              v.extend_from_slice(b"data\0"); v }, 0x70733073u32),
+            ({let mut v = Vec::new();
+              v.extend_from_slice(&0x58595a20u32.to_be_bytes());
+              v.extend_from_slice(&[0; 4]);
+              for vv in [0x0000f6d6u32, 0x00010000, 0x0000d32d] {
+                  v.extend_from_slice(&vv.to_be_bytes());
+              } v }, 0x77747074u32),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 2.1);
+            c::cmsWriteRawTag(prof, sig,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut nn = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut nn);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, nn)
+            } else { std::ptr::null_mut() };
+            if !rp.is_null() {
+                let t1 = c::cmsReadTag(rp, sig);
+                let t2 = c::cmsReadTag(rp, sig);
+                let _ = (t1, t2);
+                c::cmsCloseProfile(rp);
+            }
             c::cmsCloseProfile(prof);
         }
     }
