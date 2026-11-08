@@ -5484,3 +5484,71 @@ fn lut_stage_eval_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmslut residual — OptimizePipeline on float + 4ch
+///   + long pipelines: float clut, 4->3/4->4, 6-stage.
+#[test]
+fn lut_optimize2_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // float clut pipeline + 4ch + long pipelines
+        for (inch, outch, nstages, name) in [
+            (3u32, 3u32, 1usize, "fclut-33"),
+            (3, 3, 3, "cv-fclut-cv"),
+            (4, 3, 2, "4in"),
+            (3, 4, 2, "4out"),
+            (4, 4, 3, "44"),
+            (3, 3, 6, "6stage"),
+        ] {
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), inch, outch);
+            for st in 0..nstages as i32 {
+                if st == 1 || nstages as i32 == 1 {
+                    let dims = vec![3u32; 15];
+                    let npts = 3usize.pow(inch.min(4));
+                    let grid = vec![0.5f32;
+                        npts * outch as usize];
+                    c::cmsPipelineInsertStage(pipe, st,
+                        c::cmsStageAllocCLutFloatGranular(
+                            std::ptr::null_mut(),
+                            dims.as_ptr(), inch, outch,
+                            grid.as_ptr()));
+                } else {
+                    let tcs: Vec<*mut c::ToneCurve> =
+                        vec![g;
+                            (if st == 0 { inch }
+                             else { outch }) as usize];
+                    c::cmsPipelineInsertStage(pipe, st,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(),
+                            tcs.len() as u32,
+                            tcs.as_ptr() as *mut _));
+                }
+            }
+            let lp = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(lp, 0x6C696E6B);
+            c::cmsSetColorSpace(lp, 0x52474220);
+            c::cmsSetPCS(lp, 0x4C616220);
+            c::cmsSetProfileVersion(lp, 4.4);
+            c::cmsWriteTag(lp, 0x41324230,
+                pipe as *const _);
+            for fl in [0u32, 0x0100, 0x2000] {
+                let t = c::cmsCreateTransform(lp,
+                    frgb, lab4, flab, 0, fl);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{name} ok");
+            c::cmsCloseProfile(lp);
+            c::cmsPipelineFree(pipe);
+            c::cmsFreeToneCurve(g);
+        }
+        c::cmsCloseProfile(lab4);
+    }
+}
