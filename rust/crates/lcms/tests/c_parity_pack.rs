@@ -1687,3 +1687,28 @@ fn devicelink_transform_eval() {
         }
     }
 }
+
+/// cmsChangeBuffersFormat on the devicelinks — the format-
+/// change machinery on more channel counts.
+#[test]
+fn change_buffers_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        let ct = c::cmsCreateTransform(dl,
+            (0 << 16) | (4 << 3) | 1, dl,
+            (0 << 16) | (4 << 3) | 2, 0, 0);
+        eprintln!("t={}", !ct.is_null());
+        if !ct.is_null() {
+            let ok = c::cmsChangeBuffersFormat(ct,
+                (1 << 22) | (0 << 16) | (4 << 3) | 4,
+                (1 << 22) | (0 << 16) | (4 << 3) | 0);
+            eprintln!("change={ok}");
+            c::cmsDeleteTransform(ct);
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
