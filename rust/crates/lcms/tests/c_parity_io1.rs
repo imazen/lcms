@@ -1251,3 +1251,37 @@ fn devicelink_lut_internals() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Float-tag reader internals — DToB/BToD mpet on Lab-PCS +
+/// different device colorspaces.
+#[test]
+fn float_reader_colorspaces() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (cs, name) in [
+            (0x52474220u32, "rgb"), (0x434D594B, "cmyk"),
+            (0x58595A20, "xyz"), (0x4C756976, "luv"),
+        ] {
+            let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+            c::cmsSetDeviceClass(inp, 0x6d6e7472);
+            c::cmsSetColorSpace(inp, cs);
+            c::cmsSetPCS(inp, 0x4C616220);
+            c::cmsSetProfileVersion(inp, 4.4);
+            c::cmsWriteTag(inp, 0x44324230, p as *const _);
+            let t = c::cmsCreateTransform(inp, r16, lab, l16, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(inp);
+        }
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
