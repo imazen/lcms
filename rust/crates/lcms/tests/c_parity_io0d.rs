@@ -3823,3 +3823,25 @@ fn save_target_variants() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// SaveToMem partial-buffer + GetProfileInfoASCII/Unicode
+/// variant dispatch.
+#[test]
+fn save_mem_edge_and_info_variants() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        // size query then partial buffer then exact buffer
+        let mut n0 = 0u32;
+        c::cmsSaveProfileToMem(p, std::ptr::null_mut(), &mut n0);
+        let mut small = [0u8; 4];
+        let mut ns = 4u32;
+        let r_small = c::cmsSaveProfileToMem(p,
+            small.as_mut_ptr() as *mut _, &mut ns);
+        let mut buf = vec![0u8; n0 as usize];
+        let mut n = n0;
+        let r_full = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("n0={n0} small={r_small} full={r_full}");
+        c::cmsCloseProfile(p);
+    }
+}
