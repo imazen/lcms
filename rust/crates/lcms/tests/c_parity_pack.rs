@@ -4646,3 +4646,83 @@ fn pack_float_in_arms() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmspack residual — T_PLANAR float input/output
+///   branches + PackPlanarBytes premul/extra arms.
+#[test]
+fn pack_planar_float_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let frgb = (4u32 << 16) | (3 << 3) | 1;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // planar float INPUT on xyz/lab -> srgb
+        for (in_prof, fin, name) in [
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
+                | (3 << 3) | 4, "xyzf-plan-in"),
+            (lab4, (1u32 << 22) | (10 << 16) | (1 << 12)
+                | (3 << 3) | 4, "labf-plan-in"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
+                | (1 << 10) | (3 << 3) | 4, "xyzf-plan-ds"),
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
+                | (3 << 3) | 8, "xyzd-plan-in"),
+        ] {
+            let t = c::cmsCreateTransform(in_prof, fin,
+                srgb, frgb, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0.5f32; 8];
+                let mut dst = [0u8; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // planar float OUTPUT srgb -> xyz/lab
+        for (out_prof, fout, name) in [
+            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
+                | (3 << 3) | 4, "xyzf-plan-out"),
+            (lab4, (1u32 << 22) | (10 << 16) | (1 << 12)
+                | (3 << 3) | 4, "labf-plan-out"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, frgb,
+                out_prof, fout, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [128u8, 64, 200];
+                let mut dst = vec![0u8; 24];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // planar+premul u8 output variants
+        for (fout, name) in [
+            ((4u32 << 16) | (1 << 12) | (1 << 7)
+                | (4 << 3) | 1, "plan-ex1-premul"),
+            ((4u32 << 16) | (1 << 12) | (1 << 7)
+                | (1 << 14) | (4 << 3) | 1, "plan-ex1-sf"),
+            ((4u32 << 16) | (1 << 12) | (2 << 7)
+                | (5 << 3) | 1, "plan-ex2"),
+        ] {
+            let t = c::cmsCreateTransform(lab4, flab,
+                srgb, fout, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x8000u16; 3];
+                let mut dst = [0u8; 16];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(xyz);
+    }
+}
