@@ -734,3 +734,65 @@ remaining axis — the mass is cmstypes LUT-reader/writer internals and
 the cmspack pack-table variants. The total dipped slightly vs round-16
 (one instrumented binary's coverage lost to the known clang
 codegen failures).
+
+### round 18 — MCH packers + io0 tag dispatch + lut/mpe readers
+
+75.57% lines / 94.79% fns / 83.98% regions / 67.39% branches.
+
+| file | lines | fns |
+|---|---|---|
+| cmstypes.c | 81.97% | 99.07% |
+| cmspack.c | 73.30% | 94.93% |
+| cmscgats.c | 78.83% | 96.97% |
+| cmsvirt.c | 83.81% | 100% |
+| cmsopt.c | 84.61% | 95.45% |
+| cmsio0.c | 88.96% | 100% |
+| cmsio1.c | 76.70% | 100% |
+| cmsplugin.c | 90.63% | 100% |
+| cmsnamed.c | 94.08% | 100% |
+| cmsps2.c | 83.86% | 93.75% |
+| cmslut.c | 91.07% | 100% |
+| cmsxform.c | 86.76% | 98.21% |
+| cmspcs.c | 93.55% | 100% |
+| cmssamp.c | 62.11% | 85.71% |
+| cmscnvrt.c | 76.17% | 91.30% |
+| cmsgamma.c | 87.08% | 100% |
+| cmsintrp.c | 98.85% | 100% |
+| cmswtpnt.c | 98.66% | 100% |
+| cmserr.c | 89.62% | 100% |
+
+Gates added since round 17: mch6_packers, mch_8_9_10_packers,
+colorspace_intent_internals, per_sig_type_dispatch,
+per_sig_dispatch2, multi_entry_sigs, multi_entry_variants,
+multi_entry_sig_variants, multi_entry_sig_dispatch,
+remaining_sig_dispatch, all_text_sigs, remaining_text_sigs,
+text_type_sigs, named_color_sig_dispatch, float_reader_combos,
+float_reader_combos2, float_reader_normalization_arms,
+float_reader_per_cs, float_reader_colorspaces, float_reader_lab_arms,
+float_tag_readers2, float_tag_remaining, float_tag_channel_arms,
+float_normalization_colorspaces, devicelink_lut_internals,
+lut_reader_all_arms, lut_reader_arms, preview_lut_reader,
+lut_reader_dispatch_all, named_lab_stage_evals, lab_stage_evals2,
+mab_element_readers, mab_reader_offsets, mpe_reader_element_arms,
+mpe_remaining_elements, lut8_16_readers, lut_reader_elements,
+lut_readers_internals2, mlu_dict_internals, it8_writer_internals,
+it8_parser_arms, inklimit_bchs_builders, virt_builders,
+mab_devicelink_sigs, struct_array_tags, pseq_ucrbg_scrn_tags,
+ucrbg_resp_scrn_tags, scrn_resp_named_tags, resp_gamma_tags,
+pseq_id_mab_tags, multi_numeric_arrays, named_color_sig_dispatch,
+multi_entry_payloads, dict_mpet_sig_dispatch.
+
+cmsio0 jumped 81->89% lines (100% fns) on the per-sig type-dispatch
+sweep; cmslut 82->91% (LUT reader element loops); cmsnamed 81->94%;
+cmsvirt 70->84%; cmspcs 84->94%; cmsopt 81->85%. cmssamp dropped
+68->62% — a covcref binary under-reports the tail when a test panics
+mid-sweep (the three known clang-codegen failures: cam02, pcs,
+xform2 — 13 gates). Function coverage is saturated at 94.79%; the
+remaining 65 uncovered fns are unreachable-by-API internals.
+
+Remaining mass (uncovered lines): cmstypes 617 (mAB/mBA writer
+element-order paths, curve-element writers, MPE readback shapes),
+cmspack 578 (per-format packer bodies — one function per
+format-word cell), cmscgats 381 (IT8 lexer arms, uncommon parse
+shapes), cmsopt 169, cmsio0 150, cmscnvrt 148, cmsio1 134,
+cmssamp 122, cmsvirt 120, cmsps2 117, cmsgamma 116.
