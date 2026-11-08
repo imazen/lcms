@@ -3724,3 +3724,110 @@ fn joincurves_arms() {
         c::cmsFreeToneCurve(gl);
     }
 }
+
+/// DefaultICCintents — multiprofile chains, abstract/devicelink
+/// mid-chains, NONEGATIVES clip, colorspace-mismatch rejects.
+#[test]
+fn default_icc_intents_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        // abstract-class profile (mid-chain arm)
+        let abst = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(abst, 0x61627374);   // 'abst'
+        c::cmsSetColorSpace(abst, 0x4C616220);    // Lab
+        c::cmsSetPCS(abst, 0x4C616220);
+        c::cmsSetProfileVersion(abst, 4.4);
+        // devicelink mid-chain (srgb->srgb pipeline)
+        let link = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(link, 0x6c696e6b);
+        c::cmsSetColorSpace(link, 0x52474220);
+        c::cmsSetPCS(link, 0x52474220);
+        c::cmsSetProfileVersion(link, 4.4);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        c::cmsWriteTag(link, 0x41324230, p as *const _);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        const NONEG: u32 = 0x0002;
+        let chains: Vec<(Vec<*mut std::ffi::c_void>, &str)> = vec![
+            (vec![srgb, lab, cmyk], "srgb-lab-cmyk"),
+            (vec![srgb, xyz, lab, cmyk], "srgb-xyz-lab-cmyk"),
+            (vec![srgb, abst, cmyk], "srgb-abst-cmyk"),
+            (vec![srgb, abst, lab, cmyk], "srgb-abst-lab-cmyk"),
+            (vec![gray, lab, srgb], "gray-lab-srgb"),
+            (vec![srgb, link, cmyk], "srgb-link-cmyk"),
+            (vec![lab, abst, srgb], "lab-abst-srgb"),
+            (vec![srgb, xyz, cmyk], "srgb-xyz-cmyk"),
+            (vec![srgb], "single"),
+            (vec![abst], "abst-single"),
+            (vec![link], "link-single"),
+        ];
+        for intent in [0u32, 1, 3] {
+            for flags in [0u32, NONEG] {
+                for (chain, name) in &chains {
+                    if chain.iter().any(|p| p.is_null()) { continue; }
+                    let n = chain.len() as i32;
+                    let t = c::cmsCreateMultiprofileTransform(
+                        chain.as_ptr() as *mut _, n, r8, k8,
+                        intent, flags);
+                    eprintln!("{name} i{intent} f{flags:#x} t={}",
+                        !t.is_null());
+                    if !t.is_null() {
+                        let inp_b = [0x55u8; 8];
+                        let mut out = [0u8; 8];
+                        c::cmsDoTransform(t, inp_b.as_ptr()
+                            as *const _, out.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+        }
+        // proofing transforms — proof profile mid-chain
+        if !cmyk.is_null() {
+            for pi in [0u32, 1] {
+                let t = c::cmsCreateProofingTransform(
+                    srgb, r8, cmyk, k8, cmyk, 0, pi, 0);
+                eprintln!("proof sr-cm-cm pi{pi} t={}",
+                    !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                let t2 = c::cmsCreateProofingTransform(
+                    srgb, r8, lab, l8, cmyk, 0, pi, 0);
+                eprintln!("proof sr-lb-cm pi{pi} t={}",
+                    !t2.is_null());
+                if !t2.is_null() { c::cmsDeleteTransform(t2); }
+                let t3 = c::cmsCreateProofingTransform(
+                    gray, g8, srgb, r8, cmyk, 0, pi, 0);
+                eprintln!("proof g-sr-cm pi{pi} t={}",
+                    !t3.is_null());
+                if !t3.is_null() { c::cmsDeleteTransform(t3); }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(link);
+        c::cmsCloseProfile(abst);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
