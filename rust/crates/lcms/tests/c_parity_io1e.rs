@@ -2427,3 +2427,23 @@ fn view_resave() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'resp'/'rcs2' — the response-curve-set machinery.
+#[test]
+fn response_curve_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // a named-color payload on 'resp'/'rcs2' (the
+        // response-curve sigs take a named-color list)
+        let list = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 1, b"P ".as_ptr() as _,
+            b"S ".as_ptr() as _);
+        for (sig, name) in [
+            (0x72657370u32, "resp"), (0x72637332u32, "rcs2")] {
+            let ok = c::cmsWriteTag(h, sig,
+                list as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
