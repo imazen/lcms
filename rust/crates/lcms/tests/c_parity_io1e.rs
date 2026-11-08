@@ -1483,3 +1483,31 @@ fn unusual_profile_serialize() {
         }
     }
 }
+
+/// Write-side type dispatch — the remaining type objects on
+/// 'meta' (each through decideType + the type writer).
+#[test]
+fn write_side_dispatch() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // each type object on 'meta' — the write-side dispatch
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"x\0".as_ptr() as *const u8);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        // NOTE: 'meta' is dict-typed — the dict Dup/Write
+        // dispatch NULL-derefs on a non-dict payload (oracle
+        // UB). Only the dict write is valid; mlu/xyz/gamma/sig
+        // crash on the dict-typed dispatch.
+        let ok = c::cmsWriteTag(h, 0x6D657461,
+            dict as *mut std::ffi::c_void);
+        eprintln!("dict write={ok}");
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+        c::cmsDictFree(dict);
+        c::cmsFreeToneCurve(g);
+    }
+}
