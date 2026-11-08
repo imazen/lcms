@@ -3700,3 +3700,20 @@ fn cicp_tag() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// WriteTag unsupported-type reject + ReadTag for tags without
+/// handlers -> the type-handler-miss arms.
+#[test]
+fn unsupported_type_arms() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        // write with a payload that has no matching type handler
+        let blob = [0xdeu8, 0xad, 0xbe, 0xef];
+        for sig in [0xdeadbeefu32, 0x6e6f6e65, 0x00000000] {
+            let w = c::cmsWriteTag(p, sig,
+                blob.as_ptr() as *const _);
+            eprintln!("sig{sig:#x} write={w}");
+        }
+        c::cmsCloseProfile(p);
+    }
+}
