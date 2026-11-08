@@ -231,3 +231,55 @@ fn bchsw_tags() {
         let _ = c::cmsCloseProfile(ch);
     }
 }
+
+/// cmsTransform2DeviceLink — bake a transform into a devicelink
+/// profile, across flag combos + versions.
+#[test]
+fn transform2devicelink() {
+    unsafe {
+        for (name, version, dflags) in [
+            ("v43", 4.3f64, 0u32),
+            ("v22", 2.2, 0),
+            ("guessclass", 4.3, 0x0020),      // GUESSDEVICECLASS
+            ("8bit", 4.3, 0x0008),            // 8BITS_DEVICELINK
+            ("keepseq", 4.3, 0x0080),         // KEEP_SEQUENCE
+            ("guess+8bit", 4.3, 0x0028),
+        ] {
+            // C: srgb -> Lab4 transform, bake to devicelink
+            let hi = c::cmsCreate_sRGBProfile();
+            let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+            let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+                0, 0);
+            let _ = c::cmsCloseProfile(hi);
+            let _ = c::cmsCloseProfile(ho);
+            if ct.is_null() { continue; }
+            let cdl = c::cmsTransform2DeviceLink(ct, version, dflags);
+            let c_null = cdl.is_null();
+            if !c_null {
+                let cclass = c::cmsGetDeviceClass(cdl);
+                eprintln!("{name} C dl class={cclass:#x}");
+                c::cmsCloseProfile(cdl);
+            }
+            c::cmsDeleteTransform(ct);
+            // Rust side
+            let mut rp1 = virt::create_srgb_profile(None).unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None)
+                .unwrap();
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [0u32; 2];
+            let adapt = [1.0f64; 2];
+            let mut rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, out_fmt, 0);
+            if let Some(ref mut t) = rt {
+                let rdl = virt::transform2_device_link(t, version,
+                    dflags);
+                assert_eq!(c_null, rdl.is_none(),
+                    "{name} dl status");
+            }
+        }
+    }
+}
