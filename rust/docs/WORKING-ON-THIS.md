@@ -211,3 +211,34 @@ Line-level gaps remain in cmspack (~135 formatter variants —
 status covered, not every eval), cmstypes (Type_* Read/Dup/Free
 on unusual payloads), cmsio1 (tag-serialization internals),
 cmscgats (parser error paths), cmscnvrt (intent-link internals).
+
+## Round 3 — internals sweep (through aa37e5b3)
+
+**66.46% lines / 84.04% functions** measured after the API
+sweep; ~20 more gates landed since (cross-format/planar/packed
+evals, 33 crafted Type_*_Read cases, all-tag sweep, unusual
+class chains, devicelink transform, last IT8 surface,
+change-buffers, linked tags, meas/scrn/rXYZ/kTRC/bkpt/chrm/
+lumi/tech/ciis/clro sigs, v2/v4 type variants, edge payloads).
+
+Every exported `cms*` function is exercised; every `cmsIT8*`
+function; 33 Type_* read paths via crafted raw tags; both
+formatter sides (Unroll*/Pack*) across 17x17 format pairs;
+v2-vs-v4 stored-type dispatch ('text'/'desc'/'curv' vs
+'mluc'/'mluc'/'para').
+
+Remaining line-level gaps: cmspack (~49%, the ~135 formatter
+variant bodies beyond the eval'd combos), cmstypes (~51%, the
+MPE/pipeline serialization internals + Dup/Free on exotic
+payloads), cmsio1 (~64%, tag-serialization internals),
+cmscnvrt/cmsgats/cmsvirt (~66-67%).
+
+Known divergences (pinned in tests): linked-tag serialization
+(C shares the data block, 524b; Rust writes a separate 20b
+block, 544b); BCHSW abstract-profile eval (float-LUT reader
+produces wrong values). Port bugs fixed this campaign: 17
+(decide_* type-mismatch accepts, cgats Skip-vs-Check +
+isidchar/isfirstidchar strictness, plus the earlier 15).
+Deferred: 'view'/'calt'/'vcgt'/'gamt' writes segfault on the
+display-class profile payload shapes; cmsIT8LoadFromIOhandler
+is commented out in lcms2.h (not a real API).
