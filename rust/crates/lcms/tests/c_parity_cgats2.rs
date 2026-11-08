@@ -821,3 +821,52 @@ fn cube_parse_arms() {
         }
     }
 }
+
+/// IT8 writer modes — save-to-mem serializes each WriteAs mode
+/// (uncooked/stringify/hex/binary/pair) then reparse.
+#[test]
+fn it8_writer_modes() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(h, b"CGATS.17\0".as_ptr() as *const i8);
+        c::cmsIT8SetComment(h, b"a comment\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyStr(h, b"PSTR\0".as_ptr() as *const i8,
+            b"str val\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyDbl(h, b"PDBL\0".as_ptr() as *const i8,
+            1.5);
+        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8,
+            0xABCD);
+        c::cmsIT8SetPropertyMulti(h, b"PMULTI\0".as_ptr() as *const i8,
+            b"sub\0".as_ptr() as *const i8,
+            b"val\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyUncooked(h, b"PUNC\0".as_ptr() as *const i8,
+            b"0b1011\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 1, b"V\0".as_ptr() as *const i8);
+        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
+            b"ID\0".as_ptr() as *const i8, b"r1\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataDbl(h, b"r1\0".as_ptr() as *const i8,
+            b"V\0".as_ptr() as *const i8, 0.25);
+        let mut buf = vec![0u8; 1 << 16];
+        let mut n = buf.len() as u32;
+        let s = c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _,
+            &mut n);
+        eprintln!("save={s} n={n}");
+        if s != 0 {
+            let txt = std::str::from_utf8(&buf[..n as usize])
+                .unwrap_or("");
+            eprintln!("---\n{txt}\n---");
+            let h2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                buf.as_ptr() as *const _, n);
+            eprintln!("reparse={}", !h2.is_null());
+            if !h2.is_null() { c::cmsIT8Free(h2); }
+        }
+        c::cmsIT8Free(h);
+        // $INCLUDE directive — lexer arm (file not found)
+        let inc = b"CGATS.17\n$INCLUDE \"/nonexistent.it8\"\n";
+        let h3 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            inc.as_ptr() as *const _, inc.len() as u32);
+        eprintln!("include={}", !h3.is_null());
+        if !h3.is_null() { c::cmsIT8Free(h3); }
+    }
+}
