@@ -6712,3 +6712,93 @@ fn pcs_mix_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsopt residual — PatchLUT "channels not supported" arm
+///   (nChannelsIn outside {1,3,4}) via 2ch/5ch CLUT
+///   pipelines through the resampling optimizer.
+#[test]
+fn opt_channel_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let null5 = open("nullcms2.icc");
+        // profiles with unusual input channel counts ->
+        //   FORCE_CLUT triggers resampling -> PatchLUT on
+        //   non-{1,3,4}-ch CLUTs hits the reject arm
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        // MCH2 (2ch) profile via placeholder + clut
+        let mut m2 = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(m2, 0x6D6E7472);
+        c::cmsSetColorSpace(m2, 0x32434C52); // '2CLR'
+        c::cmsSetPCS(m2, 0x4C616220);
+        c::cmsSetProfileVersion(m2, 4.4);
+        let c2 = c::cmsStageAllocCLut16bit(ctx, 4, 2, 3,
+            vec![0x4000u16; 4 * 4 * 3].as_ptr());
+        let l2 = c::cmsPipelineAlloc(ctx, 2, 3);
+        c::cmsPipelineInsertStage(l2, 1, c2);
+        c::cmsWriteTag(m2, 0x41324230, l2 as *const _);
+        {
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            if c::cmsSaveProfileToMem(m2,
+                sb.as_mut_ptr() as *mut _, &mut sn) != 0 {
+                let p2 = c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn);
+                if !p2.is_null() {
+                    c::cmsCloseProfile(m2);
+                    m2 = p2; } } }
+        // MCH5 (5ch) profile via placeholder + clut
+        let mut m5 = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(m5, 0x6D6E7472);
+        c::cmsSetColorSpace(m5, 0x35434C52); // '5CLR'
+        c::cmsSetPCS(m5, 0x4C616220);
+        c::cmsSetProfileVersion(m5, 4.4);
+        let c5 = c::cmsStageAllocCLut16bit(ctx, 4, 5, 3,
+            vec![0x4000u16; 4 * 4 * 4 * 4 * 4 * 3].as_ptr());
+        let l5 = c::cmsPipelineAlloc(ctx, 5, 3);
+        c::cmsPipelineInsertStage(l5, 1, c5);
+        c::cmsWriteTag(m5, 0x41324230, l5 as *const _);
+        {
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            if c::cmsSaveProfileToMem(m5,
+                sb.as_mut_ptr() as *mut _, &mut sn) != 0 {
+                let p2 = c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn);
+                if !p2.is_null() {
+                    c::cmsCloseProfile(m5);
+                    m5 = p2; } } }
+        // transforms with FORCE_CLUT + NOOPTIMIZE off ->
+        //   PatchLUT at unsupported channel counts
+        for (a, fa, b, fb, nm) in [
+            (m2, f16(16, 2), srgb, f16(4, 3), "2cl"),
+            (m5, f16(19, 5), srgb, f16(4, 3), "5cl"),
+            (null5, f16(19, 5), srgb, f16(4, 3), "n5"),
+            (srgb, f16(4, 3), m2, f16(16, 2), ">2cl"),
+            (srgb, f16(4, 3), m5, f16(19, 5), ">5cl"),
+        ] {
+            for flags in [0u32, 0x0040 /*FORCE_CLUT*/ ] {
+                let t = c::cmsCreateTransform(a, fa,
+                    b, fb, 0, flags);
+                eprintln!("{nm} f{flags:#x}: {}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x4000u16; 8];
+                    let mut ob = [0u16; 8];
+                    c::cmsDoTransform(t,
+                        ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t); } } }
+        for p in [srgb, null5, m2, m5] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
