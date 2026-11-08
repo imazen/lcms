@@ -1078,3 +1078,60 @@ fn it8_data_arms3() {
         }
     }
 }
+
+/// cmscgats InSymbol/HeaderSection/ParseIT8/SaveHeader deep arms.
+#[test]
+fn it8_deep_arms2() {
+    unsafe {
+        let docs: Vec<(&[u8], &str)> = vec![
+            // string escapes inside quoted values
+            (b"IT8FILE\nP1 \"a\\nb\\tc\\\\d\\u{1f600}e\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "esc-str"),
+            // multiple lines + nested escapes
+            (b"IT8FILE\nP1 \"line1\\\nline2\\\"\nend\"\n", "multi-esc"),
+            // hex + sci + leading-zero + signs in data values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 4\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B C D\nEND_DATA_FORMAT\nBEGIN_DATA\n0x1F 3.14e-2 +7 00042\n-0.5 1E5 .7 0.\nEND_DATA\n", "numforms2"),
+            // comment inside data + between values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1 # c\n2\nEND_DATA\n", "data-cmt"),
+            // keyword=value variants (with/without space)
+            (b"IT8FILE\nP1=\"v\"\nP2 =\"v\"\nP3= \"v\"\nP4 = \"v\"\n", "eq-forms"),
+            // long property values + many properties
+            (b"IT8FILE\nP1 \"a b c d e f g h i j k l m n o p\"\nP2 \"v\"\nP3 123\nP4 \"x\"\nP5 0xFF\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "many-props"),
+            // multi-sheet doc (nosheet=0 reads all)
+            (b"IT8FILE\nN_OF_F 1\nN_OF_S 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nN_OF_F 1\nN_OF_S 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\nIT8FILE\nN_OF_F 1\nN_OF_S 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n3\nEND_DATA\n", "3sheets"),
+            // malformed: missing required keywords
+            (b"IT8FILE\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "no-counts"),
+            // NUMBER_OF_SETS = 0
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 0\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n", "zero-sets"),
+            // unicode strings in data values
+            ("IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 \"café\"\n2 \"☕\"\nEND_DATA\n".as_bytes(), "utf8-data"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                let nt = c::cmsIT8TableCount(p);
+                eprintln!("  tables={nt}");
+                c::cmsIT8Free(p);
+            }
+        }
+        // save + reload for SaveHeader/DataSection writer arms
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            b"IT8FILE\nKEYWORD \"K\"\nDATA_FORMAT_ID \"D\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n".as_ptr() as *const _,
+            152);
+        if !p.is_null() {
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsIT8SaveToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("it8-save={s} n={n}");
+            let rp = if s != 0 {
+                c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("it8-reload={}", !rp.is_null());
+            if !rp.is_null() { c::cmsIT8Free(rp); }
+            c::cmsIT8Free(p);
+        }
+    }
+}
