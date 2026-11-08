@@ -981,3 +981,44 @@ fn proofing_lut_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Unknown-sig tag writes — the no-descriptor dispatch path.
+#[test]
+fn unknown_sig_tags() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // write to sigs with no tag descriptor — raw storage,
+        // no Type_* handler
+        for sig in [0x61626364u32, 0x78787878, 0x7A7A7A7A,
+                    0x31323334, 0xABCDEF00, 0xDEADBEEF,
+                    0x20202020, 0xFFFFFFFF, 0x00000000] {
+            let payload = [0x55u8; 16];
+            let ok = c::cmsWriteRawTag(h, sig,
+                payload.as_ptr() as *const std::ffi::c_void, 16);
+            eprintln!("{sig:#x} write={ok}");
+        }
+        // resave + read each
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let n = c::cmsGetTagCount(h2);
+        eprintln!("reloaded tags={n}");
+        for sig in [0x61626364u32, 0x78787878, 0x7A7A7A7A,
+                    0x31323334, 0xABCDEF00, 0xDEADBEEF,
+                    0x20202020, 0xFFFFFFFF, 0x00000000] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                let mut tb = [0u8; 8];
+                let rn = c::cmsReadRawTag(h2, sig,
+                    tb.as_mut_ptr() as *mut _, 8);
+                eprintln!("{sig:#x} typed={} raw={rn}",
+                    r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
