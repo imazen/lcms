@@ -1100,3 +1100,37 @@ in cmstypes, and optimizer/conversion internals. The suite is
 green under the normal build (1107 tests) and produces usable
 aggregate coverage under clang instrumentation (3 known
 codegen-class target failures: cam02/pcs/xform2).
+
+### round 25 — ~35 gates since round 24
+
+77.97% lines / 95.51% fns / 86.35% regions / 70.37% branches.
+
+| file | lines r24 | lines r25 | delta |
+|---|---|---|---|
+| cmssamp.c | 69.68% | 85.42% | +15.7 (quadratic_bp_full: A2B1+B2A1 CLUT prtr -> dest i1 computed black point via RootOfLeastSquaresFitQuadraticCurve) |
+| cmscnvrt.c | 71.10% | 76.88% | +5.78 (CHAD2Temp via chad_temp_adapt; BlackPreservingKOnly/KPlane via intents 10-11; conversion_arms2-7) |
+| cmstypes.c | 66.95% | 67.69% | +0.74 (LUTA2B/B2A_Write all 4 orders; MHC2_Write multi-curve; LUT8/16_Write via b2a0 mat-cv-clut-cv; desc/vcgt/segmented readers via save+reopen) |
+| cmsopt.c | 81.37% | 81.46% | +0.09 (opt_flag_arms/resample/linearization/matrix-shaper variants) |
+| cmsio0.c | 82.48% | 82.38% | -0.10 (noise) |
+| cmsgamma.c | 83.24% | 83.82% | +0.58 (parametric_boundaries + 108/109 + alloc/dup arms) |
+| cmscgats.c | 79.66% | 78.40% | -1.26 (noise; it8_header/data/lexer arms landed) |
+
+~35 gates landed since round 24: quadratic_bp_full (A2B1+B2A1
+non-straight CLUT prtr -> dest i1 fit), chad_temp_adapt
+(AdaptationState=0.5 + chad -> CHAD2Temp/Temp2CHAD),
+black_preserving_arms (intents 10-11 + BPC on CMYK),
+mab/mba_write_orders (4 mAB + 4 mBA element orders),
+lut16_write_b2a0 (mat-cv-clut-cv on b2a0 -> mft2),
+mhc2_write_arms (n2/8/256/4096 + non-ident + null),
+vcgt/desc/segmented save+reopen readers, it8_header_arms +
+it8_data_arms3 + it8_deep_arms(2,3,4) + it8_parse_arms2,
+conversion_arms(4,5,6,7), opt_flag_arms + opt_resample_arms +
+opt_linearization_arms + opt_prelin_rgb + opt_matrixshaper4 +
+opt_join_curves + opt_matshaper_arms + opt_resample_deep +
+opt_prelin_rgb, nonicc_intent_arms, named_devicelink,
+lut_builder_arms, tonecurve_alloc_arms, save_raw_copy_arms +
+save_tags_deep + save_tags_arms2, iohandler_edge_arms,
+parametric_boundaries + parametric_type_108_109,
+lut_write_shapes + lut_write_deep + lut_write_tables +
+lut16_write_channels + lut16_write_deep + lut16_write_b2a0 +
+lut_read_deep(2,3).
