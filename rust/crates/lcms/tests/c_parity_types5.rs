@@ -2531,3 +2531,57 @@ fn ncl2_types() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Type_MLU internals — multi-locale MLU machinery on more
+/// locale strings + fallback paths.
+#[test]
+fn mlu_machinery() {
+    unsafe {
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 3);
+        // multiple locales — the MLU's locale-table machinery
+        for (lang, country, text) in [
+            (b"en\0" as &[u8], b"US\0", b"us-text\0" as &[u8]),
+            (b"de\0", b"DE\0", b"de-text\0"),
+            (b"fr\0", b"FR\0", b"fr-text\0"),
+            (b"ja\0", b"JP\0", b"ja-text\0"),
+            (b"zh\0", b"CN\0", b"zh-text\0"),
+        ] {
+            c::cmsMLUsetASCII(mlu,
+                lang.as_ptr() as *const u8,
+                country.as_ptr() as *const u8,
+                text.as_ptr() as *const u8);
+        }
+        // read each locale back + a fallback (xx -> first)
+        for (lang, country, _t) in [
+            (b"en\0" as &[u8], b"US\0", 1),
+            (b"de\0", b"DE\0", 2),
+            (b"fr\0", b"FR\0", 3),
+            (b"ja\0", b"JP\0", 4),
+            (b"zh\0", b"CN\0", 5),
+            (b"xx\0", b"XX\0", 6), // fallback
+        ] {
+            let mut buf = [0u8; 64];
+            let n = c::cmsMLUgetASCII(mlu,
+                lang.as_ptr() as *const u8,
+                country.as_ptr() as *const u8,
+                buf.as_mut_ptr(), 64);
+            let _ = n;
+        }
+        // write to a profile + resave + read — the full MLU
+        // serialization machinery
+        let h = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(h, 0x64657363,
+            mlu as *mut std::ffi::c_void);
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x64657363);
+        eprintln!("mlu resave read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
