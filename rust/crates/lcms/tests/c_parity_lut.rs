@@ -1629,3 +1629,35 @@ fn stage_channels2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Pipeline channel-count + stage-walk machinery on more
+/// shapes.
+#[test]
+fn pipeline_channels_walk() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c3 = [g, g, g];
+        for (name, ni, no) in [
+            ("3-3", 3u32, 3u32), ("1-1", 1, 1),
+            ("4-4", 4, 4), ("3-4", 3, 4)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), ni, no);
+            let pi = c::cmsPipelineInputChannels(pl);
+            let po = c::cmsPipelineOutputChannels(pl);
+            // insert an identity + walk stages
+            c::cmsPipelineInsertStage(pl, 1,
+                c::cmsStageAllocIdentity(
+                    std::ptr::null_mut(), ni));
+            let mut st = c::cmsPipelineGetPtrToFirstStage(pl);
+            let mut n_st = 0;
+            while !st.is_null() {
+                n_st += 1;
+                st = c::cmsStageNext(st);
+            }
+            eprintln!("{name} in={pi} out={po} stages={n_st}");
+            c::cmsPipelineFree(pl);
+        }
+        let _ = c3;
+        c::cmsFreeToneCurve(g);
+    }
+}
