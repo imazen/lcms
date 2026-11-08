@@ -5984,3 +5984,93 @@ fn wtpnt_arms() {
         eprintln!("D50 consts: {}", !d50x.is_null() && !d50y.is_null());
     }
 }
+
+/// cmsio1 residual — preview (D2B/B2D) tag direction +
+///   proofing-transform float arms + output-side
+///   matrix-shaper float reads at all intents.
+#[test]
+fn preview_dir_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!(
+                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let ff = |pt: u32, ch: u32| -> u32 {
+            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        // write D2B0/B2D0 preview tags into cmyk via dup of
+        // its A2B0 pipeline, save, reopen, proof transforms
+        let ab = c::cmsReadTag(cmyk, 0x41324230); // A2B0
+        let dup_ok = if !ab.is_null() {
+            let wr1 = c::cmsWriteTag(cmyk, 0x44324230,
+                ab); // 'D2B0'
+            let wr2 = c::cmsWriteTag(cmyk, 0x42324430,
+                ab); // 'B2D0'
+            eprintln!("write D2B0={wr1} B2D0={wr2}");
+            wr1 != 0 && wr2 != 0
+        } else { false };
+        let mut buf = [0u8; 1 << 18];
+        let mut nn = buf.len() as u32;
+        let sv = if dup_ok {
+            c::cmsSaveProfileToMem(cmyk,
+                buf.as_mut_ptr() as *mut _, &mut nn)
+        } else { 0 };
+        let pc = if sv != 0 {
+            c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, nn)
+        } else { std::ptr::null_mut() };
+        eprintln!("preview prof sv={sv} open={}", !pc.is_null());
+        // proofing transform uses preview direction
+        if !pc.is_null() {
+            for intent in 0u32..4 {
+                let t = c::cmsCreateProofingTransform(
+                    srgb, f16(4, 3),
+                    srgb, f16(4, 3),
+                    pc, intent, 0, 0);
+                eprintln!("proof i{intent}: {}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x4000u16; 32];
+                    let mut ob = [0u16; 32];
+                    c::cmsDoTransform(t,
+                        ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t); } }
+            c::cmsCloseProfile(pc); }
+        // output-side matrix shaper float: Lab->sRGB float
+        for intent in 0u32..4 {
+            let t = c::cmsCreateTransform(
+                lab4, ff(10, 3), srgb, ff(4, 3), intent, 0);
+            eprintln!("labf->srgbf i{intent}: {}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0.5f32; 16];
+                let mut ob = [0f32; 16];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t); } }
+        // gamut-check with alarm codes
+        let codes = [0x7f00u16; 16];
+        c::cmsSetAlarmCodes(codes.as_ptr());
+        let t = c::cmsCreateTransform(cmyk, f16(6, 4),
+            srgb, f16(4, 3), 0, 0x1000);
+        eprintln!("gc xform={}", !t.is_null());
+        if !t.is_null() {
+            let ib = [0xf000u16; 32];
+            let mut ob = [0u16; 32];
+            c::cmsDoTransform(t,
+                ib.as_ptr() as *const _,
+                ob.as_mut_ptr() as *mut _, 4);
+            c::cmsDeleteTransform(t); }
+        for p in [srgb, cmyk, lab4] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
