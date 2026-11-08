@@ -750,3 +750,24 @@ fn virt_builders() {
         }
     }
 }
+
+/// Ink-limiting + BCHS-abstract builders — InkLimitingDeviceLink
+/// (CMYK) + BCHSWabstractProfile variants.
+#[test]
+fn inklimit_bchs_builders() {
+    unsafe {
+        // InkLimitingDeviceLink — CMYK only
+        for (cs, name) in [(0x434D594Bu32, "cmyk"), (0x52474220, "rgb")] {
+            let dl = c::cmsCreateInkLimitingDeviceLink(cs, 0.8);
+            eprintln!("inklim {name}={}", !dl.is_null());
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+        }
+        // BCHSWabstractProfile — different white-point temps
+        for (src, dst) in [(5000u32, 6500), (6500, 5000)] {
+            let ap = c::cmsCreateBCHSWabstractProfile(
+                17, 0.0, 0.0, 0.0, 1.0, src, dst);
+            eprintln!("bchs {src}->{dst}={}", !ap.is_null());
+            if !ap.is_null() { c::cmsCloseProfile(ap); }
+        }
+    }
+}
