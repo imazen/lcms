@@ -5766,3 +5766,94 @@ fn blackpreserve_intent_arms() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmsxform residual — ParalellizeIfSuitable via a
+///   registered parallelization plugin, GamutCheck on
+///   float-format transforms, NormalizeXYZ >2 loop via
+///   a large whitepoint.
+#[test]
+fn xform_parallel_gamut_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct ParPlugin {
+            base: PluginBase,
+            max_workers: i32,
+            worker_flags: u32,
+            scheduler: *const std::ffi::c_void,
+        }
+        unsafe extern "C" fn my_sched(
+            _t: *mut std::ffi::c_void,
+            _a: *const std::ffi::c_void,
+            _b: *mut std::ffi::c_void,
+            _n: u32, _s: *const std::ffi::c_void) {
+        }
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        // parallelization plugin 'prlH' 0x70726C48
+        let mut pp = ParPlugin {
+            base: PluginBase {
+                magic: 0x61637070, ver: 2200,
+                typ: 0x70726C48,
+                next: std::ptr::null_mut(),
+            },
+            max_workers: 2,
+            worker_flags: 0,
+            scheduler: my_sched as *const std::ffi::c_void,
+        };
+        let r = c::cmsPluginTHR(ctx,
+            &mut pp as *mut _ as *mut _);
+        eprintln!("par-plugin reg={r}");
+        let fin = (0u32 << 16) | (3 << 3) | 1;
+        let t = c::cmsCreateTransformTHR(ctx, srgb, fin,
+            srgb, fin, 0, 0);
+        eprintln!("par-xform t={}", !t.is_null());
+        if !t.is_null() {
+            c::cmsDeleteTransform(t); }
+        // float gamut-check transform:
+        //   proof profile + GAMUTCHECK flag + float fmt
+        let lab = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let ffmt = (1u32 << 22) | (4 << 16)
+            | (3 << 3) | 4;
+        let tg = c::cmsCreateProofingTransform(
+            srgb, ffmt, srgb, ffmt, lab,
+            0, 0, 0x0040); // GAMUTCHECK flag
+        eprintln!("gamut-flt t={}", !tg.is_null());
+        if !tg.is_null() {
+            let src = [0.9f32, 0.9, 0.9];
+            let mut dst = [0.0f32; 3];
+            c::cmsDoTransform(tg,
+                src.as_ptr() as *const _,
+                dst.as_mut_ptr() as *mut _, 1);
+            c::cmsDeleteTransform(tg);
+        }
+        // large whitepoint -> NormalizeXYZ >2 loop
+        let xyz = c::cmsCreateXYZProfile();
+        #[repr(C)]
+        struct CieXyy { x: f64, y: f64, big_y: f64 }
+        let wp = CieXyy { x: 0.3, y: 0.3, big_y: 20.0 };
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let trcs = [g as *mut std::ffi::c_void,
+                    g as *mut std::ffi::c_void,
+                    g as *mut std::ffi::c_void];
+        let h = c::cmsCreateRGBProfileTHR(
+            std::ptr::null_mut(),
+            &wp as *const _ as *const _,
+            std::ptr::null(),
+            trcs.as_ptr());
+        eprintln!("bigwp prof={}", !h.is_null());
+        if !h.is_null() {
+            c::cmsCloseProfile(h); }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        c::cmsDeleteContext(ctx);
+        c::cmsFreeToneCurve(g);
+    }
+}
