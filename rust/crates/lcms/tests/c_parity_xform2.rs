@@ -6321,3 +6321,74 @@ fn xform_stride_notify_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmscnvrt/cmsxform residual — proofing-intent sweep
+///   (each intent as both render+proof intent) +
+///   ChangeBuffersFormat mid-transform + float xform.
+#[test]
+fn xform_proof_sweep_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // proofing: each intent x each proof-intent
+        for i in 0..4u32 {
+            for pi in 0..4u32 {
+                let t = c::cmsCreateProofingTransformTHR(
+                    std::ptr::null_mut(),
+                    srgb, frgb, lab4, flab, srgb,
+                    i, pi, 0);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+        }
+        eprintln!("proof 4x4 done");
+        // float transforms on each colorspace pair
+        for (a, b, name) in [
+            (srgb, lab4, "rgb->lab"),
+            (lab4, srgb, "lab->rgb"),
+            (srgb, srgb, "rgb->rgb"),
+            (lab4, lab4, "lab->lab"),
+        ] {
+            let ff = (1u32 << 22) | (4 << 16)
+                | (3 << 3) | 4;
+            let ff2 = (1u32 << 22) | (10 << 16)
+                | (3 << 3) | 4;
+            let t = c::cmsCreateTransform(a,
+                if a == srgb { ff } else { ff2 },
+                b,
+                if b == srgb { ff } else { ff2 },
+                0, 0x4000);
+            eprintln!("{name} ft={}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+        }
+        // ChangeBuffersFormat mid-transform on a
+        //   running transform
+        let t = c::cmsCreateTransform(srgb, frgb,
+            lab4, flab, 0, 0);
+        for (ni, no, name) in [
+            ((4u32 << 16) | (3 << 3) | 1,
+             (10u32 << 16) | (3 << 3) | 1, "16->8"),
+            ((4u32 << 16) | (1 << 10) | (4 << 3) | 2,
+             (10u32 << 16) | (1 << 10) | (4 << 3) | 2,
+             "->ds"),
+            ((4u32 << 16) | (1 << 14) | (4 << 3) | 2,
+             (10u32 << 16) | (1 << 14) | (4 << 3) | 2,
+             "->sf"),
+        ] {
+            let ok = c::cmsChangeBuffersFormat(t, ni, no);
+            eprintln!("chg {name} {ok}");
+            let src = [0x8000u16; 8];
+            let mut dst = [0u16; 8];
+            c::cmsDoTransform(t,
+                src.as_ptr() as *const _,
+                dst.as_mut_ptr() as *mut _, 1);
+        }
+        c::cmsDeleteTransform(t);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
