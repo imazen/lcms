@@ -3633,3 +3633,32 @@ fn lut_readers_internals() {
         }
     }
 }
+
+/// Lab + XYZ stage eval internals — Lab2XYZ/XYZ2Lab/LabPrelin/
+/// LabV2ToV4/LabV4ToV2/LabV2ToV4curves through eval16 + float.
+#[test]
+fn lab_stage_evals2() {
+    unsafe {
+        for (st, name) in [
+            (c::_cmsStageAllocLab2XYZ(std::ptr::null_mut()), "l2x"),
+            (c::_cmsStageAllocXYZ2Lab(std::ptr::null_mut()), "x2l"),
+            (c::_cmsStageAllocLabPrelin(std::ptr::null_mut()), "prelin"),
+            (c::_cmsStageAllocLabV2ToV4(std::ptr::null_mut()), "v2v4"),
+            (c::_cmsStageAllocLabV4ToV2(std::ptr::null_mut()), "v4v2"),
+            (c::_cmsStageAllocLabV2ToV4curves(std::ptr::null_mut()),
+             "v2v4c"),
+        ] {
+            if st.is_null() { continue; }
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, st);
+            let ib = [0x8000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            let ibf = [0.5f32; 3];
+            let mut obf = [0f32; 3];
+            c::cmsPipelineEvalFloat(ibf.as_ptr(), obf.as_mut_ptr(), p);
+            eprintln!("{name} ob={ob:?} obf={obf:?}");
+            c::cmsPipelineFree(p);
+        }
+    }
+}
