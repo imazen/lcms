@@ -8738,3 +8738,43 @@ fn lut16_write_channels() {
         c::cmsFreeToneCurve(g10);
     }
 }
+
+/// SaveTags remaining arms — unsupported-tag skip, DecideType
+/// NULL paths, raw-tag saves, error propagation.
+#[test]
+fn save_tags_arms2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (sig, name) in [
+            // tags without registered type handlers -> skip
+            (0x41424344u32, "unknown-tag"),
+            (0xdeadbeefu32, "invalid-sig"),
+            (0x00000000u32, "null-sig"),
+            // tags whose DecideType might return NULL
+            (0x6e636c32u32, "ncl2"),
+            (0x63686164u32, "chad"),
+            (0x70726561u32, "pre0"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, sig, g as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            eprintln!("{name} w={w} s={s}");
+            c::cmsCloseProfile(prof);
+        }
+        // buffer too small -> write-failure path
+        let prof = c::cmsCreate_sRGBProfile();
+        let mut tiny = [0u8; 64];
+        let mut n = tiny.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            tiny.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("tiny-save={s}");
+        c::cmsCloseProfile(prof);
+        c::cmsFreeToneCurve(g);
+    }
+}
