@@ -23145,3 +23145,119 @@ fn internal_final60_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsvirt residual — cmsTransform2DeviceLink +
+///   edge-arg profile builders (OkLab/NULL/InkLimiting/
+///   BCHSW/XYZ/Lab2/Lab4/Gray THR).
+#[test]
+fn internal_final61_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // Transform2DeviceLink on each intent/flag combo
+        for (ver, vname) in [
+            (2.0f64, "v2"), (4.3, "v4.3"), (4.4, "v4.4"),
+        ] {
+            for (flags, fname) in [
+                (0u32, "0"), (0x0100, "opt"),
+                (0x0040, "hilo"), (0x1000, "nopts"),
+            ] {
+                let t = c::cmsCreateTransform(srgb,
+                    (4u32 << 16) | (3 << 3) | 2,
+                    srgb,
+                    (4u32 << 16) | (3 << 3) | 2,
+                    0, 0);
+                if t.is_null() { continue; }
+                let dl = c::cmsTransform2DeviceLink(t,
+                    ver, flags);
+                eprintln!("{vname} {fname} dl={}",
+                    !dl.is_null());
+                if !dl.is_null() {
+                    // save + reopen + use it
+                    let mut buf = vec![0u8; 1 << 20];
+                    let mut n = buf.len() as u32;
+                    c::cmsSaveProfileToMem(dl,
+                        buf.as_mut_ptr() as *mut _, &mut n);
+                    let rp = c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n);
+                    if !rp.is_null() {
+                        c::cmsCloseProfile(rp); }
+                    c::cmsCloseProfile(dl);
+                }
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // edge-arg builders
+        let wp = c::CiexyY { x: 0.3457, y: 0.3585,
+            Y: 1.0 };
+        let wp2 = c::CiexyYTriple {
+            Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
+            Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
+            Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        };
+        let profs: Vec<*mut std::ffi::c_void> = vec![
+            c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 17, 0.0, 0.0,
+                0.0, 0.0, &wp as *const _ as *const _,
+                &wp as *const _ as *const _),
+            c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 17, 1.0, 1.0,
+                100.0, 50.0, &wp as *const _ as *const _,
+                &wp as *const _ as *const _),
+            c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 7, -1.0, 2.0,
+                200.0, -50.0, std::ptr::null(),
+                std::ptr::null()),
+            c::cmsCreateNULLProfileTHR(std::ptr::null_mut()),
+            c::cmsCreate_OkLabProfile(std::ptr::null_mut()),
+            c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x434D594B, 0.0),
+            c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x434D594B, 50.0),
+            c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x434D594B, 400.0),
+            c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x58595A20, 50.0),
+            c::cmsCreateXYZProfileTHR(std::ptr::null_mut()),
+            c::cmsCreateLab2ProfileTHR(
+                std::ptr::null_mut(), std::ptr::null()),
+            c::cmsCreateLab2ProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const _ as *const _),
+            c::cmsCreateLab4ProfileTHR(
+                std::ptr::null_mut(), std::ptr::null()),
+            c::cmsCreateLab4ProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const _ as *const _),
+            c::cmsCreateGrayProfileTHR(
+                std::ptr::null_mut(), std::ptr::null(),
+                g as *const _),
+            c::cmsCreateGrayProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const _ as *const _,
+                g as *const _),
+            c::cmsCreate_sRGBProfileTHR(
+                std::ptr::null_mut()),
+            c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const _ as *const _,
+                &wp2 as *const _ as *const _,
+                [g, g, g].as_ptr() as *mut _),
+        ];
+        for (i, p) in profs.iter().enumerate() {
+            let ok = !p.is_null();
+            if ok {
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = c::cmsSaveProfileToMem(*p,
+                    buf.as_mut_ptr() as *mut _, &mut n);
+                eprintln!("builder{i} ok={ok} s={s}");
+                c::cmsCloseProfile(*p);
+            } else {
+                eprintln!("builder{i} ok={ok}");
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
