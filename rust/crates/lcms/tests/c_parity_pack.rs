@@ -2760,3 +2760,38 @@ fn four_channel_packers() {
         c::cmsCloseProfile(dl);
     }
 }
+
+/// 6/8-channel packers — MCH devicelink transforms -> Pack6Bytes/
+/// Pack8Bytes + Unroll6*/Unroll8* arms.
+#[test]
+fn six_eight_channel_packers() {
+    unsafe {
+        // 6-channel + 8-channel linearization devicelinks
+        for (cs, ch, name) in [
+            (0x434d4e36u32, 6u32, "6ch"),  // 'CMN6' mch6
+            (0x434d4e38, 8, "8ch"),          // 'CMN8' mch8
+        ] {
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+            let dl = c::cmsCreateLinearizationDeviceLink(
+                cs, [g; 15].as_ptr() as *mut _);
+            if dl.is_null() {
+                eprintln!("{name} dl=null");
+                continue;
+            }
+            let f = (cs & 0x7f) as u32; // colorspace bits
+            let fmt = ((cs == 0x434d4e36) as u32 * 9
+                | (cs == 0x434d4e38) as u32 * 11) << 16
+                | (ch << 3) | 1;
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = vec![0x40u8; (ch * 2) as usize];
+                let mut ob = [0u8; 32];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+            c::cmsCloseProfile(dl);
+        }
+    }
+}
