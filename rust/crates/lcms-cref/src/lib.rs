@@ -308,10 +308,13 @@ unsafe extern "C" {
         access_mode: *const u8,
     ) -> Handle;
     pub fn cmsCloseIOhandler(io: Handle) -> i32;
+    pub fn cmsOpenIOhandlerFromFile(context_id: Context, name: *const i8, access: *const u8) -> Handle;
     // --- cmsio0 profile API ---
     pub fn cmsOpenProfileFromFile(name: *const i8, access: *const u8) -> *mut c_void;
     pub fn cmsOpenProfileFromMem(mem: *const c_void, size: u32) -> *mut c_void;
     pub fn cmsOpenProfileFromIOhandlerTHR(ctx: *mut c_void, io: Handle) -> *mut c_void;
+    pub fn cmsSaveProfileToFile(p: *mut c_void, name: *const i8) -> i32;
+    pub fn cmsSaveProfileToIOhandler(p: *mut c_void, io: Handle) -> i32;
     pub fn cmsCloseProfile(p: *mut c_void) -> i32;
     pub fn cmsGetTagCount(p: *const c_void) -> i32;
     pub fn cmsGetTagSignature(p: *const c_void, n: u32) -> u32;

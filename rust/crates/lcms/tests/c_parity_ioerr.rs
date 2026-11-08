@@ -203,3 +203,63 @@ fn io1_getters_corpus() {
         }
     }
 }
+
+/// cmsio0 save/IO-handler paths: SaveToFile->reopen byte-compare,
+/// SaveToIOhandler->OpenProfileFromIOhandler, OpenIOhandlerFromFile.
+#[test]
+fn save_and_iohandler_roundtrip() {
+    let dir = std::env::temp_dir();
+    let cpath = dir.join("ccov_c_out.icc");
+    let rpath = dir.join("ccov_r_out.icc");
+    let cs = cpath.to_str().unwrap();
+    let rs = rpath.to_str().unwrap();
+    let cs_c = std::ffi::CString::new(cs).unwrap();
+    let rs_c = std::ffi::CString::new(rs).unwrap();
+
+    let cph = unsafe { c::cmsCreate_sRGBProfile() };
+    let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+
+    // C SaveToFile -> bytes; Rust save -> bytes; same file contents
+    unsafe { assert!(c::cmsSaveProfileToFile(cph, cs_c.as_ptr()) != 0) };
+    let c_bytes = std::fs::read(&cpath).unwrap();
+    let r_bytes = lcms::profile::save_profile_to_mem(&mut rp).unwrap();
+    assert_eq!(c_bytes.len(), r_bytes.len(), "file save length");
+    for (i, (a, b)) in c_bytes.iter().zip(r_bytes.iter()).enumerate() {
+        if (24..36).contains(&i) { continue; } // created timestamp
+        assert_eq!(a, b, "save byte @{i:#x}");
+    }
+    unsafe { c::cmsCloseProfile(cph) };
+
+    // C open-from-file returns a profile with same tag count as Rust's open
+    let c2 = unsafe { c::cmsOpenProfileFromFile(cs_c.as_ptr(), b"r\0".as_ptr()) };
+    assert!(!c2.is_null());
+    let mut rp2 = lcms::profile::open_profile_from_mem(None, &c_bytes).unwrap();
+    unsafe {
+        assert_eq!(c::cmsGetTagCount(c2), rp2.tag_count as i32, "tag count on reopen");
+    }
+    unsafe { c::cmsCloseProfile(c2) };
+
+    // IOhandler save -> open: C writes via IOhandlerFromMem, reads back
+    unsafe {
+        let wbuf = vec![0u8; c_bytes.len() * 2];
+        let io_w = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            wbuf.as_ptr() as *mut u8,
+            wbuf.len() as u32,
+            b"w\0".as_ptr(),
+        );
+        assert!(!io_w.is_null(), "IOhandlerFromMem w");
+        let p3 = c::cmsCreate_sRGBProfile();
+        assert!(c::cmsSaveProfileToIOhandler(p3, io_w) != 0, "save via iohandler");
+        c::cmsCloseIOhandler(io_w);
+        c::cmsCloseProfile(p3);
+
+        let io_r = c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), cs_c.as_ptr(), b"r\0".as_ptr());
+        assert!(!io_r.is_null(), "IOhandlerFromFile r");
+        let p4 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io_r);
+        assert!(!p4.is_null(), "open via IOhandlerFromFile");
+        c::cmsCloseProfile(p4);
+    }
+
+    std::fs::remove_file(&cpath).ok();
+}
