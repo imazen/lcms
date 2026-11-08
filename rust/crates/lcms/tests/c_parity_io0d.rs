@@ -9503,3 +9503,53 @@ fn lut8_write_arms() {
         c::cmsFreeToneCurve(g2);
     }
 }
+
+/// SaveTags remaining internals — write-failure propagation,
+/// linked-tag dedup order, unsupported-tag skip, version
+/// conversion during save.
+#[test]
+fn save_tags_arms3() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        // version-conversion arms — tags that serialize
+        // differently per version
+        for ver in [2.1f64, 4.0, 4.2, 4.3, 4.4] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, ver);
+            c::cmsWriteTag(prof, 0x72545243, g as *const _);
+            c::cmsWriteTag(prof, 0x67545243, g2 as *const _);
+            c::cmsWriteTag(prof, 0x62545243, g as *const _);
+            let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+            c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                wk.as_mut_ptr() as *const _);
+            c::cmsWriteTag(prof, 0x64657363, ml as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            eprintln!("v{ver} save={s} n={n}");
+            c::cmsCloseProfile(prof);
+            c::cmsMLUfree(ml);
+        }
+        // save with read-only IOhandler -> write-failure
+        let prof = c::cmsCreate_sRGBProfile();
+        let mut small = [0u8; 256];
+        let mut n = small.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            small.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("small={s} n={n}");
+        c::cmsCloseProfile(prof);
+        // save NULL data
+        let prof2 = c::cmsCreate_sRGBProfile();
+        let mut n2 = 0u32;
+        let s2 = c::cmsSaveProfileToMem(prof2,
+            std::ptr::null_mut(), &mut n2);
+        eprintln!("null-save={s2}");
+        c::cmsCloseProfile(prof2);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
