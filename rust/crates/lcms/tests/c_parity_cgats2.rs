@@ -595,3 +595,31 @@ fn it8_enum_props() {
         c::cmsIT8Free(h);
     }
 }
+
+/// Data-format + patch machinery — more IT8 internals.
+#[test]
+fn it8_dataformat_patch() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(h,
+            b"LCMS/IT8 ".as_ptr() as _);
+        let ty = c::cmsIT8GetSheetType(h);
+        eprintln!("sheetty={}", !ty.is_null());
+        for (i, name) in [
+            (0i32, "SAMPLE_ID "), (1, "LAB_L "),
+            (2, "LAB_A "), (3, "LAB_B ")] {
+            let r = c::cmsIT8SetDataFormat(h, i,
+                name.as_ptr() as _);
+            eprintln!("setfmt[{i}]={r}");
+        }
+        // patch name machinery
+        let mut buf = [0i8; 64];
+        let pn = c::cmsIT8GetPatchName(h, 0,
+            buf.as_mut_ptr());
+        eprintln!("patchname={}", !pn.is_null());
+        let pb = c::cmsIT8GetPatchByName(h,
+            b"1 ".as_ptr() as _);
+        eprintln!("patchbyname={pb}");
+        c::cmsIT8Free(h);
+    }
+}
