@@ -518,3 +518,35 @@ fn identity_stage_allocators() {
         }
     }
 }
+
+/// cmsPipelineEvalReverseFloat — Newton inversion on a 3->3 LUT.
+#[test]
+fn reverse_pipeline_eval() {
+    unsafe {
+        // build a 3->3 pipeline with a sampled CLUT
+        let cp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let clut = c::cmsStageAllocCLutFloat(
+            std::ptr::null_mut(), 17, 3, 3, std::ptr::null_mut());
+        let ok = c::cmsPipelineInsertStage(cp, 0, clut);
+        assert_ne!(ok, 0);
+        // reverse-eval a target — C side
+        let mut tgt = [0.5f32, 0.5, 0.5];
+        let mut out = [0f32; 3];
+        let mut hint = [0f32; 3];
+        let ok = c::cmsPipelineEvalReverseFloat(
+            tgt.as_mut_ptr(), out.as_mut_ptr(), hint.as_mut_ptr(), cp);
+        eprintln!("c reverse ok={ok} out={out:?}");
+        // rust side
+        let mut rp = lut::pipeline_alloc(None, 3, 3).unwrap();
+        let rclut = lut::stage_alloc_clut_float_granular(
+            None, &[17, 17, 17], 3, 3, None).unwrap();
+        assert!(rp.insert_stage(lut::StageLoc::AtEnd, rclut));
+        let mut ro = [0f32; 3];
+        let rok = rp.eval_reverse_float(&tgt, &mut ro, None);
+        assert_eq!(ok != 0, rok, "reverse eval status");
+        if ok != 0 && rok {
+            assert_eq!(out, ro, "reverse eval values");
+        }
+        c::cmsPipelineFree(cp);
+    }
+}
