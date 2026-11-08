@@ -346,3 +346,46 @@ fn it8_wide_doc() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 writer internals — unusual doc shapes (empty tables,
+/// wide fields, mixed types).
+#[test]
+fn it8_writer_shapes() {
+    unsafe {
+        for (name, doc) in [
+            ("empty-table",
+             "CGATS.17\nNUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 0\nBEGIN_DATA\nEND_DATA\n"),
+            ("single-field",
+             "CGATS.17\nNUMBER_OF_FIELDS 1\n\
+              BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 3\nBEGIN_DATA\n1\n2\n3\n\
+              END_DATA\n"),
+            ("mixed-types",
+             "CGATS.17\nNUMBER_OF_FIELDS 3\n\
+              BEGIN_DATA_FORMAT\nINT STR DBL\n\
+              END_DATA_FORMAT\nNUMBER_OF_SETS 2\n\
+              BEGIN_DATA\n1 \"one\" 1.5\n2 \"two\" 2.5\n\
+              END_DATA\n"),
+            ("long-rows",
+             "CGATS.17\nNUMBER_OF_FIELDS 2\n\
+              BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+              NUMBER_OF_SETS 2\n\
+              BEGIN_DATA\n\"a very long string value\" \
+              \"another long string\"\n1 2\nEND_DATA\n"),
+        ] {
+            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} null={}", h.is_null());
+            if !h.is_null() {
+                let mut cb = vec![0u8; 2048];
+                let mut cn = 0u32;
+                let ok = c::cmsIT8SaveToMem(h,
+                    cb.as_mut_ptr() as *mut _, &mut cn);
+                eprintln!("  save ok={ok} n={cn}");
+                c::cmsIT8Free(h);
+            }
+        }
+    }
+}
