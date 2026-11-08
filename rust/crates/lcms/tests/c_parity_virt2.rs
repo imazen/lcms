@@ -679,3 +679,36 @@ fn lab_profile_variants() {
         if !p2.is_null() { c::cmsCloseProfile(p2); }
     }
 }
+
+/// cmsTransform2DeviceLink + FindCombination — transforms on
+/// various profiles hit the combination-finder + identity-curve
+/// insertion inside the devicelink writer.
+#[test]
+fn devicelink_combinations() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let gray = c::cmsCreateGrayProfile(
+            &c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 } as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        for (inp, outp, if_, of, name) in [
+            (srgb, lab, r16, l16, "srgb->lab"),
+            (srgb, srgb, r16, r16, "srgb->srgb"),
+            (gray, srgb, g16, r16, "gray->srgb"),
+            (srgb, gray, r16, g16, "srgb->gray"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+            if t.is_null() { eprintln!("{name} t=null"); continue; }
+            let dl = c::cmsTransform2DeviceLink(t, 4.4, 0);
+            eprintln!("{name} dl={}", !dl.is_null());
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
