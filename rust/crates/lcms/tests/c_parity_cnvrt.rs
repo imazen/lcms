@@ -540,3 +540,48 @@ fn four_profile_chains() {
         let _ = c::cmsCloseProfile(nullp);
     }
 }
+
+/// Transform FROM a stored-mAB devicelink — the mAB LUT-reader
+/// internals on a serialized pipeline.
+#[test]
+fn mab_lut_reader() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+            0, 0);
+        let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
+        c::cmsDeleteTransform(ct);
+        if dl.is_null() { return; }
+        // save + reload — the devicelink's A2B0 is now a stored
+        // mAB tag; a transform reads it back through the LUT
+        // reader
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(dl, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(dl, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let dl2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        // transform through the reloaded devicelink — reads the
+        // mAB into a real pipeline
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ct2 = c::cmsCreateMultiprofileTransform(
+            [dl2, lab4].as_mut_ptr(), 2, in_fmt, out_fmt, 0, 0);
+        eprintln!("mab transform null={}", ct2.is_null());
+        if !ct2.is_null() {
+            let inp = [30000u16, 40000, 50000];
+            let mut co = [0u16; 3];
+            c::cmsDoTransform(ct2, inp.as_ptr() as _,
+                co.as_mut_ptr() as *mut _, 1);
+            eprintln!("eval={:?}", co);
+            c::cmsDeleteTransform(ct2);
+        }
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(dl2);
+        c::cmsCloseProfile(dl);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
