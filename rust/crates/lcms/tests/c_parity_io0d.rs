@@ -25903,3 +25903,68 @@ fn internal_hdr_parse_arms() {
         }
     }
 }
+
+/// cmsio0 residual — mem-IO internals: open at
+///   non-4-aligned sizes, seek/tell through reads,
+///   ReadRawTag/WriteRawTag round-trips.
+#[test]
+fn internal_memio_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let base = buf[..n as usize].to_vec();
+        c::cmsCloseProfile(srgb);
+        // profile open at each 1-byte offset of a
+        //   truncation sweep near the boundary
+        for keep in [128usize, 129, 130, 131, 132, 133,
+                     135, 140, 200, n as usize - 4,
+                     n as usize - 1, n as usize] {
+            let keep = keep.min(base.len());
+            let p = c::cmsOpenProfileFromMem(
+                base.as_ptr() as *const _, keep as u32);
+            if keep >= 200 || keep == n as usize {
+                eprintln!("keep{keep} prof={}",
+                    !p.is_null()); }
+            if !p.is_null() {
+                // raw tag read on the opened profile
+                let mut rb = [0u8; 1024];
+                let nr = c::cmsReadRawTag(p, 0x64657363,
+                    rb.as_mut_ptr() as *mut _,
+                    rb.len() as u32);
+                if keep == n as usize {
+                    eprintln!("  raw-desc={nr}"); }
+                c::cmsCloseProfile(p);
+            }
+        }
+        // raw tag write/read round-trip on a placeholder
+        let p2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p2, 0x6D6E7472);
+        c::cmsSetColorSpace(p2, 0x52474220);
+        c::cmsSetPCS(p2, 0x58595A20);
+        let data = [0xDEu8, 0xAD, 0xBE, 0xEF, 1, 2, 3, 4];
+        let w = c::cmsWriteRawTag(p2, 0x64657363,
+            data.as_ptr() as *const _, data.len() as u32);
+        let mut rb2 = [0u8; 64];
+        let r = c::cmsReadRawTag(p2, 0x64657363,
+            rb2.as_mut_ptr() as *mut _, rb2.len() as u32);
+        eprintln!("raw w={w} r={r} d={:?}",
+            &rb2[..r.min(8) as usize]);
+        // write again (overwrite) + raw read
+        let data2 = [0x11u8, 0x22, 0x33];
+        let w2 = c::cmsWriteRawTag(p2, 0x64657363,
+            data2.as_ptr() as *const _, data2.len() as u32);
+        let r2 = c::cmsReadRawTag(p2, 0x64657363,
+            rb2.as_mut_ptr() as *mut _, rb2.len() as u32);
+        eprintln!("raw2 w={w2} r={r2} d={:?}",
+            &rb2[..r2.min(8) as usize]);
+        // read missing tag
+        let r3 = c::cmsReadRawTag(p2, 0x7A7A7A7A,
+            rb2.as_mut_ptr() as *mut _, rb2.len() as u32);
+        eprintln!("missing r={r3}");
+        c::cmsCloseProfile(p2);
+    }
+}
