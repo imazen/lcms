@@ -2885,3 +2885,35 @@ fn null_iohandler_read() {
         assert!(h.is_null(), "profile from NULL io must fail");
     }
 }
+
+/// SaveTags arms — open->save (blind-copy for unmodified disk tags),
+/// open->write one tag->save (mixed copy+write), raw-tag reads.
+#[test]
+fn save_tags_arms() {
+    unsafe {
+        let data = std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lcms2cmyk.icc")).unwrap();
+        // pure open->save — every tag is an unmodified disk tag
+        let cp = c::cmsOpenProfileFromMem(
+            data.as_ptr() as *const _, data.len() as u32);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(cp, buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("open-save s={s} n={}", if s != 0 { n } else { 0 });
+        c::cmsCloseProfile(cp);
+        // modify one tag then save — mixed write+blind-copy
+        let cp2 = c::cmsOpenProfileFromMem(
+            data.as_ptr() as *const _, data.len() as u32);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let w = c::cmsWriteTag(cp2, 0x6b545243, g as *const _); // 'kTRC'
+        let mut n2 = buf.len() as u32;
+        let s2 = c::cmsSaveProfileToMem(cp2,
+            buf.as_mut_ptr() as *mut _, &mut n2);
+        eprintln!("mod-save w={w} s={s2} n={}", if s2 != 0 { n2 } else { 0 });
+        // raw tag reads both sizes
+        for sig in [0x41324230u32, 0x6b545243, 0x77747074, 0x64657363] {
+            let rn = c::cmsReadRawTag(cp2, sig, std::ptr::null_mut(), 0);
+            eprintln!("  rawtag {sig:#x} n={rn}");
+        }
+        c::cmsCloseProfile(cp2);
+    }
+}
