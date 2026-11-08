@@ -3575,3 +3575,32 @@ fn mab_mba_full_readback() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// Lab-prelin + LabV2ToV4curves + named-color stage eval internals.
+#[test]
+fn lab_prelin_v2v4_evals() {
+    unsafe {
+        // LabPrelin (the pre-linearization curves stage)
+        let st = c::_cmsStageAllocLabPrelin(std::ptr::null_mut());
+        if !st.is_null() {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, st);
+            let ib = [0x8000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            eprintln!("prelin ob={ob:?}");
+            c::cmsPipelineFree(p);
+        }
+        // LabV2ToV4curves
+        let st2 = c::_cmsStageAllocLabV2ToV4curves(std::ptr::null_mut());
+        if !st2.is_null() {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1, st2);
+            let ib = [0x8000u16; 3];
+            let mut ob = [0u16; 3];
+            c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+            eprintln!("v2v4c ob={ob:?}");
+            c::cmsPipelineFree(p);
+        }
+    }
+}
