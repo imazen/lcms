@@ -1823,3 +1823,24 @@ fn stage_alloc_valid() {
         let _ = g;
     }
 }
+
+/// Matrix-alloc machinery on more dimensions.
+#[test]
+fn matrix_dims() {
+    unsafe {
+        for (name, r, c, n) in [
+            ("1x1", 1u32, 1u32, 1usize),
+            ("3x3", 3, 3, 9),
+            ("4x4", 4, 4, 16),
+            ("3x4", 3, 4, 12),
+            ("4x3", 4, 3, 12),
+            ("15x15", 15, 15, 225)] {
+            let m = vec![1.0f64; n];
+            let st = c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), r, c, m.as_ptr(),
+                std::ptr::null());
+            eprintln!("{name} alloc={}", !st.is_null());
+            if !st.is_null() { c::cmsStageFree(st); }
+        }
+    }
+}
