@@ -23043,3 +23043,105 @@ fn internal_final59_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsopt residual — PatchLUT/OptimizeByResampling/
+///   JoiningCurves/ComputingLinearization/MatrixShaper
+///   + Prelin8/16 alloc internals via optimized
+///   transforms on cv/mat/clut pipeline shapes.
+#[test]
+fn internal_final60_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // stage combos on A2B0/B2A0 → optimizer dispatch
+        for (st, sname) in [
+            (0u32, "cv"), (1, "clut"), (2, "cvclut"),
+            (3, "cvmat"), (4, "matcv"), (5, "mat"),
+            (6, "cvmatcv"), (7, "clutmat"),
+            (8, "matclut"), (9, "cvclutcv"),
+            (10, "idn"), (11, "2clut"), (12, "3cv"),
+        ] {
+            for sig in [0x41324230u32, 0x42324130] {
+                for (flags, fname) in [
+                    (0u32, "nopt"), (0x0100, "opt"),
+                    (0x0040, "hilo"), (0x0200, "prec"),
+                ] {
+                    let prof = c::cmsCreateProfilePlaceholder(
+                        std::ptr::null_mut());
+                    c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                    c::cmsSetColorSpace(prof, 0x52474220);
+                    c::cmsSetPCS(prof, 0x58595A20);
+                    c::cmsSetProfileVersion(prof, 4.4);
+                    let p = c::cmsPipelineAlloc(
+                        std::ptr::null_mut(), 3, 3);
+                    let trcs = [g, g, g];
+                    let dims = [3u32; 3];
+                    let grid = vec![0x4000u16; 81];
+                    let mat = [1.0f64, 0.0, 0.0, 0.0,
+                        1.0, 0.0, 0.0, 0.0, 1.0];
+                    let mk = |s_: u32| -> *mut std::ffi::c_void {
+                        match s_ {
+                            0 => c::cmsStageAllocToneCurves(
+                                std::ptr::null_mut(), 3,
+                                trcs.as_ptr() as *mut _)
+                                    as *mut _,
+                            1 => c::cmsStageAllocCLut16bitGranular(
+                                std::ptr::null_mut(),
+                                dims.as_ptr(), 3, 3,
+                                grid.as_ptr()) as *mut _,
+                            2 => c::cmsStageAllocMatrix(
+                                std::ptr::null_mut(), 3, 3,
+                                mat.as_ptr(),
+                                std::ptr::null()) as *mut _,
+                            _ => c::cmsStageAllocIdentity(
+                                std::ptr::null_mut(), 3)
+                                    as *mut _,
+                        }
+                    };
+                    let stages: Vec<u32> = match st {
+                        0 => vec![0],
+                        1 => vec![1],
+                        2 => vec![0, 1],
+                        3 => vec![0, 2],
+                        4 => vec![2, 0],
+                        5 => vec![2],
+                        6 => vec![0, 2, 0],
+                        7 => vec![1, 2],
+                        8 => vec![2, 1],
+                        9 => vec![0, 1, 0],
+                        10 => vec![3],
+                        11 => vec![1, 1],
+                        _ => vec![0, 0, 0],
+                    };
+                    for (i, s_) in stages.iter().enumerate() {
+                        c::cmsPipelineInsertStage(p, i as i32,
+                            mk(*s_));
+                    }
+                    c::cmsWriteTag(prof, sig, p as *const _);
+                    c::cmsWriteTag(prof,
+                        if sig == 0x41324230 { 0x42324130 }
+                            else { 0x41324230 },
+                        p as *const _);
+                    // transforms both directions + flags
+                    let fin = (4u32 << 16) | (3 << 3) | 2;
+                    let t = c::cmsCreateTransform(prof, fin,
+                        srgb, fin, 0, flags);
+                    eprintln!("{sname} {sig:#x} {fname} \
+                        t={}", !t.is_null());
+                    if !t.is_null() {
+                        let src = [0x4000u16; 3];
+                        let mut dst = [0u16; 3];
+                        c::cmsDoTransform(t,
+                            src.as_ptr() as *const _,
+                            dst.as_mut_ptr() as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                    c::cmsCloseProfile(prof);
+                    c::cmsPipelineFree(p);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
