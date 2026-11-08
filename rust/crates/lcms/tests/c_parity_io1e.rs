@@ -370,3 +370,33 @@ fn more_writable_pipeline_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// cmsSetDeviceClass — relabeled classes hit the different
+/// cmsio1 LUT-reader branches (scnr/spac/nmcl vs mntr/prtr).
+#[test]
+fn device_class_branches() {
+    unsafe {
+        for (name, cls) in [
+            ("scnr", 0x73636E72u32),
+            ("spac", 0x73706163),
+            ("nmcl", 0x6E6D636C),
+            ("link", 0x6C696E6B),
+            ("abst", 0x61627374),
+        ] {
+            let h = c::cmsCreate_sRGBProfile();
+            c::cmsSetDeviceClass(h, cls);
+            eprintln!("{name} class={:#x} get={:#x}", cls,
+                c::cmsGetDeviceClass(h));
+            // intent-support + tag reads under the relabeled class
+            for intent in 0..4u32 {
+                for dir in [1u32, 2] {
+                    let r = c::cmsIsIntentSupported(h, intent, dir);
+                    let _ = r;
+                }
+            }
+            let _ = c::cmsReadTag(h, 0x41324230); // A2B0
+            let _ = c::cmsReadTag(h, 0x42324130); // B2A0
+            c::cmsCloseProfile(h);
+        }
+    }
+}
