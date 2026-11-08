@@ -39,3 +39,40 @@ fn error_handler_slot() {
         assert!(rdup.log_error_handler.is_some(), "dup handler carried");
     }
 }
+
+/// Remaining plugin-type dispatch + reject arms — cmsPluginTHR on
+/// Mutex/Paralellization/Header plugin sigs, bad-Magic and
+/// high-ExpectedVersion rejects, cmsDupContext on the result.
+#[test]
+fn plugin_remaining_arms() {
+    #[repr(C)]
+    struct Base { magic: u32, ver: u32, ty: u32, next: *mut std::ffi::c_void }
+    #[repr(C)]
+    struct Plugin { base: Base, payload: [*mut std::ffi::c_void; 8] }
+    unsafe {
+        let mut mk = |ty: u32, magic: u32, ver: u32| Plugin {
+            base: Base { magic, ver, ty, next: std::ptr::null_mut() },
+            payload: [std::ptr::null_mut(); 8],
+        };
+        for (name, ty) in [("mutex", 0x6D747A48u32),
+                           ("parl", 0x70726C48u32),
+                           ("hdr", 0x68647248u32)] {
+            let mut p = mk(ty, 0x61637070, 2200);
+            let r = c::cmsPluginTHR(std::ptr::null_mut(),
+                &mut p as *mut _ as *mut _);
+            eprintln!("{name}: plugin={r}");
+        }
+        // rejects
+        let mut bad = mk(0x6D747A48, 0xDEADBEEF, 2200);
+        eprintln!("badmagic={}", c::cmsPluginTHR(
+            std::ptr::null_mut(), &mut bad as *mut _ as *mut _));
+        let mut hi = mk(0x6D747A48, 0x61637070, 9999);
+        eprintln!("hivers={}", c::cmsPluginTHR(
+            std::ptr::null_mut(), &mut hi as *mut _ as *mut _));
+        // dup context on NULL + on a registered-context
+        let d = c::cmsDupContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        eprintln!("dupctx={}", !d.is_null());
+        if !d.is_null() { c::cmsDeleteContext(d); }
+    }
+}
