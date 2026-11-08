@@ -4630,3 +4630,95 @@ fn virt_builder_arms() {
         if !nul2.is_null() { c::cmsCloseProfile(nul2); }
     }
 }
+
+/// Unroll/Pack formatters + _cmsHandleExtraChannels — transform
+/// format sweeps: double->float unroll, planar, chunky,
+/// alpha/extra-channel formats.
+#[test]
+fn formatter_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        // format encoding: (colorspace<<16)|(extra<<12?)|
+        //   (channels<<3)|bytes
+        let enc = |cs: u32, ch: u32, b: u32, flags: u32| {
+            (cs << 16) | (ch << 3) | b | flags
+        };
+        const FL: u32 = 1 << 14;       // FLOAT_SH
+        const DBL: u32 = 1 << 15;      // (double marker via OPT?)
+        const PLANAR: u32 = 1 << 10;
+        const DOSWAP: u32 = 1 << 11;
+        const SWAPFIRST: u32 = 1 << 15;
+        const EXTRA: u32 = 1 << 7;     // extra channel count
+        let r8 = enc(4, 3, 1, 0);
+        let rgb = enc(4, 3, 1, 0);
+        let lab_dbl_in = enc(10, 3, 0, FL | DBL);   // Lab double
+        let lab_flt = enc(10, 3, 4, FL);            // Lab float
+        let lab_16 = enc(10, 3, 2, 0);
+        let rgb_pl = rgb | PLANAR;
+        let cmyk8 = enc(6, 4, 1, 0);
+        let cmyk_pl = cmyk8 | PLANAR;
+        let rgba = enc(4, 4, 1, 0);                 // RGBA
+        let rgb_a2 = enc(4, 4, 1, 0) | EXTRA;       // RGB+2 alphas?
+        let lab_a = enc(10, 4, 1, 0);
+        let x8 = enc(9, 3, 1, 0);
+        let fmts: Vec<(*mut std::ffi::c_void,
+            *mut std::ffi::c_void, u32, u32, &str)> = vec![
+            (srgb, lab, r8, lab_dbl_in, "r8->labdbl"),
+            (lab, srgb, lab_dbl_in, r8, "labdbl->r8"),
+            (srgb, lab, r8, lab_flt, "r8->labflt"),
+            (lab, srgb, lab_flt, r8, "labflt->r8"),
+            (srgb, lab, rgb_pl, lab_16, "rpl->lab16"),
+            (lab, srgb, lab_16, rgb_pl, "lab16->rpl"),
+            (cmyk, srgb, cmyk_pl, r8, "cmykpl->r8"),
+            (srgb, cmyk, r8, cmyk_pl, "r8->cmykpl"),
+            (srgb, lab, rgba, lab_16, "rgba->lab16"),
+            (lab, srgb, lab_16, rgba, "lab16->rgba"),
+            (srgb, lab, rgb_a2, lab_16, "rba2->lab16"),
+            (srgb, lab, lab_a, lab_16, "laba->lab16"),
+            (srgb, lab, r8 | DOSWAP, lab_16, "rswap->lab"),
+            (srgb, lab, r8 | SWAPFIRST, lab_16, "rsw1->lab"),
+            (lab, srgb, lab_dbl_in, lab_flt, "dbl->flt"),
+        ];
+        for (inp, outp, if_, of_, name) in &fmts {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(*inp, *if_,
+                *outp, *of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x55u8; 32];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // Eval4Inputs — 4-input CLUT pipeline eval
+        let dims = [3u32; 4];
+        let total = 3u32.pow(4) * 3;
+        let grid = vec![0x4000u16; total as usize];
+        let cl = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 4, 3,
+            grid.as_ptr());
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 4, 3);
+        c::cmsPipelineInsertStage(p, 1, cl);
+        let inp = [0x5555u16; 4];
+        let mut out = [0u16; 3];
+        c::cmsPipelineEval16(inp.as_ptr(), out.as_mut_ptr(), p);
+        let inpf = [0.5f32; 4];
+        let mut outf = [0f32; 3];
+        c::cmsPipelineEvalFloat(inpf.as_ptr(), outf.as_mut_ptr(),
+            p);
+        eprintln!("eval4in {out:?} {outf:?}");
+        c::cmsPipelineFree(p);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
