@@ -3619,3 +3619,23 @@ fn header_setters_2() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// cmsMD5 incremental hash — alloc/add/finish over profile bytes
+/// -> the profile-ID computation internals.
+#[test]
+fn md5_incremental() {
+    unsafe {
+        let h = c::cmsMD5alloc(std::ptr::null_mut());
+        eprintln!("md5={}", !h.is_null());
+        if !h.is_null() {
+            let data = b"profile content for hashing";
+            // add in chunks -> the incremental-buffer arms
+            for chunk in data.chunks(4) {
+                c::cmsMD5add(h, chunk.as_ptr(), chunk.len() as u32);
+            }
+            let mut id = [0u8; 16];
+            c::cmsMD5finish(id.as_mut_ptr() as *mut _, h);
+            eprintln!("id={:02x?}", &id[..8]);
+        }
+    }
+}
