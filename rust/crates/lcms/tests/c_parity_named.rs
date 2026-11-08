@@ -595,3 +595,41 @@ fn dict_tag_cycle() {
         c::cmsDictFree(d);
     }
 }
+
+/// MLU offset-alignment internals — many-entry MLU with odd/even
+/// string lengths -> the offset computation + padding arms.
+#[test]
+fn mlu_offset_alignment() {
+    unsafe {
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        // lengths 1,2,3,...,16 -> every offset-alignment arm
+        for i in 1..=16usize {
+            let txt = "x".repeat(i);
+            let lang = b"en\0";
+            let ctry = b"US\0";
+            let tz = format!("{txt}\0");
+            // vary lang/ctry to force distinct entries
+            let lz = format!("e{}\0", (i as u8 + 96) as char);
+            c::cmsMLUsetUTF8(m, lz.as_ptr(), ctry.as_ptr(), tz.as_ptr());
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(prof, 0x64657363, m as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x64657363)
+        } else { std::ptr::null_mut() };
+        eprintln!("mlu-align s={s} read={}", !tag.is_null());
+        if !tag.is_null() {
+            eprintln!("  entries={}", c::cmsMLUtranslationsCount(tag));
+        }
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsMLUfree(m);
+    }
+}
