@@ -252,3 +252,25 @@ fn pcs_delta_e_xyz() {
         assert!((rbx.X - bx.X).abs() < 1e-9, "xyz dec");
     }
 }
+
+/// Whitepoint internals — WhitePointFromTemp x temps,
+/// AdaptToIlluminant between illuminants, D50 accessors.
+#[test]
+fn whitepoint_internals() {
+    unsafe {
+        for t in [4000.0f64, 5000.0, 5500.0, 6500.0, 9300.0] {
+            let mut wp = c::CiexyY { x: 0.0, y: 0.0, Y: 0.0 };
+            let r = c::cmsWhitePointFromTemp(&mut wp, t);
+            eprintln!("t{t} r={r} x={:.3} y={:.3}", wp.x, wp.y);
+        }
+        // AdaptToIlluminant — XYZ from D65 to D50
+        let mut src = c::CieXyz { X: 0.96, Y: 1.0, Z: 0.82 };
+        let d50 = c::cmsD50_XYZ();
+        let d65 = c::CieXyz { X: 0.950, Y: 1.0, Z: 1.089 };
+        let mut out = c::CieXyz { X: 0.0, Y: 0.0, Z: 0.0 };
+        let r = c::cmsAdaptToIlluminant(&mut out, d50, &d65, &src);
+        eprintln!("adapt={r} out=({:.3},{:.3},{:.3})", out.X, out.Y, out.Z);
+        let d50xy = c::cmsD50_xyY();
+        eprintln!("d50xy=({:.4},{:.4})", (*d50xy).x, (*d50xy).y);
+    }
+}
