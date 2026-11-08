@@ -1866,3 +1866,30 @@ fn lab_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// XYZ formats on an XYZ devicelink — the XYZ packer
+/// bodies on a real profile.
+#[test]
+fn xyz_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x58595A20,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("xyz-u8", (0 << 16) | (3 << 3) | 1u32),
+            ("xyz-u16", (0 << 16) | (3 << 3) | 2),
+            ("xyz-flt", (1 << 22) | (0 << 16) | (3 << 3) | 4),
+            ("xyz-dbl", (1 << 22) | (0 << 16) | (3 << 3) | 0),
+            ("xyz-hlf", (1 << 22) | (0 << 16) | (3 << 3) | 2),
+            ("xyz-planar", (0 << 16) | (1 << 12) | (3 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
