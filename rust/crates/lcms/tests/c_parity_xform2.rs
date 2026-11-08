@@ -1742,3 +1742,50 @@ fn cnvt_chad_temp() {
         c::cmsFreeToneCurve(g22);
     }
 }
+
+/// UnrollNothing/PackNothing + CachedXFORMGamutCheck — zero-format
+/// transforms + gamut-check without NOCACHE.
+#[test]
+fn xform_nothing_gamut() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // zero-format transform -> UnrollNothing/PackNothing arms
+        let t = c::cmsCreateTransform(srgb, 0, lab, 0, 0, 0);
+        eprintln!("zero-fmt t={}", !t.is_null());
+        if !t.is_null() {
+            let r8 = (4u32 << 16) | (3 << 3) | 1;
+            let l8 = (10u32 << 16) | (3 << 3) | 1;
+            c::cmsChangeBuffersFormat(t, r8, l8);
+            let ib = [0x80u8; 4];
+            let mut ob = [0u8; 8];
+            c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                ob.as_mut_ptr() as *mut _, 1);
+            c::cmsDeleteTransform(t);
+        }
+        // gamut-check without NOCACHE -> CachedXFORMGamutCheck
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let proof = if !cmyk.is_null() { cmyk } else { srgb };
+        let t2 = c::cmsCreateProofingTransform(srgb, r16, srgb, r16,
+            proof, 0, 0, 0x1000);
+        eprintln!("gamut t={}", !t2.is_null());
+        if !t2.is_null() {
+            let ib = [0x8000u16; 4];
+            let mut ob = [0x8000u16; 4];
+            for v in [0x1000u16, 0x8000, 0xf000] {
+                let mut inp = [v; 4];
+                c::cmsDoTransform(t2, inp.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+            }
+            c::cmsDeleteTransform(t2);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
