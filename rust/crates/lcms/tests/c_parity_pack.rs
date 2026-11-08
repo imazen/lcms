@@ -449,3 +449,54 @@ fn u16_format_modifiers() {
         let _ = c::cmsCloseProfile(lab4);
     }
 }
+
+/// More colorspace packed formats — XYZ/CMYK/Lab/gray/4ch/
+/// 6ch/15ch through the dispatch.
+#[test]
+fn colorspace_formats() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(
+            c::cmsD50_xyY() as *const std::ffi::c_void, gg);
+        // each colorspace's packed formats — the Unroll*/Pack*
+        // dispatch on each
+        for (name, in_fmt, out_fmt, p2) in [
+            ("xyz-16", (4 << 16) | (3 << 3) | 2u32,
+             (5 << 16) | (3 << 3) | 2, xyz),
+            ("xyz-dbl", (1 << 22) | (4 << 16) | (3 << 3) | 0,
+             (1 << 22) | (5 << 16) | (3 << 3) | 0, xyz),
+            ("xyz-flt", (1 << 22) | (4 << 16) | (3 << 3) | 4,
+             (1 << 22) | (5 << 16) | (3 << 3) | 4, xyz),
+            ("gray-16", (4 << 16) | (3 << 3) | 2,
+             (3 << 16) | (1 << 3) | 2, gray),
+            ("gray-8", (4 << 16) | (3 << 3) | 1,
+             (3 << 16) | (1 << 3) | 1, gray),
+            ("gray-flt", (1 << 22) | (4 << 16) | (3 << 3) | 4,
+             (1 << 22) | (3 << 16) | (1 << 3) | 4, gray),
+            ("lab-8", (4 << 16) | (3 << 3) | 1,
+             (10 << 16) | (3 << 3) | 1, lab4),
+            ("lab-16", (4 << 16) | (3 << 3) | 2,
+             (10 << 16) | (3 << 3) | 2, lab4),
+        ] {
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
+                out_fmt, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x8000u16, 0x6000, 0x4000, 0x2000];
+                let mut out = [0u16; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let _ = c::cmsCloseProfile(lab4);
+        let _ = c::cmsCloseProfile(xyz);
+        let _ = c::cmsCloseProfile(gray);
+    }
+}
