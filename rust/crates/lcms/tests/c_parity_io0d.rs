@@ -7529,3 +7529,87 @@ fn crdi_read_arms() {
         }
     }
 }
+
+/// ReadEmbeddedText/ReadSeqID/ReadOneWChar internals — raw
+/// pseq/psid tags with embedded-MLU + UTF-16 text arms.
+#[test]
+fn pseq_embedded_text_arms() {
+    unsafe {
+        // embedded text: type-base ('text'/'desc'/'mluc' + rsv)
+        // + payload
+        let text_blob = |s: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x74657874u32.to_be_bytes()); // 'text'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(s.as_bytes());
+            t.push(0);
+            t
+        };
+        let desc_blob = |s: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x64657363u32.to_be_bytes()); // 'desc'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&(s.len() as u32 + 1).to_be_bytes());
+            t.extend_from_slice(s.as_bytes());
+            t.push(0);
+            t.extend_from_slice(&[0; 3]);
+            t
+        };
+        let mluc_blob = |s: &str| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x6d6c7563u32.to_be_bytes()); // 'mluc'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&1u16.to_be_bytes()); // 1 entry
+            t.extend_from_slice(&12u16.to_be_bytes()); // rec size
+            t.extend_from_slice(b"enUS");
+            let wlen = (s.chars().count() * 2) as u32;
+            t.extend_from_slice(&wlen.to_be_bytes());
+            t.extend_from_slice(&28u32.to_be_bytes()); // offset
+            for ch in s.chars() {
+                t.extend_from_slice(&(ch as u16).to_be_bytes());
+            }
+            while t.len() % 4 != 0 { t.push(0); }
+            t
+        };
+        let mk = |blob: &[u8], n: u32| -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&0x70736571u32.to_be_bytes()); // 'pseq'
+            t.extend_from_slice(&[0; 4]);
+            t.extend_from_slice(&n.to_be_bytes());
+            for _ in 0..n {
+                t.extend_from_slice(b"mfg\0");
+                t.extend_from_slice(b"mdl\0");
+                t.extend_from_slice(&[0; 8]); // attributes
+                t.extend_from_slice(b"tech");
+                t.extend_from_slice(blob); // Manufacturer text
+                t.extend_from_slice(blob); // Model text
+            }
+            t
+        };
+        for (blob, name) in [
+            (text_blob("mfg-name"), "text"),
+            (desc_blob("mfg-name"), "desc"),
+            (mluc_blob("mfg-name"), "mluc"),
+        ] {
+            let raw = mk(&blob, 1);
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteRawTag(prof, 0x70736571,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n2 = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n2);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n2)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x70736571)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
+
