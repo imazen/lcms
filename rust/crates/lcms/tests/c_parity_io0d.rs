@@ -3122,3 +3122,40 @@ fn tag_search_linked_null() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// cmsOpenProfileFromFile path + ReadOffsetArray internals — file
+/// opens (vs memory), profile header getters over the tag table.
+#[test]
+fn file_open_offset_array() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let data = std::fs::read(dir.join("lcms2cmyk.icc")).unwrap();
+        let tp = "/tmp/ccov_file_open.icc\0";
+        std::fs::write(tp.trim_end_matches('\0'), &data).unwrap();
+        let p = c::cmsOpenProfileFromFile(
+            tp.as_ptr() as *const i8, b"r\0".as_ptr() as *const u8);
+        eprintln!("file-open={}", !p.is_null());
+        if !p.is_null() {
+            // header getters + tag enumeration -> ReadOffsetArray
+            let n = c::cmsGetTagCount(p);
+            let cs = c::cmsGetColorSpace(p);
+            let pcs = c::cmsGetPCS(p);
+            let cls = c::cmsGetDeviceClass(p);
+            let v = c::cmsGetEncodedICCversion(p);
+            eprintln!("tags={n} cs={cs:#x} pcs={pcs:#x} cls={cls:#x} v={v:#x}");
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(p, i as u32);
+                let sz = c::cmsReadRawTag(p, sig, std::ptr::null_mut(), 0);
+                let _ = sz;
+            }
+            c::cmsCloseProfile(p);
+        }
+        // THR variant
+        let p2 = c::cmsOpenProfileFromFileTHR(std::ptr::null_mut(),
+            tp.as_ptr() as *const i8, b"r\0".as_ptr() as *const i8);
+        let _ = p2;
+        eprintln!("file-thr={}", !p2.is_null());
+        if !p2.is_null() { c::cmsCloseProfile(p2); }
+    }
+}
