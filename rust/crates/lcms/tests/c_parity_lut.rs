@@ -2407,3 +2407,71 @@ fn stage_eval_sweep() {
         }
     }
 }
+
+/// LUT16/LUT8 read-back cycle — write varied pipeline shapes to a
+/// v2-profile A2B0 tag, save, reload, cmsReadTag: exercises
+/// Type_LUT16_Read/Type_LUT8_Read arms for each written shape
+/// (matrix/pre/post curves/CLUT permutations).
+#[test]
+fn lut_readback_cycles() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
+        let tab16: Vec<u16> = (0..8*3).map(|i| (i * 11) as u16).collect();
+        for (name, eight, parts) in [
+            ("16-clut", false, [3u8].as_slice()),
+            ("16-cv-clut-cv", false, [0,3,0].as_slice()),
+            ("16-mx-cv-clut", false, [1,0,3].as_slice()),
+            ("8-cv-clut-cv", true, [0,3,0].as_slice()),
+            ("8-clut", true, [3].as_slice()),
+        ] {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            for &k in parts {
+                match k {
+                    0 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3, cc.as_ptr())),
+                    1 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                            3, 3, mat.as_ptr(), std::ptr::null())),
+                    _ => c::cmsPipelineInsertStage(p, 1,
+                            c::cmsStageAllocCLut16bit(
+                                std::ptr::null_mut(), 2, 3, 3,
+                                tab16.as_ptr())),
+                };
+            }
+            if eight { c::cmsPipelineSetSaveAs8bitsFlag(p, 1); }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 2.1);
+            let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            // reload + read the tag back through the LUT reader
+            if s != 0 {
+                let rp = c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n);
+                let tag = c::cmsReadTag(rp, 0x41324230);
+                eprintln!("{name}: save n={n} readtag={}",
+                    !tag.is_null());
+                // eval the read pipeline
+                if !tag.is_null() {
+                    let i16 = [0x2000u16, 0x6000, 0xA000];
+                    let mut o16 = [0u16; 3];
+                    c::cmsPipelineEval16(i16.as_ptr(),
+                        o16.as_mut_ptr(), tag);
+                    eprintln!("  eval={o16:?}");
+                }
+                c::cmsCloseProfile(rp);
+            } else {
+                eprintln!("{name}: save failed w={w}");
+            }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
