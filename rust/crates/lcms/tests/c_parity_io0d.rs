@@ -7976,3 +7976,67 @@ fn tag_free_dup_batch() {
     }
 }
 
+
+/// cmsio1 LUT-reader builders — gray/RGB input/output matrix
+/// shaper pipelines + float-LUT tag readers.
+#[test]
+fn lut_builder_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let xyz = c::cmsCreateXYZProfile();
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let x16 = (9u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, if_, of_, name) in [
+            (gray, lab, g16, l16, "gray->lab"),
+            (lab, gray, l16, g16, "lab->gray"),
+            (gray, srgb, g16, r16, "gray->rgb"),
+            (srgb, gray, r16, g16, "rgb->gray"),
+            (xyz, gray, x16, g16, "xyz->gray"),
+            (gray, xyz, g16, x16, "gray->xyz"),
+            (srgb, xyz, r16, x16, "rgb->xyz"),
+            (xyz, srgb, x16, r16, "xyz->rgb"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 4];
+                let mut ob = [0x8000u16; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // float-LUT tags: D2B0/D2B1/D2B2/D2B3 on profiles
+        for (sig, name) in [
+            (0x44324230u32, "d2b0"), (0x44324231, "d2b1"),
+            (0x44324232, "d2b2"), (0x44324233, "d2b3"),
+            (0x41324430, "a2d0"),
+        ] {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                    mat.as_ptr(), std::ptr::null()));
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, sig, p as *const _);
+            let t = if w != 0 {
+                c::cmsCreateTransform(prof, r16, lab, l16, 0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(xyz);
+        c::cmsFreeToneCurve(g);
+    }
+}
