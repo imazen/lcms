@@ -2613,3 +2613,29 @@ fn targ_it8_payload() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Stored-type reads on profiles with unusual sigs — the
+/// real stored-type machinery.
+#[test]
+fn stored_type_reads2() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        let h2 = c::cmsOpenProfileFromMem(
+            cbuf.as_ptr() as _, cn);
+        // read every stored tag
+        let nt = c::cmsGetTagCount(h2);
+        eprintln!("tags={nt}");
+        for i in 0..nt as u32 {
+            let sig = c::cmsGetTagSignature(h2, i);
+            let r = c::cmsReadTag(h2, sig);
+            eprintln!("  tag{i} sig={:#x} null={}", sig, r.is_null());
+        }
+        c::cmsCloseProfile(h2);
+    }
+}
