@@ -728,3 +728,50 @@ fn include_path_and_synerror() {
         if !h3.is_null() { c::cmsIT8Free(h3); }
     }
 }
+
+/// .cube devicelink parse — ParseCube + cmsCreateDeviceLinkFromCube:
+/// TITLE, DOMAIN_MIN/MAX, LUT_1D/3D_SIZE, *_INPUT_RANGE, comments,
+/// plus malformed inputs. C vs Rust devicelink creation parity.
+#[test]
+fn cube_devicelink() {
+    unsafe {
+        let cases: &[(&str, &str)] = &[
+            ("1d", "TITLE \"t1\"\nLUT_1D_SIZE 4\n\
+                0 0 0\n0.33 0.33 0.33\n0.66 0.66 0.66\n1 1 1\n"),
+            ("3d", "TITLE \"t3\"\nLUT_3D_SIZE 2\n\
+                0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n"),
+            ("3d-dom", "TITLE \"d\"\nDOMAIN_MIN 0.1 0.2 0.3\n\
+                DOMAIN_MAX 0.9 0.8 0.7\nLUT_3D_SIZE 2\n\
+                0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n"),
+            ("3d-range", "LUT_3D_INPUT_RANGE 0.0 1.0\nLUT_3D_SIZE 2\n\
+                0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n"),
+            ("1d-range", "LUT_1D_INPUT_RANGE 0.0 1.0\nLUT_1D_SIZE 2\n\
+                0 0 0\n1 1 1\n"),
+            ("3d-shaper", "TITLE \"s\"\nLUT_1D_SIZE 4\n\
+                0 0 0\n0.4 0.4 0.4\n0.8 0.8 0.8\n1 1 1\n\
+                LUT_3D_SIZE 2\n\
+                0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n"),
+            ("3d-cmt", "# comment line\nTITLE \"c\"\n\
+                LUT_3D_SIZE 2\n\
+                0 0 0\n0 0 1\n0 1 0\n0 1 1\n1 0 0\n1 0 1\n1 1 0\n1 1 1\n"),
+            // errors — no LUT size, bad float, truncated table
+            ("e-nosize", "TITLE \"x\"\n0 0 0\n"),
+            ("e-bad", "LUT_3D_SIZE 2\nq r s\n0 0 0\n"),
+            ("e-trunc", "LUT_3D_SIZE 4\n0 0 0\n0 0 1\n"),
+            ("e-empty", ""),
+        ];
+        for (name, data) in cases {
+            let path = format!("/tmp/cube_{name}.cube\0");
+            std::fs::write(path.trim_end_matches('\0'), data).unwrap();
+            let ch = c::cmsCreateDeviceLinkFromCubeFile(
+                path.as_ptr() as *const i8);
+            let rp = lcms::cgats::It8::create_device_link_from_cube_file(
+                None, path.trim_end_matches('\0'));
+            let c_ok = !ch.is_null();
+            let r_ok = rp.is_some();
+            eprintln!("{name}: C={c_ok} R={r_ok}");
+            assert_eq!(c_ok, r_ok, "{name} parse parity");
+            if c_ok { c::cmsCloseProfile(ch); }
+        }
+    }
+}

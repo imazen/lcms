@@ -451,10 +451,23 @@ fn satob(v: &str) -> String {
     s
 }
 
+/// `BinSrchKey` — a true binary search over the keyword table in its
+/// stored order. C's tables are NOT sorted for binary search, so some
+/// entries are unreachable (e.g. LUT_1D_INPUT_RANGE in the cube table);
+/// they surface as SUNDEFINED/SIDENT exactly as in C.
 fn bin_srch_key(id: &str, keys: &[Keyword]) -> Symbol {
-    for k in keys {
-        if strcasecmp(k.id, id) == 0 {
-            return k.sy;
+    let mut l = 0usize;
+    let mut r = keys.len();
+    while r > l {
+        let x = (l + r) / 2;
+        let res = strcasecmp(keys[x].id, id);
+        if res == 0 {
+            return keys[x].sy;
+        }
+        if res > 0 {
+            r = x;
+        } else {
+            l = x + 1;
         }
     }
     Symbol::Ident
@@ -1899,8 +1912,11 @@ impl It8 {
                         return false;
                     }
                 }
+                // C's `default:` arm — any unexpected symbol (incl. SIDENT
+                // from keywords unreachable by the unsorted-table binary
+                // search) rejects as unsupported.
                 _ => {
-                    self.in_symbol();
+                    return self.syn_error("Unsupported format");
                 }
             }
         }
@@ -1916,10 +1932,10 @@ impl It8 {
         let mut cube = Self::alloc(ctx.clone());
         cube.is_cube = true;
         cube.source = data;
+        cube.next_ch();
         let mut shaper = None;
         let mut clut = None;
         let mut title = String::new();
-        cube.in_symbol();
         if !cube.parse_cube(&mut shaper, &mut clut, &mut title) {
             return None;
         }
