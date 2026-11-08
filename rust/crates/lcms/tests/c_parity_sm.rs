@@ -429,3 +429,34 @@ fn tac_real_profiles() {
         }
     }
 }
+
+/// Black-point internals — DetectBlackPoint on corpus profiles
+/// across intents hits the quadratic-fit + fallback arms.
+#[test]
+fn black_point_internals2() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "lcms2link.icc",
+                  "limitlcms2.icc", "linlcms2.icc", "aRGBlcms2.icc",
+                  "bchslcms2.icc", "glablcms2.icc", "gray3lcms2.icc",
+                  "labv4lcms2.icc", "labv2lcms2.icc", "xyzlcms2.icc",
+                  "brightness.icc", "graylcms2.icc", "nullcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in 0..4u32 {
+                let mut bp = [0.0f64; 3];
+                let r = c::cmsDetectBlackPoint(
+                    bp.as_mut_ptr() as *mut _, p, intent, 0);
+                if r != 0 && intent == 0 {
+                    eprintln!("{f} i{intent} bp=({:.3},{:.3},{:.3})",
+                        bp[0], bp[1], bp[2]);
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
+    }
+}
