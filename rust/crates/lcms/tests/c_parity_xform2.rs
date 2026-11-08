@@ -6392,3 +6392,68 @@ fn xform_proof_sweep_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmscnvrt residual — multiprofile chains through
+///   abstract/spac/nmcl middle profiles + intent
+///   dispatch on each.
+#[test]
+fn xform_chain_mid_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // middle profiles: abstract + spac + link at
+        //   each intent
+        for (cls, cs, pcs, name) in [
+            (0x61627374u32, 0x4C616220, 0x4C616220,
+                "abst"),
+            (0x73706163, 0x4C616220, 0x4C616220, "spac"),
+            (0x6C696E6B, 0x4C616220, 0x4C616220, "link"),
+        ] {
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let tcs = [g, g, g];
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            let mp = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(mp, cls);
+            c::cmsSetColorSpace(mp, cs);
+            c::cmsSetPCS(mp, pcs);
+            c::cmsSetProfileVersion(mp, 4.4);
+            c::cmsWriteTag(mp, 0x41324230,
+                pipe as *const _);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(mp,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let mpr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} mp={}", !mpr.is_null());
+            if !mpr.is_null() {
+                for i in 0..4u32 {
+                    let mut ps = [srgb, mpr, lab4];
+                    let t = c::cmsCreateMultiprofileTransform(
+                        ps.as_mut_ptr(), 3,
+                        frgb, flab, i, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(mpr);
+            }
+            c::cmsCloseProfile(mp);
+            c::cmsPipelineFree(pipe);
+            c::cmsFreeToneCurve(g);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
