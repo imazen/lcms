@@ -5557,3 +5557,76 @@ fn crdi_psid_tags() {
         c::cmsFreeProfileSequenceDescription(psd);
     }
 }
+
+/// Type_Text (v2 cprt), Type_Text_Description (v2 dmnd) and
+/// Type_Data (ps2s CRD) payloads.
+#[test]
+fn text_data_tags() {
+    unsafe {
+        // v2 profile: cprt takes textType (char*)
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 2.1);
+        let txt = b"Copyright test\0";
+        let w = c::cmsWriteTag(prof, 0x63707274,
+            txt.as_ptr() as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x63707274)
+        } else { std::ptr::null_mut() };
+        eprintln!("v2-cprt-text w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+
+        // v2 profile: dmnd takes textDescriptionType (MLU payload)
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(m, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, b"mfr desc\0".as_ptr());
+        let prof2 = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof2, 2.1);
+        let w2 = c::cmsWriteTag(prof2, 0x646d6e64, m as *const _);
+        let mut n2 = buf.len() as u32;
+        let s2 = if w2 != 0 {
+            c::cmsSaveProfileToMem(prof2,
+                buf.as_mut_ptr() as *mut _, &mut n2)
+        } else { 0 };
+        let rp2 = if s2 != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n2)
+        } else { std::ptr::null_mut() };
+        let tag2 = if !rp2.is_null() {
+            c::cmsReadTag(rp2, 0x646d6e64)
+        } else { std::ptr::null_mut() };
+        eprintln!("v2-dmnd-td w={w2} s={s2} read={}", !tag2.is_null());
+        if !rp2.is_null() { c::cmsCloseProfile(rp2); }
+        c::cmsCloseProfile(prof2);
+        c::cmsMLUfree(m);
+
+        // data type — cmsICCData {len, flag, data[]} on ps2s
+        #[repr(C)] struct ICCData { len: u32, flag: u32, data: [u8; 8] }
+        let mut d = ICCData { len: 8, flag: 0, data: *b"CRDDATA!" };
+        let prof3 = c::cmsCreate_sRGBProfile();
+        let w3 = c::cmsWriteTag(prof3, 0x70733273,
+            &mut d as *mut _ as *const _); // 'ps2s'
+        let mut n3 = buf.len() as u32;
+        let s3 = if w3 != 0 {
+            c::cmsSaveProfileToMem(prof3,
+                buf.as_mut_ptr() as *mut _, &mut n3)
+        } else { 0 };
+        let rp3 = if s3 != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n3)
+        } else { std::ptr::null_mut() };
+        let tag3 = if !rp3.is_null() {
+            c::cmsReadTag(rp3, 0x70733273)
+        } else { std::ptr::null_mut() };
+        eprintln!("ps2s-data w={w3} s={s3} read={}", !tag3.is_null());
+        if !rp3.is_null() { c::cmsCloseProfile(rp3); }
+        c::cmsCloseProfile(prof3);
+    }
+}
