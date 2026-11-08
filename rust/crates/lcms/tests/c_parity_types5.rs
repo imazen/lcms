@@ -802,3 +802,45 @@ fn dup_exotic_tags() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'cicp' — the ICC.1:2022-05 CICP tag (cmsVideoSignalType:
+/// 4 u8 fields, primaries/transfer/matrix/fullrange).
+#[test]
+fn cicp_tag() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct CCicp {
+            colour_primaries: u8,
+            transfer_characteristics: u8,
+            matrix_coefficients: u8,
+            video_full_range_flag: u8,
+        }
+        let cicp = CCicp {
+            colour_primaries: 1,      // BT.709
+            transfer_characteristics: 13, // sRGB
+            matrix_coefficients: 0,
+            video_full_range_flag: 0,
+        };
+        let ok = c::cmsWriteTag(h, 0x63696370,
+            &cicp as *const _ as *mut std::ffi::c_void);
+        eprintln!("cicp write={ok}");
+        // resave + read back
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let mut tb = [0u8; 4];
+        if c::cmsIsTag(h2, 0x63696370) != 0 {
+            c::cmsReadRawTag(h2, 0x63696370,
+                tb.as_mut_ptr() as *mut _, 4);
+            eprintln!("cicp type={:#010x}", u32::from_be_bytes(tb));
+        }
+        let r = c::cmsReadTag(h2, 0x63696370);
+        eprintln!("cicp read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
