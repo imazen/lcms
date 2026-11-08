@@ -22513,3 +22513,69 @@ fn internal_final52_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — tag-table introspection internals
+///   (cmsIsTag/TagCount/GetTagSignature/TagLinkedTo/raw
+///   read+write on every pipeline sig).
+#[test]
+fn internal_final53_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // write a cv+clut+cv pipeline to every LUT sig,
+        //   then introspect the tag table
+        for sig in [
+            0x41324230u32, 0x41324231, 0x41324232,
+            0x41324233, 0x42324130, 0x42324131,
+            0x42324132, 0x42324133, 0x67616D75,
+            0x70726530, 0x70726531, 0x70726532,
+            0x70726430, 0x70726431, 0x70726432,
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 2.0);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let trcs = [g, g, g];
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    trcs.as_ptr() as *mut _));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(),
+                    dims.as_ptr(), 3, 3,
+                    grid.as_ptr()));
+            c::cmsPipelineInsertStage(p, 2,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    trcs.as_ptr() as *mut _));
+            let w = c::cmsWriteTag(prof, sig,
+                p as *const _);
+            let cnt = c::cmsGetTagCount(prof);
+            let is = c::cmsIsTag(prof, sig);
+            let linked = c::cmsTagLinkedTo(prof, sig);
+            eprintln!("{sig:#x} w={w} cnt={cnt} is={is} \
+                linked={linked:#x}");
+            // raw read + raw write round-trip
+            let mut raw = vec![0u8; 1 << 16];
+            let nrd = c::cmsReadRawTag(prof, sig,
+                raw.as_mut_ptr() as *mut _,
+                raw.len() as u32);
+            let w2 = if nrd > 0 {
+                c::cmsWriteRawTag(prof, sig,
+                    raw.as_ptr() as *const _, nrd)
+            } else { 0 };
+            eprintln!("  nrd={nrd} w2={w2}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
