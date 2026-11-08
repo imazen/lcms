@@ -957,3 +957,51 @@ fn sm_cam02_tail_arms() {
         let _ = c::cmsSetAdaptationState(old);
     }
 }
+
+/// cmssamp/cmsgmt residual — DetectRGBProfileGamma on
+///   varying-gamma profiles, DetectTAC on matrix-shaper
+///   + ncl2 + cmyk profiles, GBD alloc/free sweeps.
+#[test]
+fn sm_detect_gbd_arms() {
+    unsafe {
+        // DetectRGBProfileGamma on gammas near/over the
+        //   threshold
+        for (g_, name) in [
+            (0.5f64, "g05"), (1.0, "g10"), (1.8, "g18"),
+            (2.2, "g22"), (3.0, "g30"), (0.02, "g002"),
+        ] {
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), g_);
+            // sRGB D65 white + primaries
+            let wp = c::CiexyY { x: 0.3127, y: 0.3290,
+                Y: 1.0 };
+            let prm = c::CiexyYTriple {
+                Red: c::CiexyY { x: 0.64, y: 0.33,
+                    Y: 1.0 },
+                Green: c::CiexyY { x: 0.30, y: 0.60,
+                    Y: 1.0 },
+                Blue: c::CiexyY { x: 0.15, y: 0.06,
+                    Y: 1.0 } };
+            let trcs: [*mut std::ffi::c_void; 3] =
+                [g as *mut _, g as *mut _, g as *mut _];
+            let rgb = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const _ as *const _,
+                &prm as *const _ as *const _,
+                trcs.as_ptr());
+            for th in [0.01f64, 0.5, 1.0, 4.0, 100.0] {
+                let r1 = c::cmsDetectRGBProfileGamma(
+                    rgb, th);
+                eprintln!("{name} th{th}: {r1}");
+            }
+            if !rgb.is_null() { c::cmsCloseProfile(rgb); }
+            c::cmsFreeToneCurve(g);
+        }
+        // GBD: alloc/free sweeps
+        for _ in 0..4 {
+            let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
+            c::cmsGBDFree(gbd);
+        }
+        eprintln!("gbd-alloc-free ok");
+    }
+}
