@@ -862,3 +862,33 @@ fn flag_combos2() {
         let _ = (rgb, rgb2);
     }
 }
+
+/// Flag'd eval path — doTransform with data on flagged
+/// transforms.
+#[test]
+fn flagged_dotransform() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let rgb2 = c::cmsCreate_sRGBProfile();
+        let fmt = (4 << 16) | (3 << 3) | 1u32;
+        let inp = [128u8, 64, 192];
+        for (name, flags) in [
+            ("none", 0u32), ("bpc", 1 << 1),
+            ("gamut", 1 << 10), ("linear", 1 << 4),
+            ("copyalpha", 1 << 17), ("highprec", 1 << 9)] {
+            let t = c::cmsCreateTransform(rgb, fmt,
+                rgb2, fmt, 0, flags);
+            if t.is_null() {
+                eprintln!("{name} NULL");
+                continue;
+            }
+            let mut out = [0u8; 3];
+            c::cmsDoTransform(t, inp.as_ptr() as _,
+                out.as_mut_ptr() as _, 1);
+            eprintln!("{name} do=1 out={},{},{}",
+                out[0], out[1], out[2]);
+            c::cmsDeleteTransform(t);
+        }
+        let _ = (rgb, rgb2);
+    }
+}
