@@ -640,3 +640,34 @@ fn stage_type_dup() {
         assert_eq!(rid.stage_type(), 0x69646e20, "identity type");
     }
 }
+
+/// _cmsStageAllocLab2XYZ + _cmsStageAllocXYZ2Lab — the Lab/XYZ
+/// element allocators inside an MPE pipeline.
+#[test]
+fn lab_xyz_elements() {
+    unsafe {
+        let cp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let l2x = c::_cmsStageAllocLab2XYZ(std::ptr::null_mut());
+        let x2l = c::_cmsStageAllocXYZ2Lab(std::ptr::null_mut());
+        assert!(!l2x.is_null() && !x2l.is_null());
+        c::cmsPipelineInsertStage(cp, 0, l2x);
+        c::cmsPipelineInsertStage(cp, 0, x2l); // xyz2lab first
+        // eval — Lab -> XYZ -> Lab roundtrip-ish
+        let inp = [0.5f32, 0.5, 0.5];
+        let mut co = [0f32; 3];
+        c::cmsPipelineEvalFloat(inp.as_ptr(), co.as_mut_ptr(), cp);
+        // rust side
+        let mut rp = lut::pipeline_alloc(None, 3, 3).unwrap();
+        let rx2l = lut::stage_alloc_xyz2lab(None);
+        assert!(rp.insert_stage(lut::StageLoc::AtEnd, rx2l));
+        let rl2x = lut::stage_alloc_lab2xyz(None);
+        assert!(rp.insert_stage(lut::StageLoc::AtEnd, rl2x));
+        let mut ro = [0f32; 3];
+        rp.eval_float(&inp, &mut ro);
+        for i in 0..3 {
+            assert!((co[i] - ro[i]).abs() < 1e-4,
+                "eval[{i}] c={} r={}", co[i], ro[i]);
+        }
+        c::cmsPipelineFree(cp);
+    }
+}
