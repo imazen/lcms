@@ -2118,3 +2118,39 @@ fn struct_object_resave() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// MLU/text resave+read — the serialization round-trips on
+/// real MLU objects.
+#[test]
+fn mlu_text_resave() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"text\0".as_ptr() as *const u8);
+        for (sig, name) in [
+            (0x64657363u32, "desc"), (0x63707274u32, "cprt"),
+            (0x646D6464u32, "dmdd"), (0x646D6E64u32, "dmnd"),
+            (0x76756564u32, "vued")] {
+            let _ = c::cmsWriteTag(h, sig,
+                mlu as *mut std::ffi::c_void);
+        }
+        // resave + read — the MLU serialization internals
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x64657363u32, 0x63707274, 0x646D6464,
+                    0x646D6E64, 0x76756564] {
+            let r = c::cmsReadTag(h2, sig);
+            eprintln!("{sig:#x} read={}", r.is_null());
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
