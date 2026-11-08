@@ -3899,3 +3899,108 @@ fn extended_transform_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// _cmsReadDevicelinkLUT + AddConversion — link-class profile
+/// transforms + adaptation/BPC matrix insertion per colorspace
+/// pair.
+#[test]
+fn devicelink_lut_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        // devicelink profiles at different channel counts +
+        // colorspace headers → _cmsReadDevicelinkLUT arms
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut links = Vec::new();
+        for (cs, pcs, nch, name) in [
+            (0x52474220u32, 0x58595A20, 3u32, "rgb->xyz"),
+            (0x52474220, 0x4C616220, 3, "rgb->lab"),
+            (0x434d594b, 0x4C616220, 4, "cmyk->lab"),
+            (0x434d594b, 0x58595A20, 4, "cmyk->xyz"),
+            (0x47524159, 0x4C616220, 1, "gray->lab"),
+        ] {
+            let link = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(link, 0x6c696e6b);   // link
+            c::cmsSetColorSpace(link, cs);
+            c::cmsSetPCS(link, pcs);
+            c::cmsSetProfileVersion(link, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), nch, 3);
+            let n = (3u32.pow(nch) * 3) as usize;
+            let mut grid = vec![0u16; n];
+            for (i, v) in grid.iter_mut().enumerate() {
+                *v = ((i % 11) * 5957) as u16;
+            }
+            let dims = vec![3u32; nch as usize];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), nch, 3,
+                    grid.as_ptr()));
+            let w = c::cmsWriteTag(link, 0x41324230,
+                p as *const _);
+            eprintln!("link {name} w={w}");
+            links.push((link, name, cs));
+            c::cmsPipelineFree(p);
+        }
+        // link profiles in transforms (input side) →
+        // _cmsReadDevicelinkLUT + AddConversion (PCS fixups)
+        for (link, name, cs) in &links {
+            let infmt = (*cs as u32 >> 16 & 0x0f) << 16;
+            for (outp, of_, oname) in [
+                (srgb, r8, "srgb"),
+                (lab, l8, "lab"),
+                (cmyk, k8, "cmyk"),
+            ] {
+                if outp.is_null() { continue; }
+                let t = c::cmsCreateTransform(*link, infmt,
+                    outp, of_, 0, 0);
+                eprintln!("{name}->{oname} t={}", !t.is_null());
+                if !t.is_null() {
+                    let inp_b = [0x55u8; 8];
+                    let mut out = [0u8; 8];
+                    c::cmsDoTransform(t, inp_b.as_ptr()
+                        as *const _, out.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        // AddConversion arms — multiprofile chains with BPC on
+        const BPC: u32 = 0x2000;
+        for (inp, outp, if_, of_, name) in [
+            (srgb, cmyk, r8, k8, "srgb->cmyk"),
+            (lab, cmyk, l8, k8, "lab->cmyk"),
+            (xyz, cmyk, (9u32 << 16) | (3 << 3) | 1, k8,
+                "xyz->cmyk"),
+            (cmyk, lab, k8, l8, "cmyk->lab"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for flags in [0u32, BPC] {
+                for intent in [0u32, 1] {
+                    let t = c::cmsCreateTransform(inp, if_, outp,
+                        of_, intent, flags);
+                    eprintln!("{name} f{flags:#x} i{intent} t={}",
+                        !t.is_null());
+                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                }
+            }
+        }
+        for (l, _, _) in &links { c::cmsCloseProfile(*l); }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
