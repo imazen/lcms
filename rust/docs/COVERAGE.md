@@ -281,3 +281,54 @@ Remaining line-level gaps are deep internals: the ~135
 formatter variant bodies in cmspack beyond the eval'd combos,
 the MPE/pipeline serialization internals in cmstypes, tag
 serialization internals in cmsio1.
+
+## Round 4 — AFTER the internals deep-sweep (through 138ce24c)
+
+C oracle re-measured after ~30 more internals gates: **67.84%
+lines / 85.73% functions** (up from round-3's 67.17/84.68;
+round-2's 66.46/84.04; round-1's 52.2/62.7).
+
+Every exported `cms*` API is exercised — builders, transforms,
+IO variants, plugins, IT8 machinery, named-color, PostScript,
+dict, MLU, tone-curve, pipeline, stage, GBD, profile-sequence,
+header machinery, formatter-pair matrix (~500 combos), 120+
+Type_* read combos via crafted raw tags, device-class
+branches, corrupt-profile/directory parser paths, linked-tag
+machinery, multi-table IT8, all-intent ps2, v2/v4 type
+dispatch, flag branches, unusual-class-chain validation.
+
+| file | lines | functions |
+|---|---|---|
+| cmspack.c | 52.14% (was 48.95%) | 66.67% (was 57.97%) |
+| cmstypes.c | 53.89% (was 51.07%) | 83.64% |
+| cmsio1.c | 64.20% | 80.00% |
+| cmscnvrt.c | 67.25% | 86.96% |
+| cmscgats.c | 69.35% (was 67.18%) | 94.95% |
+| cmsvirt.c | 66.34% | 96.88% |
+| cmspcs.c | 74.29% | 100% |
+| cmsio0.c | 76.33% | 95.65% |
+| cmsnamed.c | 73.04% | 97.83% |
+| cmsopt.c | 76.29% | 81.82% |
+| cmsps2.c | 72.41% | 90.62% |
+| cmsgamma.c | 71.10% | 89.47% |
+| cmsxform.c | 70.89% | 75.00% |
+| cmslut.c | 79.23% | 96.05% |
+| cmsalpha.c | 86.61% | 85.37% |
+| cmscam02.c | 91.26% | 100% |
+| cmsgmt.c | 78.97% | 100% |
+| cmssamp.c | 72.59% | 85.71% |
+| cmsplugin.c | 73.61% | 100% |
+| cmserr.c | 79.30% | 100% |
+| cmssm.c | 90.70% | 100% |
+| cmswtpnt.c | 87.10% | 100% |
+| cmsintrp.c | 98.50% | 100% |
+| cmsmd5.c | 88.11% | 80.00% |
+| cmshalf.c | 100% | 100% |
+| cmsmtrx.c | 100% | 100% |
+
+Remaining line-level gaps: cmspack's ~135 formatter variant
+bodies beyond the eval'd combos, cmstypes' MPE/pipeline
+serialization internals + Dup/Free on unusual payloads,
+cmsio1's tag-serialization internals — reachable only through
+oracle-UB inputs or profile shapes the public API can't
+construct.

@@ -242,3 +242,13 @@ isidchar/isfirstidchar strictness, plus the earlier 15).
 Deferred: 'view'/'calt'/'vcgt'/'gamt' writes segfault on the
 display-class profile payload shapes; cmsIT8LoadFromIOhandler
 is commented out in lcms2.h (not a real API).
+
+## Round 4 — internals deep-sweep (through 138ce24c)
+
+**67.84% lines / 85.73% functions.** The exported API surface
+is fully exercised — ~195 parity gates + 17 port bugs fixed.
+cmspack's formatter-variant bodies (~52%) and cmstypes' MPE
+serialization internals (~54%) are the remaining gaps —
+reachable only through profile shapes the public API can't
+produce (mAB writes need valid 5-slot pipelines no builder
+emits) or oracle-UB inputs.
