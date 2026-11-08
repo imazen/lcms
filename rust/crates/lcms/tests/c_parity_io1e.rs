@@ -2773,3 +2773,35 @@ fn readback_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Header getters on more profile types — the getter
+/// machinery.
+#[test]
+fn header_getters2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let dl4 = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            [g; 4].as_mut_ptr());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ph = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (pname, h) in [
+            ("devlink", dl), ("devlink4", dl4),
+            ("srgb", srgb), ("lab4", lab), ("ph", ph)] {
+            let cs = c::cmsGetColorSpace(h);
+            let pcs = c::cmsGetPCS(h);
+            let cls = c::cmsGetDeviceClass(h);
+            let ver = c::cmsGetProfileVersion(h);
+            eprintln!(
+                "{pname} cs={:#x} pcs={:#x} cls={:#x} v={ver}",
+                cs, pcs, cls);
+        }
+        let _ = (dl, dl4, srgb, lab, ph);
+    }
+}
