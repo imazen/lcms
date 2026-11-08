@@ -2550,3 +2550,24 @@ fn xyz_curve_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Remaining signature-typed sigs — 'tech'/'scrd'/'ciis'/
+/// 'rig0'/'rigs'/'smmm'/'clid'/'ciid'/'ceid'.
+#[test]
+fn signature_typed_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let sigv: u32 = 0x666F7461;
+        for (sig, name) in [
+            (0x74656368u32, "tech"),
+            (0x63696973u32, "ciis"), (0x72696730u32, "rig0"),
+            (0x72696773u32, "rigs"), (0x736D6D6Du32, "smmm"),
+            (0x636C6964u32, "clid"), (0x63696964u32, "ciid"),
+            (0x63656964u32, "ceid")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &sigv as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
