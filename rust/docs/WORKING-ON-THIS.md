@@ -560,3 +560,45 @@ Biggest missed functions (regions-missed / %):
 
 Correct per-fn query sort: column 3 = regions-MISSED
 (sort -k3 -rn), column 4 = regions-%.
+
+## Round — tag-reader/write-fail sweep (through a55a2877)
+
+- `cmsMHC2Type` real layout: CurveEntries(u32) +
+  Red/Green/BlueCurve ptrs + MinLum + PeakLum +
+  XYZ2XYZmatrix[3][4] — curve ptrs BEFORE luminance.
+- `Type_UcrBg` tag AND type sigs are both 'bfd '
+  (0x62666420), NOT 'ucrb' — body: u32 ucr-count + u16 ucr
+  + u32 bg-count + u16 bg + trailing ASCII; desc >32000
+  rejects.
+- `ncl2` body: u32 vendor + u32 count + u32 nDeviceCoords
+  + prefix[32] + suffix[32] + per-color(root[32] +
+  pcs[3] + dev[n]); nDeviceCoords>cmsMAXCHANNELS rejects.
+- dict lives under 'meta' tag (0x6D657461), type 'dict':
+  u32 Count + u32 Len(16|24|32 else reject) + records of
+  (off,size) pairs [name,value,+displayName,+displayValue]
+  + data; embedded MLU is the BARE body — Count u32 then
+  RecLen u32(=12) then records; string offsets relative
+  to mlu_start-8 (>= SizeOfHeader+8 = 20 for count=1).
+- `Type_MLU_Read` order is Count then RecLen — embedded
+  dict MLUs must match; Offset&1 and Offset<SizeOfHeader+8
+  and Offset+Len>SizeOfTag+8 all reject.
+- `cmsSaveProfileToMem` nn is input-only cap; NULL MemPtr
+  queries needed size. MemoryWrite TRUNCATES overflow
+  (upstream colord fix) — capacity sweeps cannot hit
+  io-fail arms; use /dev/full (cmsSaveProfileToFile) or a
+  failing custom handler.
+- WriteCLUT in mAB rejects FLOAT CLUTs (8/16-bit only) —
+  float CLUTs serialize only via MPE. A2B write shapes:
+  {cvst}, {cvst,matrix,cvst}, {cvst,clut,cvst},
+  {cvst,clut,cvst,matrix,cvst}.
+- mft1/mft2 writers consume [mat3x3?]cvst clut cvst in
+  order; empty/non-3x3/non-uniform-grid/trailing-stage
+  reject; mft1 full-shape needs the matrix stage.
+- cmsFreeProfileSequenceDescription owns assigned MLUs;
+  profile owns the seq after cmsWriteTag — freeing both
+  double-frees.
+- pseq write: v2 -> 'desc' embedded (no read-back path),
+  v4 -> 'mluc' embedded (round-trips).
+- Instrumented builds livelock on parallel test binaries
+  (pack/xform2 at >500% CPU) — kill the spinning pid,
+  the run proceeds; totals floor accordingly.
