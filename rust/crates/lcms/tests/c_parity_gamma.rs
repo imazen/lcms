@@ -326,3 +326,40 @@ fn parametric_sweep_all() {
         }
     }
 }
+
+/// Tone-curve ops — reverse/join/smooth/eval/monotonic arms ->
+/// cmsgamma internals (ReverseToneCurve, JoinToneCurve, SmoothTone).
+#[test]
+fn tone_curve_ops() {
+    unsafe {
+        let g22 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g18 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        // eval + monotonic checks
+        for v in [0.0f32, 0.25, 0.5, 0.75, 1.0] {
+            let _ = c::cmsEvalToneCurveFloat(g22, v);
+            let _ = c::cmsEvalToneCurve16(g22, (v * 65535.0) as u16);
+        }
+        eprintln!("lin={} mono={}",
+            c::cmsIsToneCurveLinear(g22),
+            c::cmsIsToneCurveMonotonic(g22));
+        // reverse + reverseEx
+        let r = c::cmsReverseToneCurve(g22);
+        let rx = c::cmsReverseToneCurveEx(128, g22);
+        eprintln!("rev={} revEx={}", !r.is_null(), !rx.is_null());
+        // join two curves -> joined eval
+        let j = c::cmsJoinToneCurve(std::ptr::null_mut(),
+            g22, g18, 256);
+        eprintln!("join={}", !j.is_null());
+        if !j.is_null() {
+            let _ = c::cmsEvalToneCurveFloat(j, 0.5);
+            c::cmsFreeToneCurve(j);
+        }
+        // smooth
+        let s = c::cmsSmoothToneCurve(g18, 0.5);
+        eprintln!("smooth={s}");
+        if !r.is_null() { c::cmsFreeToneCurve(r); }
+        if !rx.is_null() { c::cmsFreeToneCurve(rx); }
+        c::cmsFreeToneCurve(g22);
+        c::cmsFreeToneCurve(g18);
+    }
+}
