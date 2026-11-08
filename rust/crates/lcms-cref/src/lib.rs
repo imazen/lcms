@@ -594,6 +594,9 @@ unsafe extern "C" {
     pub fn cmsSetColorSpace(p: *mut c_void, sig: u32);
     pub fn cmsSetPCS(p: *mut c_void, sig: u32);
     pub fn cmsSetProfileVersion(p: *mut c_void, version: f64);
+    pub fn cmsGetProfileVersion(p: *const c_void) -> f64;
+    pub fn cmsGetProfileContextID(p: *const c_void) -> *mut c_void;
+    pub fn cmsIsMatrixShaper(prof: *mut c_void) -> i32;
     pub fn cmsSetHeaderRenderingIntent(p: *mut c_void, intent: u32);
     // --- PostScript CSA/CRD ---
     pub fn cmsGetPostScriptCSA(ctx: *mut c_void, p: *mut c_void, intent: u32, flags: u32, buf: *mut c_void, len: u32) -> u32;
