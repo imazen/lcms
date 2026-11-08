@@ -1431,3 +1431,32 @@ fn clut_sample_real() {
         }
     }
 }
+
+/// Pipeline introspection — stage-count/first/last on
+/// different shapes.
+#[test]
+fn pipeline_introspect() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c3 = [g, g, g];
+        for (name, n_stage) in [
+            ("empty", 0u32), ("1-stage", 1), ("2-stage", 2),
+            ("4-stage", 4)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            for _ in 0..n_stage {
+                c::cmsPipelineInsertStage(pl, 1,
+                    c::cmsStageAllocIdentity(
+                        std::ptr::null_mut(), 3));
+            }
+            let cnt = c::cmsPipelineStageCount(pl);
+            let first = c::cmsPipelineGetPtrToFirstStage(pl);
+            let last = c::cmsPipelineGetPtrToLastStage(pl);
+            eprintln!("{name} cnt={cnt} first={} last={}",
+                !first.is_null(), !last.is_null());
+            c::cmsPipelineFree(pl);
+        }
+        let _ = c3;
+        c::cmsFreeToneCurve(g);
+    }
+}
