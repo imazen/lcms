@@ -1149,3 +1149,55 @@ fn cross_profile_copy() {
         c::cmsCloseProfile(hb);
     }
 }
+
+/// Overwrite-same-sig machinery — write a tag twice with
+/// different-type payloads (Free + re-alloc paths).
+#[test]
+fn overwrite_same_sig() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // 'desc' as mluc then overwrite as text (v2 form)
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"v4\0".as_ptr() as *const u8);
+        let ok1 = c::cmsWriteTag(h, 0x64657363,
+            mlu as *mut std::ffi::c_void);
+        let txt = b"v2text\0";
+        let ok2 = c::cmsWriteTag(h, 0x64657363,
+            txt.as_ptr() as *const std::ffi::c_void);
+        // 'cprt' as mluc then text
+        let ok3 = c::cmsWriteTag(h, 0x63707274,
+            mlu as *mut std::ffi::c_void);
+        let ok4 = c::cmsWriteTag(h, 0x63707274,
+            txt.as_ptr() as *const std::ffi::c_void);
+        // 'rTRC' as curve then overwrite as a different curve
+        let g1 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let ok5 = c::cmsWriteTag(h, 0x72545243,
+            g1 as *mut std::ffi::c_void);
+        let ok6 = c::cmsWriteTag(h, 0x72545243,
+            g2 as *mut std::ffi::c_void);
+        eprintln!("overwrite desc={ok1}/{ok2} cprt={ok3}/{ok4} \
+            trc={ok5}/{ok6}");
+        // resave — the replaced types serialize
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h3 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x64657363u32, 0x63707274, 0x72545243] {
+            if c::cmsIsTag(h3, sig) != 0 {
+                let mut tb = [0u8; 4];
+                c::cmsReadRawTag(h3, sig,
+                    tb.as_mut_ptr() as *mut _, 4);
+                eprintln!("{sig:#x} final-type={:#010x}",
+                    u32::from_be_bytes(tb));
+            }
+        }
+        c::cmsCloseProfile(h3);
+        c::cmsCloseProfile(h);
+    }
+}
