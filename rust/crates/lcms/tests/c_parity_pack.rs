@@ -6849,3 +6849,70 @@ fn bp_class_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmsio1 residual — _cmsReadFloat*Tag precedence arm:
+///   cmsIsTag(DToB*/BToD*) -> float-tag read path.
+///   Profiles carry raw 'mpet' blobs under D2B0/B2D0.
+#[test]
+fn float_tag_precedence() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        // minimal mpet blob: sig + res + u16 in + u16 out
+        //   + u32 count + per-elem (off,size) — one 'cvst'
+        //   elem with one gamma
+        let mk = |inout: u16| -> Vec<u8> {
+            let mut b = b"mpet".to_vec();
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&inout.to_be_bytes()); // in
+            b.extend_from_slice(&inout.to_be_bytes()); // out
+            b.extend_from_slice(&0u32.to_be_bytes()); // 0 elems
+            b
+        };
+        for (tag, nm) in [
+            (0x44324230u32, "D2B0"), // in-float
+            (0x42324430u32, "B2D0"), // out-float
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            let blob = mk(3);
+            c::cmsWriteRawTag(p, tag,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                sb.as_mut_ptr() as *mut _, &mut sn);
+            let p2 = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn)
+            } else { p };
+            // transforms to fire the float-tag read path
+            let ti = c::cmsCreateTransform(p2,
+                f16(4, 3), srgb, f16(4, 3), 0, 0);
+            let to = c::cmsCreateTransform(srgb,
+                f16(4, 3), p2, f16(4, 3), 0, 0);
+            eprintln!(
+                "{nm} sv={sv} in={} out={}",
+                !ti.is_null(), !to.is_null());
+            if !ti.is_null() {
+                c::cmsDeleteTransform(ti); }
+            if !to.is_null() {
+                c::cmsDeleteTransform(to); }
+            if p2 != p { c::cmsCloseProfile(p2); }
+            c::cmsCloseProfile(p); }
+        if !srgb.is_null() {
+            c::cmsCloseProfile(srgb); }
+    }
+}
