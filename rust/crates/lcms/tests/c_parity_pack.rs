@@ -3994,3 +3994,105 @@ fn pack_dbl_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmspack residual — Lab/XYZ float/double unroller+packer
+///   internals via float-format transforms (Unroll*To16/
+///   Pack*From16/Pack*FromFloat + LabV2 encoders).
+#[test]
+fn pack_float_lab_xyz_arms() {
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
+        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
+            | (pl << 12) | (ds << 10) | (ex << 7)
+            | (ch << 3) | by
+    }
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        // float in (Unroll*To16) → u16 out (Pack*From16)
+        for (pt, prof, name) in [
+            (10u32, lab, "Lab"), (9, xyz, "XYZ"),
+        ] {
+            for (by, bname) in [
+                (4u32, "flt"), (8, "dbl"), (2, "half"),
+            ] {
+                let flt = if by != 1 { 1u32 } else { 0 };
+                let fin = f(pt, 3, by, 0, 0, 0, 0, 0, flt);
+                let fout = f(4, 3, 1, 0, 0, 0, 0, 0, 0);
+                let t = c::cmsCreateTransform(prof, fin,
+                    srgb, fout, 0, 0);
+                eprintln!("{name}->{bname} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let mut src = vec![0u8;
+                        3 * by as usize * 4];
+                    for (i, b) in src.iter_mut()
+                        .enumerate() { *b = (i * 37) as u8; }
+                    let mut dst = vec![0u8; 3 * 4];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t);
+                }
+                // reverse: u16 in → float out
+                let fin2 = f(4, 3, 2, 0, 0, 0, 0, 0, 0);
+                let fout2 = f(pt, 3, by, 0, 0, 0, 0, 0, flt);
+                let t2 = c::cmsCreateTransform(srgb, fin2,
+                    prof, fout2, 0, 0);
+                eprintln!("{bname}->{name} t={}",
+                    !t2.is_null());
+                if !t2.is_null() {
+                    let src = [0x4000u16; 3];
+                    let mut dst = vec![0u8;
+                        3 * by as usize];
+                    c::cmsDoTransform(t2,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t2);
+                }
+                // float → float (Unroll*ToFloat + Pack*FromFloat)
+                let f3 = f(pt, 3, by, 0, 0, 0, 0, 0, flt);
+                let t3 = c::cmsCreateTransform(prof, f3,
+                    prof, f3, 0, 0);
+                eprintln!("{name}->{name} {bname} t={}",
+                    !t3.is_null());
+                if !t3.is_null() {
+                    let mut src = vec![0u8;
+                        3 * by as usize * 2];
+                    for (i, b) in src.iter_mut()
+                        .enumerate() { *b = (i * 41) as u8; }
+                    let mut dst = vec![0u8;
+                        3 * by as usize * 2];
+                    c::cmsDoTransform(t3,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 2);
+                    c::cmsDeleteTransform(t3);
+                }
+                // doswap+swapfirst+planar+extra variants
+                for (ds, sf, pl, ex, vname) in [
+                    (1u32, 0, 0, 0, "ds"),
+                    (0, 1, 0, 0, "sf"),
+                    (0, 0, 1, 0, "pl"),
+                    (0, 0, 0, 1, "ex1"),
+                    (1, 1, 0, 1, "dssfex1"),
+                ] {
+                    let f4 = f(pt, 3, by, ex, ds, 0, sf, pl,
+                        flt);
+                    let t4 = c::cmsCreateTransform(prof, f4,
+                        srgb, f(4, 3, 1, 0, 0, 0, 0, 0, 0),
+                        0, 0);
+                    if !t4.is_null() {
+                        eprintln!("  {name} {bname} {vname} \
+                            ok");
+                        c::cmsDeleteTransform(t4);
+                    }
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+    }
+}
