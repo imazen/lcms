@@ -5292,3 +5292,120 @@ fn lut_sample_slice_arms() {
         c::cmsStageFree(clut);
     }
 }
+
+/// cmsopt residual — OptimizeByComputingLinearization
+///   internals: curve+clut+curve pipelines where
+///   curves are non-identity/near-identity/piecewise.
+#[test]
+fn lut_opt_lin_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // piecewise + parametric + segmented curves
+        //   pre/post a CLUT
+        let mk_tc = |ty: u8| -> *mut c::ToneCurve {
+            match ty {
+                0 => { // parametric type 5 (multi-seg)
+                    let mut params = [0f64; 10];
+                    params[0] = 2.4;
+                    params[1] = 1.0 / 1.055;
+                    params[2] = 0.055 / 1.055;
+                    params[3] = 1.0 / 12.92;
+                    params[4] = 0.04045;
+                    c::cmsBuildParametricToneCurve(
+                        std::ptr::null_mut(), 5,
+                        params.as_ptr())
+                }
+                1 => { // tabulated non-linear
+                    let t = [0u16, 0x1000, 0x6000,
+                        0xE000, 0xFFFF];
+                    c::cmsBuildTabulatedToneCurve16(
+                        std::ptr::null_mut(), 5,
+                        t.as_ptr())
+                }
+                2 => { // near-linear
+                    let t = [0u16, 0x4000, 0x8000,
+                        0xC000, 0xFFFE];
+                    c::cmsBuildTabulatedToneCurve16(
+                        std::ptr::null_mut(), 5,
+                        t.as_ptr())
+                }
+                3 => { // segmented
+                    let segs = [
+                        c::CurveSegment {
+                            x0: -1.0e22, x1: 0.5,
+                            r#type: 6,
+                            params: [2.0, 1.0, 0.0,
+                                0.0, 0.0, 0.0, 0.0,
+                                0.0, 0.0, 0.0],
+                            n_grid_points: 0,
+                            sampled_points: std::ptr::null(),
+                        },
+                        c::CurveSegment {
+                            x0: 0.5, x1: 1.0e22,
+                            r#type: 6,
+                            params: [1.0, 1.0, 0.0,
+                                0.0, 0.0, 0.0, 0.0,
+                                0.0, 0.0, 0.0],
+                            n_grid_points: 0,
+                            sampled_points: std::ptr::null(),
+                        },
+                    ];
+                    c::cmsBuildSegmentedToneCurve(
+                        std::ptr::null_mut(), 2,
+                        segs.as_ptr())
+                }
+                _ => c::cmsBuildGamma(
+                    std::ptr::null_mut(), 1.0),
+            }
+        };
+        for pre in 0..4u8 {
+            for post in 0..4u8 {
+                let g1 = mk_tc(pre);
+                let g2 = mk_tc(post);
+                let pipe = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                let t1 = [g1, g1, g1];
+                let t2 = [g2, g2, g2];
+                c::cmsPipelineInsertStage(pipe, 0,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        t1.as_ptr() as *mut _));
+                let dims = [3u32; 3];
+                let grid = vec![0x8000u16;
+                    3usize.pow(3) * 3];
+                c::cmsPipelineInsertStage(pipe, 1,
+                    c::cmsStageAllocCLut16bitGranular(
+                        std::ptr::null_mut(),
+                        dims.as_ptr(), 3, 3,
+                        grid.as_ptr()));
+                c::cmsPipelineInsertStage(pipe, 2,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        t2.as_ptr() as *mut _));
+                let lp = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(lp, 0x6C696E6B);
+                c::cmsSetColorSpace(lp, 0x52474220);
+                c::cmsSetPCS(lp, 0x4C616220);
+                c::cmsSetProfileVersion(lp, 4.4);
+                c::cmsWriteTag(lp, 0x41324230,
+                    pipe as *const _);
+                for fl in [0u32, 0x0100] {
+                    let t = c::cmsCreateTransform(lp,
+                        frgb, lab4, flab, 0, fl);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(lp);
+                c::cmsPipelineFree(pipe);
+                c::cmsFreeToneCurve(g1);
+                c::cmsFreeToneCurve(g2);
+            }
+        }
+        eprintln!("opt-lin 4x4 done");
+        c::cmsCloseProfile(lab4);
+    }
+}
