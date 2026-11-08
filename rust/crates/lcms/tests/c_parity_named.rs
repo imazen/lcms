@@ -177,3 +177,41 @@ fn mlu_variants() {
         c::cmsMLUfree(cd);
     }
 }
+
+/// Named-color internals — index/name/PCS/count on more
+/// shapes.
+#[test]
+fn named_color_internals() {
+    unsafe {
+        for n in [1u32, 3, 8] {
+            let ncl = c::cmsAllocNamedColorList(
+                std::ptr::null_mut(), n, 3,
+                b"P\0".as_ptr() as _, b"S\0".as_ptr() as _);
+            let cnt = c::cmsNamedColorCount(ncl);
+            eprintln!("n{n} count={cnt}");
+            // append one entry
+            let pcs = [0x8000u16; 3];
+            let dev = [0x4000u16; 4];
+            let r = c::cmsAppendNamedColor(ncl,
+                b"spot1\0".as_ptr() as _,
+                pcs.as_ptr(), dev.as_ptr());
+            eprintln!("  append={r} count={}",
+                c::cmsNamedColorCount(ncl));
+            // lookup internals
+            let idx = c::cmsNamedColorIndex(ncl,
+                b"spot1\0".as_ptr() as _);
+            let idx2 = c::cmsNamedColorIndex(ncl,
+                b"nope\0".as_ptr() as _);
+            eprintln!("  idx={idx} idx2={idx2}");
+            let mut namebuf = [0u8; 64];
+            let nr = c::cmsNamedColorInfo(ncl, 0,
+                namebuf.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut());
+            eprintln!("  info={nr}");
+            c::cmsFreeNamedColorList(ncl);
+        }
+    }
+}
