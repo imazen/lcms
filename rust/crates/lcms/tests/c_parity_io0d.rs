@@ -8849,3 +8849,77 @@ fn lut_write_tables() {
         c::cmsFreeToneCurve(t1024);
     }
 }
+
+/// Type_LUT8/16_Read + LUTA2B/B2A_Read deep arms — element
+/// orders, grid sizes, input/output table variants.
+#[test]
+fn lut_read_deep2() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mk_cv = || {
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g2, g].as_ptr() as *mut _)
+        };
+        let mk_mat = || {
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null())
+        };
+        let mk_clut = |npts: u32| {
+            let mut grid = vec![0u16;
+                (npts * npts * npts * 3) as usize];
+            for (i, v) in grid.iter_mut().enumerate() {
+                *v = ((i % 17) * 3855) as u16;
+            }
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), npts,
+                3, 3, grid.as_ptr())
+        };
+        // different CLUT grid sizes -> different read paths
+        for (npts, name) in [
+            (2u32, "grid2"), (3, "grid3"), (5, "grid5"),
+            (9, "grid9"), (17, "grid17"), (33, "grid33"),
+        ] {
+            for (stages, sname) in [
+                ("cv-clut-cv", "cv-clut-cv"),
+                ("cv-mat-clut-cv", "cv-mat-clut-cv"),
+            ] {
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 4.4);
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+                c::cmsPipelineInsertStage(p, 1, c::cmsStageDup(
+                    mk_cv()));
+                if sname == "cv-mat-clut-cv" {
+                    c::cmsPipelineInsertStage(p, 1, c::cmsStageDup(
+                        mk_mat()));
+                }
+                c::cmsPipelineInsertStage(p, 1, c::cmsStageDup(
+                    mk_clut(npts)));
+                c::cmsPipelineInsertStage(p, 1, c::cmsStageDup(
+                    mk_cv()));
+                let w = c::cmsWriteTag(prof, 0x41324230,
+                    p as *const _);
+                let mut buf = vec![0u8; 1 << 22];
+                let mut nn = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut nn)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, nn)
+                } else { std::ptr::null_mut() };
+                let tag = if !rp.is_null() {
+                    c::cmsReadTag(rp, 0x41324230)
+                } else { std::ptr::null_mut() };
+                eprintln!("{sname}/{name} w={w} s={s} r={}",
+                    !tag.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
