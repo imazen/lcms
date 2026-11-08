@@ -604,6 +604,12 @@ pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) ->
             }
         }
     }
+    // `Type_Dictionary_Dup` -> `cmsDictDup` — iterates head→tail
+    // prepending each entry, which REVERSES the stored order
+    // (cmsnamed.c:1164). Clone semantics can't absorb that quirk.
+    if let crate::tagtypes::TagObject::Dictionary(d) = &obj {
+        obj = crate::tagtypes::TagObject::Dictionary(crate::named::dict_dup(d));
+    }
     icc.tag_ptrs[i] = Some(obj); // DupPtr absorbed by Clone semantics
     icc.tag_raw[i] = None;
     true

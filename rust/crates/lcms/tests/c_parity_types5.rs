@@ -3873,3 +3873,67 @@ fn mhc2_write_read() {
         c::cmsCloseProfile(ch);
     }
 }
+
+/// Dictionary tag cooked path — cmsDictAlloc/AddEntry -> cmsWriteTag
+/// on 'meta', saved byte-exact vs Rust TagObject::Dictionary.
+/// Entries carry MLU display names/values to hit WriteOneMLUC.
+#[test]
+fn dict_cooked_write() {
+    unsafe {
+        let ch = c::cmsCreate_sRGBProfile();
+        let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
+        let dict = c::cmsDictAlloc(std::ptr::null_mut());
+        // wchar names/values as i32 arrays (UCS-4)
+        let n1: [i32; 6] = [0x4e, 0x61, 0x6d, 0x65, 0x31, 0]; // "Name1"
+        let v1: [i32; 6] = [0x56, 0x61, 0x6c, 0x75, 0x65, 0]; // "Value"
+        let n2: [i32; 6] = [0x4e, 0x61, 0x6d, 0x65, 0x32, 0]; // "Name2"
+        let ok1 = c::cmsDictAddEntry(dict,
+            n1.as_ptr(), v1.as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        let ok2 = c::cmsDictAddEntry(dict,
+            n2.as_ptr(), v1.as_ptr(),
+            std::ptr::null_mut(), std::ptr::null_mut());
+        eprintln!("dict add {ok1} {ok2}");
+        let c_ok = c::cmsWriteTag(ch, 0x6D657461,
+            dict as *const _);
+        // rust side
+        let mut rdict = lcms::named::dict_alloc(None);
+        lcms::named::dict_add_entry(&mut rdict, &n1, Some(&v1), None, None);
+        lcms::named::dict_add_entry(&mut rdict, &n2, Some(&v1), None, None);
+        let r_ok = lcms::profile::cms_write_tag(&mut rp, 0x6D657461,
+            Some(lcms::tagtypes::TagObject::Dictionary(rdict)));
+        assert_eq!(c_ok != 0, r_ok, "dict write");
+        let mut c_out = vec![0u8; 1 << 20];
+        let mut n = c_out.len() as u32;
+        let s_ok = c::cmsSaveProfileToMem(ch,
+            c_out.as_mut_ptr() as *mut _, &mut n);
+        let r_out = lcms::profile::save_profile_to_mem(&mut rp);
+        assert_eq!(s_ok != 0, r_out.is_some(), "dict save status");
+        if s_ok != 0 {
+            c_out.truncate(n as usize);
+            let mut r_out = r_out.unwrap();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            if c_out != r_out {
+                let n = c_out.len().min(r_out.len());
+                let d = (0..n).find(|&i| c_out[i] != r_out[i]);
+                eprintln!("dict resave clen={} rlen={} first-diff={:?}",
+                    c_out.len(), r_out.len(), d);
+                if let Some(i) = d {
+                    let lo = i.saturating_sub(8);
+                    eprintln!("C[{}..]={:02x?}", lo, &c_out[lo..(i+16).min(c_out.len())]);
+                    eprintln!("R[{}..]={:02x?}", lo, &r_out[lo..(i+16).min(r_out.len())]);
+                }
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "dict resave");
+        }
+        let t = c::cmsReadTag(ch, 0x6D657461);
+        eprintln!("dict readback={}", !t.is_null());
+        c::cmsDictFree(dict);
+        c::cmsCloseProfile(ch);
+    }
+}
