@@ -2639,3 +2639,21 @@ fn stored_type_reads2() {
         c::cmsCloseProfile(h2);
     }
 }
+
+/// NULL-payload write dispatch — the write machinery on
+/// NULL/empty payloads.
+#[test]
+fn write_dispatch_null() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [
+            (0x41324230u32, "A2B0"), (0x64657363u32, "desc"),
+            (0x77747074u32, "wtpt"), (0x72545243u32, "rTRC"),
+            (0x6D657461u32, "meta"), (0x6D706574u32, "mpet")] {
+            let ok = c::cmsWriteTag(h, sig,
+                std::ptr::null_mut());
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
