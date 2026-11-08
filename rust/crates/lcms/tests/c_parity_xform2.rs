@@ -5705,3 +5705,64 @@ fn cnvrt_opt_residual2_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmscnvrt residual — BlackPreservingKOnly/KPlane intents
+///   (10-15) on CMYK->CMYK transforms.
+#[test]
+fn blackpreserve_intent_arms() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        assert!(!cmyk.is_null());
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // intents 10-15 = PRESERVE_K_ONLY/K_PLANE x
+        //   perc/rel/sat
+        for intent in 10..16u32 {
+            for flags in [0u32, 0x0001, 0x0100, 0x2000] {
+                let t = c::cmsCreateTransform(cmyk, k8,
+                    cmyk, k8, intent, flags);
+                let t2 = c::cmsCreateTransform(cmyk, k8,
+                    lab, l8, intent, flags);
+                let t3 = c::cmsCreateTransform(lab, l8,
+                    cmyk, k8, intent, flags);
+                if !t.is_null() {
+                    let ib = [0x55u8; 16];
+                    let mut ob = [0u8; 16];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+                eprintln!("i{intent} f{flags:#x} \
+                    k2k={} k2l={} l2k={}",
+                    !t.is_null(), !t2.is_null(),
+                    !t3.is_null());
+                if !t2.is_null() { c::cmsDeleteTransform(t2); }
+                if !t3.is_null() { c::cmsDeleteTransform(t3); }
+            }
+        }
+        // multiprofile with black-preserve intents
+        let mut profs = [cmyk, cmyk, cmyk];
+        for intent in 10..16u32 {
+            let t = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 3, k8, k8, intent, 0);
+            eprintln!("multi i{intent}={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        // proofing with black-preserve intents
+        for intent in 10..16u32 {
+            let t = c::cmsCreateProofingTransform(cmyk, k8,
+                cmyk, k8, cmyk, intent, 0, 0);
+            eprintln!("proof i{intent}={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(cmyk);
+        c::cmsCloseProfile(lab);
+    }
+}
