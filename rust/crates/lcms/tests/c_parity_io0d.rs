@@ -17237,3 +17237,90 @@ fn io_internal5_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp/cmsplugin residual —
+///   transform internals + pipeline internals + context
+///   internals + tag internals.
+#[test]
+fn internal_final_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // transform internals — all intent x flag combos on
+        //   same profile pair
+        for intent in 0..8u32 {
+            for flags in [0u32, 0x0001, 0x0002, 0x0004,
+                0x0010, 0x0020, 0x0040, 0x0080, 0x0100,
+                0x0200, 0x0400, 0x0800, 0x1000, 0x2000,
+                0x4000, 0x8000, 0x10000, 0x20000, 0x40000,
+                0x80000, 0x100000, 0x200000, 0x400000,
+                0x800000] {
+                let t = c::cmsCreateTransform(srgb, r8,
+                    lab, l8, intent, flags);
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            eprintln!("i{intent} done");
+        }
+        // context internals — dup with/without user data +
+        //   delete ordering
+        for i in 0..4 {
+            let ctx = c::cmsCreateContext(
+                std::ptr::null_mut(),
+                std::ptr::null_mut());
+            if ctx.is_null() { continue; }
+            let d1 = c::cmsDupContext(ctx,
+                std::ptr::null_mut());
+            let d2 = c::cmsDupContext(d1,
+                std::ptr::null_mut());
+            if !d2.is_null() { c::cmsDeleteContext(d2); }
+            if !d1.is_null() { c::cmsDeleteContext(d1); }
+            c::cmsDeleteContext(ctx);
+            eprintln!("ctxchain{i} done");
+        }
+        // pipeline internals — insert/remove/reorder stages
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0];
+        let st1 = c::cmsStageAllocMatrix(std::ptr::null_mut(),
+            3, 3, mat.as_ptr(), std::ptr::null());
+        let st2 = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3,
+            [g, g, g].as_ptr() as *mut _);
+        let st3 = c::cmsStageAllocIdentity(
+            std::ptr::null_mut(), 3);
+        c::cmsPipelineInsertStage(p, 0, st1);
+        c::cmsPipelineInsertStage(p, 1, st2);
+        c::cmsPipelineInsertStage(p, 2, st3);
+        let cnt = c::cmsPipelineStageCount(p);
+        let s0 = c::cmsPipelineGetPtrToFirstStage(p);
+        let st_ty = if !s0.is_null() {
+            c::cmsStageType(s0) } else { 0 };
+        eprintln!("pipeline cnt={cnt} st0={st_ty:#x}");
+        // unlink at various positions
+        for pos in [0u32, 1, 2, 3, 99] {
+            let dup = c::cmsPipelineDup(p);
+            if dup.is_null() { continue; }
+            let mut mpe: *mut std::ffi::c_void =
+                std::ptr::null_mut();
+            let unl = c::cmsPipelineUnlinkStage(dup,
+                pos as i32, &mut mpe);
+            eprintln!("unlink@{pos}={unl} mpe={mpe:?}");
+            if !mpe.is_null() { c::cmsStageFree(mpe); }
+            c::cmsPipelineFree(dup);
+        }
+        c::cmsPipelineFree(p);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
