@@ -717,3 +717,89 @@ fn internal_floattag2_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — BuildGrayOutputPipeline on gray
+///   output-class profiles + v2 input-LUT profiles
+///   via mft1/mft2 on display-class.
+#[test]
+fn internal_grayout_inlut_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let fgray = (3u32 << 16) | (1 << 3) | 2;
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        // gray output profiles: output-class w/ gray
+        //   colorspace at varying gammas
+        for (g_, name) in [
+            (1.0f64, "g10"), (2.2, "g22"), (0.5, "g05"),
+            (4.0, "g40"),
+        ] {
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), g_);
+            let gray = c::cmsCreateGrayProfileTHR(
+                std::ptr::null_mut(), std::ptr::null(),
+                g as *const std::ffi::c_void);
+            // lab/srgb -> gray (output direction)
+            for int_ in [0u32, 1, 3] {
+                let t = c::cmsCreateTransform(lab4, flab,
+                    gray, fgray, int_, 0);
+                eprintln!("{name} l->g i{int_} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+                let t2 = c::cmsCreateTransform(srgb, frgb,
+                    gray, fgray, int_, 0);
+                if !t2.is_null() {
+                    c::cmsDeleteTransform(t2); }
+            }
+            if !gray.is_null() {
+                c::cmsCloseProfile(gray); }
+            c::cmsFreeToneCurve(g);
+        }
+        // v2 input-LUT display profile via mft1
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 2.4);
+        let mut blob = vec![
+            0x6D, 0x66, 0x74, 0x31, 0, 0, 0, 0,
+            3, 3, 2, 0];
+        for i in 0..9 {
+            let v: u32 = if i % 4 == 0 {
+                0x00010000 } else { 0 };
+            blob.extend_from_slice(&v.to_be_bytes());
+        }
+        blob.extend_from_slice(&[0x80u8; 256 * 3]);
+        blob.extend_from_slice(&[0x80u8; 8 * 3]);
+        blob.extend_from_slice(&[0x80u8; 256 * 3]);
+        c::cmsWriteRawTag(p, 0x41324230,
+            blob.as_ptr() as *const _, blob.len() as u32);
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        let sv = c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let pr = if sv != 0 {
+            c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        eprintln!("v2-mft1 prof={}", !pr.is_null());
+        if !pr.is_null() {
+            for i in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(pr, frgb,
+                    lab4, flab, i, 0);
+                eprintln!("  inlut i{i} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            c::cmsCloseProfile(pr);
+        }
+        c::cmsCloseProfile(p);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
