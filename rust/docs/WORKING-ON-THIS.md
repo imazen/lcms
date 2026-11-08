@@ -86,3 +86,20 @@ Commit the failing input, not just the fix.
 Where the port can't yet do what C does, return an error — never emit a
 plausible-but-wrong result. Catalogue refusals in `docs/REFUSED.md` with what
 C does for that input.
+
+## Coverage campaign (ccov lane, 2026-11)
+
+`just coverage-cref` instruments the C oracle (clang) and unions profraws
+across every `c_parity_*` binary — the "which C paths have a gate" number.
+gcc `-O2 -fno-strict-aliasing` stays the parity contract; clang numbers are
+a floor (crashed binaries lose whole profraws — atexit never fires).
+
+Gates: `c_parity_{alpha,virt2,sm,xform2,cgats2,ioerr,pack,types,err}` +
+`c_parity_ps2` mutex. TOTAL C lines 52.2%→61.3%, fns 62.7%→76.9%.
+Per-file table + the 13 port bugs the gates caught: `docs/COVERAGE.md`.
+
+Remaining ungated (in missed-lines order): cmstypes MPE handlers beyond
+built profiles, cmslut stage evaluators, cmscgats multi-table rest,
+cmsio0 IOhandler edge cases, cmsgmt, cmscnvrt intent pipelines,
+cmsplugin (plugin struct registration — needs FFI struct construction;
+`cmsGetProfileInfo*`/`cmsGetSupportedIntents` are unported API gaps).
