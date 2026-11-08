@@ -139,3 +139,48 @@ fn gbd_edge_cases() {
         c::cmsGBDFree(cg);
     }
 }
+
+/// GBD compute on a dense cube + checkpoint on a grid — the
+/// interpolation/check machinery beyond sparse sets.
+#[test]
+fn gbd_dense_grid() {
+    unsafe {
+        let cg = c::cmsGBDAlloc(std::ptr::null_mut());
+        let mut rg = lcms::gbd::Gbd::alloc(None);
+        // dense cube in Lab space — boundary-ish cloud
+        let mut n = 0;
+        for l in (0..=100).step_by(10) {
+            for a in (-128..=128).step_by(32) {
+                for b in (-128..=128).step_by(32) {
+                    let lab = lcms::types::CieLab { L: l as f64,
+                        a: a as f64, b: b as f64 };
+                    let clab = c::CieLab { L: l as f64,
+                        a: a as f64, b: b as f64 };
+                    assert_eq!(
+                        c::cmsGDBAddPoint(cg,
+                            &clab as *const _ as *const _) != 0,
+                        rg.add_point(&lab), "dense add {n}");
+                    n += 1;
+                }
+            }
+        }
+        assert_eq!(c::cmsGDBCompute(cg, 0) != 0, rg.compute(0), "dense compute");
+        // checkpoint grid — probe inside + outside the cloud
+        for l in (0..=100).step_by(20) {
+            for a in (-128..=128).step_by(64) {
+                for b in (-128..=128).step_by(64) {
+                    let lab = lcms::types::CieLab { L: l as f64,
+                        a: a as f64, b: b as f64 };
+                    let clab = c::CieLab { L: l as f64,
+                        a: a as f64, b: b as f64 };
+                    assert_eq!(
+                        c::cmsGDBCheckPoint(cg,
+                            &clab as *const _ as *const _) != 0,
+                        rg.check_point(&lab),
+                        "dense check {l},{a},{b}");
+                }
+            }
+        }
+        c::cmsGBDFree(cg);
+    }
+}
