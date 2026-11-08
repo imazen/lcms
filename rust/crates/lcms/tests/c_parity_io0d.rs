@@ -15893,3 +15893,82 @@ fn stage_placeholder_arms() {
         c::cmsFreeToneCurve(tc);
     }
 }
+
+/// Remaining small-file internals — cmsnamed (MLU/dictionary/
+///   named-color lists), cmsalpha residual, cmspcs
+///   (_cmsDeltaE), cmsmd5, cmserr0 (error handler).
+#[test]
+fn misc_small_file_arms() {
+    unsafe {
+        // named-color list — grow/copy/index edge cases
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 4, b"p\0".as_ptr(),
+            b"s\0".as_ptr());
+        for i in 0..16 {
+            let nm = format!("color{i}\0");
+            let pcs = [0x1000u16; 4];
+            let col = [0x2000u16; 4];
+            c::cmsAppendNamedColor(nl, nm.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        let nl2 = c::cmsDupNamedColorList(nl);
+        let n = c::cmsNamedColorCount(nl2);
+        for i in [0u32, 4, 15, 99] {
+            let mut nm = [0u8; 256];
+            let mut pcs = [0u16; 4];
+            let mut col = [0u16; 4];
+            let r = c::cmsNamedColorInfo(nl2, i,
+                nm.as_mut_ptr(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                pcs.as_mut_ptr(), col.as_mut_ptr());
+            eprintln!("ncl{i}={r} n={nm:?}");
+        }
+        for name in [b"color0\0" as &[u8], b"color15\0",
+            b"bad\0", b"\0", b"COLOR0\0"] {
+            let idx = c::cmsNamedColorIndex(nl2,
+                name.as_ptr());
+            eprintln!("idx {name:?}={idx}");
+        }
+        c::cmsFreeNamedColorList(nl2);
+        c::cmsFreeNamedColorList(nl);
+        // MLU dict copy + empty-list edge
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 2);
+        let m2 = c::cmsMLUdup(mlu);
+        let m3 = c::cmsMLUdup(m2);
+        let mut buf = [0u8; 128];
+        for lang in [b"en\0" as &[u8], b"US\0", b"zz\0"] {
+            let r = c::cmsMLUgetUTF8(m3,
+                lang.as_ptr(), lang.as_ptr(),
+                buf.as_mut_ptr() as *mut _, buf.len() as u32);
+            eprintln!("mlu {lang:?}={r}");
+        }
+        c::cmsMLUfree(m3);
+        c::cmsMLUfree(m2);
+        c::cmsMLUfree(mlu);
+        // deltaE variants
+        let l1 = c::CieLab { L: 50.0, a: 2.0, b: -79.0 };
+        let l2 = c::CieLab { L: 50.0, a: 0.0, b: -82.0 };
+        let d76 = c::cmsDeltaE(&l1 as *const _,
+            &l2 as *const _);
+        let d94 = c::cmsCIE94DeltaE(&l1 as *const _,
+            &l2 as *const _);
+        let d2k = c::cmsCIE2000DeltaE(&l1 as *const _,
+            &l2 as *const _, 1.0, 1.0, 1.0);
+        let dbfd = c::cmsBFDdeltaE(&l1 as *const _,
+            &l2 as *const _);
+        let dcmc = c::cmsCMCdeltaE(&l1 as *const _,
+            &l2 as *const _, 1.0, 1.0);
+        eprintln!("deltaE {d76:.3}/{d94:.3}/{d2k:.3}/\
+            {dbfd:.3}/{dcmc:.3}");
+        // MD5 edge — empty + large
+        let md = c::cmsMD5alloc(std::ptr::null_mut());
+        let mut pid = [0u8; 16];
+        c::cmsMD5add(md, std::ptr::null(), 0);
+        c::cmsMD5add(md, [0x55u8; 1].as_ptr(), 1);
+        let big = vec![0xabu8; 1 << 18];
+        c::cmsMD5add(md, big.as_ptr(), big.len() as u32);
+        c::cmsMD5finish(pid.as_mut_ptr() as *mut _, md);
+        eprintln!("md5={pid:?}");
+    }
+}
