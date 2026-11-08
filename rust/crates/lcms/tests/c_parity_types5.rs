@@ -137,3 +137,47 @@ fn v2_v4_type_variants() {
         }
     }
 }
+
+/// More v2/v4 type variants — desc (mluc/desc), rTRC (curv/para),
+/// plus the remaining exotic sigs.
+#[test]
+fn v2_v4_more_sigs() {
+    unsafe {
+        for ver in [2.2f64, 4.3] {
+            let h = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(h, ver);
+            // desc — same MLU
+            let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            c::cmsMLUsetASCII(mlu,
+                b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                b"desc\0".as_ptr() as *const _);
+            let okd = c::cmsWriteTag(h, 0x64657363,
+                mlu as *mut c_void); // 'desc'
+            // rTRC — a gamma curve (curv vs para selection)
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+            let okt = c::cmsWriteTag(h, 0x72545243,
+                g as *mut c_void); // 'rTRC'
+            // resave → check stored types
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+                &mut cn);
+            let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _,
+                cn);
+            for sig in [0x64657363u32, 0x72545243] {
+                if c::cmsIsTag(h2, sig) != 0 {
+                    let mut tb = [0u8; 4];
+                    c::cmsReadRawTag(h2, sig,
+                        tb.as_mut_ptr() as *mut _, 4);
+                    eprintln!("v{ver} {sig:#x} type={:#010x}",
+                        u32::from_be_bytes(tb));
+                }
+            }
+            eprintln!("v{ver} desc={okd} trc={okt}");
+            c::cmsCloseProfile(h2);
+            c::cmsCloseProfile(h);
+        }
+    }
+}
