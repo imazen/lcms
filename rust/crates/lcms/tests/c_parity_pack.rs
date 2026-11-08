@@ -403,3 +403,49 @@ fn format_modifier_variants() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// u16-format modifiers + more colorspace formats — the
+/// remaining Unroll*/Pack* combos.
+#[test]
+fn u16_format_modifiers() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // u16 formats with modifiers — the u16-width packers
+        for (name, fmt_in, fmt_out, p2) in [
+            ("u16-doswap", (4 << 16) | (1 << 10) | (3 << 3) | 2u32,
+             (4 << 16) | (1 << 10) | (3 << 3) | 2, ho),
+            ("u16-planar", (4 << 16) | (1 << 12) | (3 << 3) | 2,
+             (4 << 16) | (1 << 12) | (3 << 3) | 2, ho),
+            ("u16-swapfirst", (4 << 16) | (1 << 14) | (3 << 3) | 2,
+             (4 << 16) | (1 << 14) | (3 << 3) | 2, ho),
+            ("u16-endian16", (4 << 16) | (1 << 11) | (3 << 3) | 2,
+             (4 << 16) | (1 << 11) | (3 << 3) | 2, ho),
+            ("u16-extra1", (4 << 16) | (1 << 7) | (3 << 3) | 2,
+             (4 << 16) | (1 << 7) | (3 << 3) | 2, ho),
+            ("u16-flavor", (4 << 16) | (1 << 13) | (3 << 3) | 2,
+             (4 << 16) | (1 << 13) | (3 << 3) | 2, ho),
+            ("u16-8bit", (4 << 16) | (3 << 3) | 1,
+             (4 << 16) | (3 << 3) | 1, ho),
+            ("u16-lab", (4 << 16) | (3 << 3) | 2,
+             (10 << 16) | (3 << 3) | 2, lab4),
+            ("u16-xyz", (4 << 16) | (3 << 3) | 2,
+             (5 << 16) | (3 << 3) | 2, lab4),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt_in, p2,
+                fmt_out, 0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0x8000u16, 0x6000, 0x4000];
+                let mut out = [0u16; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+        let _ = c::cmsCloseProfile(lab4);
+    }
+}
