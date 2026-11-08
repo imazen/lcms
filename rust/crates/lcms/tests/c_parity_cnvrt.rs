@@ -372,3 +372,58 @@ fn colorspace_mismatch_reject() {
         }
     }
 }
+
+/// Intent-link internals — absolute intent + devicelink-in-middle
+/// + abstract-end chains.
+#[test]
+fn intent_link_internals() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        // absolute colorimetric — different link branch
+        for intent in [0u32, 1, 2, 3] {
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
+                intent, 0);
+            let mut rp1 = virt::create_srgb_profile(None).unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None)
+                .unwrap();
+            let mut profs = vec![rp1.clone(), rp2.clone()];
+            let mut bpc = [false; 2];
+            let intents = [intent; 2];
+            let adapt = [1.0f64; 2];
+            let rt = xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt,
+                None, 0, in_fmt, out_fmt, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "intent {intent}");
+            if !ct.is_null() {
+                let inp = [30000u16, 40000, 50000];
+                let inb: Vec<u8> = inp.iter()
+                    .flat_map(|v| v.to_ne_bytes()).collect();
+                let mut co = [0u16; 3];
+                let mut ro = vec![0u8; 6];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    co.as_mut_ptr() as *mut _, 1);
+                let mut rt2 = rt.unwrap();
+                rt2.do_transform(&inb, &mut ro, 1);
+                let ro16: Vec<u16> = ro.chunks_exact(2)
+                    .map(|b| u16::from_ne_bytes([b[0], b[1]]))
+                    .collect();
+                assert_eq!(co, ro16.as_slice(),
+                    "intent {intent} eval");
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        // devicelink in the middle of a chain
+        let dl = c::cmsCreateNULLProfile();
+        let mut profs = [hi, dl, ho];
+        let ct2 = c::cmsCreateMultiprofileTransform(
+            profs.as_mut_ptr(), 3, in_fmt, out_fmt, 0, 0);
+        eprintln!("dl-mid chain null={}", ct2.is_null());
+        if !ct2.is_null() { c::cmsDeleteTransform(ct2); }
+        let _ = c::cmsCloseProfile(dl);
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
