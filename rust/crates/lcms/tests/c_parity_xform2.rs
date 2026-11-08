@@ -1500,3 +1500,46 @@ fn compute_conversion_matrices() {
         }
     }
 }
+
+/// cmscnvrt conversion chains — profile-class pairs (input/
+/// display/output/abstract/named-color) × all intents.
+#[test]
+fn cnvt_class_intent_matrix() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = ["lcms2cmyk.icc"].iter()
+            .filter_map(|f| std::fs::read(dir.join(f)).ok())
+            .map(|d| c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32))
+            .find(|p| !p.is_null());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let x16 = (9u32 << 16) | (3 << 3) | 2; // PT_XYZ=9
+        let k16 = (6u32 << 16) | (4 << 3) | 2; // PT_CMYK=6
+        for intent in 0..4u32 {
+            for (inp, outp, if_, of_, name) in [
+                (srgb, xyz, r16, x16, "srgb-xyz"),
+                (xyz, lab, x16, l16, "xyz-lab"),
+                (lab, xyz, l16, x16, "lab-xyz"),
+            ] {
+                let t = c::cmsCreateTransform(inp, if_, outp, of_, intent, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                eprintln!("{name}-i{intent} t={}", !t.is_null());
+            }
+        }
+        if let Some(cp) = cmyk {
+            for intent in 0..4u32 {
+                let t = c::cmsCreateTransform(cp, k16, srgb, r16, intent, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+                eprintln!("cmyk-srgb-i{intent} t={}", !t.is_null());
+            }
+            c::cmsCloseProfile(cp);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+    }
+}
