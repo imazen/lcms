@@ -6217,3 +6217,55 @@ fn signature_tag_arms() {
         }
     }
 }
+
+/// Type_Curve_Write arms — parametric types 1-5 and tabulated
+/// curves through rTRC round-trip; the writer decides 'curv'
+/// vs 'para' by curve kind.
+#[test]
+fn curve_write_arms() {
+    unsafe {
+        let mut tab = [0u16; 16];
+        for i in 0..16 { tab[i] = (i * 4096) as u16; }
+        let tc = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(),
+            16, tab.as_ptr());
+        let p2 = [2.2f64, 1.0, 0.0];
+        let p3 = [2.2f64, 1.0, 0.0, 0.0];
+        let p5 = [2.2f64, 1.0, 0.0, 0.0, 0.0];
+        for (curve, name) in [
+            (c::cmsBuildGamma(std::ptr::null_mut(), 2.2), "gamma"),
+            (c::cmsBuildParametricToneCurve(std::ptr::null_mut(),
+                1, p2.as_ptr()), "para1"),
+            (c::cmsBuildParametricToneCurve(std::ptr::null_mut(),
+                2, p3.as_ptr()), "para2"),
+            (c::cmsBuildParametricToneCurve(std::ptr::null_mut(),
+                3, p3.as_ptr()), "para3"),
+            (c::cmsBuildParametricToneCurve(std::ptr::null_mut(),
+                4, p5.as_ptr()), "para4"),
+            (c::cmsBuildParametricToneCurve(std::ptr::null_mut(),
+                5, p5.as_ptr()), "para5"),
+            (tc, "tab"),
+            (std::ptr::null_mut(), "null"),
+        ] {
+            if curve.is_null() && name != "null" { continue; }
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, 0x72545243,
+                curve as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x72545243)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            if !curve.is_null() { c::cmsFreeToneCurve(curve); }
+        }
+    }
+}
