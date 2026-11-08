@@ -550,3 +550,33 @@ fn reverse_pipeline_eval() {
         c::cmsPipelineFree(cp);
     }
 }
+
+/// cmsSliceSpace16 + slice_space_float — the N-dim grid-sampling
+/// machinery.
+#[test]
+fn slice_space() {
+    unsafe {
+        // slice a 3D grid — the sampler visits each knot
+        let mut c_count = 0u32;
+        unsafe extern "C" fn c_samp(_i: *const u16,
+            _o: *mut u16, cargo: *mut c_void) -> i32 {
+            unsafe {
+                let c = cargo as *mut u32;
+                *c += 1;
+            }
+            1
+        }
+        let c_ok = c::cmsSliceSpace16(3, [5u32; 3].as_ptr(),
+            c_samp, &mut c_count as *mut _ as *mut _);
+        assert_ne!(c_ok, 0);
+        // rust side — the sampler is a closure
+        let mut r_count = 0u32;
+        let r_ok = lut::slice_space16(3, &[5, 5, 5],
+            &mut |_i: &[u16], _o: &mut [u16]| {
+                r_count += 1;
+                1
+            });
+        assert_eq!(c_ok != 0, r_ok, "slice16 status");
+        eprintln!("slice16 c={c_count} r={r_count}");
+    }
+}
