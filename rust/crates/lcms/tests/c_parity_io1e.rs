@@ -2320,3 +2320,23 @@ fn final_struct_sigs() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// 'cicp'/'rigs'/'smmm'/'clid'/'ciid'/'ceid' — the remaining
+/// payload sigs.
+#[test]
+fn final_payload_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // a data payload on 'clid'/'ciid'/'ceid'/'smmm'
+        let datav: u32 = 0xDEADBEEF;
+        for (sig, name) in [
+            (0x636C6964u32, "clid"), (0x63696964u32, "ciid"),
+            (0x63656964u32, "ceid"), (0x736D6D6Du32, "smmm"),
+            (0x72696773u32, "rigs"), (0x63696370u32, "cicp")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &datav as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
