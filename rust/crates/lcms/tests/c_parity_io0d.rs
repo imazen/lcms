@@ -17462,3 +17462,86 @@ fn internal_final2_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + profile-info internals + tag internals + LUT-builder
+///   internals + context internals.
+#[test]
+fn internal_final3_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // all intent x format combos on srgb->lab
+        for intent in 0..8u32 {
+            for cs in [4u32, 10, 12, 6, 3, 19, 20, 21] {
+                for b in [1u32, 2, 4] {
+                    let fmt = (cs << 16) | (3 << 3) | b;
+                    let t = c::cmsCreateTransform(srgb, fmt,
+                        lab, l8, intent, 0);
+                    let t2 = c::cmsCreateTransform(lab, l8,
+                        srgb, fmt, intent, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                    if !t2.is_null() {
+                        c::cmsDeleteTransform(t2); }
+                }
+            }
+            eprintln!("i{intent} fmts done");
+        }
+        // profile-info getters on all loaded profiles
+        for prof in [srgb, lab] {
+            let mut buf = [0u8; 1024];
+            for (info, name) in [
+                (0u32, "desc"), (1, "manu"), (2, "model"),
+                (3, "cprt"), (4, "tech"), (5, "vued"),
+                (6, "dmnd"), (7, "dmdd"), (8, "ps2c"),
+                (9, "targ"), (0xFFFF, "bad"),
+            ] {
+                let n = c::cmsGetProfileInfo(prof, info,
+                    b"en\0".as_ptr() as *const i8,
+                    b"US\0".as_ptr() as *const i8,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                let n2 = c::cmsGetProfileInfoASCII(prof, info,
+                    b"en\0".as_ptr() as *const i8,
+                    b"US\0".as_ptr() as *const i8,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32);
+                eprintln!("info {name}={n}/{n2}");
+            }
+        }
+        // transform strides/planar on various formats
+        for fmt in [
+            (4u32 << 16) | (3 << 3) | 1,
+            (4 << 16) | (3 << 3) | 1 | (1 << 12),
+            (4 << 16) | (4 << 3) | 1,
+            (10 << 16) | (3 << 3) | 1,
+            (10 << 16) | (3 << 3) | 1 | (1 << 12),
+            (6 << 16) | (4 << 3) | 1,
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt,
+                lab, (10 << 16) | (3 << 3) | 1, 0, 0);
+            if !t.is_null() {
+                let ib = [0x55u8; 64];
+                let mut ob = [0u8; 64];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, 1);
+                // stride-based transform
+                let ib2 = [0x55u8; 64];
+                let mut ob2 = [0u8; 64];
+                c::cmsDoTransformStride(t, ib2.as_ptr()
+                    as *const _, ob2.as_mut_ptr()
+                    as *mut _, 2, 16);
+                c::cmsDeleteTransform(t);
+                eprintln!("fmt {fmt:#x} done");
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
