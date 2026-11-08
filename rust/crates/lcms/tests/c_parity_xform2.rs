@@ -3274,3 +3274,94 @@ fn devicelink_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// _cmsLCMScolorSpace/_cmsICCcolorSpace/cmsChannelsOfColorSpace —
+/// the sig<->PT switches. Every colorspace sig driven through the
+/// public channel-count API + a devicelink profile + transform.
+#[test]
+fn colorspace_switches() {
+    unsafe {
+        // sig, nch, PT
+        let spaces: &[(u32, u32, u32)] = &[
+            (0x47524159, 1, 3),   // GRAY / PT_GRAY
+            (0x52474220, 3, 4),   // 'RGB ' / PT_RGB
+            (0x434d5920, 3, 5),   // 'CMY ' / PT_CMY
+            (0x434d594b, 4, 6),   // 'CMYK' / PT_CMYK
+            (0x59436272, 3, 7),   // 'YCbr' / PT_YCbCr
+            (0x4C757620, 3, 8),   // 'Luv ' / PT_YUV
+            (0x58595A20, 3, 9),   // 'XYZ ' / PT_XYZ
+            (0x4C616220, 3, 10),  // 'Lab ' / PT_Lab
+            (0x4C75764B, 4, 11),  // 'LuvK' / PT_YUVK
+            (0x48535620, 3, 12),  // 'HSV ' / PT_HSV
+            (0x484C5320, 3, 13),  // 'HLS ' / PT_HLS
+            (0x59787920, 3, 14),  // 'Yxy ' / PT_Yxy
+            (0x4D434831, 1, 15),  // MCH1
+            (0x4D434832, 2, 16),
+            (0x4D434833, 3, 17),
+            (0x4D434834, 4, 18),
+            (0x4D434835, 5, 19),
+            (0x4D434836, 6, 20),
+            (0x4D434837, 7, 21),
+            (0x4D434838, 8, 22),
+            (0x4D434839, 9, 23),
+            (0x4D434841, 10, 24),
+            (0x4D434842, 11, 25),
+            (0x4D434843, 12, 26),
+            (0x4D434844, 13, 27),
+            (0x4D434845, 14, 28),
+            (0x4D434846, 15, 29),  // MCHF
+            (0x31434C52, 1, 15),   // '1CLR'
+            (0x32434C52, 2, 16),   // '2CLR'
+            (0x33434C52, 3, 17),   // '3CLR'
+            (0x34434C52, 4, 18),   // '4CLR'
+            (0x35434C52, 5, 19),   // '5CLR'
+            (0x36434C52, 6, 20),   // '6CLR'
+            (0x37434C52, 7, 21),   // '7CLR'
+            (0x38434C52, 8, 22),   // '8CLR'
+            (0x39434C52, 9, 23),   // '9CLR'
+            (0x41434C52, 10, 24),  // 'ACLR'
+            (0x42434C52, 11, 25),  // 'BCLR'
+            (0x43434C52, 12, 26),  // 'CCLR'
+            (0x44434C52, 13, 27),  // 'DCLR'
+            (0x45434C52, 14, 28),  // 'ECLR'
+            (0x46434C52, 15, 29),  // 'FCLR'
+            (0x62616420, 0, 0),    // 'bad ' -> default arm
+        ];
+        for (sig, nch, _pt) in spaces {
+            let ch = c::cmsChannelsOfColorSpace(*sig);
+            eprintln!("sig={:#x} channels={ch}", sig);
+            if *nch == 0 { continue; }
+            // devicelink profile with this colorspace → transform
+            // drives _cmsLCMScolorSpace + _cmsICCcolorSpace arms
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6c696e6b);   // link
+            c::cmsSetColorSpace(prof, *sig);
+            c::cmsSetPCS(prof, 0x58595A20);           // XYZ
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), *nch, 3);
+            let total = (2u32.pow(*nch) * 3) as usize;
+            let mut grid = vec![0u16; total];
+            for (i, v) in grid.iter_mut().enumerate() {
+                *v = ((i % 7) * 9362) as u16;
+            }
+            let dims = vec![2u32; *nch as usize];
+            let clut = c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(),
+                dims.as_ptr(), *nch, 3, grid.as_ptr());
+            c::cmsPipelineInsertStage(p, 1, clut);
+            let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let xyz = c::cmsCreateXYZProfile();
+            let infmt = (_pt << 16) | (*nch << 3) | 1;
+            let outfmt = (9u32 << 16) | (3 << 3) | 1;
+            let t = if w != 0 {
+                c::cmsCreateTransform(prof, infmt, xyz, outfmt, 0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("sig={:#x} w={w} t={}", sig, !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(xyz);
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
