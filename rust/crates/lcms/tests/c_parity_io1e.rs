@@ -856,3 +856,83 @@ fn lut_stored_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Remaining writeable sigs — vued/vuet/calt/clid/ciid/ceid/
+/// ndin with proper payloads.
+#[test]
+fn final_sig_writes() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // viewing-conditions sigs — cmsICCViewingConditions
+        #[repr(C)]
+        struct ViewCond {
+            illuminant: c::CieXyz,
+            surround: c::CieXyz,
+            std_illuminant: u32,
+        }
+        let vc = ViewCond {
+            illuminant: c::CieXyz { X: 0.5, Y: 0.6, Z: 0.7 },
+            surround: c::CieXyz { X: 0.3, Y: 0.4, Z: 0.5 },
+            std_illuminant: 0x44,
+        };
+        let o1 = c::cmsWriteTag(h, 0x76756564,
+            &vc as *const _ as *mut std::ffi::c_void); // 'vued'
+        let o2 = c::cmsWriteTag(h, 0x76756574,
+            &vc as *const _ as *mut std::ffi::c_void); // 'vuet'
+        // calt — datetime (struct tm)
+        #[repr(C)]
+        struct Tm {
+            sec: i32, min: i32, hour: i32, mday: i32,
+            mon: i32, year: i32, wday: i32, yday: i32,
+            isdst: i32, gmtoff: i64, zone: *const i8,
+        }
+        let tm = Tm { sec: 0, min: 0, hour: 0, mday: 1,
+            mon: 0, year: 120, wday: 3, yday: 0, isdst: 0,
+            gmtoff: 0, zone: std::ptr::null() };
+        let o3 = c::cmsWriteTag(h, 0x63616C74,
+            &tm as *const _ as *mut std::ffi::c_void); // 'calt'
+        // clid/ciid/ceid — colorant/id/end-id sigs (text/XYZ)
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"id\0".as_ptr() as *const u8);
+        let o4 = c::cmsWriteTag(h, 0x636C6964,
+            mlu as *mut std::ffi::c_void); // 'clid'
+        let o5 = c::cmsWriteTag(h, 0x63696964,
+            mlu as *mut std::ffi::c_void); // 'ciid'
+        let o6 = c::cmsWriteTag(h, 0x63656964,
+            mlu as *mut std::ffi::c_void); // 'ceid'
+        // ndin — ncl2-type named display data
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 3,
+            b"pre\0".as_ptr() as *const _,
+            b"suf\0".as_ptr() as *const _);
+        let mut pcs = [0u16; 3];
+        let mut dev = [0u16; 16];
+        c::cmsAppendNamedColor(ncl,
+            b"n\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        let o7 = c::cmsWriteTag(h, 0x6E64696E,
+            ncl as *mut std::ffi::c_void); // 'ndin'
+        eprintln!("vued={o1} vuet={o2} calt={o3} clid={o4} \
+            ciid={o5} ceid={o6} ndin={o7}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x76756564u32, 0x76756574, 0x63616C74,
+                    0x636C6964, 0x63696964, 0x63656964,
+                    0x6E64696E] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
