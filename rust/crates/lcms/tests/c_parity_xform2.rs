@@ -3831,3 +3831,71 @@ fn default_icc_intents_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsCreateExtendedTransform — per-profile intent/BPC/adaptation
+/// arrays + gamut-position.
+#[test]
+fn extended_transform_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        // per-chain profile sets with intent/bpc/adaptation arrays
+        let chains: Vec<(Vec<*mut std::ffi::c_void>, u32, u32,
+            &str)> = vec![
+            (vec![srgb, lab], r8, l8, "srgb-lab"),
+            (vec![srgb, lab, cmyk], r8, k8, "srgb-lab-cmyk"),
+            (vec![gray, lab, srgb], g8, r8, "gray-lab-srgb"),
+            (vec![srgb, srgb], r8, r8, "srgb-srgb"),
+        ];
+        for (chain, if_, of_, name) in &chains {
+            if chain.iter().any(|p| p.is_null()) { continue; }
+            let n = chain.len() as u32;
+            let mut bpc = vec![0i32; n as usize];
+            let mut intents = vec![0u32; n as usize];
+            let mut adapt = vec![1.0f64; n as usize];
+            for (bi, ii, ai, variant) in [
+                (0i32, 0u32, 1.0f64, "base"),
+                (1, 1, 0.5, "bpc-i1-ad05"),
+                (1, 3, 0.0, "bpc-i3-ad0"),
+                (0, 2, 1.0, "sat-ad1"),
+            ] {
+                for v in bpc.iter_mut() { *v = bi; }
+                for v in intents.iter_mut() { *v = ii; }
+                for v in adapt.iter_mut() { *v = ai; }
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), n,
+                    chain.as_ptr() as *mut _,
+                    bpc.as_mut_ptr(), intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    std::ptr::null_mut(), 0,
+                    *if_, *of_, 0);
+                eprintln!("{name}/{variant} t={}", !t.is_null());
+                if !t.is_null() {
+                    let inp_b = [0x55u8; 8];
+                    let mut out = [0u8; 8];
+                    c::cmsDoTransform(t, inp_b.as_ptr()
+                        as *const _, out.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}

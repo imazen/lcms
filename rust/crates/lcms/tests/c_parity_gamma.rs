@@ -783,3 +783,66 @@ fn parametric_eval_arms2() {
         }
     }
 }
+
+/// cmsSmoothToneCurve — lambda sweep on tabulated/parametric/seg.
+#[test]
+fn smooth_arms() {
+    unsafe {
+        let tv = [0u16, 1024, 4096, 16384, 40000, 65535];
+        let curves = [
+            c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 6, tv.as_ptr()),
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+            c::cmsBuildParametricToneCurve(std::ptr::null_mut(),
+                5, [2.0, 0.5, 0.1, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0,
+                    0.0].as_ptr()),
+            c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 2, tv.as_ptr()),
+        ];
+        for (i, tc) in curves.iter().enumerate() {
+            for lam in [0.0f64, 0.001, 0.1, 1.0, 10.0, -1.0] {
+                let d = c::cmsDupToneCurve(*tc);
+                let r = c::cmsSmoothToneCurve(d, lam);
+                eprintln!("c{i} lam={lam} sm={r} dup={}",
+                    !d.is_null());
+                if !d.is_null() { c::cmsFreeToneCurve(d); }
+            }
+        }
+        for tc in curves {
+            c::cmsFreeToneCurve(tc);
+        }
+    }
+}
+
+/// cmsReadRawTag — raw byte reads on saved profiles.
+#[test]
+fn rawtag_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("save={s}");
+        let rp = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        let nt = c::cmsGetTagCount(rp);
+        for i in 0..nt as u32 {
+            let sig = c::cmsGetTagSignature(rp, i);
+            // size query (NULL buffer) then read
+            let need = c::cmsReadRawTag(rp, sig,
+                std::ptr::null_mut(), 0);
+            let mut rb = vec![0u8; need as usize];
+            let got = c::cmsReadRawTag(rp, sig,
+                rb.as_mut_ptr() as *mut _, need);
+            // undersized read → truncated or reject
+            let mut small = [0u8; 4];
+            let g2 = c::cmsReadRawTag(rp, sig,
+                small.as_mut_ptr() as *mut _, 4);
+            eprintln!("tag {sig:#x} need={need} got={got} \
+                small={g2}");
+        }
+        c::cmsCloseProfile(rp);
+        c::cmsCloseProfile(srgb);
+    }
+}
