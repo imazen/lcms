@@ -611,3 +611,37 @@ fn linearization_devicelink() {
         }
     }
 }
+
+/// cmsCreateXYZProfile + NULLProfile — XYZ-PCS profile and the
+/// NULL (identity) profile through transforms.
+#[test]
+fn xyz_null_profiles() {
+    unsafe {
+        let xyz = c::cmsCreateXYZProfile();
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let x16 = (11u32 << 16) | (3 << 3) | 2; // XYZ u16
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, if_, of, name) in [
+            (xyz, srgb, x16, r16, "xyz->srgb"),
+            (srgb, xyz, r16, x16, "srgb->xyz"),
+            (xyz, lab, x16, l16, "xyz->lab"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        // NULL profile — identity transform
+        let nul = c::cmsCreateNULLProfile();
+        if !nul.is_null() {
+            let t = c::cmsCreateTransform(nul, r16, srgb, r16, 0, 0);
+            eprintln!("null t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(nul);
+        }
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
