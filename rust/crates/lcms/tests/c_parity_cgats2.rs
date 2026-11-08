@@ -2591,3 +2591,81 @@ fn it8_setdata_arms() {
         }
     }
 }
+
+/// Remaining cmsIT8* APIs — GetDataDbl/RowCol/EnumProperties/
+/// GetPatchByName/SetDataFormat/SetComment/SaveToMem.
+#[test]
+fn it8_api_arms() {
+    unsafe {
+        let doc = "# comment\nIT8FILE\nORIGINATOR \"x\"\n\
+            NUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
+            BEGIN_DATA_FORMAT\nSAMPLE_ID L a\nEND_DATA_FORMAT\n\
+            BEGIN_DATA\n1 50 10\n2 60 20\nEND_DATA\n";
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("load={}", !p.is_null());
+        if p.is_null() { return; }
+        // comment + properties
+        c::cmsIT8SetComment(p, b"new comment\0".as_ptr()
+            as *const i8);
+        c::cmsIT8SetComment(p, b"\0".as_ptr() as *const i8);
+        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let np = c::cmsIT8EnumProperties(p, &mut names);
+        let mut names2: *mut *mut i8 = std::ptr::null_mut();
+        let np2 = c::cmsIT8EnumPropertyMulti(p,
+            b"ORIGINATOR\0".as_ptr() as *const i8,
+            &mut names2);
+        let mut names3: *mut *mut i8 = std::ptr::null_mut();
+        let np3 = c::cmsIT8EnumPropertyMulti(p,
+            b"NOPROP\0".as_ptr() as *const i8,
+            &mut names3);
+        eprintln!("enumprop={np} multi={np2}/{np3}             n={names:?}/{names2:?}");
+        // data format — set/get via SetDataFormat + Enum
+        for (i, nm) in [(0i32, b"SAMPLE_ID\0" as &[u8]),
+            (1, b"L\0"), (2, b"a\0"), (3, b"b\0"),
+            (9, b"bad\0")] {
+            let r = c::cmsIT8SetDataFormat(p, i,
+                nm.as_ptr() as *const i8);
+            eprintln!("fmt{i}->{nm:?}={r}");
+        }
+        let mut fnames: *mut *mut i8 = std::ptr::null_mut();
+        let ne = c::cmsIT8EnumDataFormat(p, &mut fnames);
+        eprintln!("enumfmt={ne} n={fnames:?}");
+        // patch queries
+        for name in [b"1\0" as &[u8], b"2\0", b"9\0",
+            b"\0"] {
+            let i = c::cmsIT8GetPatchByName(p,
+                name.as_ptr() as *const i8);
+            eprintln!("patch {:?}={i}", name);
+        }
+        // data getters — dbl + rowcol forms
+        let d = c::cmsIT8GetDataDbl(p,
+            b"1\0".as_ptr() as *const i8,
+            b"L\0".as_ptr() as *const i8);
+        let d2 = c::cmsIT8GetDataRowColDbl(p, 0, 1);
+        let s_ = c::cmsIT8GetDataRowCol(p, 0, 0);
+        eprintln!("dbl={d} rc={d2} s={s_:?}");
+        // save to mem
+        let mut buf = vec![0u8; 1 << 20];
+        let mut needed = 0u32;
+        let r = c::cmsIT8SaveToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut needed);
+        let mut needed2 = 0u32;
+        let r2 = c::cmsIT8SaveToMem(p,
+            std::ptr::null_mut(), &mut needed2);
+        eprintln!("save={r} needed={needed}/{needed2} null={r2}");
+        // table navigation
+        let t0 = c::cmsIT8SetTableByLabel(p,
+            b"IT8FILE\0".as_ptr() as *const i8,
+            std::ptr::null(), std::ptr::null());
+        let tc = c::cmsIT8TableCount(p);
+        let ts = c::cmsIT8SetTable(p, 0);
+        let ts2 = c::cmsIT8SetTable(p, 99);
+        let si = c::cmsIT8SetIndexColumn(p,
+            b"SAMPLE_ID\0".as_ptr() as *const i8);
+        let si2 = c::cmsIT8SetIndexColumn(p,
+            b"bad\0".as_ptr() as *const i8);
+        eprintln!("tab={t0} cnt={tc} ts={ts}/{ts2} idx={si}/{si2}");
+        c::cmsIT8Free(p);
+    }
+}
