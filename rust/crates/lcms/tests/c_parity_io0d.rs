@@ -22814,3 +22814,80 @@ fn internal_final56_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio1 residual — cmsGetProfileInfo[ASCII/UTF8] ×
+///   info-types × locales (MLU lookup internals).
+#[test]
+fn internal_final57_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // profile with MLU multi-locale desc
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x58595A20);
+        c::cmsSetProfileVersion(prof, 4.4);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 4);
+        for (lang, ctry, txt) in [
+            ("en", "US", "english"),
+            ("de", "DE", "deutsch"),
+            ("fr", "FR", "francais"),
+            ("ja", "JP", "nihongo"),
+        ] {
+            let mut w_ = [0i32; 16];
+            for (j, ch) in format!("{txt}\0").chars()
+                .enumerate() { w_[j] = ch as i32; }
+            c::cmsMLUsetWide(mlu,
+                format!("{lang}\0").as_ptr() as *const _,
+                format!("{ctry}\0").as_ptr() as *const _,
+                w_.as_ptr());
+        }
+        for sig in [0x64657363u32, 0x63707274,
+            0x6D6E6672, 0x6D646C20] {
+            c::cmsWriteTag(prof, sig, mlu as *const _);
+        }
+        for (info, iname) in [
+            (0u32, "desc"), (1, "mnfr"),
+            (2, "mdl"), (3, "cprt"), (4, "bad4"),
+            (0xFFFFFFFF, "max"),
+        ] {
+            for (lang, ctry) in [
+                ("en", "US"), ("de", "DE"), ("fr", "FR"),
+                ("ja", "JP"), ("xx", "YY"), ("en", "GB"),
+            ] {
+                let mut buf = [0i32; 64];
+                let l2 = format!("{lang}\0");
+                let c2 = format!("{ctry}\0");
+                let n = c::cmsGetProfileInfo(prof, info,
+                    l2.as_ptr() as *const _,
+                    c2.as_ptr() as *const _,
+                    buf.as_mut_ptr() as *mut _, 64);
+                let mut buf8 = [0u8; 64];
+                let n8 = c::cmsGetProfileInfoASCII(prof,
+                    info, l2.as_ptr() as *const _,
+                    c2.as_ptr() as *const _,
+                    buf8.as_mut_ptr() as *mut _, 64);
+                let mut bu8 = [0u8; 64];
+                let nu = c::cmsGetProfileInfoUTF8(prof,
+                    info, l2.as_ptr() as *const _,
+                    c2.as_ptr() as *const _,
+                    bu8.as_mut_ptr() as *mut _, 64);
+                eprintln!("{iname} {lang}-{ctry} \
+                    w={n} a={n8} u={nu}");
+            }
+        }
+        // on srgb real profile
+        for info in 0..5u32 {
+            let mut buf = [0i32; 64];
+            let n = c::cmsGetProfileInfo(srgb, info,
+                b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _,
+                buf.as_mut_ptr() as *mut _, 64);
+            eprintln!("srgb i{info} n={n}");
+        }
+        c::cmsMLUfree(mlu);
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(srgb);
+    }
+}
