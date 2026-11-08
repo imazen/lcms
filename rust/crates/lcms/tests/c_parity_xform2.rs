@@ -4722,3 +4722,71 @@ fn formatter_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// Unroll*/Pack* float/double formatters + ComputeAbsoluteIntent
+/// — real float transforms (FLOAT_SH at bit 22).
+#[test]
+fn float_fmt_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let enc = |cs: u32, ch: u32, b: u32, flags: u32| {
+            (flags << 22) | (cs << 16) | (ch << 3) | b
+        };
+        // FLOAT_SH=1<<22 → flags arg
+        let fl = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16)
+            | (ch << 3) | 4;
+        let db = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16)
+            | (ch << 3) | 0;  // bytes=0 → double
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        for (inp, outp, if_, of_, name) in [
+            (srgb, lab, fl(4, 3), fl(10, 3), "rgbf->labf"),
+            (lab, srgb, fl(10, 3), fl(4, 3), "labf->rgbf"),
+            (srgb, lab, db(4, 3), db(10, 3), "rgbd->labd"),
+            (lab, srgb, db(10, 3), db(4, 3), "labd->rgbd"),
+            (srgb, xyz, fl(4, 3), fl(9, 3), "rgbf->xyzf"),
+            (xyz, srgb, fl(9, 3), fl(4, 3), "xyzf->rgbf"),
+            (gray, srgb, fl(3, 1), fl(4, 3), "grayf->rgbf"),
+            (srgb, gray, fl(4, 3), fl(3, 1), "rgbf->grayf"),
+            (cmyk, srgb, fl(6, 4), fl(4, 3), "cmykf->rgbf"),
+            (srgb, cmyk, fl(4, 3), fl(6, 4), "rgbf->cmykf"),
+            (srgb, lab, r8, fl(10, 3), "rgb8->labf"),
+            (lab, srgb, fl(10, 3), r8, "labf->rgb8"),
+            (srgb, cmyk, fl(4, 3), k8, "rgbf->cmyk8"),
+            (cmyk, srgb, k8, fl(4, 3), "cmyk8->rgbf"),
+            (gray, lab, g8, fl(10, 3), "gray8->labf"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for intent in [0u32, 3] {   // + abs intent
+                let t = c::cmsCreateTransform(inp, if_, outp,
+                    of_, intent, 0);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 32];
+                    let mut ob = [0u8; 64];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(xyz);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
