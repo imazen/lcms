@@ -1503,3 +1503,31 @@ fn named_color_on_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Byte-order formats on the devicelinks — the byte-order
+/// machinery on more channel counts.
+#[test]
+fn byte_order_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("4ch-bgr", (0 << 16) | (1 << 10) | (4 << 3) | 1),
+            ("4ch-abgr", (0 << 16) | (1 << 14) | (1 << 10)
+             | (4 << 3) | 1),
+            ("4ch-argb", (0 << 16) | (1 << 14) | (4 << 3) | 1),
+            ("4ch-bgra", (0 << 16) | (1 << 10) | (1 << 7)
+             | (4 << 3) | 1),
+            ("4ch-rgba", (0 << 16) | (1 << 7) | (4 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
