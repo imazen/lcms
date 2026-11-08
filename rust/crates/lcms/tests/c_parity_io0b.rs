@@ -25,7 +25,7 @@ fn corpus() -> Vec<Vec<u8>> {
 }
 
 /// ICC header `created` field offset (year..sec, 12 bytes at 36).
-const CREATED_OFF: usize = 36;
+const CREATED_OFF: usize = 24;
 
 #[test]
 fn save_to_mem_reserialize() {
