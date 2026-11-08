@@ -24553,3 +24553,119 @@ fn internal_final72_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsopt residual — OptimizeMatrixShaper mat+mat
+///   multiply + identity-product → JoiningCurves
+///   recursion internals.
+#[test]
+fn internal_final73_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let m2 = [0.5f64, 0.25, 0.25, 0.25, 0.5, 0.25,
+            0.25, 0.25, 0.5];
+        let m2inv = [3.0f64, -1.0, -1.0, -1.0, 3.0, -1.0,
+            -1.0, -1.0, 3.0];
+        let mid = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0];
+        // cv + m1 + m2 + cv pipelines: non-identity
+        //   product, identity product, identity single
+        for (m1, m2_, name) in [
+            (m2, m2, "m*m"),
+            (m2, m2inv, "m*inv"),
+            (mid, m2, "id*m"),
+            (mid, mid, "id*id"),
+        ] {
+            for (fl, fname) in [
+                (0u32, "0"), (0x0100, "opt"),
+            ] {
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                c::cmsSetColorSpace(prof, 0x52474220);
+                c::cmsSetPCS(prof, 0x58595A20);
+                c::cmsSetProfileVersion(prof, 4.4);
+                let p = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                let trcs = [g, g, g];
+                c::cmsPipelineInsertStage(p, 0,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        trcs.as_ptr() as *mut _));
+                c::cmsPipelineInsertStage(p, 1,
+                    c::cmsStageAllocMatrix(
+                        std::ptr::null_mut(), 3, 3,
+                        m1.as_ptr(), std::ptr::null()));
+                c::cmsPipelineInsertStage(p, 2,
+                    c::cmsStageAllocMatrix(
+                        std::ptr::null_mut(), 3, 3,
+                        m2_.as_ptr(), std::ptr::null()));
+                c::cmsPipelineInsertStage(p, 3,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        trcs.as_ptr() as *mut _));
+                c::cmsWriteTag(prof, 0x41324230,
+                    p as *const _);
+                c::cmsWriteTag(prof, 0x42324130,
+                    p as *const _);
+                let fin = (4u32 << 16) | (3 << 3) | 2;
+                let t = c::cmsCreateTransform(prof, fin,
+                    srgb, fin, 0, fl);
+                eprintln!("{name} {fname} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = [0x4000u16; 3];
+                    let mut dst = [0u16; 3];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+        }
+        // cv + mat + cv with identity matrix →
+        //   IdentityMat → JoiningCurves
+        for (mat, name) in [
+            (mid, "id"), (m2, "m"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let trcs = [g, g, g];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    trcs.as_ptr() as *mut _));
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocMatrix(
+                    std::ptr::null_mut(), 3, 3,
+                    mat.as_ptr(), std::ptr::null()));
+            c::cmsPipelineInsertStage(p, 2,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    trcs.as_ptr() as *mut _));
+            c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            c::cmsWriteTag(prof, 0x42324130,
+                p as *const _);
+            let fin = (4u32 << 16) | (3 << 3) | 2;
+            let t = c::cmsCreateTransform(prof, fin,
+                srgb, fin, 0, 0x0100);
+            eprintln!("cvmcv {name} t={}",
+                !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
