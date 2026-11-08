@@ -686,3 +686,48 @@ fn iohandler_stream_variants() {
         }
     }
 }
+
+/// The final unexercised builders: cmsCreateGrayProfile(THR),
+/// cmsCreateRGBProfile, cmsCreateLinearizationDeviceLink,
+/// cmsCreateInkLimitingDeviceLink, cmsCreateProfilePlaceholder.
+#[test]
+fn remaining_builders() {
+    unsafe {
+        let ctx = c::cmsDupContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // gray THR + non-THR
+        let h1 = c::cmsCreateGrayProfileTHR(ctx, std::ptr::null(),
+            g as *const _);
+        assert!(!h1.is_null(), "gray THR");
+        let h2 = c::cmsCreateGrayProfile(std::ptr::null(), g);
+        assert!(!h2.is_null(), "gray");
+        // RGB non-THR — D65 primaries
+        let d65 = c::CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 };
+        let prim = [
+            c::CiexyY { x: 0.6400, y: 0.3300, Y: 1.0 }, // R
+            c::CiexyY { x: 0.3000, y: 0.6000, Y: 1.0 }, // G
+            c::CiexyY { x: 0.1500, y: 0.0600, Y: 1.0 }, // B
+        ];
+        let tfs = [g, g, g];
+        let h3 = c::cmsCreateRGBProfile(&d65 as *const _ as *const _,
+            prim.as_ptr() as *const _, tfs.as_ptr() as *const _);
+        assert!(!h3.is_null(), "rgb");
+        // linearization + ink-limiting devicelinks (non-THR)
+        // CMYK needs 4 curves
+        let tfs4 = [g, g, g, g];
+        let h4 = c::cmsCreateLinearizationDeviceLink(0x434D594B,
+            tfs4.as_ptr() as *const _); // 'CMYK'
+        assert!(!h4.is_null(), "linearization");
+        let h5 = c::cmsCreateInkLimitingDeviceLink(0x434D594B,
+            200.0);
+        assert!(!h5.is_null(), "ink limiting");
+        // profile placeholder
+        let h6 = c::cmsCreateProfilePlaceholder(ctx);
+        assert!(!h6.is_null(), "placeholder");
+        for h in [h1, h2, h3, h4, h5, h6] {
+            c::cmsCloseProfile(h);
+        }
+        c::cmsDeleteContext(ctx);
+    }
+}

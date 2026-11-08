@@ -693,6 +693,9 @@ unsafe extern "C" {
     pub fn _cmsReadDevicelinkLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     // --- virtual profile builders (cmsvirt) ---
     pub fn cmsCreateGrayProfile(white_point: *const c_void, transfer: *mut ToneCurve) -> *mut c_void;
+    pub fn cmsCreateRGBProfile(white_point: *const c_void, primaries: *const c_void, transfer: *const *mut c_void) -> *mut c_void;
+    pub fn cmsCreateLinearizationDeviceLink(color_space: u32, transfer: *const *mut c_void) -> *mut c_void;
+    pub fn cmsCreateInkLimitingDeviceLink(color_space: u32, limit: f64) -> *mut c_void;
     pub fn cmsCreateBCHSWabstractProfile(n_lut_points: u32, bright: f64, contrast: f64, hue: f64, saturation: f64, temp_src: u32, temp_dest: u32) -> *mut c_void;
     pub fn cmsCreateLinearizationDeviceLinkTHR(ctx: *mut c_void, color_space: u32, transfer: *const *mut ToneCurve) -> *mut c_void;
     pub fn cmsCreateInkLimitingDeviceLinkTHR(ctx: *mut c_void, color_space: u32, limit: f64) -> *mut c_void;
