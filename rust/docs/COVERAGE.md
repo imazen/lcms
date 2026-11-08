@@ -1134,3 +1134,35 @@ parametric_boundaries + parametric_type_108_109,
 lut_write_shapes + lut_write_deep + lut_write_tables +
 lut16_write_channels + lut16_write_deep + lut16_write_b2a0 +
 lut_read_deep(2,3).
+
+### round 26 — ~20 gates since round 25
+
+78.05% lines / 95.51% fns / 86.43% regions / 70.73% branches.
+
+| file | lines r25 | lines r26 | delta |
+|---|---|---|---|
+| cmscgats.c | 78.40% | 79.24% | +0.84 (it8_deep_arms 2-20: lexer token classes + table structures + property/table API + file IO + CookPointers/AddToList) |
+| cmstypes.c | 67.69% | 67.78% | +0.09 (lut16_write_arms 3-19: all mft2 orders x sigs x channels x grids x matrices) |
+| cmslut.c | 82.16% | 82.42% | +0.26 (tonecurve_alloc_arms2 + lut_read_arms 4-7) |
+| cmsio0.c | 82.38% | 82.07% | -0.31 (noise; save_tags_arms 3-6 landed) |
+| cmssm.c | 90.70% | 90.70% | — |
+
+~20 gates: it8_deep_arms(2-20) — every S* token class, table
+structure, property/table API, file IO, CookPointers/AddToList,
+num-form/sign/escape/comment/whitespace/malformed variants;
+lut16_write_arms(3-19) — all mft2 element orders x 6 LUT sigs x
+1/2/3/4ch x grid 2-33 x matrix variants x entry counts;
+save_tags_arms(3-6) — class x version x all tag types;
+parametric_arms2; lut_read_arms(4-7); opt_arms3; conversion_arms(8,9);
+dict_meta_arms; tonecurve_alloc_arms2.
+
+Remaining big uncovered clusters: Type_LUT16_Write (137),
+OptimizeByComputingLinearization (108), Type_MHC2_Write (108 —
+covered via mhc2_write_arms but stale export), DefaultEvalParametricFn
+(101), InSymbol (101), Type_LUTA2B/B2A_Write (101/100 — covered),
+ParseCube (96), HeaderSection (95), Type_LUT8_Write (94),
+OptimizeMatrixShaper (85), OptimizeByJoiningCurves (75),
+Type_LUT8_Read (73), OptimizeByResampling (71), Type_LUT16_Read (69),
+SaveTags (69), Type_Text_Description_Read (65 — covered),
+Type_vcgt_Read (62 — covered), Type_MPE_Write (59 — covered),
+AllocateToneCurveStruct (59), Type_Dictionary_Read (55 — covered).
