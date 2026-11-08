@@ -184,3 +184,48 @@ fn gbd_dense_grid() {
         c::cmsGBDFree(cg);
     }
 }
+
+/// Denser GBD — cmsGDBCompute on a denser distribution +
+/// CheckPoint parity on the boundary.
+#[test]
+fn dense_gbd() {
+    unsafe {
+        let cgbd = c::cmsGBDAlloc(std::ptr::null_mut());
+        let mut rgbd = lcms::gbd::Gbd::alloc(None);
+        // add Lab points on a denser sphere
+        let mut n = 0u32;
+        for l in (10..=90).step_by(10) {
+            for a in (-80..=80).step_by(16) {
+                for b in (-80..=80).step_by(16) {
+                    #[repr(C)]
+                    struct Clab { l: f64, a: f64, b: f64 }
+                    let p = Clab { l: l as f64, a: a as f64,
+                        b: b as f64 };
+                    let _ = c::cmsGDBAddPoint(cgbd,
+                        &p as *const _ as *const _);
+                    let _ = rgbd.add_point(
+                        &lcms::types::CieLab {
+                            L: l as f64, a: a as f64, b: b as f64 });
+                    n += 1;
+                }
+            }
+        }
+        let c_ok = c::cmsGDBCompute(cgbd, 0);
+        let r_ok = rgbd.compute(0);
+        assert_eq!(c_ok != 0, r_ok, "compute");
+        // check points on/near the boundary
+        for (l, a, b) in [(50.0f64, 0.0, 0.0), (80.0, 50.0, 50.0),
+                          (20.0, -60.0, -60.0), (90.0, 0.0, 0.0)] {
+            #[repr(C)]
+            struct Clab { l: f64, a: f64, b: f64 }
+            let p = Clab { l, a, b };
+            let c_in = c::cmsGDBCheckPoint(cgbd,
+                &p as *const _ as *const _);
+            let r_in = rgbd.check_point(
+                &lcms::types::CieLab { L: l, a, b });
+            assert_eq!(c_in != 0, r_in,
+                "check ({l},{a},{b}) c={c_in}");
+        }
+        c::cmsGBDFree(cgbd);
+    }
+}
