@@ -2669,3 +2669,57 @@ fn it8_api_arms() {
         c::cmsIT8Free(p);
     }
 }
+
+/// cmscgats residual — InSymbol/HeaderSection/ParseCube/
+/// ParseFloatNumber internals via exotic lexemes + doc forms.
+#[test]
+fn cgats_residual_arms() {
+    unsafe {
+        // exotic lexemes — InSymbol's remaining arms
+        for doc in [
+            "IT8FILE\nBEGIN_DATA\nEND_DATA\n#trail\n",
+            "IT8FILE #comment\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE 'quoted'\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE \"dq\"\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE 12.34e-5\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE -.5e+10\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE 0x1f\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE a-b_c.d\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE \x1a\nBEGIN_DATA\nEND_DATA\n",   // Ctrl-Z
+            "IT8FILE \r\nBEGIN_DATA\nEND_DATA\n",   // CRLF
+            "IT8FILE\n BEGIN_DATA\nEND_DATA\n",      // leading ws
+            "IT8FILE\nBEGIN_DATA\rEND_DATA\n",      // CR alone
+            "IT8FILE\nBEGIN_DATA\nEND_DATA\n\x00\u{80}",
+            "IT8FILE\n$INCLUDE \"path\"\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\n$INCLUDE 'path'\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\n#KEYWORD \"v\"\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\n#DATA_FORMAT_IDENTIFIER\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\nUNDEFINED_KEYWORD\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\nORIGINATOR\nBEGIN_DATA\nEND_DATA\n",   // no value
+            "IT8FILE\nORIGINATOR \nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\nNUMBER_OF_FIELDS\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\nNUMBER_OF_SETS x\nBEGIN_DATA\nEND_DATA\n",
+            "IT8FILE\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n",
+        ] {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("doc{}={}", doc.len(), !p.is_null());
+            if !p.is_null() { c::cmsIT8Free(p); }
+        }
+        // ParseFloatNumber residual — all float forms in
+        //   data rows
+        for num in ["0", "1", "-1", "0.5", "-0.5", ".5", "5.",
+            "1e2", "1E2", "1e+2", "1e-2", "1.5e3", "-1.5e-3",
+            "1.", ".1", "1e", "1e+", "1e-", "1.5e", "inf",
+            "nan", "-inf", "1_0", "1,0", " 1", "1 ", "\t1",
+            "0x10", "010", "1a", "a1", "+1", "--1", "1..5"] {
+            let doc = format!("IT8FILE\nNUMBER_OF_FIELDS 1\n\
+                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nSAMPLE_ID\n\
+                END_DATA_FORMAT\nBEGIN_DATA\n{num}\nEND_DATA\n");
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("num '{num}'={}", !p.is_null());
+            if !p.is_null() { c::cmsIT8Free(p); }
+        }
+    }
+}
