@@ -185,3 +185,62 @@ fn opt_matrix_shaper_shapes() {
         c::cmsPipelineFree(p2);
     }
 }
+
+/// Optimizer shape sweep — many profile pairs x flags drive
+/// _cmsOptimizePipeline through its per-shape arms (matrix-shaper,
+/// curves-only, clut-passthrough, float/8bit/16bit variants,
+/// NOOPTIMIZE skip).
+#[test]
+fn opt_shape_sweep() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let mut profs: Vec<*mut std::ffi::c_void> = Vec::new();
+        for f in ["lcms2cmyk.icc", "graylcms2.icc", "labv2lcms2.icc",
+                  "sRGB3.icc", "labv4lcms2.icc", "linlcms2.icc"] {
+            if let Ok(d) = std::fs::read(dir.join(f)) {
+                let p = c::cmsOpenProfileFromMem(
+                    d.as_ptr() as *const _, d.len() as u32);
+                if !p.is_null() { profs.push(p); }
+            }
+        }
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        profs.push(srgb);
+        profs.push(lab);
+        // fmt by profile colorspace
+        let fmt_of = |p: *mut std::ffi::c_void| -> u32 {
+            let cs = c::cmsGetColorSpace(p);
+            match cs {
+                0x47524159 => (3 << 16) | (1 << 3) | 1,
+                0x434D594B => (6 << 16) | (4 << 3) | 1,
+                0x4C616220 => (10 << 16) | (3 << 3) | 2,
+                _ => (4 << 16) | (3 << 3) | 1,
+            }
+        };
+        let flags = [0u32, 0x1000, 0x2000, 0x0001, 0x4000];
+        for &a in &profs {
+            for &b in &profs {
+                if a == b { continue; }
+                let fa = fmt_of(a);
+                let fb = fmt_of(b);
+                for &fl in &flags {
+                    let t = c::cmsCreateTransform(a, fa, b, fb, 0, fl);
+                    if !t.is_null() {
+                        let n = 4u32;
+                        let ch = ((fa >> 3) & 15) as usize;
+                        let by = (fa & 7) as usize;
+                        let inp = vec![0x40u8; (n as usize) * ch * by];
+                        let cho = ((fb >> 3) & 15) as usize;
+                        let byo = (fb & 7) as usize;
+                        let mut out = vec![0u8; (n as usize) * cho * byo];
+                        c::cmsDoTransform(t, inp.as_ptr() as *const _,
+                            out.as_mut_ptr() as *mut _, n);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+        }
+        for p in profs { c::cmsCloseProfile(p); }
+    }
+}
