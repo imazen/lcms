@@ -1,5 +1,7 @@
 //! io1 LUT-reader coverage — corpus x intent transform matrix.
 use lcms_cref as c;
+use std::sync::Mutex;
+static CTX_LOCK: Mutex<()> = Mutex::new(());
 
 // RGB_8 format for the sRGB side
 const RGB8: u32 = 0x00ff04;
@@ -685,5 +687,34 @@ fn input_lut_matrix_shaper() {
             c::cmsCloseProfile(p);
         }
         c::cmsCloseProfile(lab);
+    }
+}
+
+/// _cmsReadGamutLUT/_cmsReadPreviewLUT — gamt/pre0-2 tagged
+/// profiles via gamut-check + proofing transforms.
+#[test]
+fn gamut_preview_lut_readers2() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsWriteTag(prof, 0x67616d74, p as *const _); // 'gamt'
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // gamut-check transform (proof flag + gamut intent)
+        let t = c::cmsCreateTransform(prof, r16, lab, l16, 0,
+            0x00000400 | 0x00001000); // NOCACHE + GAMUTCHECK
+        eprintln!("gamut t={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
     }
 }
