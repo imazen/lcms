@@ -8439,8 +8439,19 @@ fn segmented_curve_arms() {
             c::cmsSetProfileVersion(prof, 4.4);
             c::cmsWriteRawTag(prof, 0x44324230,
                 mpet.as_ptr() as *const _, mpet.len() as u32);
-            let tag = c::cmsReadTag(prof, 0x44324230);
-            eprintln!("{name} read={}", !tag.is_null());
+            let mut buf = vec![0u8; 1 << 22];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x44324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={sv} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
             c::cmsCloseProfile(prof);
         }
     }
@@ -8506,13 +8517,213 @@ fn desc_read_arms() {
             c::cmsSetProfileVersion(prof, 2.1);
             c::cmsWriteRawTag(prof, 0x64657363,
                 blob.as_ptr() as *const _, blob.len() as u32);
-            let tag = c::cmsReadTag(prof, 0x64657363);
-            eprintln!("{name} read={}", !tag.is_null());
-            if !tag.is_null() {
-                // read twice for dup arms
-                let _t2 = c::cmsReadTag(prof, 0x64657363);
-            }
+            let mut buf = vec![0u8; 1 << 21];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x64657363)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={sv} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
             c::cmsCloseProfile(prof);
         }
+    }
+}
+
+/// Type_vcgt_Read deep arms — table 1B/2B, formula type-1,
+/// channel counts, byte-width, malformed variants.
+#[test]
+fn vcgt_read_arms2() {
+    unsafe {
+        let mk_table = |bytew: u16, nchan: u16, nentry: u16| {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x76636774u32.to_be_bytes()); // vcgt
+            v.extend_from_slice(&0u32.to_be_bytes());
+            v.extend_from_slice(&0u32.to_be_bytes()); // type 0 table
+            v.extend_from_slice(&nchan.to_be_bytes());
+            v.extend_from_slice(&nentry.to_be_bytes());
+            v.extend_from_slice(&bytew.to_be_bytes());
+            for i in 0..(nchan * nentry * bytew.max(1)) as u32 {
+                v.push((i % 256) as u8);
+            }
+            v
+        };
+        let mk_formula = |gam: f32, min: f32, max: f32| {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x76636774u32.to_be_bytes());
+            v.extend_from_slice(&0u32.to_be_bytes());
+            v.extend_from_slice(&1u32.to_be_bytes()); // type 1 formula
+            v.extend_from_slice(&gam.to_be_bytes());
+            v.extend_from_slice(&min.to_be_bytes());
+            v.extend_from_slice(&max.to_be_bytes());
+            v
+        };
+        for (blob, name) in [
+            (mk_table(1, 3, 256), "t-1b-3ch-256"),
+            (mk_table(1, 1, 256), "t-1b-1ch"),
+            (mk_table(2, 3, 256), "t-2b-3ch"),
+            (mk_table(2, 3, 64), "t-2b-3ch-64"),
+            (mk_table(1, 4, 256), "t-1b-4ch-rej"),
+            (mk_table(3, 3, 256), "t-3bw-rej"),
+            (mk_table(0, 3, 256), "t-0bw"),
+            (mk_formula(2.2f32, 0.0, 1.0), "f-2.2"),
+            (mk_formula(1.0f32, 0.0, 1.0), "f-1.0"),
+            (mk_formula(3.5f32, 0.1, 0.9), "f-3.5"),
+            (mk_formula(0.0f32, 0.0, 1.0), "f-g0"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteRawTag(prof, 0x76636774,
+                blob.as_ptr() as *const _, blob.len() as u32);
+            // save + reopen so TagSaveAsRaw clears -> real parse
+            let mut buf = vec![0u8; 1 << 21];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x76636774)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={sv} read={}", !tag.is_null());
+            if !tag.is_null() {
+                let _t2 = c::cmsReadTag(rp, 0x76636774);
+            }
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
+
+/// raw-tag write diagnostic — does WriteRawTag register on a
+/// created profile?
+#[test]
+fn rawtag_write_dbg() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        // does sRGB have vcgt? add it raw
+        let istag0 = c::cmsIsTag(prof, 0x76636774);
+        let blob: Vec<u8> = {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x76636774u32.to_be_bytes());
+            v.extend_from_slice(&0u32.to_be_bytes());
+            v.extend_from_slice(&0u32.to_be_bytes()); // type 0
+            v.extend_from_slice(&3u16.to_be_bytes());
+            v.extend_from_slice(&4u16.to_be_bytes());
+            v.extend_from_slice(&1u16.to_be_bytes());
+            v.extend_from_slice(&[0, 85, 170, 255,
+                0, 85, 170, 255, 0, 85, 170, 255]);
+            v
+        };
+        let w = c::cmsWriteRawTag(prof, 0x76636774,
+            blob.as_ptr() as *const _, blob.len() as u32);
+        let istag = c::cmsIsTag(prof, 0x76636774);
+        let tag = c::cmsReadTag(prof, 0x76636774);
+        // writeRawTag return
+        eprintln!("istag0={istag0} w={w} istag={istag} read={}",
+            !tag.is_null());
+        c::cmsCloseProfile(prof);
+    }
+}
+
+/// mpet raw dump — real serialized D2B0 bytes from an API-written
+/// mpet pipeline.
+#[test]
+fn mpet_dump() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves.as_ptr() as *mut _));
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsWriteTag(prof, 0x44324230, p as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("s={s}");
+        if s != 0 {
+            // find 'mpet' in the saved data
+            for w in buf[..n as usize].windows(4).enumerate() {
+                if w.1 == 0x6d706574u32.to_be_bytes() {
+                    eprintln!("mpet at {}: {:02x?}",
+                        w.0, &buf[w.0..(w.0 + 96).min(n as usize)]);
+                    break;
+                }
+            }
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
+
+/// mpet save across tag slots + profile classes.
+#[test]
+fn mpet_save_ararms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        for (sig, name) in [
+            (0x44324230u32, "d2b0"), (0x44324231, "d2b1"),
+            (0x41324230, "a2b0"), (0x42324130, "b2a0"),
+            (0x42324430, "b2d0"), (0x44324232, "d2b2"),
+            (0x43324130, "c2a0"), (0x43324230, "c2b0"),
+        ] {
+            for (stages, sname) in [
+                ("cv", "cv"),
+                ("mat", "mat"),
+                ("cv-mat", "cv-mat"),
+            ] {
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+                if sname != "mat" {
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            [g, g2, g].as_ptr() as *mut _));
+                }
+                if sname != "cv" {
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                            3, 3, mat.as_ptr(),
+                            std::ptr::null()));
+                }
+                let prof = c::cmsCreate_sRGBProfile();
+                c::cmsSetProfileVersion(prof, 4.4);
+                let w = c::cmsWriteTag(prof, sig, p as *const _);
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                let tag = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name}/{sname} w={w} s={s} r={}",
+                    !tag.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
     }
 }
