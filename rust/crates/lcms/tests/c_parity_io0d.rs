@@ -2817,3 +2817,30 @@ fn b2atype_dispatch() {
         c::cmsCloseProfile(src);
     }
 }
+
+/// Intent-LUT dispatch — read all A2B/B2A intent tags on lcms2cmyk
+/// (the per-intent LUT read dispatch).
+#[test]
+fn intentlut_read() {
+    unsafe {
+        let pb = std::path::Path::new(
+            env!("CARGO_MANIFEST_DIR"))
+            .join("../../lcms2cmyk.icc");
+        let path = std::ffi::CString::new(
+            pb.to_str().unwrap()).unwrap();
+        let h = c::cmsOpenProfileFromFile(
+            path.as_ptr(), b"r\0".as_ptr());
+        assert!(!h.is_null());
+        // A2B0/1/2 + B2A0/1/2
+        for (name, sig) in [
+            ("a2b0", 0x41324230u32), ("a2b1", 0x41324231),
+            ("a2b2", 0x41324232), ("b2a0", 0x42324130),
+            ("b2a1", 0x42324131), ("b2a2", 0x42324132),
+            ("gamt", 0x67616d74), ("pre0", 0x70726530),
+            ("pre1", 0x70726531), ("pre2", 0x70726532)] {
+            let t = c::cmsReadTag(h, sig);
+            eprintln!("{name} sig={sig:#x} t={}", !t.is_null());
+        }
+        c::cmsCloseProfile(h);
+    }
+}
