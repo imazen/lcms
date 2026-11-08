@@ -748,3 +748,31 @@ fn desaturate_alarm() {
         eprintln!("alarm2={:#x}", out[0]);
     }
 }
+
+/// CLUT-detection machinery — cmsIsCLUT on more profile
+/// types.
+#[test]
+fn is_clut_machinery() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let ph = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (pname, h) in [
+            ("devlink", dl), ("srgb", srgb),
+            ("lab4", lab), ("ph", ph)] {
+            for (dir, intent) in [
+                (0u32, 0u32), (0, 1), (0, 2), (0, 3),
+                (1, 0), (1, 1), (1, 2), (1, 3)] {
+                let r = c::cmsIsCLUT(h, intent, dir);
+                eprintln!("{pname} d{dir}i{intent}={r}");
+            }
+        }
+        let _ = (dl, srgb, lab, ph);
+    }
+}
