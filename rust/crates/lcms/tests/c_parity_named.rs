@@ -215,3 +215,84 @@ fn named_color_internals() {
         }
     }
 }
+
+/// Named-color devicelink — an 'nmcl'-class input profile makes the
+/// transform's LUT begin with a NamedColor stage, so
+/// cmsTransform2DeviceLink dispatches into CreateNamedColorDevicelink
+/// (cmsvirt.c:1081). The named-color transform output is compared
+/// C-vs-Rust; the devicelink conversion runs C-side for coverage.
+#[test]
+fn named_color_devicelink() {
+    unsafe {
+        // C side: nmcl profile + 2-color list + Lab PCS
+        let p = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6e6d636c); // 'nmcl'
+        c::cmsSetColorSpace(p, 0x6e636c32); // 'ncl2'
+        c::cmsSetPCS(p, 0x4C616220); // 'Lab '
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"\0".as_ptr(), b"\0".as_ptr());
+        let pcs = [0x8000u16, 0x8000, 0x8000];
+        let col = [0xFFFFu16, 0, 0, 0];
+        c::cmsAppendNamedColor(ncl, b"Color1\0".as_ptr(),
+            pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"Color2\0".as_ptr(),
+            pcs.as_ptr(), col.as_ptr());
+        assert_ne!(c::cmsWriteTag(p, 0x6e636c32, ncl as *const _), 0);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let nc_fmt: u32 = (1 << 3) | 2; // TYPE_NAMED_COLOR_INDEX
+        let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
+        let t = c::cmsCreateTransform(p, nc_fmt, srgb, rgb8, 0, 0);
+        assert!(!t.is_null());
+        let inp = [0u16, 1, 0, 1];
+        let mut c_out = vec![0u8; 12];
+        c::cmsDoTransform(t, inp.as_ptr() as _,
+            c_out.as_mut_ptr() as _, 4);
+        // CreateNamedColorDevicelink — the named-color stage head
+        let dl = c::cmsTransform2DeviceLink(t, 4.3, 0);
+        eprintln!("named-color devicelink={}", !dl.is_null());
+        if !dl.is_null() { c::cmsCloseProfile(dl); }
+        c::cmsDeleteTransform(t);
+        // Rust side: same profile + transform
+        let mut rp = lcms::profile::create_profile_placeholder(None);
+        rp.device_class = lcms::signatures::profileclass::SigNamedColorClass;
+        rp.color_space = 0x6e636c32;
+        rp.pcs = 0x4C616220;
+        let rp: lcms::profile::IccProfile = *rp;
+        let mut rncl = lcms::named::alloc_named_color_list(
+            None, 2, 4, b"", b"").unwrap();
+        lcms::named::append_named_color(&mut rncl,
+            Some(b"Color1"), Some(&pcs), Some(&col_pad(col)));
+        lcms::named::append_named_color(&mut rncl,
+            Some(b"Color2"), Some(&pcs), Some(&col_pad(col)));
+        let mut rp = rp;
+        assert!(lcms::profile::cms_write_tag(&mut rp, 0x6e636c32,
+            Some(lcms::tagtypes::TagObject::NamedColor(rncl))));
+        let mut rs = lcms::virt::create_srgb_profile(None).unwrap();
+        let mut profs: Vec<Box<lcms::profile::IccProfile>> =
+            vec![Box::new(rp), rs];
+        let mut bpc = vec![false; 2];
+        let intents = vec![0u32; 2];
+        let adapt = vec![1.0f64; 2];
+        let mut rt = lcms::xform::create_extended_transform(
+            None, &mut profs, &mut bpc, &intents, &adapt,
+            None, 0, nc_fmt, rgb8, 0);
+        if let Some(rt) = rt.as_mut() {
+            let mut r_out = vec![0u8; 12];
+            let rin: Vec<u8> = inp.iter()
+                .flat_map(|v| v.to_le_bytes()).collect();
+            rt.do_transform(&rin, &mut r_out, 4);
+            assert_eq!(c_out, r_out, "named-color transform");
+        } else {
+            panic!("rust named-color transform failed");
+        }
+        c::cmsCloseProfile(p);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
+
+fn col_pad(c: [u16; 4]) -> [u16; 16] {
+    let mut v = [0u16; 16];
+    v[..4].copy_from_slice(&c);
+    v
+}
