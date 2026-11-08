@@ -1343,3 +1343,37 @@ fn raw_tag_machinery() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Link-tag internals — cmsLinkTag/cmsTagLinkedTo on more
+/// sigs (the linked-tag machinery).
+#[test]
+fn link_tag_machinery() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // link wtpt -> bkpt -> lumi -> chad
+        c::cmsLinkTag(h, 0x626B7074, 0x77747074);
+        c::cmsLinkTag(h, 0x6C756D69, 0x77747074);
+        c::cmsLinkTag(h, 0x63686164, 0x77747074);
+        // linked-to queries
+        for sig in [0x626B7074u32, 0x6C756D69, 0x63686164,
+                    0x77747074] {
+            let lt = c::cmsTagLinkedTo(h, sig);
+            eprintln!("{sig:#x} linkedto={lt:#x}");
+        }
+        // resave + read the linked tags
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x626B7074u32, 0x6C756D69, 0x63686164] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
