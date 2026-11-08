@@ -873,3 +873,43 @@ fn virt_text_tags_internals() {
         }
     }
 }
+
+/// CreateNamedColorDevicelink — Transform2DeviceLink on a
+/// transform whose first stage is a named-color element.
+#[test]
+fn named_devicelink() {
+    unsafe {
+        let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(nmcl, 0x6e6d636c);
+        c::cmsSetColorSpace(nmcl, 0x33434c52); // '3CLR' device
+        c::cmsSetPCS(nmcl, 0x4c616220);
+        let list = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 4, 3,
+            b"pre\0".as_ptr(), b"post\0".as_ptr());
+        for i in 0..4u32 {
+            let mut name = [0u8; 256];
+            let nm = format!("color{}\0", i);
+            name[..nm.len()].copy_from_slice(nm.as_bytes());
+            let pcs = [100u16 * (i as u16 + 1), 200, 300];
+            let dev = [0u16; 15];
+            c::cmsAppendNamedColor(list,
+                name.as_ptr() as *mut _, pcs.as_ptr(), dev.as_ptr());
+        }
+        c::cmsWriteTag(nmcl, 0x6e636c32, list as *const _);
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // named-index input -> lab output
+        let ni = (1u32 << 3) | 2; // CHANNELS_SH(1)|BYTES_SH(2)
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(nmcl, ni, lab, l16, 0, 0);
+        eprintln!("nmcl->lab t={}", !t.is_null());
+        if !t.is_null() {
+            let dl = c::cmsTransform2DeviceLink(t, 4.4, 0);
+            eprintln!("devicelink={}", !dl.is_null());
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            c::cmsDeleteTransform(t);
+        }
+        c::cmsCloseProfile(nmcl);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeNamedColorList(list);
+    }
+}
