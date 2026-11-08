@@ -13801,3 +13801,88 @@ fn savetags_arms() {
         }
     }
 }
+
+/// Type_LUTB2A_Write — mBA serialization via API pipelines:
+/// B->CLUT->A and B->M->CLUT->A shapes x versions.
+#[test]
+fn lutba_write_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
+        let tc = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5, tv.as_ptr());
+        let dims = [3u32; 3];
+        let mut grid = vec![0u16; 27 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 23) * 2848) as u16;
+        }
+        // per-case pipelines (stages can't be shared)
+        for (order, name) in [
+            ("b-clut-a", "B-clut-A"),
+            ("b-mat-clut-a", "B-mat-clut-A"),
+            ("b-clut", "B-clut"),
+            ("b-a", "B-A"),
+        ] {
+            for (sig, ver) in [
+                (0x41324230u32, 4.4f64),
+                (0x42324130, 4.4),
+                (0x41324230, 2.1),
+            ] {
+                let p = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                c::cmsPipelineInsertStage(p, 0,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 3,
+                        [tc, tc, tc].as_ptr() as *mut _));
+                if order == "b-mat-clut-a" {
+                    let m = [
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            [g, g, g].as_ptr() as *mut _)];
+                    c::cmsPipelineInsertStage(p, 1,
+                        m[0]);
+                }
+                if order != "b-a" {
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(), dims.as_ptr(),
+                            3, 3, grid.as_ptr()));
+                }
+                if order != "b-clut" {
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            [g, g, g].as_ptr() as *mut _));
+                }
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                c::cmsSetColorSpace(prof, 0x52474220);
+                c::cmsSetPCS(prof, 0x4C616220);
+                c::cmsSetProfileVersion(prof, ver);
+                let w = c::cmsWriteTag(prof, sig,
+                    p as *const _);
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                let rd = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name} {sig:#x} v{ver} w={w} s={s} \
+                    rd={}", !rd.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+                c::cmsPipelineFree(p);
+            }
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(tc);
+    }
+}
