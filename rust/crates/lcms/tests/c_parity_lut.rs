@@ -2603,3 +2603,29 @@ fn clut_sampler_slice() {
         eprintln!("slice16={r3} sliceflt={r4}");
     }
 }
+
+/// Lab<->XYZ stage evaluators — _cmsStageAllocLab2XYZ, XYZ2Lab,
+/// LabV2ToV4, LabV4ToV2 through pipeline eval.
+#[test]
+fn lab_xyz_stages() {
+    unsafe {
+        for (name, st) in [
+            ("lab2xyz", c::_cmsStageAllocLab2XYZ(std::ptr::null_mut())),
+            ("xyz2lab", c::_cmsStageAllocXYZ2Lab(std::ptr::null_mut())),
+            ("v2tov4", c::_cmsStageAllocLabV2ToV4(std::ptr::null_mut())),
+            ("v4tov2", c::_cmsStageAllocLabV4ToV2(std::ptr::null_mut())),
+        ] {
+            eprintln!("{name}={}", !st.is_null());
+            if !st.is_null() {
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+                c::cmsPipelineInsertStage(p, 1, st);
+                let fi = [0.5f32, 0.4, 0.6];
+                let mut fo = [0f32; 3];
+                c::cmsPipelineEvalFloat(fi.as_ptr(),
+                    fo.as_mut_ptr(), p);
+                eprintln!("  eval={fo:?}");
+                c::cmsPipelineFree(p);
+            }
+        }
+    }
+}
