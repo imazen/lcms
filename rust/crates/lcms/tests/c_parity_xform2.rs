@@ -2576,3 +2576,52 @@ fn conversion_arms4() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// OptimizeByJoiningCurves deep arms — all-curve pipelines join
+/// to a single curve set; curves+matrix/CLUT reject.
+#[test]
+fn opt_join_curves() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let gray2 = c::cmsCreateGrayProfile(std::ptr::null_mut(), g2);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let g8 = (3u32 << 16) | (1 << 3) | 1;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, if_, of_, fl, name) in [
+            (gray, gray2, g16, g16, 0, "gray->gray2"),
+            (gray2, gray, g16, g16, 0, "gray2->gray"),
+            (gray, gray, g16, g16, 0, "gray->gray"),
+            (gray, gray2, g8, g8, 0, "gray8"),
+            (gray, gray2, g16, g16, 0x0002, "gray lpc"),
+            (gray, gray2, g16, g16, 0x0010, "gray prelin"),
+            (gray, gray2, g16, g16, 0x0400, "gray hiprec"),
+            (gray, gray2, g16, g16, 0x0800, "gray lowprec"),
+            (gray, srgb, g16, r16, 0, "gray->srgb"),
+            (gray, lab, g16, l16, 0, "gray->lab"),
+            (srgb, gray, r16, g16, 0, "srgb->gray"),
+            (lab, gray, l16, g16, 0, "lab->gray"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 4];
+                let mut ob = [0x8000u16; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(gray2);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
