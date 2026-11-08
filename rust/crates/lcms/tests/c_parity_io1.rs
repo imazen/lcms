@@ -659,3 +659,31 @@ fn devicelink_lut_dispatch2() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadInputLUT matrix-shaper + gamut arms — matrix-shaper
+/// profiles + gamut-check profiles -> the specific read arms.
+#[test]
+fn input_lut_matrix_shaper() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        for f in ["sRGBlcms2.icc", "aRGBlcms2.icc", "graylcms2.icc",
+                  "lcms2mtsh.icc", "lcms2matrix.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for intent in [0u32, 1, 2, 3] {
+                let t = c::cmsCreateTransform(p, r16, lab, l16,
+                    intent, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{f} ok");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
