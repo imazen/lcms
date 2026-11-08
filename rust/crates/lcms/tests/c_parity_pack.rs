@@ -2987,3 +2987,38 @@ fn format_flag_megasweep() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Float/half packer arms — float format words on RGB/Lab/XYZ
+/// transforms.
+#[test]
+fn float_half_packers() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let f32f = (4u32 << 16) | (3 << 3) | 4; // float
+        let fl32 = (10u32 << 16) | (3 << 3) | 4;
+        let f16 = (4u32 << 16) | (3 << 3) | 0x0800; // half
+        let fl16 = (10u32 << 16) | (3 << 3) | 0x0800;
+        for (if_, of_, name) in [
+            (r16, l16, "u16-u16"),
+            (f32f, fl32, "f32-f32"),
+            (r16, fl32, "u16-f32"),
+            (f32f, l16, "f32-u16"),
+            (f16, fl16, "f16-f16"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, if_, lab, of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 3];
+                let mut ob = [0u16; 3];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
