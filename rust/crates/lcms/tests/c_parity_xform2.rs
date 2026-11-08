@@ -1596,3 +1596,49 @@ fn cnvt_named_abstract() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// cmscnvrt named-color internals — a named-color profile + the
+/// named transform path.
+#[test]
+fn cnvt_named_color() {
+    unsafe {
+        // build an nmcl profile: placeholder + nmcl class + ncl2
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(),
+            2, 3, b"\0".as_ptr(), b"\0".as_ptr());
+        let pcs = [0x8000u16; 3];
+        let cols = [0x4000u16; 16];
+        c::cmsAppendNamedColor(ncl, b"red\0".as_ptr(),
+            pcs.as_ptr(), cols.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"blue\0".as_ptr(),
+            pcs.as_ptr(), cols.as_ptr());
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6e6d636c); // 'nmcl'
+        c::cmsSetColorSpace(prof, 0x4c616220);  // 'Lab '
+        c::cmsSetPCS(prof, 0x4c616220);
+        c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _);
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let nfmt = (16u32 << 16) | (1 << 3) | 2; // named 1ch?
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        for (inp, outp, if_, of_, name) in [
+            (prof, lab, nfmt, l16, "nmcl->lab"),
+            (lab, prof, l16, nfmt, "lab->nmcl"),
+            (prof, srgb, nfmt, r16, "nmcl->srgb"),
+        ] {
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 4];
+                let mut ob = [0u16; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
