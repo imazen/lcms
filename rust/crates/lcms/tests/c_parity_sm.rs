@@ -8,6 +8,8 @@ use lcms::profile;
 use lcms::sm;
 use lcms_cref as c;
 
+static CTX_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 const PROFILES: &[&str] = &[
     "sRGBlcms2.icc",
     "aRGBlcms2.icc",
@@ -380,6 +382,27 @@ fn blackpoint_deeper_paths() {
                 }
             }
             c::cmsCloseProfile(*p);
+        }
+    }
+}
+
+/// TAC-detection internals — DetectTAC/EstimateTAC on profiles
+/// with different colorant counts + gamut shapes.
+#[test]
+fn tac_detection_internals() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc",
+                  "graylcms2.icc", "labv2lcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let tac = c::cmsDetectTAC(p);
+            eprintln!("{f} tac={tac:.2}");
+            c::cmsCloseProfile(p);
         }
     }
 }
