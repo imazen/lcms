@@ -3664,3 +3664,26 @@ fn write_dispatch_named3() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a pipeline on the object-type sigs —
+/// the write machinery on wrong-type payloads.
+#[test]
+fn write_dispatch_pipeline_obj() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        for (sig, name) in [
+            (0x70736571u32, "pseq"), (0x70736964u32, "psid"),
+            (0x6D657461u32, "meta"), (0x636C6F74u32, "clot"),
+            (0x636C7274u32, "clrt"), (0x76696577u32, "view"),
+            (0x6D656173u32, "meas"), (0x7363726Eu32, "scrn"),
+            (0x6368726Du32, "chrm"), (0x63616C74u32, "calt"),
+            (0x6474696Du32, "dtim")] {
+            let ok = c::cmsWriteTag(h, sig,
+                pl as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsPipelineFree(pl);
+        c::cmsCloseProfile(h);
+    }
+}
