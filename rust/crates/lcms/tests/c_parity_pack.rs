@@ -5421,3 +5421,125 @@ fn preserve_k_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmslut/cmsopt residual — EvaluateLab2XYZ/XYZ2Lab
+///   evaluator arms via multiprofile chains through abst
+///   Lab/XYZ profiles (link inserts Lab<->XYZ stages),
+///   plus optimizer paths on odd-shaped pipelines.
+#[test]
+fn lab_xyz_chain_arms() {
+    unsafe {
+        let open = |n: &str| {
+            let p = format!(
+                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(),
+                b"r\0".as_ptr() as *const _)
+        };
+        let get = |n: &str| open(n);
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let f_flt = |pt: u32, ch: u32| -> u32 {
+            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let prof = |n: &str| get(n);
+        // chains through abst Lab/XYZ -> Lab2XYZ/XYZ2Lab
+        //   stages get inserted by DefaultICCintents
+        let chains: Vec<(&str, Vec<&str>, u32, u32)> = vec![
+            ("srgb>labv4>cmyk",
+                vec!["sRGBlcms2.icc", "labv4lcms2.icc",
+                     "lcms2cmyk.icc"],
+                f16(4, 3), f16(6, 4)),
+            ("cmyk>labv4>srgb",
+                vec!["lcms2cmyk.icc", "labv4lcms2.icc",
+                     "sRGBlcms2.icc"],
+                f16(6, 4), f16(4, 3)),
+            ("srgb>xyz>srgb",
+                vec!["sRGBlcms2.icc", "xyzlcms2.icc",
+                     "sRGBlcms2.icc"],
+                f16(4, 3), f16(4, 3)),
+            ("srgb>labv2>cmyk",
+                vec!["sRGBlcms2.icc", "labv2lcms2.icc",
+                     "lcms2cmyk.icc"],
+                f16(4, 3), f16(6, 4)),
+            ("lab4>labv4>lab4",
+                vec!["labv4lcms2.icc", "labv4lcms2.icc",
+                     "labv4lcms2.icc"],
+                f16(10, 3), f16(10, 3)),
+            ("srgb>labv4>srgb-flt",
+                vec!["sRGBlcms2.icc", "labv4lcms2.icc",
+                     "sRGBlcms2.icc"],
+                f_flt(4, 3), f_flt(4, 3)),
+            ("cmyk>xyz>cmyk",
+                vec!["lcms2cmyk.icc", "xyzlcms2.icc",
+                     "lcms2cmyk.icc"],
+                f16(6, 4), f16(6, 4)),
+        ];
+        for (nm, chain_names, fi, fo) in &chains {
+            let mut chain: Vec<*mut c_void> =
+                chain_names.iter()
+                    .map(|n| prof(n)).collect();
+            if chain.iter().any(|p| p.is_null()) {
+                eprintln!("{nm}: null in chain");
+                for p in &chain {
+                    if !p.is_null() {
+                        c::cmsCloseProfile(*p); } }
+                continue; }
+            for intent in 0u32..4 {
+                let t = c::cmsCreateMultiprofileTransform(
+                    chain.as_mut_ptr(),
+                    chain.len() as i32,
+                    *fi, *fo, intent, 0);
+                if t.is_null() {
+                    eprintln!("{nm} i{intent}: REJ");
+                    continue; }
+                let ib = [0x4000u16; 32];
+                let mut ob = [0u16; 32];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 4);
+                c::cmsDeleteTransform(t);
+                eprintln!("{nm} i{intent}: ok"); }
+            for p in &chain {
+                c::cmsCloseProfile(*p); }
+        }
+        // optimizer paths — flags that enable optimizers
+        // (no cmsFLAGS_NOOPTIMIZE) on odd profiles
+        let odd_pairs: Vec<(&str, &str, &str, u32, u32)> = vec![
+            ("bchs->srgb opt", "bchslcms2.icc",
+             "sRGBlcms2.icc", f16(4, 3), f16(4, 3)),
+            ("bright->srgb", "brightness.icc",
+             "sRGBlcms2.icc", f16(4, 3), f16(4, 3)),
+            ("nullg->lab", "nullcms2.icc",
+             "labv4lcms2.icc", f16(3, 1), f16(10, 3)),
+            ("gray3->xyz", "gray3lcms2.icc",
+             "xyzlcms2.icc", f16(3, 1), f16(9, 3)),
+            ("link->link", "lcms2link.icc",
+             "lcms2link2.icc", f16(6, 4), f16(6, 4)),
+            ("limit->lin", "limitlcms2.icc",
+             "linlcms2.icc", f16(6, 4), f16(6, 4)),
+        ];
+        for (nm, inp, outp, fi, fo) in &odd_pairs {
+            let i = prof(inp);
+            let o = prof(outp);
+            if i.is_null() || o.is_null() {
+                eprintln!("{nm}: null"); continue; }
+            for flags in [0u32, 0x4000, 0x8000, 0x10000] {
+                // 0x4000=FORCE_CLUT? 0x8000=NOOPT?
+                // sweep raw flag bits to hit optimizer arms
+                let t = c::cmsCreateTransform(
+                    i, *fi, o, *fo, 0, flags);
+                if t.is_null() {
+                    continue; }
+                let ib = [0x4000u16; 32];
+                let mut ob = [0u16; 32];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const c_void,
+                    ob.as_mut_ptr() as *mut c_void, 4);
+                c::cmsDeleteTransform(t); }
+            eprintln!("{nm}: done");
+            c::cmsCloseProfile(i);
+            c::cmsCloseProfile(o);
+        }
+    }
+}
