@@ -1256,6 +1256,7 @@ impl Transform {
                             && p8.clut.tab16.is_some()
                         {
                             if let Some(token) = archmage::X64V3Token::summon() {
+                                #[cfg(target_arch = "x86_64")]
                                 return prelin8_rgb8_loop_v3(
                                     token, p8, input, output, ppl, lines, stride,
                                 );
@@ -1338,6 +1339,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_loop_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride, 6, 6,
@@ -1413,6 +1415,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clut8_eval4_loop_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride,
@@ -1443,6 +1446,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clut16_eval4_loop_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride,
@@ -1505,6 +1509,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_loop_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride, 8, 8,
@@ -1578,6 +1583,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clut8_tetra_loop_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride,
@@ -1945,6 +1951,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_cached_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride, ipx, opx,
@@ -2257,6 +2264,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clutflt_tetra_loop_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride,
@@ -2329,6 +2337,7 @@ impl Transform {
                         {
                             if let Some(token) = archmage::X64V3Token::summon()
                             {
+                                #[cfg(target_arch = "x86_64")]
                                 return clutflt_eval4_loop_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride,

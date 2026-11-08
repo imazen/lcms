@@ -190,6 +190,7 @@ impl<'a> InterpParams<'a> {
                 // 4-in/4-out eval4 → SIMD kernel (bit-exact lane math).
                 if self.n_inputs == 4 && self.n_outputs == 4 && output.len() >= 4
                 {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_eval4_v3(t, input, output, self);
                     }
@@ -199,6 +200,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::Tetra3 => {
                 // 3-in/3-out tetra → SIMD kernel (bit-exact lane math).
                 if self.n_outputs == 3 && output.len() >= 3 {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_tetra3_v3(t, input, output, self);
                     }
@@ -208,6 +210,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::Trilinear => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_trilinear_v3(t, input, output, self);
                     }
@@ -217,6 +220,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::Bilinear => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_bilinear_v3(t, input, output, self);
                     }
@@ -226,6 +230,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::Eval1 => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_eval1_v3(t, input, output, self);
                     }
@@ -254,6 +259,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::Eval4F => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_eval4_v3(t, input, output, n_out, self);
                     }
@@ -263,6 +269,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::Tetra3F => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_tetra3_v3(t, input, output, n_out, self);
                     }
@@ -272,6 +279,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::TrilinearF => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_trilinear_v3(t, input, output, n_out, self);
                     }
@@ -281,6 +289,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::BilinearF => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_bilinear_v3(t, input, output, n_out, self);
                     }
@@ -290,6 +299,7 @@ impl<'a> InterpParams<'a> {
             KernelKind::Eval1F => {
                 let n_out = self.n_outputs as usize;
                 if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                    #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_eval1_v3(t, input, output, n_out, self);
                     }
@@ -2471,6 +2481,7 @@ fn eval_dispatch16(input: &[u16], output: &mut [u16], p: &InterpParams, n: usize
             // Same SIMD arm as `eval16` — multi-ink CLUTs get vectorized
             // eval4 on each of the two shifted cells.
             if p.n_outputs == 4 && output.len() >= 4 {
+                #[cfg(target_arch = "x86_64")]
                 if let Some(t) = x64v3_cached() {
                     return eval16_eval4_v3(t, input, output, p);
                 }
@@ -2486,6 +2497,7 @@ fn eval_dispatch_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: u
         4 => {
             let n_out = p.n_outputs as usize;
             if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                #[cfg(target_arch = "x86_64")]
                 if let Some(t) = x64v3_cached() {
                     return evalflt_eval4_v3(t, input, output, n_out, p);
                 }

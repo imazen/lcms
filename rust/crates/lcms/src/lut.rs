@@ -298,6 +298,7 @@ fn evaluate_matrix(input: &[f32], output: &mut [f32], mpe: &Stage) {
         // j-order as the scalar — each product rounds then adds, so the
         // per-lane result is bit-identical. (No FMA.)
         if n_in <= 4 && n_out <= 4 && n_out >= 1 {
+            #[cfg(target_arch = "x86_64")]
             if let Some(t) = crate::intrp::x64v3_cached() {
                 return evaluate_matrix_v3(t, input, output, n_in, n_out, double, offset.as_ref());
             }
