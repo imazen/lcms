@@ -2893,3 +2893,83 @@ fn cgats_errpath_arms() {
         }
     }
 }
+
+/// cmscgats residual — cmsIT8LoadFromFile / ParseCube /
+///   SetTableByLabel / EnumPropertyMulti / SaveToFile
+///   internals.
+#[test]
+fn cgats_file_cube_arms() {
+    unsafe {
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        // write a valid IT8 doc, load from file, enum props
+        let doc = b"IT8FILE\nORIGINATOR \"org\"\n\
+            MANUFACTURER \"mfr\"\nNUMBER_OF_FIELDS 3\n\
+            BEGIN_DATA_FORMAT\nSAMPLE_ID CMYK_C CMYK_M\n\
+            END_DATA_FORMAT\nNUMBER_OF_SETS 2\n\
+            BEGIN_DATA\nid1 0.1 0.2\nid2 0.3 0.4\n\
+            END_DATA\nIT8FILE\nORIGINATOR \"t2\"\n\
+            NUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\n\
+            A B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
+            BEGIN_DATA\n1 2\nEND_DATA\n\0";
+        // mem load + table ops
+        let h = c::cmsIT8LoadFromMem(ctx,
+            doc.as_ptr() as *const _,
+            doc.len() as u32 - 1);
+        eprintln!("mem h={}", !h.is_null());
+        if !h.is_null() {
+            let nt = c::cmsIT8TableCount(h);
+            eprintln!("tables={nt}");
+            for i in 0..nt + 2 {
+                let s = c::cmsIT8SetTable(h, i);
+                eprintln!("  set{i}={s}");
+            }
+            // by-label
+            for (set, fld, exp, name) in [
+                ("", "", "", "all-empty"),
+                ("id1", "SAMPLE_ID", "", "byid"),
+                ("2", "", "", "byidx"),
+                ("", "A", "", "byfield"),
+                ("", "", "A", "byexp"),
+            ] {
+                let r = c::cmsIT8SetTableByLabel(h,
+                    format!("{set}\0").as_ptr() as *const _,
+                    format!("{fld}\0").as_ptr() as *const _,
+                    format!("{exp}\0").as_ptr() as *const _);
+                eprintln!("  lbl{name}={r}");
+            }
+            // save-to-file + load-from-file
+            for path in [
+                "/home/lilith/tmp/it8-a.txt",
+                "/home/lilith/tmp/it8-b.txt",
+            ] {
+                let p2 = format!("{path}\0");
+                let s = c::cmsIT8SaveToFile(h,
+                    p2.as_ptr() as *const _);
+                let h2 = c::cmsIT8LoadFromFile(ctx,
+                    p2.as_ptr() as *const _);
+                eprintln!("save={s} file h={}",
+                    !h2.is_null());
+                if !h2.is_null() {
+                    c::cmsIT8Free(h2); }
+                std::fs::remove_file(path).ok();
+            }
+            // load failures
+            for path in [
+                "/nonexistent-x/xx.it8",
+                "/dev/null",
+                "/proc/version",
+            ] {
+                let p2 = format!("{path}\0");
+                let h3 = c::cmsIT8LoadFromFile(ctx,
+                    p2.as_ptr() as *const _);
+                eprintln!("load {path} h={}",
+                    !h3.is_null());
+                if !h3.is_null() {
+                    c::cmsIT8Free(h3); }
+            }
+            c::cmsIT8Free(h);
+        }
+        c::cmsDeleteContext(ctx);
+    }
+}
