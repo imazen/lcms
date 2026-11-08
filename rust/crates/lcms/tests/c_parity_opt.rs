@@ -399,3 +399,35 @@ fn optimizer_internals2() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Optimizer internals 3 — float-join-curves + linearization
+/// through real LUT profiles under all optimization flags.
+#[test]
+fn optimizer_internals3() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lf32 = (10u32 << 16) | (3 << 3) | 4;
+        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "lcms2link.icc",
+                  "labv2lcms2.icc", "lcms2mxyz.icc", "lcms2mgray.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            for flags in [0u32, 0x0002, 0x0040, 0x0200, 0x0400,
+                          0x0001, 0x0100, 0x2000, 0x8000, 0xffff] {
+                for ifmt in [l16, lf32] {
+                    let t = c::cmsCreateTransform(lab, ifmt, p, l16,
+                        0, flags);
+                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                }
+            }
+            eprintln!("{f} done");
+            c::cmsCloseProfile(p);
+        }
+        c::cmsCloseProfile(lab);
+    }
+}
