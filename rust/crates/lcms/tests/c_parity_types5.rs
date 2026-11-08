@@ -4097,3 +4097,88 @@ fn crdinfo_write() {
         c::cmsCloseProfile(ch);
     }
 }
+
+/// Tag-descriptor plugin — registering a custom 'zzzz' tag with
+/// ui08/ui32/ui64/uf32 supported types makes the unbound UInt
+/// array type handlers reachable through cooked write+read.
+#[test]
+fn uint_tag_plugin() {
+    #[repr(C)]
+    struct Base { magic: u32, ver: u32, ty: u32, next: *mut std::ffi::c_void }
+    #[repr(C)]
+    struct Desc {
+        elem_count: u32,
+        n_types: u32,
+        types: [u32; 20],
+        decide: Option<unsafe extern "C" fn(f64, *const std::ffi::c_void) -> u32>,
+    }
+    #[repr(C)]
+    struct PTag { base: Base, sig: u32, desc: Desc }
+    // four deciders, one per UInt array type
+    unsafe extern "C" fn d8(_v: f64, _d: *const std::ffi::c_void) -> u32 { 0x75693038 }
+    unsafe extern "C" fn d32(_v: f64, _d: *const std::ffi::c_void) -> u32 { 0x75693332 }
+    unsafe extern "C" fn d64(_v: f64, _d: *const std::ffi::c_void) -> u32 { 0x75693634 }
+    unsafe extern "C" fn duf(_v: f64, _d: *const std::ffi::c_void) -> u32 { 0x75663332 }
+    unsafe {
+        let all_types = [0x75693038u32, 0x75693332,
+            0x75693634, 0x75663332];
+        let deciders: [Option<unsafe extern "C" fn(f64, *const std::ffi::c_void) -> u32>; 4] =
+            [Some(d8), Some(d32), Some(d64), Some(duf)];
+        let sigs = [0x7A7A7A38u32, 0x7A7A7A33, 0x7A7A7A36, 0x7A7A7A66];
+        let mut plugins: Vec<PTag> = Vec::new();
+        for (k, sig) in sigs.iter().enumerate() {
+            let mut types = [0u32; 20];
+            types[..4].copy_from_slice(&all_types);
+            plugins.push(PTag {
+                base: Base { magic: 0x61637070, ver: 2200,
+                    ty: 0x74616748, next: std::ptr::null_mut() },
+                sig: *sig,
+                desc: Desc {
+                    elem_count: 1,
+                    n_types: 4,
+                    types,
+                    decide: deciders[k],
+                },
+            });
+        }
+        let mut reg = 1;
+        for p in plugins.iter_mut() {
+            reg &= c::cmsPlugin(p as *mut PTag as *mut _);
+        }
+        eprintln!("plugin reg={reg}");
+        // write the tags on a profile — cooked UInt array paths
+        let prof = c::cmsCreate_sRGBProfile();
+        let mut arr8 = [7u8; 8];
+        let mut arr32 = [42u32; 4];
+        let mut arr64 = [9u64; 4];
+        let mut arrf = [0x00010000u32; 4]; // u16f16 1.0
+        for (k, sig) in sigs.iter().enumerate() {
+            let ptr = match k {
+                0 => arr8.as_mut_ptr() as *const _,
+                1 => arr32.as_mut_ptr() as *const _,
+                2 => arr64.as_mut_ptr() as *const _,
+                _ => arrf.as_mut_ptr() as *const _,
+            };
+            let ok = c::cmsWriteTag(prof, *sig, ptr);
+            eprintln!("tag[{sig:#x}] write={ok}");
+        }
+        let ok = 1;
+        // save + reopen + read the tag back
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let ok2 = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("save={ok2} n={n}");
+        if ok2 != 0 {
+            let h = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as _, n);
+            for sig in &sigs {
+                let rd = c::cmsReadTag(h, *sig);
+                eprintln!("tag[{sig:#x}] read={}", !rd.is_null());
+            }
+            c::cmsCloseProfile(h);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsUnregisterPlugins();
+    }
+}
