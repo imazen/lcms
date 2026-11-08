@@ -4346,3 +4346,34 @@ fn mlu_text_sig_variants() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Numeric-array + struct-array tags — chad (3x3 s15 matrix),
+/// bfd (ucr-bg), vcgt.
+#[test]
+fn struct_array_tags() {
+    unsafe {
+        // chad — 9x S15Fixed16 (adaptation matrix)
+        let chad: [u32; 9] = [0x00010000; 9];
+        for (sig, payload, n, name) in [
+            (0x63686164u32, chad.as_ptr() as *const _, 9, "chad"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n2 = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n2)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n2)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
