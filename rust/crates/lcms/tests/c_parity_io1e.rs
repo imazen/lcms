@@ -2397,3 +2397,33 @@ fn view_scrn_writes() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'view' resave+read — the viewing-conditions serialization.
+#[test]
+fn view_resave() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct View {
+            illuminant: c::CieXyz, surround: c::CieXyz,
+            illuminant_type: u32,
+        }
+        let view = View {
+            illuminant: c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 },
+            surround: c::CieXyz { X: 0.2, Y: 0.1, Z: 0.0 },
+            illuminant_type: 1,
+        };
+        let _ = c::cmsWriteTag(h, 0x76696577,
+            &view as *const _ as *mut std::ffi::c_void);
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x76696577);
+        eprintln!("view read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
