@@ -913,3 +913,86 @@ fn named_devicelink() {
         c::cmsFreeNamedColorList(list);
     }
 }
+
+/// cmsvirt/cmsopt residual — profile-creation internals on
+///   unusual args + optimizer internals on devicelinks.
+#[test]
+fn virt_opt_residual_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // profile-creation on unusual args
+        for (r, name) in [
+            (0.0f64, "zero"), (0.5, "mid"), (-1.0, "neg"),
+            (1e6, "huge"), (1e-6, "tiny"), (f64::NAN, "nan"),
+            (f64::INFINITY, "inf"), (f64::NEG_INFINITY, "-inf"),
+        ] {
+            let p = c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 17, r, r, r, r,
+                std::ptr::null(), std::ptr::null());
+            let p2 = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x434D594B, r);
+            let p3 = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), 0x52474220, r);
+            eprintln!("{name} bchsw={} ink-cmyk={} ink-rgb={}",
+                !p.is_null(), !p2.is_null(), !p3.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !p2.is_null() { c::cmsCloseProfile(p2); }
+            if !p3.is_null() { c::cmsCloseProfile(p3); }
+        }
+        // devicelink transforms on unusual profile combos
+        for (cls, cs, pcs, name) in [
+            (0x6C696E6Bu32, 0x52474220, 0x52474220, "link-rgb"),
+            (0x6C696E6B, 0x434D594B, 0x434D594B, "link-cmyk"),
+            (0x6C696E6B, 0x4C616220, 0x4C616220, "link-lab"),
+            (0x61627374, 0x4C616220, 0x4C616220, "abst-lab"),
+            (0x73706163, 0x4C616220, 0x58595A20, "spac-lab"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    grid.as_ptr()));
+            c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            for flags in [0u32, 0x0100, 0x0400, 0x0001] {
+                let t = if !rp.is_null() {
+                    c::cmsCreateTransform(rp, r8, srgb,
+                        r8, 0, flags)
+                } else { std::ptr::null_mut() };
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{name} s={s}");
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
