@@ -5754,3 +5754,58 @@ fn screening_full_tags() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Type_ProfileSequenceDesc + ProfileSequenceId — cmsSEQ with
+/// populated deviceMfg/Model/tech/attrs + MLU fields.
+#[test]
+fn pseq_psid_full() {
+    unsafe {
+        use std::ffi::c_void;
+        #[repr(C)] struct PseqDesc { mfg: u32, model: u32,
+            attrs: u64, tech: u32, pid: [u8; 16],
+            man: *mut c_void, mod_: *mut c_void, dsc: *mut c_void }
+        #[repr(C)] struct Seq { n: u32, ctx: *mut c_void,
+            seq: *mut PseqDesc }
+        let mlu = |t: &[u8]| {
+            let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+            c::cmsMLUsetUTF8(m, b"en\0".as_ptr() as *const _,
+                b"US\0".as_ptr() as *const _, t.as_ptr());
+            m
+        };
+        let psd = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 2);
+        let s = psd as *mut Seq;
+        for i in 0..2 {
+            let e = (*s).seq.add(i);
+            (*e).mfg = 0x41434D45;
+            (*e).model = 0x4D4F444C;
+            (*e).attrs = 0x1111111111111111;
+            (*e).tech = 0x73636E20;
+            (*e).pid = [i as u8; 16];
+            (*e).man = mlu(b"acme\0") as *mut _;
+            (*e).mod_ = mlu(b"model x\0") as *mut _;
+            (*e).dsc = mlu(b"a printer\0") as *mut _;
+        }
+        for (sig, name) in [(0x70736571u32, "pseq"), (0x70736964, "psid")] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, psd as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let sv = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if sv != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={sv} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsFreeProfileSequenceDescription(psd);
+
+    }
+}
