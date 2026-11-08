@@ -2407,3 +2407,81 @@ fn it8_table_by_label_arms() {
         }
     }
 }
+
+/// CookPointers + ParseIT8 deep arms — IT8 docs with every
+/// structural form the lexer/parser validates.
+#[test]
+fn it8_struct_arms() {
+    let docs: &[(&str, &str)] = &[
+        ("it8file basic",
+         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1 2\nEND_DATA\n"),
+        ("it8multi 2-tables",
+         "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1\nEND_DATA\n\
+          IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n2\nEND_DATA\n"),
+        ("cgats.17",
+         "CGATS.17\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1\nEND_DATA\n"),
+        ("it8/2",
+         "IT8/2\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1\nEND_DATA\n"),
+        ("props-mix",
+         "IT8FILE\nORIGINATOR \"o\"\nPROD_DATE \"2024\"\n\
+          NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1\nEND_DATA\n"),
+        ("hdr-only", "IT8FILE\n"),
+        ("unterminated-data",
+         "IT8FILE\nNUMBER_OF_FIELDS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1\n"),
+        ("nested-bad",
+         "IT8FILE\nBEGIN_DATA_FORMAT\nBEGIN_DATA_FORMAT\n"),
+        ("bad-header", "NOTIT8\nfoo\n"),
+        ("weird-props",
+         "IT8FILE\n#COMMENT comment\nP1 = v1\nP2=v2\n\
+          NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1\nEND_DATA\n"),
+        ("strings",
+         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\n\
+          BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n\"quoted\" unquoted\n\"with\\\\esc\" \\\"lit\\\"\n\
+          END_DATA\n"),
+        ("empty-rows",
+         "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 3\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n\n\n1\nEND_DATA\n"),
+        ("many-props",
+         "IT8FILE\nP1 1\nP2 2\nP3 3\nP4 4\nP5 5\n\
+          NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1\nEND_DATA\n"),
+        ("quoted-labels",
+         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\n\"col one\" \"col two\"\n\
+          END_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n"),
+        ("no-data-section",
+         "IT8FILE\nNUMBER_OF_FIELDS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n"),
+    ];
+    unsafe {
+        for (name, doc) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} load={}", !p.is_null());
+            if !p.is_null() {
+                let n = c::cmsIT8GetDataRowCol(p, 0, 0);
+                eprintln!("  row0col0={n:?}");
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
