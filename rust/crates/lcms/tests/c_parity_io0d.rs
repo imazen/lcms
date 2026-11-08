@@ -18514,3 +18514,109 @@ fn internal_final10_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final11_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // profile-class x format matrix
+        for (cls, cs, pcs, name) in [
+            (0x6D6E7472u32, 0x52474220, 0x58595A20, "mntr-rgb"),
+            (0x6D6E7472, 0x47524159, 0x58595A20, "mntr-gray"),
+            (0x6D6E7472, 0x4C616220, 0x4C616220, "mntr-lab"),
+            (0x70727472, 0x434D594B, 0x4C616220, "prtr-cmyk"),
+            (0x70727472, 0x52474220, 0x4C616220, "prtr-rgb"),
+            (0x73636E72, 0x52474220, 0x58595A20, "scnr-rgb"),
+            (0x6C696E6B, 0x52474220, 0x58595A20, "link-rgb"),
+            (0x6C696E6B, 0x4C616220, 0x58595A20, "link-lab"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, cls);
+            c::cmsSetColorSpace(prof, cs);
+            c::cmsSetPCS(prof, pcs);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    [g, g, g].as_ptr() as *mut _));
+            let dims = [3u32; 3];
+            let grid = vec![0x4000u16; 81];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                    grid.as_ptr()));
+            c::cmsWriteTag(prof, 0x41324230,
+                p as *const _);
+            c::cmsWriteTag(prof, 0x42324130,
+                p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            for fmt in [
+                (4u32 << 16) | (3 << 3) | 1,
+                (4 << 16) | (3 << 3) | 2,
+                (10 << 16) | (3 << 3) | 1,
+                (6 << 16) | (4 << 3) | 1,
+            ] {
+                let t = if !rp.is_null() {
+                    c::cmsCreateTransform(rp, fmt, srgb,
+                        r8, 0, 0)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name} fmt={fmt:#x} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        // multiprofile on unusual profile mixes (srgb+lab+
+        //   gray+cmyk)
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), g);
+        for (profs_, name) in [
+            (vec![srgb, lab], "s-l"),
+            (vec![srgb, gray, srgb], "s-g-s"),
+            (vec![gray, lab, srgb], "g-l-s"),
+            (vec![srgb, lab, gray], "s-l-g"),
+            (vec![gray, srgb, lab], "g-s-l"),
+        ] {
+            let mut profs = profs_;
+            let n_ = profs.len() as i32;
+            for intent in 0..4u32 {
+                let mut bpc = [0i32; 4];
+                let mut intents = [intent; 4];
+                let mut adapt = [0.5f64; 4];
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), n_ as u32,
+                    profs.as_mut_ptr(), bpc.as_mut_ptr(),
+                    intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    std::ptr::null_mut(), 0, r8, r8, 0);
+                eprintln!("multi {name} i{intent}={}",
+                    !t.is_null());
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
