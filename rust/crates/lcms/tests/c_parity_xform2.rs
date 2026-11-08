@@ -5238,3 +5238,121 @@ fn gridpoint_adapt_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsvirt residual — cmsTransform2DeviceLink internals +
+/// cmsCreate_OkLabProfile + ink-limiting variants +
+/// BCHSW parameter edges.
+#[test]
+fn virt_internal_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        // Transform2DeviceLink — Lab-in/out, version<4,
+        //   FORCE_CLUT/8BITS_DEVICELINK, various intents
+        for (a, b, fi, fo, name) in [
+            (srgb, lab, r8, l8, "srgb->lab"),
+            (lab, srgb, l8, r8, "lab->srgb"),
+            (srgb, cmyk, r8, k8, "srgb->cmyk"),
+            (cmyk, srgb, k8, r8, "cmyk->srgb"),
+            (lab, lab, l8, l8, "lab->lab"),
+        ] {
+            if a.is_null() || b.is_null() { continue; }
+            for ver in [2.1f64, 4.0, 4.4] {
+                for flags in [0u32, 0x0100 /* FORCE_CLUT */,
+                    0x0080 /* 8BITS */] {
+                    for intent in [0u32, 1, 3] {
+                        let t = c::cmsCreateTransform(
+                            a, fi, b, fo, intent, flags);
+                        if !t.is_null() {
+                            let link = c::cmsTransform2DeviceLink(
+                                t, ver, flags);
+                            let mut buf = vec![0u8; 1 << 20];
+                            let mut n = buf.len() as u32;
+                            let s = if !link.is_null() {
+                                c::cmsSaveProfileToMem(link,
+                                    buf.as_mut_ptr() as *mut _,
+                                    &mut n)
+                            } else { 0 };
+                            eprintln!("{name} v{ver} f{flags:#x} \
+                                i{intent} link={} s={s}",
+                                !link.is_null());
+                            if !link.is_null() {
+                                c::cmsCloseProfile(link);
+                            }
+                            c::cmsDeleteTransform(t);
+                        }
+                    }
+                }
+            }
+        }
+        // OkLab
+        let oklab = c::cmsCreate_OkLabProfile(
+            std::ptr::null_mut());
+        if !oklab.is_null() {
+            let t = c::cmsCreateTransform(oklab, l8, srgb, r8,
+                0, 0);
+            let t2 = c::cmsCreateTransform(srgb, r8, oklab, l8,
+                0, 0);
+            eprintln!("oklab in={} out={}", !t.is_null(),
+                !t2.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t2.is_null() { c::cmsDeleteTransform(t2); }
+            c::cmsCloseProfile(oklab);
+        }
+        // ink-limiting variants — limits + colorspaces
+        for (cs, lim) in [
+            (0x434D594Bu32, 50.0f64), (0x434D594B, 150.0),
+            (0x434D594B, 200.0), (0x434D594B, 300.0),
+            (0x52474220, 100.0), (0x4C616220, 100.0),
+        ] {
+            let p = c::cmsCreateInkLimitingDeviceLinkTHR(
+                std::ptr::null_mut(), cs, lim);
+            eprintln!("inklim cs={cs:#x} lim={lim} p={}",
+                !p.is_null());
+            if !p.is_null() {
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = c::cmsSaveProfileToMem(p,
+                    buf.as_mut_ptr() as *mut _, &mut n);
+                eprintln!("  save={s}");
+                c::cmsCloseProfile(p);
+            }
+        }
+        // BCHSW — param edges (NULL white points, extremes)
+        let wp = [0.3457f64, 0.3585, 1.0];
+        for (br, co, hu, sa, name) in [
+            (0.0f64, 0.0, 0.0, 0.0, "zero"),
+            (50.0, 50.0, 180.0, 50.0, "mid"),
+            (-50.0, -50.0, -180.0, -50.0, "neg"),
+            (100.0, 100.0, 360.0, 100.0, "max"),
+            (0.0, 0.0, 0.0, 0.0, "zero2"),
+        ] {
+            let p = c::cmsCreateBCHSWabstractProfileTHR(
+                std::ptr::null_mut(), 5, br, co, hu, sa,
+                wp.as_ptr() as *const _,
+                wp.as_ptr() as *const _);
+            eprintln!("bchsw {name}={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+        }
+        // NULL white point
+        let p = c::cmsCreateBCHSWabstractProfileTHR(
+            std::ptr::null_mut(), 5, 0.0, 0.0, 0.0, 0.0,
+            std::ptr::null_mut(), std::ptr::null_mut());
+        eprintln!("bchsw null-wp={}", !p.is_null());
+        if !p.is_null() { c::cmsCloseProfile(p); }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
