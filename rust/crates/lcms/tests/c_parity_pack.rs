@@ -3093,3 +3093,95 @@ fn extra_channel_packers() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Per-cell unroller sweep — every named InputFormatters16 body
+/// reached through real transforms with matching profile/
+/// colorspace/channel combos. Flags: SWAPFIRST=14, FLAVOR=13,
+/// PLANAR=12, ENDIAN16=11, DOSWAP=10, EXTRA=7, CH=3, BYTES=0.
+#[test]
+fn unroll_cell_sweep() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let wp = std::mem::zeroed::<[f64; 3]>();
+        let _ = wp;
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        let sw = |name: &str, inp: *mut _, if_: u32, of_: u32, prof: *mut _| {
+            let t = c::cmsCreateTransform(inp, if_, prof, of_, 0, 0);
+            let ok = !t.is_null();
+            eprintln!("{name} t={ok}");
+            if ok {
+                let ib = [0x4000u16; 8];
+                let mut ob = [0u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        };
+        let rgb = |ch: u32, extra: u32, bytes: u32| {
+            (4u32 << 16) | (extra << 7) | (ch << 3) | bytes
+        };
+        let gry = |extra: u32, bytes: u32| {
+            (3u32 << 16) | (extra << 7) | (1 << 3) | bytes
+        };
+        // --- 3-channel u16 word arms ---
+        sw("3w", srgb, rgb(3, 0, 2), l16, lab);
+        sw("3w-doswap", srgb, rgb(3, 0, 2) | (1 << 10), l16, lab);
+        sw("3w-x1-swapfirst", srgb, rgb(3, 1, 2) | (1 << 14), l16, lab);
+        sw("3w-x1-doswap", srgb, rgb(3, 1, 2) | (1 << 10), l16, lab);
+        sw("3w-planar", srgb, rgb(3, 0, 2) | (1 << 12), l16, lab);
+        sw("3w-endian", srgb, rgb(3, 0, 2) | (1 << 11), l16, lab);
+        // --- 3-channel byte arms ---
+        sw("3b", srgb, rgb(3, 0, 1), l16, lab);
+        sw("3b-doswap", srgb, rgb(3, 0, 1) | (1 << 10), l16, lab);
+        sw("3b-x1-doswap", srgb, rgb(3, 1, 1) | (1 << 10), l16, lab);
+        sw("3b-x1-swapfirst", srgb, rgb(3, 1, 1) | (1 << 14), l16, lab);
+        sw("3b-x1-ds-sf", srgb,
+            rgb(3, 1, 1) | (1 << 10) | (1 << 14), l16, lab);
+        sw("3b-planar", srgb, rgb(3, 0, 1) | (1 << 12), l16, lab);
+        sw("3b-chunky-x2", srgb, rgb(3, 2, 1), l16, lab);
+        // --- 4-channel word arms (CMYK out of srgb? need cmyk prof)
+        // use CMYK profile for input side
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
+            let ck = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
+                d.len() as u32);
+            if !ck.is_null() {
+                let k = |ch: u32, extra: u32, bytes: u32| {
+                    (6u32 << 16) | (extra << 7) | (ch << 3) | bytes
+                };
+                sw("4w", ck, k(4, 0, 2), l16, lab);
+                sw("4w-flavor", ck, k(4, 0, 2) | (1 << 13), l16, lab);
+                sw("4w-swapfirst", ck, k(4, 0, 2) | (1 << 14), l16, lab);
+                sw("4w-doswap", ck, k(4, 0, 2) | (1 << 10), l16, lab);
+                sw("4w-ds-sf", ck,
+                    k(4, 0, 2) | (1 << 10) | (1 << 14), l16, lab);
+                sw("4b", ck, k(4, 0, 1), l16, lab);
+                sw("4b-flavor", ck, k(4, 0, 1) | (1 << 13), l16, lab);
+                sw("4b-swapfirst", ck, k(4, 0, 1) | (1 << 14), l16, lab);
+                sw("4b-doswap", ck, k(4, 0, 1) | (1 << 10), l16, lab);
+                sw("4b-ds-sf", ck,
+                    k(4, 0, 1) | (1 << 10) | (1 << 14), l16, lab);
+                sw("2w", ck, k(2, 0, 2), l16, lab);
+                c::cmsCloseProfile(ck);
+            }
+        }
+        // --- 1-channel arms on gray ---
+        sw("1w", gray, gry(0, 2), l16, lab);
+        sw("1w-flavor", gray, gry(0, 2) | (1 << 13), l16, lab);
+        sw("1w-x3", gray, gry(3, 2), l16, lab);
+        sw("1b", gray, gry(0, 1), l16, lab);
+        sw("1b-x1", gray, gry(1, 1), l16, lab);
+        sw("1b-x2", gray, gry(2, 1), l16, lab);
+        sw("1b-flavor", gray, gry(0, 1) | (1 << 13), l16, lab);
+        sw("1w-out", lab, l16, g16, gray);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
