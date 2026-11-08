@@ -258,3 +258,33 @@ fn context_accessors() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// Context lifecycle internals — cmsCreateContext/DupContext/
+/// DeleteContext hit _cmsFindMemoryPlugin + plugin-subsystem
+/// arms.
+#[test]
+fn context_lifecycle_internals() {
+    unsafe {
+        for _ in 0..4 {
+            let ctx = c::cmsCreateContext(std::ptr::null_mut(),
+                std::ptr::null_mut());
+            eprintln!("ctx={}", !ctx.is_null());
+            if ctx.is_null() { continue; }
+            let d = c::cmsDupContext(ctx, std::ptr::null_mut());
+            eprintln!("dup={}", !d.is_null());
+            let p = c::cmsCreate_sRGBProfileTHR(ctx);
+            eprintln!("prof={}", !p.is_null());
+            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !d.is_null() { c::cmsDeleteContext(d); }
+            c::cmsDeleteContext(ctx);
+        }
+        // context-with-plugin-data
+        let ctx2 = c::cmsCreateContext(std::ptr::null_mut(),
+            0xdeadbeefusize as *mut _);
+        if !ctx2.is_null() {
+            let p = c::cmsCreate_sRGBProfileTHR(ctx2);
+            if !p.is_null() { c::cmsCloseProfile(p); }
+            c::cmsDeleteContext(ctx2);
+        }
+    }
+}
