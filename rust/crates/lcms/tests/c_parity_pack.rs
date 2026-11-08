@@ -2698,3 +2698,34 @@ fn mch_pack_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// MCH pack-table arms — multi-channel format words (PT_MCH*)
+/// sweep through the pack/unroll dispatch.
+#[test]
+fn mch_format_arms() {
+    unsafe {
+        // construct a profile that accepts MCH input — use a link
+        // with matching channel count, or probe the format-table
+        // dispatch via transform creation (reject still exercises)
+        let srgb = c::cmsCreate_sRGBProfile();
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let gray = c::cmsCreateGrayProfile(&wp as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        // MCH format words — PT_MCH<<16 where MCH encodes channels
+        // 12-15 base + channel count
+        for cs in [0xB, 0xC, 0xD, 0xE, 0xF, 0x10, 0x11, 0x12] {
+            for by in [1u32, 2] {
+                let ch = 3u32;
+                let f = (cs << 16) | (ch << 3) | by;
+                let t = c::cmsCreateTransform(srgb, f, gray, f, 0, 0);
+                if !t.is_null() {
+                    eprintln!("cs{cs:#x} by{by} t=create");
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        eprintln!("mch sweep done");
+        c::cmsCloseProfile(gray);
+        c::cmsCloseProfile(srgb);
+    }
+}
