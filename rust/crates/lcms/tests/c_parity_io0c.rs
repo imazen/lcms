@@ -569,3 +569,75 @@ fn internal_devlink_lut_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmsio1 residual — BuildRGBOutputMatrixShaper on
+///   output-class matrix profiles: non-identity
+///   curves, Lab/XYZ PCS, custom primaries.
+#[test]
+fn internal_matshaper2_arms() {
+    unsafe {
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let srgb0 = c::cmsCreate_sRGBProfile();
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        // output-class RGB profiles w/ varying curves +
+        //   primaries + PCS
+        for (g_, wp_x, wp_y, pcs, name) in [
+            (2.2f64, 0.3127, 0.3290, 0x58595A20u32,
+                "srgb-like-xyz"),
+            (2.2, 0.3127, 0.3290, 0x4C616220,
+                "srgb-like-lab"),
+            (1.0, 0.3127, 0.3290, 0x58595A20, "lin-xyz"),
+            (1.8, 0.3477, 0.3595, 0x58595A20, "ado-xyz"),
+            (2.6, 0.3140, 0.3510, 0x58595A20, "p3-xyz"),
+            (2.2, 0.3457, 0.3585, 0x58595A20, "d50-xyz"),
+        ] {
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), g_);
+            let wp = c::CiexyY { x: wp_x, y: wp_y,
+                Y: 1.0 };
+            let prm = c::CiexyYTriple {
+                Red: c::CiexyY { x: 0.64, y: 0.33,
+                    Y: 1.0 },
+                Green: c::CiexyY { x: 0.30, y: 0.60,
+                    Y: 1.0 },
+                Blue: c::CiexyY { x: 0.15, y: 0.06,
+                    Y: 1.0 } };
+            let trcs: [*mut std::ffi::c_void; 3] =
+                [g as *mut _, g as *mut _, g as *mut _];
+            let prof = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                &wp as *const _ as *const _,
+                &prm as *const _ as *const _,
+                trcs.as_ptr());
+            eprintln!("{name} prof={}", !prof.is_null());
+            // as output profile (pcs->device)
+            for int_ in [0u32, 1] {
+                let t = c::cmsCreateTransform(srgb0, frgb,
+                    prof, frgb, int_, 0);
+                eprintln!("  out i{int_} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = [0x8000u16; 3];
+                    let mut dst = [0u16; 3];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+                // as input (device->pcs)
+                let t2 = c::cmsCreateTransform(prof, frgb,
+                    lab4, flab, int_, 0);
+                if !t2.is_null() {
+                    c::cmsDeleteTransform(t2); }
+            }
+            let _ = pcs;
+            if !prof.is_null() {
+                c::cmsCloseProfile(prof); }
+            c::cmsFreeToneCurve(g);
+        }
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(srgb0);
+    }
+}
