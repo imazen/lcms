@@ -169,3 +169,9 @@ the corpus adds no new flag-path coverage.
   (the float-formatter dispatch path is unported in the Rust
   do_transform path). C's cmsDoTransform handles FLOAT_SH(1)|BYTES_SH(4)
   formats natively. Pin the gate and revisit.
+
+- [finding] BCHSW abstract-profile transform eval diverges: C gives
+  [65535, 39932, 58070] vs Rust [65535, 0, 20770] on Lab input
+  [0x4000,0x8000,0x2000]. The MPE/float-LUT reader produces wrong
+  values on the BCHSW profile's mAB/mpet pipeline. Pinned in
+  c_parity_virt4; the create parity still exercises the readers.
