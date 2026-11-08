@@ -1482,3 +1482,60 @@ fn utf8_edge_arms() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// cmstypes residual — Type_NamedColor_Write: write a
+///   real cmsNAMEDCOLORLIST via cmsWriteTag(ncl2) + save;
+///   per-color Root/PCS/Colorant loops + cmsNamedColorInfo
+///   arm; prefix/suffix writes.
+#[test]
+fn ncl_write_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        for (nc, cc, nm) in [
+            (1u32, 1u32, "1col-1ch"),
+            (3, 3, "3col-3ch"),
+            (5, 4, "5col-4ch"),
+            (0, 1, "0col"),
+        ] {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, 0x6E6D636C);
+            c::cmsSetColorSpace(p, 0x31434C52);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 2.1);
+            let ncl = c::cmsAllocNamedColorList(
+                ctx, nc, cc,
+                b"Pre\0".as_ptr(), b"Suf\0".as_ptr());
+            for i in 0..nc {
+                let nm2 = format!("color{i}\0");
+                let pcs = [0x4000u16,
+                           i as u16 * 0x200,
+                           0x8000u16 - i as u16];
+                let dev = vec![0x1111u16 + i as u16;
+                               cc as usize];
+                c::cmsAppendNamedColor(ncl,
+                    nm2.as_ptr() as *const _,
+                    pcs.as_ptr(), dev.as_ptr()); }
+            let w = c::cmsWriteTag(p, 0x6E636C32,
+                ncl as *const _);
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                sb.as_mut_ptr() as *mut _, &mut sn);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn)
+            } else { std::ptr::null_mut() };
+            let r = if !pr.is_null() {
+                let t = c::cmsReadTag(pr, 0x6E636C32);
+                let cnt: i32 = if !t.is_null() {
+                    c::cmsNamedColorCount(t) as i32
+                } else { -1 };
+                c::cmsCloseProfile(pr);
+                cnt
+            } else { -2 };
+            eprintln!(
+                "{nm}: w={w} sv={sv} r={r}");
+            c::cmsFreeNamedColorList(ncl);
+            c::cmsCloseProfile(p); }
+    }
+}
