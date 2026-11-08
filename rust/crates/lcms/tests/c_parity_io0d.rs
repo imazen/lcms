@@ -6944,3 +6944,85 @@ fn io0_tag_iteration() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// Type_vcgt_Read arms — raw vcgt tags covering table u8/u16,
+/// formula params, wrong channel/byte-count rejects.
+#[test]
+fn vcgt_read_arms() {
+    unsafe {
+        // table type 0: {nch:u16, nElems:u16, nBytes:u16, data}
+        let mut t_u8 = Vec::new();
+        t_u8.extend_from_slice(&0x76636774u32.to_be_bytes()); // 'vcgt'
+        t_u8.extend_from_slice(&[0; 4]);
+        t_u8.extend_from_slice(&0u32.to_be_bytes()); // table type
+        t_u8.extend_from_slice(&3u16.to_be_bytes()); // 3 ch
+        t_u8.extend_from_slice(&4u16.to_be_bytes()); // 4 elems
+        t_u8.extend_from_slice(&1u16.to_be_bytes()); // 1 byte
+        t_u8.extend_from_slice(&[0, 85, 170, 255, 0, 85, 170, 255,
+                                 0, 85, 170, 255]);
+        let mut t_u16 = Vec::new();
+        t_u16.extend_from_slice(&0x76636774u32.to_be_bytes());
+        t_u16.extend_from_slice(&[0; 4]);
+        t_u16.extend_from_slice(&0u32.to_be_bytes());
+        t_u16.extend_from_slice(&3u16.to_be_bytes());
+        t_u16.extend_from_slice(&4u16.to_be_bytes());
+        t_u16.extend_from_slice(&2u16.to_be_bytes()); // 2 bytes
+        for _ in 0..3 {
+            for v in [0u16, 21845, 43690, 65535] {
+                t_u16.extend_from_slice(&v.to_be_bytes());
+            }
+        }
+        // formula type 1: {g, e[3]} x3 channels
+        let mut t_f = Vec::new();
+        t_f.extend_from_slice(&0x76636774u32.to_be_bytes());
+        t_f.extend_from_slice(&[0; 4]);
+        t_f.extend_from_slice(&1u32.to_be_bytes()); // formula
+        for _ in 0..3 {
+            for v in [0x00023333u32, 0, 0, 0, 0] {
+                t_f.extend_from_slice(&v.to_be_bytes());
+            }
+        }
+        // rejects: wrong channels, wrong bytes, bad tagtype
+        let mut t_bad_ch = Vec::new();
+        t_bad_ch.extend_from_slice(&0x76636774u32.to_be_bytes());
+        t_bad_ch.extend_from_slice(&[0; 4]);
+        t_bad_ch.extend_from_slice(&0u32.to_be_bytes());
+        t_bad_ch.extend_from_slice(&2u16.to_be_bytes()); // 2ch bad
+        t_bad_ch.extend_from_slice(&[0; 8]);
+        let mut t_bad_b = Vec::new();
+        t_bad_b.extend_from_slice(&0x76636774u32.to_be_bytes());
+        t_bad_b.extend_from_slice(&[0; 4]);
+        t_bad_b.extend_from_slice(&0u32.to_be_bytes());
+        t_bad_b.extend_from_slice(&3u16.to_be_bytes());
+        t_bad_b.extend_from_slice(&4u16.to_be_bytes());
+        t_bad_b.extend_from_slice(&3u16.to_be_bytes()); // 3B bad
+        t_bad_b.extend_from_slice(&[0; 24]);
+        let mut t_bad_t = Vec::new();
+        t_bad_t.extend_from_slice(&0x76636774u32.to_be_bytes());
+        t_bad_t.extend_from_slice(&[0; 4]);
+        t_bad_t.extend_from_slice(&7u32.to_be_bytes()); // bad type
+        t_bad_t.extend_from_slice(&[0; 24]);
+        for (raw, name) in [
+            (t_u8, "u8"), (t_u16, "u16"), (t_f, "formula"),
+            (t_bad_ch, "bad-ch"), (t_bad_b, "bad-bytes"),
+            (t_bad_t, "bad-type"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsWriteRawTag(prof, 0x76636774,
+                raw.as_ptr() as *const _, raw.len() as u32);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x76636774)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+    }
+}
