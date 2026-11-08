@@ -1006,34 +1006,36 @@ fn virt_builders2_arms() {
     unsafe {
         // linearization devicelink: 1/3/4/5/6 ch
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
-        for (fmt, nch, name) in [
-            ((0u32 << 16) | (1 << 3) | 2, 1, "1ch"),
-            ((0u32 << 16) | (3 << 3) | 2, 3, "3ch"),
-            ((0u32 << 16) | (4 << 3) | 2, 4, "4ch"),
-            ((0u32 << 16) | (5 << 3) | 2, 5, "5ch"),
-            ((0u32 << 16) | (6 << 3) | 2, 6, "6ch"),
-            ((0u32 << 16) | (15 << 3) | 2, 15, "15ch"),
+        // color-space signatures (not format words)
+        for (sig, nch, name) in [
+            (0x47524159u32, 1, "GRAY"),
+            (0x52474220, 3, "RGB"),
+            (0x434D594B, 4, "CMYK"),
+            (0x35434C52, 5, "5CLR"),
+            (0x36434C52, 6, "6CLR"),
+            (0x4D434846, 15, "MCHF"),
         ] {
             let tcs: Vec<*mut c::ToneCurve> =
                 vec![g; nch.min(15)];
             let dl2 = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), fmt,
+                std::ptr::null_mut(), sig,
                 tcs.as_ptr());
             eprintln!("lin {name} dl={}", !dl2.is_null());
             if !dl2.is_null() {
                 c::cmsCloseProfile(dl2); }
         }
         // ink-limiting devicelink at limits
-        for (lim, fmt, name) in [
-            (50.0f64, (0u32 << 16) | (4 << 3) | 2, "lim50-4ch"),
-            (100.0, (0u32 << 16) | (4 << 3) | 2, "lim100"),
-            (200.0, (0u32 << 16) | (4 << 3) | 2, "lim200"),
-            (400.0, (0u32 << 16) | (4 << 3) | 2, "lim400"),
-            (0.0, (0u32 << 16) | (4 << 3) | 2, "lim0"),
-            (-1.0, (0u32 << 16) | (4 << 3) | 2, "limneg"),
+        for (lim, sig, name) in [
+            (50.0f64, 0x434D594Bu32, "lim50-cmyk"),
+            (100.0, 0x434D594B, "lim100"),
+            (200.0, 0x434D594B, "lim200"),
+            (400.0, 0x434D594B, "lim400"),
+            (0.0, 0x434D594B, "lim0"),
+            (-1.0, 0x434D594B, "limneg"),
+            (100.0, 0x52474220, "lim100-rgb"),
         ] {
             let dl3 = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), fmt, lim);
+                std::ptr::null_mut(), sig, lim);
             eprintln!("{name} dl={}", !dl3.is_null());
             if !dl3.is_null() {
                 c::cmsCloseProfile(dl3); }
