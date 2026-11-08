@@ -2491,3 +2491,43 @@ fn dict_type() {
         }
     }
 }
+
+/// Type_NamedColor2 internals — 'clot'/'clrt'/'ndin' with a
+/// real ncl2 payload.
+#[test]
+fn ncl2_types() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4,
+            b"p\0".as_ptr() as *const _,
+            b"s\0".as_ptr() as *const _);
+        let pcs = [0x4000u16, 0x8000, 0x8000];
+        let dev = [0x1000u16, 0x2000, 0x3000, 0x4000];
+        c::cmsAppendNamedColor(ncl,
+            b"n1\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        c::cmsAppendNamedColor(ncl,
+            b"n2\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        let h = c::cmsCreate_sRGBProfile();
+        for (sig, name) in [(0x636C6F74u32, "clot"),
+                            (0x636C7274u32, "clrt"),
+                            (0x6E64696Eu32, "ndin")] {
+            let ok = c::cmsWriteTag(h, sig,
+                ncl as *mut std::ffi::c_void);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, sig);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+        }
+        c::cmsCloseProfile(h);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
