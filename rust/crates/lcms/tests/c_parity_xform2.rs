@@ -3537,3 +3537,53 @@ fn fixwhite_arms() {
         if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
     }
 }
+
+/// BlackPreservingKOnly/KPlane intents (10-15) — full sweep on
+/// cmyk/rgb/lab profile directions + bpc combos.
+#[test]
+fn black_preserve_arms2() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        const BPC: u32 = 0x2000;
+        for (inp, outp, if_, of_, name) in [
+            (cmyk, cmyk, k8, k8, "cmyk->cmyk"),
+            (srgb, cmyk, r8, k8, "srgb->cmyk"),
+            (cmyk, srgb, k8, r8, "cmyk->srgb"),
+            (cmyk, lab, k8, l8, "cmyk->lab"),
+            (lab, cmyk, l8, k8, "lab->cmyk"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for intent in [10u32, 11, 12, 13, 14, 15] {
+                for flags in [0u32, BPC] {
+                    let t = c::cmsCreateTransform(inp, if_, outp,
+                        of_, intent, flags);
+                    let mut out = [0u8; 8];
+                    let inp_b = [0x55u8; 8];
+                    if !t.is_null() {
+                        c::cmsDoTransform(t, inp_b.as_ptr()
+                            as *const _, out.as_mut_ptr()
+                            as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                    if intent == 10 || intent == 13 {
+                        eprintln!("{name} i{intent} f{flags:#x} t={} \
+                            out={out:?}", !t.is_null());
+                    }
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
