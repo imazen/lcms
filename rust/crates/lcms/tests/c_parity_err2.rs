@@ -97,3 +97,38 @@ fn plugin_lookup_internals() {
         if !ctx.is_null() { c::cmsDeleteContext(ctx); }
     }
 }
+
+/// DupPluginIntentsList loop body — register an intent plugin on
+/// a context, then DupContext walks the list.
+#[test]
+fn dup_intents_list() {
+    #[repr(C)]
+    struct Base { magic: u32, ver: u32, ty: u32,
+                  next: *mut std::ffi::c_void }
+    #[repr(C)]
+    struct IntentPlugin { base: Base,
+                          intent: u32, evaluator: *mut std::ffi::c_void,
+                          user: *mut std::ffi::c_void, next: *mut std::ffi::c_void }
+    unsafe {
+        extern "C" fn ev(_a: *mut std::ffi::c_void,
+                         _b: *mut std::ffi::c_void,
+                         _c: *mut std::ffi::c_void,
+                         _d: *mut std::ffi::c_void,
+                         _e: u32, _f: u32) -> *mut std::ffi::c_void {
+            std::ptr::null_mut()
+        }
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let mut p = IntentPlugin {
+            base: Base { magic: 0x61637070, ver: 2200,
+                         ty: 0x696E7448, next: std::ptr::null_mut() },
+            intent: 42, evaluator: ev as *mut _,
+            user: std::ptr::null_mut(), next: std::ptr::null_mut() };
+        let r = c::cmsPluginTHR(ctx, &mut p as *mut _ as *mut _);
+        eprintln!("intent-plugin={r}");
+        let d = c::cmsDupContext(ctx, std::ptr::null_mut());
+        eprintln!("dup-intents={}", !d.is_null());
+        if !d.is_null() { c::cmsDeleteContext(d); }
+        if !ctx.is_null() { c::cmsDeleteContext(ctx); }
+    }
+}
