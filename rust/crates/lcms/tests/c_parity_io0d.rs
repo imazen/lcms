@@ -574,3 +574,32 @@ fn size_mutations() {
         }
     }
 }
+
+/// Truncated profiles — the bounds-check machinery.
+#[test]
+fn truncated_profiles() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        for (name, len) in [
+            ("t-0", 0usize),
+            ("t-4", 4), // just the size
+            ("t-36", 36), // up to magic
+            ("t-127", 127), // header
+            ("t-128", 128), // header + no tag table
+            ("t-140", 140), // partial tag table
+            ("t-300", 300), // partial tags
+            ("t-full", d.len() - 1), // last byte missing
+        ] {
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, len as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
