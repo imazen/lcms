@@ -3539,3 +3539,61 @@ fn pack_optimized_cells() {
         c::cmsCloseProfile(argb);
     }
 }
+
+/// Unroll*Word*/Double/Float branch arms — transforms with
+/// FLOAT_SH + double formats + N-word chunky/planar variants.
+#[test]
+fn unroll_word_double_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let fl = 1u32 << 22;
+        let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
+        // FLOAT_SH on input formats -> unroll float/double arms
+        for f in [
+            (4u32 << 16) | (3 << 3) | 4 | fl,              // RGB float
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 10),  // +DOSWAP
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 7),   // +EXTRA
+            (4u32 << 16) | (4 << 3) | 4 | fl,              // 4ch float
+            (10u32 << 16) | (3 << 3) | 4 | fl,             // Lab float
+            (9u32 << 16) | (3 << 3) | 4 | fl,              // XYZ float
+            (3u32 << 16) | (1 << 3) | 4 | fl,              // gray float
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 14),  // +SWAPFIRST
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 12),  // +PLANAR
+        ] {
+            let t = c::cmsCreateTransform(srgb, f, lab, lfl, 0, 0);
+            eprintln!("f{f:#x} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0.5f32; 8];
+                let mut ob = [0.5f32; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // u16 chunky word formats -> Unroll1-4Words* arms
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for f in [
+            (4u32 << 16) | (1 << 3) | 2,              // 1ch u16
+            (4u32 << 16) | (2 << 3) | 2,              // 2ch u16
+            (4u32 << 16) | (3 << 3) | 2,              // 3ch u16
+            (4u32 << 16) | (4 << 3) | 2,              // 4ch u16
+            (4u32 << 16) | (3 << 3) | 2 | (1 << 10),  // +DOSWAP
+            (4u32 << 16) | (3 << 3) | 2 | (1 << 14),  // +SWAPFIRST
+            (4u32 << 16) | (4 << 3) | 2 | (1 << 10) | (1 << 14),
+            (4u32 << 16) | (4 << 3) | 2 | (1 << 14),
+        ] {
+            let t = c::cmsCreateTransform(srgb, f, lab, l16, 0, 0);
+            eprintln!("w{f:#x} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x8000u16; 4];
+                let mut ob = [0x8000u16; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
