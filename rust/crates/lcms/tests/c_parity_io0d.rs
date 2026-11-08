@@ -6109,3 +6109,74 @@ fn param_curve_read_arms() {
         }
     }
 }
+
+/// Type_MPEcurve_Read + ReadMPECurve + bacs ignore-element —
+/// hand-crafted mpet tag with a curve-set element plus a
+/// (per-spec ignored) bacs element.
+#[test]
+fn mpe_curve_bacs_arms() {
+    unsafe {
+        // curv element payload for one channel: 'curv' + rsv + count + u16s
+        let curv = |count: u32| -> Vec<u8> {
+            let mut v = Vec::new();
+            v.extend_from_slice(&0x63757276u32.to_be_bytes());
+            v.extend_from_slice(&[0; 4]);
+            v.extend_from_slice(&count.to_be_bytes());
+            for i in 0..count {
+                v.extend_from_slice(&((i * 4096) as u16).to_be_bytes());
+            }
+            v
+        };
+        let c0 = curv(2);
+        // cvst element: {in:u16, out:u16} + pos table (3 entries) + 3 curv blobs
+        let mut cvst = Vec::new();
+        cvst.extend_from_slice(&0x63767374u32.to_be_bytes()); // 'cvst'
+        cvst.extend_from_slice(&[0; 4]);
+        cvst.extend_from_slice(&3u16.to_be_bytes());
+        cvst.extend_from_slice(&3u16.to_be_bytes());
+        let tab_base = 8 + 4 + 24; // mpet hdr + cvst hdr + pos table
+        for i in 0..3u32 {
+            cvst.extend_from_slice(&(tab_base + i * c0.len() as u32).to_be_bytes());
+            cvst.extend_from_slice(&(c0.len() as u32).to_be_bytes());
+        }
+        for _ in 0..3 { cvst.extend_from_slice(&c0); }
+        // bacs element: {in, out} only
+        let mut bacs = Vec::new();
+        bacs.extend_from_slice(&0x62414353u32.to_be_bytes()); // 'bACS'
+        bacs.extend_from_slice(&[0; 4]);
+        bacs.extend_from_slice(&3u16.to_be_bytes());
+        bacs.extend_from_slice(&3u16.to_be_bytes());
+        // mpet wrapper
+        let mut mpet = Vec::new();
+        mpet.extend_from_slice(&0x6d706574u32.to_be_bytes()); // 'mpet'
+        mpet.extend_from_slice(&[0; 4]);
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&3u16.to_be_bytes());
+        mpet.extend_from_slice(&2u32.to_be_bytes()); // 2 elements
+        let e0 = 8 + 2 + 2 + 4 + 2 * 8; // header + elem table
+        let e1 = e0 + cvst.len() as u32;
+        mpet.extend_from_slice(&e0.to_be_bytes());
+        mpet.extend_from_slice(&(cvst.len() as u32).to_be_bytes());
+        mpet.extend_from_slice(&e1.to_be_bytes());
+        mpet.extend_from_slice(&(bacs.len() as u32).to_be_bytes());
+        mpet.extend_from_slice(&cvst);
+        mpet.extend_from_slice(&bacs);
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        c::cmsWriteRawTag(prof, 0x44324230,
+            mpet.as_ptr() as *const _, mpet.len() as u32); // D2B0
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x44324230)
+        } else { std::ptr::null_mut() };
+        eprintln!("mpet-cvst-bacs s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
