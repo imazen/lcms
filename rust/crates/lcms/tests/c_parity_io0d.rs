@@ -3159,3 +3159,36 @@ fn file_open_offset_array() {
         if !p2.is_null() { c::cmsCloseProfile(p2); }
     }
 }
+
+/// UcrBg + Screening tag types — rare serializers through
+/// write->save->read.
+#[test]
+fn ucrbg_screening_tags() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        let u = c::cmsBuildGamma(std::ptr::null_mut(), 1.5);
+        let b = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let d = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetUTF8(d, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            b"ucr-bg\0".as_ptr());
+        #[repr(C)] struct UcrBg { ucr: *mut std::ffi::c_void,
+            bg: *mut std::ffi::c_void, desc: *mut std::ffi::c_void }
+        let ub = UcrBg { ucr: u as *mut _, bg: b as *mut _, desc: d };
+        let w = c::cmsWriteTag(prof, 0x62666420, &ub as *const _ as *const _); // 'bfd '
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x62666420)
+        } else { std::ptr::null_mut() };
+        eprintln!("ucrbg w={w} s={s} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
