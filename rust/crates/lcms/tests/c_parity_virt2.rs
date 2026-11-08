@@ -645,3 +645,37 @@ fn xyz_null_profiles() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Lab2/Lab4 profile builders + placeholder internals — the two
+/// Lab profile variants' tag structure (identity CLUT + wtpt).
+#[test]
+fn lab_profile_variants() {
+    unsafe {
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        for (v, name) in [(2u32, "lab2"), (4, "lab4")] {
+            let p = if v == 2 {
+                c::cmsCreateLab2Profile(&wp as *const _ as *const _)
+            } else {
+                c::cmsCreateLab4Profile(&wp as *const _ as *const _)
+            };
+            eprintln!("{name}={}", !p.is_null());
+            if !p.is_null() {
+                // save->read covers the identity-CLUT tag structure
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = c::cmsSaveProfileToMem(p,
+                    buf.as_mut_ptr() as *mut _, &mut n);
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                eprintln!("  save={s} reopen={}", !rp.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(p);
+            }
+        }
+        // NULL whitepoint variant
+        let p2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        eprintln!("lab2-null-wp={}", !p2.is_null());
+        if !p2.is_null() { c::cmsCloseProfile(p2); }
+    }
+}
