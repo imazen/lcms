@@ -363,3 +363,45 @@ fn tone_curve_ops() {
         c::cmsFreeToneCurve(g18);
     }
 }
+
+/// Curve builders + predicates — tabulated16/float, segmented,
+/// descending/multisegment/parametric-type, estimate-gamma,
+/// estimated-table, dup.
+#[test]
+fn curve_builders_predicates() {
+    unsafe {
+        // tabulated 16 + float
+        let t16 = [0u16, 0x8000, 0xFFFF];
+        let tc16 = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 3, t16.as_ptr());
+        let tf = [0.0f32, 0.5, 1.0];
+        let tcf = c::cmsBuildTabulatedToneCurveFloat(
+            std::ptr::null_mut(), 3, tf.as_ptr());
+        eprintln!("tab16={} tabf={}", !tc16.is_null(), !tcf.is_null());
+        // segmented curve
+        #[repr(C)] struct Seg { a: f64, b: f64, c: f64, d: f64,
+            e: f64, ty: i32, n: u32, pt: *const f64 }
+        let seg = Seg { a: 0.0, b: 0.0, c: 0.0, d: 0.0, e: 0.0,
+            ty: 6, n: 0, pt: std::ptr::null() };
+        let tsg = c::cmsBuildSegmentedToneCurve(
+            std::ptr::null_mut(), 1, &seg as *const _ as *const _);
+        eprintln!("seg={}", !tsg.is_null());
+        // predicates on a gamma curve
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        eprintln!("desc={} multi={} ptype={} eg={:.3}",
+            c::cmsIsToneCurveDescending(g),
+            c::cmsIsToneCurveMultisegment(g),
+            c::cmsGetToneCurveParametricType(g),
+            c::cmsEstimateGamma(g, 0.001));
+        eprintln!("etable={} entries={}",
+            !c::cmsGetToneCurveEstimatedTable(g).is_null(),
+            c::cmsGetToneCurveEstimatedTableEntries(g));
+        let d = c::cmsDupToneCurve(g);
+        eprintln!("dup={}", !d.is_null());
+        if !d.is_null() { c::cmsFreeToneCurve(d); }
+        if !tc16.is_null() { c::cmsFreeToneCurve(tc16); }
+        if !tcf.is_null() { c::cmsFreeToneCurve(tcf); }
+        if !tsg.is_null() { c::cmsFreeToneCurve(tsg); }
+        c::cmsFreeToneCurve(g);
+    }
+}
