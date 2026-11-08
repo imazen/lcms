@@ -2971,3 +2971,60 @@ fn matrix_stage_arms() {
         }
     }
 }
+
+/// Segmented-curve MPE element — a curve stage with a segmented
+/// tone curve -> WriteSegmentedCurve/ReadSegmentedCurve + the
+/// formula/sampled segment arms.
+#[test]
+fn segmented_curve_mpe() {
+    unsafe {
+        // segmented curve — cmsCurveSegment {x0,x1,Type,Params[10],
+        // nGridPoints,SampledPoints}
+        #[repr(C)]
+        struct Seg { x0: f32, x1: f32, ty: i32,
+                     params: [f64; 10], n: u32, pt: *const f32 }
+        let smp = [0.0f32, 0.3, 0.5, 0.8, 1.0];
+        let segs = [
+            Seg { x0: 0.0, x1: 0.5, ty: 0, params: [0.0; 10],
+                  n: 5, pt: smp.as_ptr() },         // sampled
+            Seg { x0: 0.5, x1: 1.0, ty: 4,
+                  params: [2.2, 0.0, 0.0, 0.0, 0.0,
+                           0.0, 0.0, 0.0, 0.0, 0.0],
+                  n: 0, pt: std::ptr::null() },     // formula
+        ];
+        let tc = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(),
+            2, segs.as_ptr() as *const _);
+        eprintln!("seg={}", !tc.is_null());
+        if !tc.is_null() {
+            let mut cc = [tc; 3];
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                    cc.as_ptr()));
+            let ftab: Vec<f32> = (0..8*3)
+                .map(|i| i as f32 / 24.0).collect();
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLutFloat(std::ptr::null_mut(),
+                    2, 3, 3, ftab.as_ptr()));
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x44324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, 0x44324230)
+            } else { std::ptr::null_mut() };
+            eprintln!("segmpe w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
