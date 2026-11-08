@@ -844,3 +844,51 @@ fn cicp_tag() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Remaining simple-payload sigs — gXYZ/bXYZ (XYZ), rig0/rigs
+/// (sig), dscm/scrd (mluc/desc), clot (colorant order).
+#[test]
+fn remaining_simple_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let sigv: u32 = 0x666F7461; // 'fota'
+        let mut cases = Vec::new();
+        // gXYZ/bXYZ — XYZ payloads
+        cases.push(("gXYZ", 0x6758595Au32,
+            c::cmsWriteTag(h, 0x6758595A,
+                &xyz as *const _ as *mut std::ffi::c_void)));
+        cases.push(("bXYZ", 0x6258595A,
+            c::cmsWriteTag(h, 0x6258595A,
+                &xyz as *const _ as *mut std::ffi::c_void)));
+        // rig0/rigs — rendering-intent gamut (sig type)
+        cases.push(("rig0", 0x72696730,
+            c::cmsWriteTag(h, 0x72696730,
+                &sigv as *const _ as *mut std::ffi::c_void)));
+        cases.push(("rigs", 0x72696773,
+            c::cmsWriteTag(h, 0x72696773,
+                &sigv as *const _ as *mut std::ffi::c_void)));
+        // dscm — profile desc ML (mluc)
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"dscm\0".as_ptr() as *const u8);
+        cases.push(("dscm", 0x6473636D,
+            c::cmsWriteTag(h, 0x6473636D,
+                mlu as *mut std::ffi::c_void)));
+        // scrd — screening desc (mluc or desc)
+        cases.push(("scrd", 0x73637264,
+            c::cmsWriteTag(h, 0x73637264,
+                mlu as *mut std::ffi::c_void)));
+        // clot — colorant order out (u8 array)
+        let clot: [u8; 4] = [3, 2, 1, 0];
+        cases.push(("clot", 0x636C6F74,
+            c::cmsWriteTag(h, 0x636C6F74,
+                clot.as_ptr() as *mut std::ffi::c_void)));
+        for (name, sig, ok) in &cases {
+            eprintln!("{name} {sig:#x} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
