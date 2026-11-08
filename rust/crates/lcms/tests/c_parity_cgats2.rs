@@ -490,7 +490,6 @@ fn it8_writer_arms() {
 fn it8_api_bodies() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
-        let g = |x: &str| format!("{x}\0").as_ptr() as *const i8;
         let keep: Vec<_> = ["CGATS.17", "comment here", "PROP", "42",
             "SAMPLE_ID", "v1", "p0", "multi-k", "multi-v", "HEXPROP",
             "uncooked", "fmt"].iter().map(|x| format!("{x}\0")).collect();
@@ -2720,6 +2719,88 @@ fn cgats_residual_arms() {
                 doc.as_ptr() as *const _, doc.len() as u32);
             eprintln!("num '{num}'={}", !p.is_null());
             if !p.is_null() { c::cmsIT8Free(p); }
+        }
+    }
+}
+
+/// cmscgats residual — IT8 write internals (serialize all
+///   property types + data formats + multi-table save).
+#[test]
+fn it8_write_arms() {
+    unsafe {
+        for n in 0..3 {
+            let p = c::cmsIT8Alloc(std::ptr::null_mut());
+            c::cmsIT8SetSheetType(p,
+                b"IT8.7/2\0".as_ptr() as *const i8);
+            // all property types
+            c::cmsIT8SetPropertyStr(p, b"ORIGINATOR\0".as_ptr()
+                as *const i8, b"zen\0".as_ptr() as *const i8);
+            c::cmsIT8SetPropertyDbl(p, b"NUM\0".as_ptr()
+                as *const i8, 42.5);
+            c::cmsIT8SetPropertyHex(p, b"HEX\0".as_ptr()
+                as *const i8, 0xdead);
+            c::cmsIT8SetPropertyUncooked(p,
+                b"UNC\0".as_ptr() as *const i8,
+                b"raw $x y\0".as_ptr() as *const i8);
+            c::cmsIT8SetComment(p,
+                b"a comment\0".as_ptr() as *const i8);
+            c::cmsIT8SetPropertyMulti(p,
+                b"MULTI\0".as_ptr() as *const i8,
+                b"sub1\0".as_ptr() as *const i8,
+                b"val1\0".as_ptr() as *const i8);
+            // data format + rows
+            c::cmsIT8SetDataFormat(p, 0,
+                b"SAMPLE_ID\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 1,
+                b"LAB_L\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 2,
+                b"LAB_A\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 3,
+                b"LAB_B\0".as_ptr() as *const i8);
+            let rows = (n + 1) * 4;
+            c::cmsIT8SetPropertyDbl(p,
+                b"NUMBER_OF_SETS\0".as_ptr() as *const i8,
+                rows as f64);
+            c::cmsIT8SetPropertyDbl(p,
+                b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8,
+                4.0);
+            for i in 0..rows {
+                let nm = format!("n{i}\0");
+                c::cmsIT8SetDataRowCol(p, i as i32, 0,
+                    nm.as_ptr() as *const i8);
+                c::cmsIT8SetDataRowColDbl(p, i as i32, 1,
+                    50.0 + i as f64);
+                c::cmsIT8SetDataRowColDbl(p, i as i32, 2,
+                    i as f64 - 10.0);
+                c::cmsIT8SetDataRowColDbl(p, i as i32, 3,
+                    i as f64 + 5.0);
+            }
+            let mut buf = vec![0u8; 1 << 18];
+            let mut sz = buf.len() as u32;
+            let s = c::cmsIT8SaveToMem(p,
+                buf.as_mut_ptr() as *mut _,
+                &mut sz);
+            eprintln!("it8 n{n} save={s} sz={sz}");
+            // reload and re-enumerate
+            let rp = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                buf.as_ptr() as *const _, sz);
+            if !rp.is_null() {
+                for name in [
+                    b"ORIGINATOR\0".as_slice(),
+                    b"NUM\0", b"HEX\0", b"UNC\0",
+                    b"MULTI\0", b"nonexist\0"] {
+                    let v = c::cmsIT8GetProperty(rp,
+                        name.as_ptr() as *const i8);
+                    let d = c::cmsIT8GetPropertyDbl(rp,
+                        name.as_ptr() as *const i8);
+                    eprintln!("  {:?} v={v:?} d={d}",
+                        std::str::from_utf8(name)
+                            .unwrap_or("?"));
+                }
+                c::cmsIT8Free(rp);
+            }
+            c::cmsIT8Free(p);
         }
     }
 }
