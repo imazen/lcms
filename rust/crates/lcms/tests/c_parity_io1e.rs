@@ -2447,3 +2447,22 @@ fn response_curve_sigs() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'para'/'data' — the parametric-curve + data-type sigs.
+#[test]
+fn para_data_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let datav: u32 = 0xDEADBEEF;
+        for (sig, name, payload) in [
+            (0x70617261u32, "para",
+             g as *mut std::ffi::c_void),
+            (0x64617461u32, "data",
+             &datav as *const _ as *mut std::ffi::c_void)] {
+            let ok = c::cmsWriteTag(h, sig, payload);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
