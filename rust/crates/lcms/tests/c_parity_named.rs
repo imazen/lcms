@@ -633,3 +633,41 @@ fn mlu_offset_alignment() {
         c::cmsMLUfree(m);
     }
 }
+
+/// MLU translation internals — setWide/getASCII/getTranslation/
+/// translationsCodes, entry-add growth arms.
+#[test]
+fn mlu_translation_internals() {
+    unsafe {
+        let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        // setWide + setUTF8 + setASCII
+        let w: Vec<i32> = "wide text".chars()
+            .map(|c| c as i32).chain([0]).collect();
+        c::cmsMLUsetWide(m, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            w.as_ptr());
+        c::cmsMLUsetUTF8(m, b"fr\0".as_ptr(), b"FR\0".as_ptr(),
+            b"utf8".as_ptr());
+        let mut wb = [0i32; 64];
+        let mut ab = [0u8; 64];
+        let n1 = c::cmsMLUgetWide(m, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            wb.as_mut_ptr(), 64);
+        let n2 = c::cmsMLUgetASCII(m, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            ab.as_mut_ptr(), 64);
+        eprintln!("wide={n1} ascii={n2}");
+        // translation enumeration
+        let cnt = c::cmsMLUtranslationsCount(m);
+        for i in 0..cnt {
+            let mut lang = [0u8; 4];
+            let mut ctry = [0u8; 4];
+            let _ = c::cmsMLUtranslationsCodes(m, i,
+                lang.as_mut_ptr(), ctry.as_mut_ptr());
+        }
+        // getTranslation — returns the entry for a lang/ctry
+        let mut ol = [0u8; 4];
+        let mut oc = [0u8; 4];
+        let t = c::cmsMLUgetTranslation(m, b"en\0".as_ptr(), b"US\0".as_ptr(),
+            ol.as_mut_ptr(), oc.as_mut_ptr());
+        eprintln!("trans={cnt} gett={t}");
+        c::cmsMLUfree(m);
+    }
+}
