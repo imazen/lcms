@@ -4367,3 +4367,78 @@ fn blackpoint_fit_arms() {
         for tc in [g, gl, gs, gh] { c::cmsFreeToneCurve(tc); }
     }
 }
+
+/// AddConversion — PCS-mismatch multiprofile chains: XYZ<->Lab
+/// stage insertion + empty-layer (same-white vs adapted) arms.
+#[test]
+fn addconversion_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab50 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let xyz = c::cmsCreateXYZProfile();
+        let d65 = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let d50 = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let lab_d50 = c::cmsCreateLab4Profile(
+            &d50 as *const _ as *mut _);
+        let lab_d65 = c::cmsCreateLab4Profile(
+            &d65 as *const _ as *mut _);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let x8 = (9u32 << 16) | (3 << 3) | 1;
+        let k8 = (6u32 << 16) | (4 << 3) | 1;
+        // chains exercising XYZ/Lab junctions + empty-layer arms
+        let chains: Vec<(Vec<*mut std::ffi::c_void>, u32, u32,
+            &str)> = vec![
+            (vec![xyz, lab50], x8, l8, "xyz->lab50"),
+            (vec![xyz, lab2], x8, l8, "xyz->lab2"),
+            (vec![xyz, lab_d65], x8, l8, "xyz->labd65"),
+            (vec![lab50, xyz], l8, x8, "lab50->xyz"),
+            (vec![lab2, xyz], l8, x8, "lab2->xyz"),
+            (vec![lab50, lab2], l8, l8, "lab4->lab2"),
+            (vec![lab_d50, lab_d65], l8, l8, "d50->d65"),
+            (vec![srgb, lab50, xyz, cmyk], r8, k8,
+                "srgb-lab-xyz-cmyk"),
+            (vec![srgb, xyz, lab50, cmyk], r8, k8,
+                "srgb-xyz-lab-cmyk"),
+            (vec![lab50, xyz, srgb], l8, r8, "lab-xyz-srgb"),
+            (vec![xyz, lab50, srgb], x8, r8, "xyz-lab-srgb"),
+        ];
+        for intent in [0u32, 1] {
+            for (chain, if_, of_, name) in &chains {
+                if chain.iter().any(|p| p.is_null()) { continue; }
+                let n = chain.len() as u32;
+                let mut bpc = vec![0i32; n as usize];
+                let mut intents = vec![intent; n as usize];
+                let mut adapt = vec![1.0f64; n as usize];
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), n,
+                    chain.as_ptr() as *mut _,
+                    bpc.as_mut_ptr(), intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    std::ptr::null_mut(), 0, *if_, *of_, 0);
+                eprintln!("{name} i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab50);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(lab_d50);
+        c::cmsCloseProfile(lab_d65);
+        c::cmsCloseProfile(xyz);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+    }
+}
