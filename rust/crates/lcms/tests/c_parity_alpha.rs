@@ -584,3 +584,83 @@ fn pack_alpha_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsalpha residual — swapped-endian (*SE) alpha
+///   converters + ComputeIncrementsForPlanar via
+///   ENDIAN16 + PLANAR + float/double/half alpha
+///   format words.
+#[test]
+fn alpha_se_planar_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        // extra-channel (alpha) format words:
+        //   FLOAT<<22 | PT<<16 | SWAPFIRST<<14 |
+        //   PLANAR<<12 | ENDIAN16<<11 | DOSWAP<<10 |
+        //   EXTRA<<7 | CH<<3 | BYTES
+        for (fmt, name) in [
+            // u16 + extra1 + endian16-swap
+            ((4u32 << 16) | (1 << 11) | (1 << 7)
+                | (3 << 3) | 2, "u16-se-ex1"),
+            // u16 + extra1 (no swap) — baseline
+            ((4u32 << 16) | (1 << 7) | (3 << 3) | 2,
+                "u16-ex1"),
+            // u16 + extra2 + se
+            ((4u32 << 16) | (1 << 11) | (2 << 7)
+                | (3 << 3) | 2, "u16-se-ex2"),
+            // float + extra1 + se-ish (swapfirst)
+            ((1u32 << 22) | (4 << 16) | (1 << 14)
+                | (1 << 7) | (3 << 3) | 4,
+                "flt-sf-ex1"),
+            // double + extra1 + se
+            ((1u32 << 22) | (4 << 16) | (1 << 11)
+                | (1 << 7) | (3 << 3) | 8,
+                "dbl-se-ex1"),
+            // half (bytes=0) + extra1
+            ((1u32 << 22) | (4 << 16) | (1 << 7)
+                | (3 << 3) | 0, "hlf-ex1"),
+            // planar u16 + extra1
+            ((4u32 << 16) | (1 << 12) | (1 << 7)
+                | (3 << 3) | 2, "u16-planar-ex1"),
+            // planar u8 + extra1
+            ((4u32 << 16) | (1 << 12) | (1 << 7)
+                | (3 << 3) | 1, "u8-planar-ex1"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt,
+                srgb, fmt, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x8000u16; 8];
+                let mut dst = [0u16; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                eprintln!("  {name} {src:?}->{dst:?}");
+                c::cmsDeleteTransform(t);
+            }
+        }
+        // directions: swapped input format ↔ normal
+        for (fin, fout, name) in [
+            ((4u32 << 16) | (1 << 11) | (1 << 7)
+                | (3 << 3) | 2,
+             (4u32 << 16) | (1 << 7) | (3 << 3) | 2,
+             "se->norm"),
+            ((1u32 << 22) | (4 << 16) | (1 << 7)
+                | (3 << 3) | 4,
+             (1u32 << 22) | (4 << 16) | (1 << 7)
+                | (3 << 3) | 2, "flt->hlf-ex1"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fin,
+                srgb, fout, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let src = [0x8000u16; 8];
+                let mut dst = [0u16; 8];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
