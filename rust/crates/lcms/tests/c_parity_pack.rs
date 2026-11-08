@@ -3022,3 +3022,40 @@ fn float_half_packers() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Packer bodies — per-format-cell sweep on RGB/CMYK/Gray/MCH
+/// transforms hitting Unroll*/Pack* bodies.
+#[test]
+fn packer_bodies() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // format-word variants on the RGB input
+        for (fmt, name) in [
+            (r16 | 0x0001u32, "rgb-8bit"),
+            (r16 | 0x0002, "rgb-16bit"),
+            (r16 | 0x0003, "rgb-24bit?"),
+            (r16 | 0x0004, "rgb-32bit?"),
+            (r16 | 0x0400, "rgb-swapfirst"),
+            (r16 | 0x0800, "rgb-flavor"),
+            (r16 | 0x1000, "rgb-planar"),
+            (r16 | 0x2000, "rgb-endian"),
+            (r16 | 0x4000, "rgb-extra"),
+            (r16 | 0x0001 | 0x0400, "rgb-8-swapfirst"),
+        ] {
+            let t = c::cmsCreateTransform(srgb, fmt, lab, l16, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 4];
+                let mut ob = [0u16; 4];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
