@@ -4999,3 +4999,100 @@ fn half_fmt_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// OptimizeByComputingLinearization — needs RGB->RGB transforms
+/// on cv-clut-cv pipelines (link-class profiles).
+#[test]
+fn linearize_opt_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
+        let tc = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 5, tv.as_ptr());
+        let srgb = c::cmsCreate_sRGBProfile();
+        // link-class profile RGB->RGB with {A curves, CLUT,
+        //   B curves} — the optimizer's target shape
+        let link = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(link, 0x6C696E6B);   // 'link'
+        c::cmsSetColorSpace(link, 0x52474220);
+        c::cmsSetPCS(link, 0x52474220);
+        c::cmsSetProfileVersion(link, 4.4);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [tc, tc, tc].as_ptr() as *mut _));
+        let dims = [3u32; 3];
+        let mut grid = vec![0u16; 27 * 3];
+        for (i, v) in grid.iter_mut().enumerate() {
+            *v = ((i % 23) * 2848) as u16;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                grid.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        c::cmsWriteTag(link, 0x41324230, p as *const _);
+        // second link with reversed (B-clut-A) pipeline
+        let link2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(link2, 0x6C696E6B);
+        c::cmsSetColorSpace(link2, 0x52474220);
+        c::cmsSetPCS(link2, 0x52474220);
+        c::cmsSetProfileVersion(link2, 4.4);
+        let p2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p2, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        let mut grid2 = vec![0u16; 27 * 3];
+        for (i, v) in grid2.iter_mut().enumerate() {
+            *v = (0xffffu32 - ((i % 23) * 2848) as u32)
+                as u16;
+        }
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                grid2.as_ptr()));
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [tc, tc, tc].as_ptr() as *mut _));
+        c::cmsWriteTag(link2, 0x41324230, p2 as *const _);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        const PRELIN: u32 = 0x0010;
+        const HIGHRES: u32 = 0x0400;
+        const LOWRES: u32 = 0x0100;
+        for (inp, outp, name) in [
+            (link, srgb, "link->srgb"),
+            (srgb, link, "srgb->link"),
+            (link, link, "link->link"),
+            (link2, srgb, "link2->srgb"),
+            (srgb, link2, "srgb->link2"),
+            (link, link2, "link->link2"),
+        ] {
+            for flags in [0u32, PRELIN, HIGHRES, LOWRES,
+                PRELIN | HIGHRES, PRELIN | LOWRES] {
+                let t = c::cmsCreateTransform(inp, r8, outp,
+                    r8, 0, flags);
+                eprintln!("{name} f{flags:#x} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let ib = [0x55u8; 8];
+                    let mut ob = [0u8; 8];
+                    c::cmsDoTransform(t, ib.as_ptr()
+                        as *const _, ob.as_mut_ptr()
+                        as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
+        c::cmsCloseProfile(link);
+        c::cmsCloseProfile(link2);
+        c::cmsCloseProfile(srgb);
+        c::cmsPipelineFree(p);
+        c::cmsPipelineFree(p2);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(tc);
+    }
+}
