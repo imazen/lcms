@@ -357,3 +357,41 @@ fn alpha_machinery() {
         }
     }
 }
+
+/// Half-alpha machinery — 3ch->4ch and 4ch->3ch alpha
+/// format transforms.
+#[test]
+fn half_alpha() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // 3ch in -> 4ch out (alpha injected)
+        let in3: u32 = (4 << 16) | (3 << 3) | 2;
+        let out4: u32 = (10 << 16) | (4 << 3) | 2;
+        let ct1 = c::cmsCreateTransform(h, in3, lab4, out4,
+            0, 0);
+        if !ct1.is_null() {
+            let inp = [30000u16, 40000, 50000];
+            let mut out = [0u16; 4];
+            c::cmsDoTransform(ct1, inp.as_ptr() as _,
+                out.as_mut_ptr() as *mut _, 1);
+            eprintln!("3->4 out[3]={:#x} (alpha)", out[3]);
+            c::cmsDeleteTransform(ct1);
+        }
+        // 4ch in -> 3ch out (alpha extracted)
+        let in4: u32 = (10 << 16) | (4 << 3) | 2;
+        let out3: u32 = (4 << 16) | (3 << 3) | 2;
+        let ct2 = c::cmsCreateTransform(lab4, in4, h, out3,
+            0, 0);
+        if !ct2.is_null() {
+            let inp = [30000u16, 40000, 50000, 0xFFFF];
+            let mut out = [0u16; 3];
+            c::cmsDoTransform(ct2, inp.as_ptr() as _,
+                out.as_mut_ptr() as *mut _, 1);
+            eprintln!("4->3 out={:?}", out);
+            c::cmsDeleteTransform(ct2);
+        }
+        c::cmsCloseProfile(lab4);
+        c::cmsCloseProfile(h);
+    }
+}
