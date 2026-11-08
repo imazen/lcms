@@ -311,3 +311,38 @@ fn rgb_profile_builders() {
         }
     }
 }
+
+/// Profile-placeholder internals — different sigs + more
+/// primaries.
+#[test]
+fn placeholder_variants() {
+    unsafe {
+        for (name, cls, cs, pcs) in [
+            ("mntr-rgb", 0x6D6E7472u32, 0x52474220u32,
+             0x58595A20u32),
+            ("mntr-rgb-lab", 0x6D6E7472u32, 0x52474220u32,
+             0x4C616220u32),
+            ("prtr-cmyk", 0x70727472u32, 0x434D594Bu32,
+             0x4C616220u32),
+            ("link-rgb", 0x6C696E6Bu32, 0x52474220u32,
+             0x58595A20u32),
+            ("spac", 0x73706163u32, 0x52474220u32,
+             0x58595A20u32),
+            ("abst", 0x61627374u32, 0x52474220u32,
+             0x4C616220u32),
+            ("nmcl", 0x6E6D636Cu32, 0x6E6D636Cu32,
+             0x4C616220u32),
+        ] {
+            let h = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(h, cls);
+            c::cmsSetColorSpace(h, cs);
+            c::cmsSetPCS(h, pcs);
+            let mut cn = 0u32;
+            let ok = c::cmsSaveProfileToMem(h,
+                std::ptr::null_mut(), &mut cn);
+            eprintln!("{name} save={ok}");
+            c::cmsCloseProfile(h);
+        }
+    }
+}
