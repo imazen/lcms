@@ -921,3 +921,88 @@ fn named_color_write_arms() {
         }
     }
 }
+
+/// cmsnamed residual — decodeUTF8 on multibyte sequences in
+///   named-color lists + GetNamedColorList internals.
+#[test]
+fn utf8_decode_arms() {
+    unsafe {
+        let nl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 16, 4, b"p\0".as_ptr(),
+            b"s\0".as_ptr());
+        // UTF-8 sequences of every valid/invalid length
+        let names: &[&[u8]] = &[
+            b"ascii\0",
+            b"caf\xc3\xa9\0",           // 2-byte
+            b"\xe2\x82\xac\0",           // 3-byte euro
+            b"\xf0\x9f\x98\x80\0",       // 4-byte emoji
+            b"mix\xc3\xa9e2\x82\xac\0",  // mixed
+            b"\xc3\0",                   // truncated 2-byte
+            b"\xe2\x82\0",               // truncated 3-byte
+            b"\xf0\x9f\x98\0",           // truncated 4-byte
+            b"\x80\0",                   // stray cont
+            b"\xff\0",                   // invalid byte
+            b"\xc0\xaf\0",               // overlong
+            b"\xed\xa0\x80\0",           // surrogate
+            b"\xf4\x90\x80\x80\0",       // >U+10FFFF
+            b"a\x00b\0",
+        ];
+        let mut pcs = [0x1000u16; 4];
+        let mut col = [0x2000u16; 4];
+        for (i, nm) in names.iter().enumerate() {
+            pcs[0] = i as u16;
+            let r = c::cmsAppendNamedColor(nl,
+                nm.as_ptr() as *const u8,
+                pcs.as_ptr(), col.as_ptr());
+            eprintln!("utf8 i{i} append={r}");
+        }
+        // named-color profile write + reload round-trip
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6E6D636C);
+        c::cmsSetColorSpace(prof, 0x4E434C20);
+        c::cmsSetPCS(prof, 0x4C616220);
+        c::cmsSetProfileVersion(prof, 4.4);
+        let w = c::cmsWriteTag(prof, 0x6E636C32,
+            nl as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr()
+                as *const _, n)
+        } else { std::ptr::null_mut() };
+        let r = if !rp.is_null() {
+            let t = c::cmsReadTag(rp, 0x6E636C32);
+            let ok = !t.is_null();
+            // read names back via NamedColorInfo
+            if ok {
+                let nl2 = t as *mut std::ffi::c_void;
+                for i in 0..14u32 {
+                    let mut nm = [0u8; 256];
+                    let mut pcs2 = [0u16; 4];
+                    let mut col2 = [0u16; 4];
+                    let rr = c::cmsNamedColorInfo(nl2, i,
+                        nm.as_mut_ptr(),
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        pcs2.as_mut_ptr(), col2.as_mut_ptr());
+                    if rr != 0 {
+                        eprintln!("  n{i}={:?}",
+                            std::str::from_utf8(
+                                &nm[..nm.iter().position(
+                                    |&b| b == 0)
+                                    .unwrap_or(0)])
+                                .unwrap_or("<bad>"));
+                    }
+                }
+            }
+            c::cmsCloseProfile(rp);
+            ok
+        } else { false };
+        eprintln!("ncl2-utf8 w={w} s={s} r={r}");
+        c::cmsCloseProfile(prof);
+        c::cmsFreeNamedColorList(nl);
+    }
+}
