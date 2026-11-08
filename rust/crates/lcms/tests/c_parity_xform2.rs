@@ -1446,3 +1446,28 @@ fn transform_accessors_strides() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// Transform dwFlags dispatch — every flag bit's cnvrt pipeline
+/// arm (NOCACHE/NOOPTIMIZE/GAMUTCHECK/SOFTPROOFING/BLACKPOINT/etc).
+#[test]
+fn transform_flags_dispatch() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        for flags in [
+            0x0000u32, 0x0001, 0x0002, 0x0004, 0x0008,
+            0x0010, 0x0020, 0x0040, 0x0080, 0x0100,
+            0x0200, 0x0400, 0x0800, 0x1000, 0x2000,
+            0x4000, 0x8000,
+        ] {
+            let t = c::cmsCreateTransform(srgb, r16, lab, l16,
+                0, flags);
+            eprintln!("f{flags:#05x} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
