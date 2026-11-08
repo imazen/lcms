@@ -17001,3 +17001,93 @@ fn cmstypes_io_residual_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp/cmsplugin residual —
+///   profile-open internals + pipeline eval internals +
+///   context internals + transform internals.
+#[test]
+fn io_internal4_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // profile-open internals — corrupt headers
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let hdr_corrupts = [
+            (0usize, "size"), (4, "cmm"), (8, "ver"),
+            (12, "cls"), (16, "cs"), (20, "pcs"),
+            (24, "date"), (36, "magic"), (40, "plat"),
+            (44, "flags"), (48, "manu"), (52, "model"),
+            (56, "attr"), (64, "intent"), (68, "illum"),
+            (80, "creator"), (84, "id"), (128, "tagcount"),
+            (132, "tag0"), (140, "tag1"),
+        ];
+        for (off, name) in hdr_corrupts {
+            if off >= n as usize { continue; }
+            for delta in [1u8, 0x7f, 0xff] {
+                let mut b2 = buf[..n as usize].to_vec();
+                b2[off] = b2[off].wrapping_add(delta);
+                let p = c::cmsOpenProfileFromMem(
+                    b2.as_ptr() as *const _, n);
+                eprintln!("corrupt {name}+{delta:#x} p={}",
+                    !p.is_null());
+                if !p.is_null() {
+                    // try reading a tag + transform
+                    let t = c::cmsCreateTransform(p, r8,
+                        lab, l8, 0, 0);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t); }
+                    c::cmsCloseProfile(p);
+                }
+            }
+        }
+        // transform internals — stride/buffer edge cases
+        let t = c::cmsCreateTransform(srgb, r8, lab, l8, 0, 0);
+        if !t.is_null() {
+            for (pix, name) in [(0u32, "0px"), (1, "1px"),
+                (4, "4px"), (16, "16px"), (256, "256px"),
+                (65536, "64k")] {
+                let npix = pix.min(256);
+                let ib = vec![0x55u8; npix as usize * 3];
+                let mut ob = vec![0u8; npix as usize * 3];
+                c::cmsDoTransform(t, ib.as_ptr()
+                    as *const _, ob.as_mut_ptr()
+                    as *mut _, npix);
+                eprintln!("{name}={npix} done");
+            }
+            // ChangeBuffersFormat
+            for fmt in [
+                (4u32 << 16) | (3 << 3) | 1,
+                (4 << 16) | (3 << 3) | 2,
+                (10 << 16) | (3 << 3) | 1,
+                (10 << 16) | (3 << 3) | 2,
+            ] {
+                let r = c::cmsChangeBuffersFormat(t, fmt, fmt);
+                eprintln!("chbuf {fmt:#x}={r}");
+            }
+            c::cmsDeleteTransform(t);
+        }
+        // proofing + multi-profile on same profiles
+        let mut profs = [srgb, lab, srgb];
+        for (n_, name) in [(2, "2prof"), (3, "3prof")] {
+            let t2 = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), n_, r8, r8, 0, 0);
+            eprintln!("{name}={}", !t2.is_null());
+            if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        }
+        for i in 0..4u32 {
+            let pt = c::cmsCreateProofingTransform(srgb, r8,
+                lab, l8, srgb, i, 0, 0);
+            eprintln!("proof{i}={}", !pt.is_null());
+            if !pt.is_null() { c::cmsDeleteTransform(pt); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
