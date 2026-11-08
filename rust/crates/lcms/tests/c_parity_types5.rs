@@ -549,6 +549,124 @@ fn crafted_type_reads() {
             b.extend_from_slice(&1u32.to_be_bytes()); // data
             cases.push((0x70733269, b));
         }
+        // 'uf16' on 'chad' — U16Fixed16 array
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"uf16");
+            b.extend_from_slice(&[0; 4]);
+            for _ in 0..9 {
+                b.extend_from_slice(&0x00010000u32.to_be_bytes());
+            }
+            cases.push((0x63686164, b));
+        }
+        // 'uf32' on 'chad' — U32Fixed32 array
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"uf32");
+            b.extend_from_slice(&[0; 4]);
+            for _ in 0..9 {
+                b.extend_from_slice(&0x0001000000000000u64
+                    .to_be_bytes());
+            }
+            cases.push((0x63686164, b));
+        }
+        // 'u8f8' on 'chad' — U8Fixed8 array
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"u8f8");
+            b.extend_from_slice(&[0; 4]);
+            for _ in 0..9 {
+                b.extend_from_slice(&0x0100u16.to_be_bytes());
+            }
+            cases.push((0x63686164, b));
+        }
+        // 'u16f' on 'chad' — U16Fixed16 array (u16 each)
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"u16f");
+            b.extend_from_slice(&[0; 4]);
+            for _ in 0..9 {
+                b.extend_from_slice(&0xFFFFu16.to_be_bytes());
+            }
+            cases.push((0x63686164, b));
+        }
+        // 'u32f' on 'chad' — U32 array
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"u32f");
+            b.extend_from_slice(&[0; 4]);
+            for _ in 0..9 {
+                b.extend_from_slice(&42u32.to_be_bytes());
+            }
+            cases.push((0x63686164, b));
+        }
+        // 'nui8' on 'clro' — UInt8 array
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"nui8");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&4u32.to_be_bytes());
+            for v in [0u8, 1, 2, 3] { b.push(v); }
+            cases.push((0x636C726F, b));
+        }
+        // 'nui16'/'nui32'/'ns16'/'ns32' on 'clrt'
+        for (ts, elems, val) in [
+            ("nui16", 4u32, 42u32),
+            ("nui32", 4, 42),
+            ("ns16", 4, 42),
+            ("ns32", 4, 42),
+        ] {
+            let mut b = Vec::new();
+            b.extend_from_slice(ts.as_bytes());
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&elems.to_be_bytes());
+            for _ in 0..elems {
+                if ts.ends_with("16") {
+                    b.extend_from_slice(&(val as u16).to_be_bytes());
+                } else {
+                    b.extend_from_slice(&val.to_be_bytes());
+                }
+            }
+            cases.push((0x636C7274, b));
+        }
+        // 'bfd ' on 'bfd ' — UcrBg
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"bfd ");
+            b.extend_from_slice(&[0; 4]);
+            // curve (0 points → identity)
+            b.extend_from_slice(b"curv");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&0u32.to_be_bytes());
+            // curve (0 points)
+            b.extend_from_slice(b"curv");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&0u32.to_be_bytes());
+            // mluc (0 records)
+            b.extend_from_slice(b"mluc");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&0u32.to_be_bytes());
+            b.extend_from_slice(&12u32.to_be_bytes());
+            cases.push((0x62666420, b));
+        }
+        // 'lut8' on 'B2A0' — Lut8Type read
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"lut8");
+            b.extend_from_slice(&[0; 4]);
+            b.push(3); b.push(3); // ich, och
+            b.push(2); // clut gridpoints
+            b.push(0); // pad
+            // matrix 9 elems s15fixed16
+            for _ in 0..9 {
+                b.extend_from_slice(&0x00010000u32.to_be_bytes());
+            }
+            // input tables 3x256 + clut 2^3*3 + output 3x256
+            for _ in 0..768 { b.push(0x80u8); }
+            for _ in 0..24 { b.push(0x80u8); }
+            for _ in 0..768 { b.push(0x80u8); }
+            cases.push((0x42324130, b));
+        }
         for (i, (sig, bytes)) in cases.iter().enumerate() {
             let h2 = c::cmsCreate_sRGBProfile();
             let ok = c::cmsWriteRawTag(h2, *sig,
