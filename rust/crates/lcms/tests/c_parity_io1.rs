@@ -125,3 +125,44 @@ fn matrix_shaper_lab_pcs() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// _cmsReadOutputLUT Lab-PCS/Lut16 normalization arms — Lab-PCS
+/// profiles with Lut16 B2A insert LabV4ToV2; Lab-colorspace output
+/// appends LabV2ToV4. labv2/labv4 corpus profiles as OUTPUT side.
+#[test]
+fn output_lut_lab_normalization() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        for f in ["labv2lcms2.icc", "labv4lcms2.icc", "lcms2cmyk.icc",
+                  "graylcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let cs = c::cmsGetColorSpace(p);
+            let out_fmt = match cs {
+                0x4C616220 => (10 << 16) | (3 << 3) | 2u32, // Lab16
+                0x434D594B => (6 << 16) | (4 << 3) | 1,
+                0x47524159 => (3 << 16) | (1 << 3) | 1,
+                _ => (4 << 16) | (3 << 3) | 1,
+            };
+            let srgb = c::cmsCreate_sRGBProfile();
+            // srgb -> profile: profile is OUTPUT -> ReadOutputLUT
+            for intent in 0..=3u32 {
+                let t = c::cmsCreateTransform(srgb, 0x00ff04,
+                    p, out_fmt, intent, 0);
+                eprintln!("{f} out i{intent} t={}", !t.is_null());
+                if !t.is_null() {
+                    let inp = [128u8, 64, 220];
+                    let mut out = [0u8; 8];
+                    c::cmsDoTransform(t, inp.as_ptr() as *const _,
+                        out.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(srgb);
+            c::cmsCloseProfile(p);
+        }
+    }
+}
