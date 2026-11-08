@@ -15972,3 +15972,71 @@ fn misc_small_file_arms() {
         eprintln!("md5={pid:?}");
     }
 }
+
+/// cmserr0 internals — LogErrorHandler registration/restore +
+/// SignalError on each error code + Eval1Input*/LinLerp*.
+#[test]
+fn error_handler_arms() {
+    unsafe {
+        // custom handler that records the code
+        static mut LAST: u32 = 0;
+        unsafe extern "C" fn handler(_ctx: *mut std::ffi::c_void,
+            code: u32, text: *const u8) {
+            unsafe { LAST = code; }
+            eprintln!("err {code} {:?}", unsafe {
+                if text.is_null() { None } else {
+                    Some(std::ffi::CStr::from_ptr(
+                        text as *const i8)) } });
+        }
+        c::cmsSetLogErrorHandler(handler
+            as *const () as *mut _);
+        // trigger real errors via bad API calls — each
+        //   SignalError site fires the handler
+        let bad = c::cmsOpenProfileFromMem(
+            std::ptr::null_mut(), 0);
+        let bad2 = c::cmsCreateTransform(srgb_null(),
+            0, std::ptr::null_mut(), 0, 0, 0);
+        fn srgb_null() -> *mut std::ffi::c_void {
+            std::ptr::null_mut()
+        }
+        eprintln!("bad={} bad2={}", !bad.is_null(),
+            !bad2.is_null());
+        c::cmsSetLogErrorHandler(std::ptr::null_mut());
+        // error via a real bad call — read nonexistent tag
+        let srgb = c::cmsCreate_sRGBProfile();
+        let t = c::cmsReadTag(srgb, 0x62616420);   // 'bad '
+        let t2 = c::cmsReadTag(srgb, 0x41324233);   // A2B3 (none)
+        let t3 = c::cmsWriteTag(srgb, 0x62616420,
+            std::ptr::null_mut());
+        eprintln!("badtag={} a2b3={} writenull={}",
+            !t.is_null(), !t2.is_null(), t3);
+        c::cmsCloseProfile(srgb);
+        // Eval1Input on 1-ch pipelines (curve + clut)
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 1);
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 1,
+                [g].as_ptr() as *mut _));
+        let dims1 = [4u32];
+        let grid1 = vec![0x4000u16; 4];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims1.as_ptr(), 1, 1,
+                grid1.as_ptr()));
+        let inp = [0x4000u16];
+        let mut out = [0u16];
+        c::cmsPipelineEval16(inp.as_ptr(), out.as_mut_ptr(), p);
+        let inpf = [0.5f32];
+        let mut outf = [0.0f32];
+        c::cmsPipelineEvalFloat(inpf.as_ptr(),
+            outf.as_mut_ptr(), p);
+        let mut hint = [0.5f32];
+        let rev = c::cmsPipelineEvalReverseFloat(
+            inpf.as_ptr() as *mut f32, outf.as_mut_ptr(),
+            hint.as_mut_ptr(), p);
+        eprintln!("1ch out={} outf={} rev={rev}",
+            out[0], outf[0]);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
