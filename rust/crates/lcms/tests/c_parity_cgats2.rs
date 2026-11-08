@@ -1815,3 +1815,70 @@ fn it8_deep_arms16() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection arms — every
+/// remaining lexer/parser internals + CookPointers/AddToList.
+#[test]
+fn it8_deep_arms17() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // many tables → CookPointers + AddToList arms
+            ({ let mut v = Vec::new();
+                for t in 0..8u32 {
+                    v.extend_from_slice(b"IT8FILE\n");
+                    v.extend_from_slice(
+                        format!("DATA_IDENTIFIER \"t{t}\"\n").as_bytes());
+                    v.extend_from_slice(
+                        format!("NUMBER_OF_FIELDS {}\nNUMBER_OF_SETS {}\n",
+                            t + 1, t + 2).as_bytes());
+                    v.extend_from_slice(b"BEGIN_DATA_FORMAT\n");
+                    for f in 0..=t {
+                        v.extend_from_slice(format!("F{f} ").as_bytes());
+                    }
+                    v.extend_from_slice(b"\nEND_DATA_FORMAT\nBEGIN_DATA\n");
+                    for s in 0..t + 2 {
+                        for f in 0..=t {
+                            v.extend_from_slice(
+                                format!("{} ", s * 10 + f).as_bytes());
+                        }
+                        v.push(b'\n');
+                    }
+                    v.extend_from_slice(b"END_DATA\n");
+                }
+                v }, "8-tables"),
+            // many properties → AddToList/property-list arms
+            ({ let mut v = b"IT8FILE\n".to_vec();
+                for i in 0..64u32 {
+                    v.extend_from_slice(
+                        format!("P{i} \"v{i}\"\n").as_bytes());
+                }
+                v.extend_from_slice(
+                    b"NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n");
+                v }, "64-props"),
+            // every property enum value through SetProperty
+            (b"IT8FILE\nORIGINATOR \"o\"\nDESCRIPTOR \"d\"\nCREATED \"c\"\nMANUFACTURER \"m\"\nPROD_DATE \"p\"\nSERIAL \"s\"\nMATERIAL \"mat\"\nINSTRUMENTATION \"i\"\nMEASUREMENT_SOURCE \"ms\"\nPRINT_CONDITIONS \"pc\"\nSAMPLE_BACKING \"sb\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "all-props2"),
+            // field names matching every predefined keyword
+            (b"IT8FILE\nNUMBER_OF_FIELDS 8\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nNUMBER_OF_FIELDS NUMBER_OF_SETS BEGIN_DATA END_DATA BEGIN_DATA_FORMAT END_DATA_FORMAT IT8FILE DATA_IDENTIFIER\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3 4 5 6 7 8\nEND_DATA\n".to_vec(), "kw-fnames"),
+            // deeply nested/multiline quoted strings
+            (b"IT8FILE\nP1 \"a\nb\nc\nd\"\nP2 \"1\n2\n3\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "deep-ml"),
+            // data rows with all-zero/negative/edge values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 4\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n0 0 0\n-1 -1 -1\n-0.0 -0.0 -0.0\n65535 65535 65535\nEND_DATA\n".to_vec(), "edge-data"),
+            // huge single data value
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n999999999999999999999\nEND_DATA\n".to_vec(), "huge-val"),
+            // empty data-format section
+            (b"IT8FILE\nNUMBER_OF_FIELDS 0\nNUMBER_OF_SETS 0\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n".to_vec(), "empty-fmt"),
+            // property after data (out of order)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nTAIL \"tail\"\n".to_vec(), "post-prop"),
+            // data values with internal whitespace (string form)
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n\"a b\" \"c d\"\n\"e f\" \"g h\"\nEND_DATA\n".to_vec(), "ws-str"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
