@@ -574,3 +574,54 @@ fn parametric_type_108_109() {
         }
     }
 }
+
+/// DefaultEvalParametricFn deep arms — each type's piecewise
+/// boundaries evaluated across/around breakpoints.
+#[test]
+fn parametric_boundaries() {
+    unsafe {
+        // per-type boundary points that hit the piecewise cases
+        let cases: Vec<(i32, Vec<f64>, Vec<f64>)> = vec![
+            // type 1: y = x^g — boundaries at x=0, x=1, neg
+            (1, vec![2.2, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.5, 1.0, 2.0]),
+            // type 2: y = (a*x+b)^g below c; x^g above
+            (2, vec![2.2, 0.5, 0.1, 0.3, 0.0, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.1, 0.2, 0.3, 0.5, 1.0, 2.0]),
+            // type 3: y = (a*x+b)^g + c below d; x^g above
+            (3, vec![2.2, 0.5, 0.1, 0.0, 0.3, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.1, 0.3, 0.5, 1.0, 2.0]),
+            // type 4: y = (a*x+b)^g below d; a2*x+b2 above
+            (4, vec![2.2, 0.5, 0.1, 0.0, 0.3, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.1, 0.3, 0.5, 1.0, 2.0]),
+            // type 5: sigmoid-like
+            (5, vec![2.2, 0.5, 0.1, 0.3, 0.0, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.1, 0.3, 0.5, 1.0, 2.0]),
+            // type 6: y = a*x^g + b below c; x^g above
+            (6, vec![2.2, 0.5, 0.1, 0.3, 0.0, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.1, 0.3, 0.5, 1.0, 2.0]),
+            // type 7: y = a*log(b*x+c)+d
+            (7, vec![2.2, 0.5, 0.1, 0.3, 0.0, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.1, 0.3, 0.5, 1.0, 2.0]),
+            // type 8: y = a*x^g + b + c*log(x+d)+e
+            (8, vec![2.2, 0.5, 0.1, 0.3, 0.0, 0.0, 0.0],
+                vec![-1.0, 0.0, 0.1, 0.3, 0.5, 1.0, 2.0]),
+        ];
+        for (ty, params, vals) in &cases {
+            let c_ = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), *ty, params.as_ptr());
+            if c_.is_null() {
+                eprintln!("ty{ty} null");
+                continue;
+            }
+            for &x in vals {
+                let y = c::cmsEvalToneCurveFloat(c_, x as f32);
+                let _ = y;
+                // also eval via pipeline
+                let out = c::cmsEvalToneCurveFloat(c_, x as f32);
+                let _ = out;
+            }
+            c::cmsFreeToneCurve(c_);
+        }
+    }
+}
