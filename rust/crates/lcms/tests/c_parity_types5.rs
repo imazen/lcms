@@ -3765,3 +3765,34 @@ fn stored_lut_reads() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Full tag walk — enumerate + read every stored tag on
+/// saved profiles (the complete stored-type dispatch).
+#[test]
+fn full_tag_walk() {
+    unsafe {
+        for (pname, build) in [
+            ("srgb", c::cmsCreate_sRGBProfile()),
+            ("lab4", c::cmsCreateLab4Profile(std::ptr::null_mut())),
+            ("xyz", c::cmsCreateXYZProfile())] {
+            let path = format!("/tmp/ccov_{pname}.icc\0");
+            c::cmsSaveProfileToFile(build,
+                path.as_ptr() as _);
+            c::cmsCloseProfile(build);
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{pname} reopen failed");
+                continue;
+            }
+            let n = c::cmsGetTagCount(h);
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(h, i as u32);
+                let v = c::cmsReadTag(h, sig);
+                eprintln!("{pname}[{i}] {sig:#x}={}",
+                    !v.is_null());
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
