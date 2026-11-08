@@ -542,3 +542,38 @@ fn line_stride_variants() {
         c::cmsDeleteTransform(ct);
     }
 }
+
+/// Multiprofile machinery — more profile chains through
+/// cmsCreateMultiprofileTransform.
+#[test]
+fn multiprofile_chains() {
+    unsafe {
+        let rgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let rgb2 = c::cmsCreate_sRGBProfile();
+        let rgb3 = c::cmsCreate_sRGBProfile();
+        let rgb4 = c::cmsCreate_sRGBProfile();
+        let fmt = (4 << 16) | (3 << 3) | 2u32;
+        let lfmt = (10 << 16) | (3 << 3) | 2u32;
+        for (name, profs, inf, outf) in [
+            ("rgb-lab-rgb",
+             vec![rgb, lab, rgb2] as Vec<*mut _>, fmt, fmt),
+            ("rgb-rgb-rgb",
+             vec![rgb, rgb3, rgb2] as Vec<*mut _>, fmt, fmt),
+            ("rgb4",
+             vec![rgb, rgb3, rgb2, rgb4] as Vec<*mut _>,
+             fmt, fmt),
+            ("rgb-lab",
+             vec![rgb, lab] as Vec<*mut _>, fmt, lfmt)] {
+            let mut pv = profs;
+            let n = pv.len() as i32;
+            let t = c::cmsCreateMultiprofileTransform(
+                pv.as_mut_ptr(), n, inf, outf, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        // don't double-close: transforms consumed the handles
+        // via dup or kept them — close only un-transformed
+        let _ = (rgb, lab, rgb2, rgb3, rgb4);
+    }
+}
