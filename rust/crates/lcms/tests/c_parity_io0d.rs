@@ -25678,3 +25678,87 @@ fn internal_final84_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsplugin residual — _cmsRead/_cmsWrite
+///   number-IO internals on mem/NULL IOhandlers:
+///   u8/16/32/64, XYZ, 15Fixed16 round-trips.
+#[test]
+fn internal_io_num_arms() {
+    unsafe {
+        // write numbers to a mem io, read back
+        let mut wbuf = vec![0u8; 4096];
+        let io = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            wbuf.as_mut_ptr() as *mut _,
+            wbuf.len() as u32, b"w\0".as_ptr());
+        eprintln!("io-w={}", !io.is_null());
+        if !io.is_null() {
+            let w1 = c::_cmsWriteUInt8Number(io, 0x42);
+            let w2 = c::_cmsWriteUInt16Number(io, 0x1234);
+            let w3 = c::_cmsWriteUInt32Number(io, 0xDEADBEEF);
+            let w4 = c::_cmsWriteUInt64Number(io,
+                &0x1122334455667788u64);
+            let w5 = c::_cmsWrite15Fixed16Number(io, 3.5);
+            let xyz = c::CieXyz { X: 0.5, Y: 0.6, Z: 0.7 };
+            let w6 = c::_cmsWriteXYZNumber(io, &xyz);
+            eprintln!("writes {w1}{w2}{w3}{w4}{w5}{w6}");
+            c::cmsCloseIOhandler(io);
+        }
+        // read back from the same buffer
+        let io2 = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            wbuf.as_mut_ptr() as *mut _,
+            wbuf.len() as u32, b"r\0".as_ptr());
+        if !io2.is_null() {
+            let mut u8v = 0u8;
+            let mut u16v = 0u16;
+            let mut u32v = 0u32;
+            let mut u64v = 0u64;
+            let mut f = 0.0f64;
+            let mut x = c::CieXyz::default();
+            c::_cmsReadUInt8Number(io2, &mut u8v);
+            c::_cmsReadUInt16Number(io2, &mut u16v);
+            c::_cmsReadUInt32Number(io2, &mut u32v);
+            c::_cmsReadUInt64Number(io2, &mut u64v);
+            c::_cmsRead15Fixed16Number(io2, &mut f);
+            c::_cmsReadXYZNumber(io2, &mut x);
+            eprintln!("reads {u8v:#x} {u16v:#x} \
+                {u32v:#x} {u64v:#x} {f} \
+                {}/{}/{}", x.X, x.Y, x.Z);
+            c::cmsCloseIOhandler(io2);
+        }
+        // NULL io handler
+        let ion = c::cmsOpenIOhandlerFromNULL(
+            std::ptr::null_mut());
+        eprintln!("io-null={}", !ion.is_null());
+        if !ion.is_null() {
+            let w1 = c::_cmsWriteUInt32Number(ion, 42);
+            let mut v = 0u32;
+            c::_cmsReadUInt32Number(ion, &mut v);
+            eprintln!("null w={w1} r-v={v}");
+            c::cmsCloseIOhandler(ion);
+        }
+        // file IOhandler on a real profile
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let path = std::ffi::CString::new(
+            "/tmp/lcms_io_file.icc").unwrap();
+        std::fs::write("/tmp/lcms_io_file.icc",
+            &buf[..n as usize]).unwrap();
+        for mode in ["r", "w", "r+", "x"] {
+            let cm = std::ffi::CString::new(mode).unwrap();
+            let iof = c::cmsOpenIOhandlerFromFile(
+                std::ptr::null_mut(), path.as_ptr(),
+                cm.as_ptr() as *const u8);
+            eprintln!("file mode {mode} io={}",
+                !iof.is_null());
+            if !iof.is_null() {
+                c::cmsCloseIOhandler(iof); }
+        }
+        let _ = std::fs::remove_file("/tmp/lcms_io_file.icc");
+        c::cmsCloseProfile(srgb);
+    }
+}
