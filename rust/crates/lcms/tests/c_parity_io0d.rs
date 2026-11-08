@@ -9677,3 +9677,68 @@ fn lut_read_arms5() {
         }
     }
 }
+
+/// SaveTags remaining internals — IOhandler write failures,
+/// linked-tag dedup across all tag types, version conversion
+/// during save, error propagation through WriteTag.
+#[test]
+fn save_tags_arms4() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        // write every tag type + link them -> dedup across the
+        // whole SaveTags loop
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        for sig in [
+            0x72545243u32, 0x67545243, 0x62545243, // rTRC/gTRC/bTRC
+            0x7258595a, 0x6758595a, 0x6258595a,   // rXYZ/gXYZ/bXYZ
+            0x6d656461, 0x74656368, 0x76696577,   // meas/tech/vcgt
+            0x63686164, 0x636c726f, 0x63686172,   // chad/clro/chrm
+        ] {
+            c::cmsWriteTag(prof, sig, g as *const _);
+        }
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        for sig in [0x64657363u32, 0x63707274, 0x646d6464,
+                    0x646d6e64, 0x64657673] {
+            c::cmsWriteTag(prof, sig, ml as *const _);
+        }
+        // add a pipeline tag
+        let p2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g2, g].as_ptr() as *mut _));
+        c::cmsWriteTag(prof, 0x41324230, p2 as *const _);
+        let mut buf = vec![0u8; 1 << 22];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("alltags save={s} n={n}");
+        // re-open + read all + re-save
+        if s != 0 {
+            let rp = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *const _, n);
+            if !rp.is_null() {
+                let nt = c::cmsGetTagCount(rp);
+                for i in 0..nt as u32 {
+                    let sig = c::cmsGetTagSignature(rp, i);
+                    let _t = c::cmsReadTag(rp, sig);
+                }
+                let mut buf2 = vec![0u8; 1 << 22];
+                let mut n2 = buf2.len() as u32;
+                let s2 = c::cmsSaveProfileToMem(rp,
+                    buf2.as_mut_ptr() as *mut _, &mut n2);
+                eprintln!("re-save={s2}");
+                c::cmsCloseProfile(rp);
+            }
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsMLUfree(ml);
+        c::cmsPipelineFree(p2);
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+    }
+}
