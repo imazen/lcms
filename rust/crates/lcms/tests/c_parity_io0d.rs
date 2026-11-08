@@ -708,3 +708,33 @@ fn tag_count_mutations2() {
         }
     }
 }
+
+/// Remaining header mutations — illuminant + flags + creator
+/// fields.
+#[test]
+fn illuminant_mutations() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // illuminant XYZ @68-80 (3 x s15Fixed16)
+        for (name, off, val) in [
+            ("illum-X", 68usize, 0x00010000i32 as u32),
+            ("illum-Y", 72, 0x00010000u32),
+            ("illum-Z", 76, 0x00010000u32),
+            ("illum-zero", 68, 0u32),
+            ("illum-huge", 68, 0x7FFFFFFFu32),
+        ] {
+            let mut dd = d.clone();
+            dd[off..off + 4].copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
