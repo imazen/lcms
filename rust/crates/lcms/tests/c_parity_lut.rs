@@ -2868,3 +2868,39 @@ fn save_as_8bits_flag() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// N-input CLUT evaluators — CLUT stages with 4-8 input channels
+/// hit Eval4Inputs..Eval8Inputs + the Float variants.
+#[test]
+fn n_input_clut_eval() {
+    unsafe {
+        for nin in [4u32, 5, 6, 7, 8] {
+            let n_cells = (2usize).pow(nin) * 3;
+            let tab: Vec<u16> = (0..n_cells)
+                .map(|i| (i * 5) as u16).collect();
+            let ftab: Vec<f32> = (0..n_cells)
+                .map(|i| i as f32 / n_cells as f32).collect();
+            let st = c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                2, nin, 3, tab.as_ptr());
+            let stf = c::cmsStageAllocCLutFloat(std::ptr::null_mut(),
+                2, nin, 3, ftab.as_ptr());
+            if !st.is_null() {
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nin, 3);
+                c::cmsPipelineInsertStage(p, 1, st);
+                let ib = vec![0x4000u16; nin as usize];
+                let mut ob = [0u16; 3];
+                c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+                c::cmsPipelineFree(p);
+            }
+            if !stf.is_null() {
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nin, 3);
+                c::cmsPipelineInsertStage(p, 1, stf);
+                let ib = vec![0.5f32; nin as usize];
+                let mut ob = [0f32; 3];
+                c::cmsPipelineEvalFloat(ib.as_ptr(), ob.as_mut_ptr(), p);
+                c::cmsPipelineFree(p);
+            }
+            eprintln!("nin={nin} eval ran");
+        }
+    }
+}
