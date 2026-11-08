@@ -3136,3 +3136,51 @@ fn clut8bit_serialization() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// mAB writer offset internals — pipelines that serialize into
+/// each mAB element position -> the offset-array computation.
+#[test]
+fn mab_writer_offsets() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let ftab: Vec<f32> = (0..8*3).map(|i| i as f32 / 24.0).collect();
+        // mAB element sets: [A-curves] [matrix] [M-curves] [clut] [B-curves]
+        for (stages, name) in [
+            (vec![0], "B-only"),
+            (vec![0, 2, 0], "B-clut-A"),       // B,clut,A
+            (vec![0, 1, 0], "cv-mx-cv"),         // curves+matrix+curves
+            (vec![0, 1, 0, 2, 0], "all-5"),      // full mAB
+            (vec![2], "clut-only"),
+        ] {
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            for &k in &stages {
+                match k {
+                    0 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 3,
+                            [g; 3].as_ptr() as *mut _)),
+                    1 => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocMatrix(std::ptr::null_mut(),
+                            3, 3, mat.as_ptr(), std::ptr::null())),
+                    _ => c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocCLutFloat(
+                            std::ptr::null_mut(), 2, 3, 3,
+                            ftab.as_ptr())),
+                };
+            }
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, 0x41324230, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            eprintln!("{name} w={w} s={s}");
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+    }
+}
