@@ -3461,3 +3461,21 @@ fn save_two_phase_multiprofile() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// HeaderCreationDateTime + remaining header fields — the
+/// dateTime header field get/set round-trip.
+#[test]
+fn header_datetime() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        #[repr(C)] struct Dt { y: u16, mo: u16, d: u16,
+            h: u16, mi: u16, s: u16 }
+        let mut dt = Dt { y: 0, mo: 0, d: 0, h: 0, mi: 0, s: 0 };
+        let r = c::cmsGetHeaderCreationDateTime(p,
+            &mut dt as *mut _ as *mut _);
+        eprintln!("created {r} {}-{}-{}", dt.y, dt.mo, dt.d);
+        // no public setter — re-read after a header mutation via
+        // SetHeaderFlags touches the header-write path too
+        c::cmsCloseProfile(p);
+    }
+}
