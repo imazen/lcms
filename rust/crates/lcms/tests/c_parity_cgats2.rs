@@ -1135,3 +1135,48 @@ fn it8_deep_arms2() {
         }
     }
 }
+
+/// cmscgats remaining lexer arms — unusual tokens, comments,
+/// numbers, string forms, table API internals.
+#[test]
+fn it8_deep_arms3() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // scientific + signed + leading-zeros in all positions
+            (b"IT8FILE\nP1 -1.5e+3\nP2 +0.0e-0\nP3 .5e2\nP4 1E-5\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "sci-forms"),
+            // comment-only doc + comment inside blocks
+            (b"# all comments\nIT8FILE\n# inner\nNUMBER_OF_FIELDS 1\n# more\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "all-cmts"),
+            // number edge cases in data
+            (b"IT8FILE\nNUMBER_OF_FIELDS 6\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B C D E F\nEND_DATA_FORMAT\nBEGIN_DATA\n-0 0.0 0x0 0E0 .0 -0x1\n+1 -1 1. -1. -1e1 1e-1\nEND_DATA\n".to_vec(), "num-edge"),
+            // quoted data values with escapes inside
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 \"a\\tb\"\n2 \"c\\u{1f600}d\"\nEND_DATA\n".to_vec(), "esc-data"),
+            // property = value on same line as section header
+            (b"IT8FILE\nP1 \"a\";P2 \"b\"\n".to_vec(), "semi-props"),
+            // nested/multiple tables with different counts
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 5\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\n2\n3\n4\n5\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nX Y\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\n5 6\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nZ\nEND_DATA_FORMAT\nBEGIN_DATA\n7\n8\nEND_DATA\n".to_vec(), "3-tables-diff"),
+            // DATA_IDENTIFIER values (quoted/unquoted)
+            (b"IT8FILE\nDATA_IDENTIFIER \"id1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"id2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n".to_vec(), "dataids"),
+            // blank lines + leading whitespace inside blocks
+            (b"IT8FILE\n\n\n  P1 \"a\"\n\n\n  NUMBER_OF_FIELDS 1\n\n  NUMBER_OF_SETS 1\n\nBEGIN_DATA_FORMAT\n\nA\n\nEND_DATA_FORMAT\n\nBEGIN_DATA\n\n1\n\nEND_DATA\n\n".to_vec(), "blank-lines"),
+            // very long single line
+            ({ let mut v = b"IT8FILE\nP1 \"".to_vec();
+                for _ in 0..500 { v.push(b'x'); }
+                v.extend_from_slice(b"\"\n");
+                v }, "long-line"),
+            // table with only format, no data rows
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\n".to_vec(), "fmt-no-data"),
+            // IT8 with all-optional fields absent
+            (b"IT8FILE\n\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "bare-data"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                let nt = c::cmsIT8TableCount(p);
+                if nt > 1 { eprintln!("  tables={nt}"); }
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
