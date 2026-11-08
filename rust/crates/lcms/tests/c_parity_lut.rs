@@ -257,3 +257,45 @@ fn stage_accessors() {
         c::cmsPipelineFree(c_pipe);
     }
 }
+
+/// MPE element writers: pipelines with Lab2XYZ/XYZ2Lab stages written
+/// as mpet tags on a profile, resaved byte-exact.
+#[test]
+fn mpe_element_writes() {
+    unsafe {
+        // Lab->XYZ->Lab pipeline
+        let c_pipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(c_pipe, 1,
+            c::_cmsStageAllocLab2XYZ(std::ptr::null_mut()));
+        c::cmsPipelineInsertStage(c_pipe, 1,
+            c::_cmsStageAllocXYZ2Lab(std::ptr::null_mut()));
+        let mut r_pipe = lut::pipeline_alloc(None, 3, 3).unwrap();
+        r_pipe.insert_stage(lut::StageLoc::AtEnd, lut::stage_alloc_lab2xyz(None));
+        r_pipe.insert_stage(lut::StageLoc::AtEnd, lut::stage_alloc_xyz2lab(None));
+        // write as an mpet tag on an XYZ profile
+        let ch = c::cmsCreateXYZProfile();
+        let mut rp = lcms::virt::create_xyz_profile(None).unwrap();
+        let c_ok = c::cmsWriteTag(ch, 0x41324230, c_pipe as *const _);
+        let r_ok = lcms::profile::cms_write_tag(
+            &mut rp, 0x41324230,
+            Some(lcms::tagtypes::TagObject::Mpe(r_pipe)));
+        assert_eq!(c_ok != 0, r_ok, "mpe write");
+        if c_ok != 0 {
+            let mut c_out = vec![0u8; 1 << 20];
+            let mut size = c_out.len() as u32;
+            c::cmsSaveProfileToMem(ch, c_out.as_mut_ptr() as *mut _, &mut size);
+            c_out.truncate(size as usize);
+            let mut r_out = lcms::profile::save_profile_to_mem(&mut rp)
+                .unwrap_or_default();
+            for i in 0..12 {
+                c_out.get_mut(24 + i).map(|b| *b = 0);
+                r_out.get_mut(24 + i).map(|b| *b = 0);
+            }
+            c_out.resize(r_out.len().max(c_out.len()), 0);
+            r_out.resize(c_out.len(), 0);
+            assert_eq!(c_out, r_out, "mpe resave");
+        }
+        c::cmsCloseProfile(ch);
+        // c_pipe is owned by the profile after write — no free
+    }
+}
