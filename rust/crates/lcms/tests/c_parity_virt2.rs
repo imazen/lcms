@@ -346,3 +346,22 @@ fn placeholder_variants() {
         }
     }
 }
+
+/// Version machinery on more combos — cmsSetEncodedICCversion
+/// internals.
+#[test]
+fn version_machinery() {
+    unsafe {
+        for (name, v) in [
+            ("v2.0", 0x02000000u32), ("v2.1", 0x02100000),
+            ("v2.4", 0x02400000), ("v4.0", 0x04000000),
+            ("v4.3", 0x04300000), ("v4.4", 0x04400000)] {
+            let h = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetEncodedICCversion(h, v);
+            let rv = c::cmsGetEncodedICCversion(h);
+            eprintln!("{name} enc={:#x}", rv);
+            c::cmsCloseProfile(h);
+        }
+    }
+}
