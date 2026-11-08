@@ -3340,3 +3340,24 @@ fn write_dispatch_matrix() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a CLUT-stage payload — the write
+/// machinery on different stage types.
+#[test]
+fn write_dispatch_clut() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let stage = c::cmsStageAllocCLut16bit(
+            std::ptr::null_mut(), 2, 3, 3,
+            std::ptr::null());
+        for (sig, name) in [
+            (0x41324230u32, "A2B0"), (0x42324130u32, "B2A0"),
+            (0x67616D74u32, "gamt"), (0x6D706574u32, "mpet")] {
+            let ok = c::cmsWriteTag(h, sig,
+                stage as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsStageFree(stage);
+        c::cmsCloseProfile(h);
+    }
+}
