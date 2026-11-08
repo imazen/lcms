@@ -2689,3 +2689,55 @@ fn calt_datetime() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_ParametricCurve edge cases — fnType 3/4 boundary
+/// parameter values.
+#[test]
+fn parametric_edge_cases() {
+    unsafe {
+        for (name, fntype, params) in [
+            ("t3-x0-0", 3u16, [0x00010000i32, 0x00010000,
+                               0x00010000, 0x00010000, 0]
+                .as_slice()),
+            ("t3-x0-1", 3, [0x00010000, 0x00010000,
+                            0x00010000, 0x00010000,
+                            0x00010000].as_slice()),
+            ("t4-a-1", 4, [0x00010000, 0x00010000, 0x00010000,
+                           0x00010000, 0x00010000,
+                           0x00010000, 0x00010000]
+                .as_slice()),
+            ("t4-a-0", 4, [0x00010000, 0x00010000, 0, 0,
+                           0x00010000, 0x00010000, 0]
+                .as_slice()),
+            ("t4-b-0", 4, [0x00010000, 0, 0x00010000,
+                           0x00010000, 0x00010000,
+                           0x00010000, 0x00010000]
+                .as_slice()),
+        ] {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"para");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&fntype.to_be_bytes());
+            b.extend_from_slice(&[0; 2]); // reserved
+            for p in params {
+                b.extend_from_slice(&p.to_be_bytes());
+            }
+            let h = c::cmsCreate_sRGBProfile();
+            let ok = c::cmsWriteRawTag(h, 0x72545243,
+                b.as_ptr() as *const std::ffi::c_void,
+                b.len() as u32);
+            let mut cn = 0u32;
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(),
+                &mut cn);
+            let mut cbuf = vec![0u8; cn as usize];
+            c::cmsSaveProfileToMem(h,
+                cbuf.as_mut_ptr() as *mut _, &mut cn);
+            let h3 = c::cmsOpenProfileFromMem(
+                cbuf.as_ptr() as _, cn);
+            let r = c::cmsReadTag(h3, 0x72545243);
+            eprintln!("{name} write={ok} read={}", r.is_null());
+            if !h3.is_null() { c::cmsCloseProfile(h3); }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
