@@ -2469,3 +2469,41 @@ fn pack_optimized_u8() {
         c::cmsCloseProfile(c1); c::cmsCloseProfile(c2);
     }
 }
+
+/// OPTIMIZED_SH(1)-bit output formats — the six Pack3Bytes*Optimized
+/// packers (0xFF00-domain 16-bit intermediate -> u8) plus
+/// Unroll2Bytes (MCH2 2-channel u8 input).
+#[test]
+fn pack_optimized_variants() {
+    unsafe {
+        let cp = c::cmsCreate_sRGBProfile();
+        let rp = virt::create_srgb_profile(None).unwrap();
+        // EXTRA(1)|SWAPFIRST(2)|DOSWAP(3)|OPTIMIZED(4) in my bit map:
+        // T_EXTRA(4..=7), T_SWAPFIRST(10), T_DOSWAP(11), T_OPTIMIZED(21)
+        let opt = |ex: u32, sf: u32, ds: u32|
+            (4u32 << 16) | (3 << 3) | 1 | (1 << 21)
+            | (ex << 7) | (sf << 10) | (ds << 11);
+        let rgb8 = f(PT_RGB, 3, 0, 1);
+        for &(name, ex, sf, ds) in &[
+            ("p3b-opt", 0u32, 0u32, 0u32),
+            ("p3be1-opt", 1, 0, 0),
+            ("p3be1sf-opt", 1, 1, 0),
+            ("p3be1dssf-opt", 1, 1, 1),
+            ("p3be1ds-opt", 1, 0, 1),
+            ("p3bds-opt", 0, 0, 1)] {
+            check(&format!("opt-{name}"), cp, &rp, rgb8,
+                opt(ex, sf, ds));
+        }
+        c::cmsCloseProfile(cp);
+        // Unroll2Bytes — MCH2 2-channel u8 input via 2ch link
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cur2 = [g2; 2];
+        let cd2 = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x4D434832, cur2.as_mut_ptr());
+        let tg2 = gamma::build_gamma(None, 2.2).unwrap();
+        let rd2 = virt::create_linearization_device_link(
+            None, 0x4D434832, &[&tg2, &tg2]).unwrap();
+        check("u2b-mch2", cd2, &rd2, f(11, 2, 0, 1), f(11, 2, 0, 1));
+        c::cmsCloseProfile(cd2);
+    }
+}
