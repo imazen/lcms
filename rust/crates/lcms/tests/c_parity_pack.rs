@@ -1421,3 +1421,32 @@ fn two_channel_formats() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// 6/8/15-channel formats on matching devicelinks — the
+/// multi-channel packer bodies.
+#[test]
+fn multichannel_formats() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (nch, sig, name) in [
+            (6usize, 0x36434C52u32, "6CLR"),
+            (8, 0x38434C52u32, "8CLR"),
+            (15, 0x46434C52u32, "FCLR")] {
+            let mut curves = vec![g; nch];
+            let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), sig, curves.as_mut_ptr());
+            eprintln!("{name} dl={}", !dl.is_null());
+            for fmt in [
+                (0 << 16) | ((nch as u32) << 3) | 1,
+                (0 << 16) | ((nch as u32) << 3) | 2,
+                (1 << 22) | (0 << 16) | ((nch as u32) << 3) | 4,
+            ] {
+                let ct = c::cmsCreateTransform(dl, fmt, dl,
+                    fmt, 0, 0);
+                eprintln!("  fmt t={}", !ct.is_null());
+                if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            }
+            if !dl.is_null() { c::cmsCloseProfile(dl); }
+        }
+    }
+}
