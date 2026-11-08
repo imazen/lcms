@@ -1410,3 +1410,36 @@ fn tag_table_enumeration() {
         c::cmsCloseProfile(h2);
     }
 }
+
+/// Stored-LUT evals — cmsPipelineEval16/EvalFloat on corpus
+/// LUT tags (the real stored-LUT machinery).
+#[test]
+fn stored_lut_eval_machinery() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            for sig in [0x41324230u32, 0x42324130,
+                        0x67616D74] {
+                let pl = c::cmsReadTag(h, sig);
+                if !pl.is_null() {
+                    let ic = c::cmsPipelineInputChannels(pl);
+                    let oc = c::cmsPipelineOutputChannels(pl);
+                    if ic <= 15 && oc <= 15 {
+                        let inp = [30000u16; 15];
+                        let mut out = [0u16; 15];
+                        c::cmsPipelineEval16(
+                            inp.as_ptr(), out.as_mut_ptr(),
+                            pl);
+                        let inpf = [0.5f32; 15];
+                        let mut outf = [0.0f32; 15];
+                        c::cmsPipelineEvalFloat(
+                            inpf.as_ptr(), outf.as_mut_ptr(),
+                            pl);
+                    }
+                }
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
