@@ -4954,3 +4954,268 @@ fn pack_variant2_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+// ---- pack format-word unroll/pack arm coverage ----
+// Per-function cmspack residuals: each Unroll*/Pack* variant
+// is selected by an exact format-word combo. Upstream bit
+// layout (lcms2.h): BYTES[0..2] CHANNELS[3..6] EXTRA[7..9]
+// DOSWAP[10] ENDIAN16[11] PLANAR[12] FLAVOR[13]
+// SWAPFIRST[14] COLORSPACE[16..20] OPTIMIZED[21] FLOAT[22]
+// PREMUL[23]. PT codes: GRAY=3 RGB=4 CMYK=6 XYZ=9 LAB=10
+// MCH1..15=15..29 LABV2=30.
+
+const fn fw(pt: u32, ch: u32, ex: u32, by: u32,
+            flags: u32) -> u32 {
+    (pt << 16) | (flags) | (ex << 7) | (ch << 3) | by
+}
+const DOSWAP: u32 = 1 << 10;
+const E16: u32 = 1 << 11;
+const PLANAR: u32 = 1 << 12;
+const FLAVOR: u32 = 1 << 13;
+const SWAPFIRST: u32 = 1 << 14;
+const FLOATF: u32 = 1 << 22;
+const PREMUL: u32 = 1 << 23;
+
+/// profile set covering gray/rgb/lab/xyz/cmyk/mch2/5/6/8/15
+struct Profs {
+    gray: *mut c_void,
+    rgb: *mut c_void,
+    lab: *mut c_void,
+    xyz: *mut c_void,
+    cmyk: *mut c_void,
+    mch: Vec<*mut c_void>,
+}
+
+unsafe fn mk_profs() -> (Profs, *mut c::ToneCurve) {
+    unsafe {
+        let gamma = c::cmsBuildGamma(
+            std::ptr::null_mut(), 2.2);
+        let wp = {
+            let mut w = std::mem::zeroed::<
+                lcms::types::CiexyY>();
+            w.x = 0.3457; w.y = 0.3585; w.Y = 1.0;
+            w
+        };
+        let gray = c::cmsCreateGrayProfileTHR(
+            std::ptr::null_mut(),
+            &wp as *const _ as *const c_void,
+            gamma as *const c_void);
+        let rgb = c::cmsCreate_sRGBProfileTHR(
+            std::ptr::null_mut());
+        let lab = c::cmsCreateLab4ProfileTHR(
+            std::ptr::null_mut(), std::ptr::null());
+        let xyz = c::cmsCreateXYZProfileTHR(
+            std::ptr::null_mut());
+        let curves: [*mut c::ToneCurve; 4] =
+            [gamma, gamma, gamma, gamma];
+        let cmyk = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(),
+            0x434D594B, // 'CMYK'
+            curves.as_ptr());
+        let mut mch = Vec::new();
+        for sig in [0x32434C52u32, 0x35434C52,
+                    0x36434C52, 0x38434C52,
+                    0x46434C52] { // '2CLR' '5CLR' '6CLR' '8CLR' 'FCLR'
+            let tc: [*mut c::ToneCurve; 15] =
+                [gamma; 15];
+            let p = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), sig, tc.as_ptr());
+            mch.push(p);
+        }
+        (Profs { gray, rgb, lab, xyz, cmyk, mch }, gamma)
+    }
+}
+
+/// create + run a transform both ways; NULL-creation is
+/// acceptable (reject arms) but record it.
+unsafe fn xform_run(i: *mut c_void, fi: u32,
+                    o: *mut c_void, fo: u32,
+                    label: &str) {
+    unsafe {
+        if i.is_null() || o.is_null() {
+            eprintln!("{label}: null prof"); return; }
+        let t = c::cmsCreateTransform(i, fi, o, fo, 0, 0);
+        if t.is_null() {
+            // try multiprofile (devicelinks)
+            let mut profs = [i, o];
+            let mt = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 2, fi, fo, 0, 0);
+            if mt.is_null() {
+                eprintln!("{label}: REJECT");
+                return;
+            }
+            let ib = [0x55u8; 512];
+            let mut ob = [0xA5u8; 512];
+            c::cmsDoTransform(mt,
+                ib.as_ptr() as *const c_void,
+                ob.as_mut_ptr() as *mut c_void, 2);
+            c::cmsDeleteTransform(mt);
+            eprintln!("{label}: mp ok");
+            return;
+        }
+        let ib = [0x55u8; 512];
+        let mut ob = [0xA5u8; 512];
+        c::cmsDoTransform(t,
+            ib.as_ptr() as *const c_void,
+            ob.as_mut_ptr() as *mut c_void, 2);
+        c::cmsDeleteTransform(t);
+        eprintln!("{label}: ok");
+    }
+}
+
+#[test]
+fn pack_unroll_arms() {
+    unsafe {
+        let (p, gamma) = mk_profs();
+        // input-side Unroll* (ch1 gray)
+        for (nm, fo) in [
+            ("g8", fw(3, 1, 0, 1, 0)),
+            ("g8e1", fw(3, 1, 1, 1, 0)),
+            ("g8e2", fw(3, 1, 2, 1, 0)),
+            ("g8rev", fw(3, 1, 0, 1, FLAVOR)),
+            ("g16", fw(3, 1, 0, 2, 0)),
+            ("g16rev", fw(3, 1, 0, 2, FLAVOR)),
+            ("g16e3", fw(3, 1, 3, 2, 0)),
+            ("g16e16", fw(3, 1, 0, 2, E16)),
+        ] {
+            xform_run(p.gray, fo, p.rgb,
+                fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
+        }
+        // input-side MCH2 unroll + words
+        let m2 = p.mch[0];
+        for (nm, fo) in [
+            ("m2b1", fw(16, 2, 0, 1, 0)),
+            ("m2b2", fw(16, 2, 0, 2, 0)),
+        ] {
+            xform_run(m2, fo, m2, fo,
+                &format!("in-{nm}"));
+        }
+        // LabV2 unroll arms (input + output)
+        for (nm, fo) in [
+            ("lv2-8", fw(30, 3, 0, 1, 0)),
+            ("alv2-8", fw(30, 3, 1, 1, SWAPFIRST)),
+            ("lv2-16", fw(30, 3, 0, 2, 0)),
+        ] {
+            xform_run(p.lab, fo, p.rgb,
+                fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
+            xform_run(p.rgb, fw(4, 3, 0, 1, 0),
+                p.lab, fo, &format!("out-{nm}"));
+        }
+        // 3-byte unroll variants (RGB)
+        for (nm, fo) in [
+            ("b3", fw(4, 3, 0, 1, 0)),
+            ("b3sw", fw(4, 3, 0, 1, DOSWAP)),
+            ("b3e1sw", fw(4, 3, 1, 1, DOSWAP)),
+            ("b3e1sf", fw(4, 3, 1, 1, SWAPFIRST)),
+            ("b3e1swsf", fw(4, 3, 1, 1,
+                            DOSWAP | SWAPFIRST)),
+            ("w3", fw(4, 3, 0, 2, 0)),
+            ("w3sw", fw(4, 3, 0, 2, DOSWAP)),
+            ("w3e1sf", fw(4, 3, 1, 2, SWAPFIRST)),
+            ("w3e1sw", fw(4, 3, 1, 2, DOSWAP)),
+        ] {
+            xform_run(p.rgb, fo, p.rgb,
+                fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
+            xform_run(p.rgb, fw(4, 3, 0, 1, 0),
+                p.rgb, fo, &format!("out-{nm}"));
+        }
+        // 4-byte unroll variants (CMYK devicelink)
+        for (nm, fo) in [
+            ("b4", fw(6, 4, 0, 1, 0)),
+            ("b4rev", fw(6, 4, 0, 1, FLAVOR)),
+            ("b4sf", fw(6, 4, 0, 1, SWAPFIRST)),
+            ("b4sw", fw(6, 4, 0, 1, DOSWAP)),
+            ("b4swsf", fw(6, 4, 0, 1,
+                          DOSWAP | SWAPFIRST)),
+            ("w4", fw(6, 4, 0, 2, 0)),
+            ("w4rev", fw(6, 4, 0, 2, FLAVOR)),
+            ("w4sf", fw(6, 4, 0, 2, SWAPFIRST)),
+            ("w4sw", fw(6, 4, 0, 2, DOSWAP)),
+            ("w4swsf", fw(6, 4, 0, 2,
+                          DOSWAP | SWAPFIRST)),
+            ("w4e16", fw(6, 4, 0, 2, E16)),
+        ] {
+            xform_run(p.cmyk, fo, p.cmyk, fo,
+                &format!("cm-{nm}"));
+        }
+        // planar/chunky + premul on 5ch
+        let m5 = p.mch[1];
+        for (nm, fo) in [
+            ("m5b1", fw(19, 5, 0, 1, 0)),
+            ("m5b1pl", fw(19, 5, 0, 1, PLANAR)),
+            ("m5b2", fw(19, 5, 0, 2, 0)),
+            ("m5b2pl", fw(19, 5, 0, 2, PLANAR)),
+            ("m5b2plpm", fw(19, 5, 1, 2,
+                            PLANAR | PREMUL)),
+            ("m5b2pm", fw(19, 5, 1, 2, PREMUL)),
+            ("m5b1e2", fw(19, 5, 2, 1, 0)),
+        ] {
+            xform_run(m5, fo, m5, fo,
+                &format!("m5-{nm}"));
+        }
+        // 6-byte pack (6ch) + swap
+        let m6 = p.mch[2];
+        for (nm, fo) in [
+            ("m6b1", fw(20, 6, 0, 1, 0)),
+            ("m6b1sw", fw(20, 6, 0, 1, DOSWAP)),
+            ("m6b2", fw(20, 6, 0, 2, 0)),
+            ("m6b2sw", fw(20, 6, 0, 2, DOSWAP)),
+        ] {
+            xform_run(m6, fo, m6, fo,
+                &format!("m6-{nm}"));
+        }
+                // float-side unroll/pack arms
+        for (nm, fo) in [
+            ("lab-dbl", fw(10, 3, 0, 0, FLOATF)),
+            ("lab-flt", fw(10, 3, 0, 4, FLOATF)),
+            ("lv2-8f", fw(30, 3, 0, 1, FLOATF)),
+            ("alv2-8f", fw(30, 3, 1, 1,
+                           FLOATF | SWAPFIRST)),
+            ("lv2-16f", fw(30, 3, 0, 2, FLOATF)),
+        ] {
+            // Lab-float input on Lab profile; Lab-float
+            // output on Lab profile (same-space transform
+            // keeps IsProperColorSpace satisfied).
+            xform_run(p.lab, fo, p.lab,
+                fw(10, 3, 0, 4, FLOATF),
+                &format!("in-{nm}"));
+            xform_run(p.lab,
+                fw(10, 3, 0, 4, FLOATF), p.lab, fo,
+                &format!("out-{nm}"));
+        }
+        for (nm, fo) in [
+            ("xyz-dbl", fw(9, 3, 0, 0, FLOATF)),
+            ("xyz-flt", fw(9, 3, 0, 4, FLOATF)),
+        ] {
+            xform_run(p.xyz, fo, p.xyz,
+                fw(9, 3, 0, 4, FLOATF),
+                &format!("in-{nm}"));
+            xform_run(p.xyz,
+                fw(9, 3, 0, 4, FLOATF), p.xyz, fo,
+                &format!("out-{nm}"));
+        }
+// generic float unroll/pack on gray+mch
+        for (nm, fo, prof) in [
+            ("g-flt", fw(3, 1, 0, 4, FLOATF), p.gray),
+            ("g-dbl", fw(3, 1, 0, 0, FLOATF), p.gray),
+            ("g-u8f", fw(3, 1, 0, 1, FLOATF), p.gray),
+            ("g-u16f", fw(3, 1, 0, 2, FLOATF), p.gray),
+            ("g-half", fw(3, 1, 0, 2, FLOATF), p.gray),
+            ("m5-flt", fw(19, 5, 0, 4, FLOATF), m5),
+            ("m5-fltpl", fw(19, 5, 0, 4,
+                            FLOATF | PLANAR), m5),
+            ("m5-dbl", fw(19, 5, 0, 0, FLOATF), m5),
+            ("m5-fltpm", fw(19, 5, 1, 4,
+                            FLOATF | PREMUL), m5),
+        ] {
+            xform_run(prof, fo, prof, fo,
+                &format!("f-{nm}"));
+        }
+        c::cmsFreeToneCurve(gamma);
+        for pr in [p.gray, p.rgb, p.lab, p.xyz, p.cmyk]
+            .iter().chain(p.mch.iter()) {
+            if !pr.is_null() {
+                c::cmsCloseProfile(*pr); }
+        }
+    }
+}
