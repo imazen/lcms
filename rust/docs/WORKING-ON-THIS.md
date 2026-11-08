@@ -115,3 +115,16 @@ has an empty `elements` list (opt_data-only pipeline) where C's
 Divergence is in the transform/link path for Lab-input profiles, not ps2
 itself. The corpus_ps2_matrix extension was reverted pending the fix;
 the 4 pre-existing ps2 tests remain green.
+
+## Coverage campaign status (through aef97a6e)
+
+19 parity gates: alpha, virt2, sm, xform2, cgats2 (+multi-table),
+ioerr, pack, types, err, lut, gamma, named, opt, pcs, io0b. 13 port
+bugs found and fixed by the gates. Coverage TOTAL ~61% lines / ~76%
+fns through the parity suite (run-to-run ±3pp from lost profraws on
+clang-instrumented crashes). All suite binaries green.
+
+Remaining ungated surface: cmsgmt (~41%), cmscnvrt rest (~60%),
+cmstypes MPE/exotic tags beyond built profiles (~47.6%), cmserr rest,
+cmsplugin rest, cmsio1 remaining getters, cmslut rest, cmsio0 rest,
+cmsps2 rest. Unported APIs deferred: cmsGetProfileInfo*, cmsGetSupportedIntents.
