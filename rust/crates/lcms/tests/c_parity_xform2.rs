@@ -720,3 +720,31 @@ fn blackpoint_tac() {
         let _ = (dl, dl4, srgb, lab, ph);
     }
 }
+
+/// Desaturate/alarm machinery on more combos.
+#[test]
+fn desaturate_alarm() {
+    unsafe {
+        // DesaturateLab — the desaturate machinery
+        for (name, l, a, b, amax, amin, bmax, bmin) in [
+            ("mid", 50.0, 20.0, -30.0, 80.0, 10.0, 80.0, 10.0),
+            ("hi", 90.0, 40.0, 50.0, 95.0, 60.0, 95.0, 60.0),
+            ("lo", 10.0, -10.0, -20.0, 30.0, 5.0, 30.0, 5.0)] {
+            let mut lab = c::CieLab { L: l, a, b };
+            let r = c::cmsDesaturateLab(&mut lab as *mut _ as *mut _,
+                amax, amin, bmax, bmin);
+            eprintln!("{name} desat={r} L={:.2}a={:.2}b={:.2}",
+                lab.L, lab.a, lab.b);
+        }
+        // alarm codes — set/get
+        let mut ac = [0x8000u16; 16];
+        c::cmsSetAlarmCodes(ac.as_ptr());
+        let mut out = [0u16; 16];
+        c::cmsGetAlarmCodes(out.as_mut_ptr());
+        eprintln!("alarm={:#x}", out[0]);
+        let ac2 = [0x1234u16; 16];
+        c::cmsSetAlarmCodes(ac2.as_ptr());
+        c::cmsGetAlarmCodes(out.as_mut_ptr());
+        eprintln!("alarm2={:#x}", out[0]);
+    }
+}
