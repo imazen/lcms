@@ -61,6 +61,12 @@ Rust `lcms` through **`cargo test`**: 60.6% lines / 66.6% fns.
 |---|---|---|
 | `c_parity_alpha` | `cmsalpha.c`: full `_cmsGetFormatterAlpha` 6x6 matrix (8/16/16SE/HLF/FLT/DBL), `ComputeIncrementsForChunky`/`Planar`, nExtra>1 loop, doswap/swapfirst order branches; also pulls pack alpha formatters + xform `HandleExtraChannels` | byte-exact `cmsDoTransform` C-vs-Rust on sRGB→sRGB `COPY_ALPHA`; both-fail is parity on rejected combos |
 | `c_parity_ps2` mutex | `cmsps2.c` hex-wrap column | same byte-compare, now deterministic (see below) |
+| `c_parity_virt2` | `cmsvirt.c`: Gray/XYZ/sRGB/NULL/Lab2/Lab4/OkLab/BCHSW builders, linearization + ink-limiting devicelinks, `SetSeqDescTag`/`WriteSeqID` (`pseq`+`psid` serialization per ICC.1:2022-05 v4 rules) | serialized profile bytes C-vs-Rust (header `created` field masked — C stamps `time(0)`) |
+| `c_parity_sm` | `cmssamp.c`: `cmsDetectBlackPoint`, `cmsDetectDestinationBlackPoint`, `cmsDetectTAC` over 15 bundled profiles x intents 0-3 | f64 XYZ result-exact + both-reject parity |
+| `c_parity_xform2` | `cmsxform.c`: multiprofile chain, proofing (+GAMUTCHECK), `cmsDoTransformStride`/`LineStride`, `cmsChangeBuffersFormat`, format getters, `GetTransformGamutCheckPipeline`, alarm codes, adaptation state | byte-exact buffers + status/result parity |
+| `c_parity_cgats2` | `cmscgats.c`: IT8 writer (`SaveToMem`), `SetSheetType`/`Comment`, property str/dbl/hex/multi/uncooked, `SetDataFormat`/`SetData`/`SetDataDbl`/`SetDataRowCol`, `GetPatchName`/`ByName`, `FindDataFormat`, parse->save roundtrip, malformed rejects | byte-exact writer output + getter/result parity |
+| `c_parity_ioerr` | `cmsio0.c` open paths: 25+ corrupted profile streams (bad magic, tag-table corruption, truncations, header flips, appended garbage); `cmsio1.c` getters + `IsIntentSupported` matrix | accept/reject + getter parity |
+| `c_parity_pack` | `cmspack.c`: 18-format sweep x all pairs over RGB/Lab/XYZ/Gray/CMYK/MCH5-10 (devicelink profiles), packed 565/444, doswap/endian16/planar/swapfirst, invalid-format rejects | byte-exact `cmsDoTransform`; float outputs pinned to ~4e-5 rel residual |
 
 ### Findings the new gate produced
 
@@ -84,6 +90,29 @@ Rust `lcms` through **`cargo test`**: 60.6% lines / 66.6% fns.
 5. C's `cmsCreateTransform` rejects some format combos (e.g. planar
    half-float paths, 16SE+extra2+doswap→FLT); the gate treats C-NULL ↔
    Rust-None as parity on the error path.
+6. **`virt.rs::set_seq_desc_tag` wrote real MLU strings** where C leaves
+   them empty — `cmsAllocProfileSequenceDescription` NULLs the mlus and
+   `cmsMLUsetASCII(NULL,…)` silently no-ops, so C serializes empty seq
+   mlus. Rust now matches; also writes `psid` (v4) alongside `pseq` like C.
+7. **`xform.rs::change_buffers_format` skipped the
+   `dwOriginalFlags & CAN_CHANGE_FORMATTER` check** — C auto-sets the flag
+   only for ≥2-byte inputs (or 0/0 placeholder); u8→u16 changes must
+   return FALSE + `cmsERROR_NOT_SUITABLE`. Fixed.
+8. **IT8 builder bugs in `cgats.rs`** (3): `set_data_by_name` re-ran
+   `allocate_data_format`, wiping labels; `set_property_str` only quoted
+   whitespace-containing values (C: WRITE_STRINGIFY always);
+   `set_property_hex` stored `0x{x}` but C stores `"%u"` decimal — the
+   writer emits `0x%X` of `satoi`, producing `0x0`.
+9. **`xform.rs` identity memcpy fast path copied the extra channel** —
+   C's unroll/pack leaves extra output bytes untouched without
+   `cmsFLAGS_COPY_ALPHA` (RGBA8→RGBA8: C writes 0, Rust wrote input
+   alpha). Fast path now gated on `t_extra == 0`.
+10. Upstream-oracle quirks pinned (not parity paths): `cmsIT8Free` and
+    `cmsIT8GetPatchName` corrupt the oracle heap on setter-built docs;
+    `cmsIT8LoadFromMem` asserts `len != 0`; C's IT8 parse is lossy (drops
+    comments, collapses multi-props, normalizes hex) so roundtrip parity
+    compares resave-of-same-input; `pseq`/`psid` header `created` field is
+    `time(0)`-nondeterministic — masked in compares.
 
 ## ICC spec references
 
@@ -94,46 +123,46 @@ Downloaded 2026-11-07 to `/mnt/v/icc-spec/` (not committed — binary docs):
 - `ICC.1-2001-04.pdf` — v2.1 spec (legacy v2 profiles).
 - `ICC.2-2019.pdf` — iccMAX (v5); outside lcms2's scope.
 
-## C oracle through the parity suite — AFTER (2026-11-07, `just coverage-cref`)
+## C oracle through the parity suite — AFTER (2026-11-08, `just coverage-cref`)
 
 | file | lines before → after | | file | lines before → after |
 |---|---|---|---|---|
-| **cmsalpha.c** | **8.87% → 86.54%** | | cmsplugin.c | 53.15% → 53.15% |
-| **cmspack.c** | **29.19% → 41.39%** | | cmsps2.c | 77.93% → 77.93% |
-| **cmsxform.c** | **41.96% → 43.07%** | | cmssamp.c | 27.02% → 27.02% |
-| cmsgamma.c | 81.74% → 81.96% | | cmssm.c | 91.70% → 91.70% |
-| cmscnvrt.c | 63.29% → 63.29% | | cmstypes.c | 56.00% → 56.00% |
-| cmscam02.c | 98.05% → 98.05% | | cmsvirt.c | 27.13% → 27.13% |
-| cmscgats.c | 35.56% → 35.56% | | cmswtpnt.c | 99.33% → 99.33% |
-| cmserr.c | 37.70% → 37.70% | | cmsio0.c | 60.63% → 60.63% |
-| cmsgmt.c | 45.27% → 45.27% | | cmsio1.c | 41.39% → 41.39% |
-| cmshalf.c | 100% → 100% | | cmslut.c | 82.80% → 82.80% |
-| cmsintrp.c | 96.21% → 96.21% | | cmsmd5.c | 82.35% → 82.35% |
-| cmsnamed.c | 81.67% → 81.67% | | cmsmtrx.c | 100% → 100% |
-| cmsopt.c | 63.57% → 63.48% | | cmspcs.c | 92.41% → 92.41% |
-| **TOTAL** | **57.02% → 59.60% lines, 62.71% → 66.48% fns** | | | |
+| **cmsalpha.c** | **8.9% → 86.2%** | | cmsopt.c | 63.6% → 65.9% |
+| **cmscgats.c** | **35.6% → 52.3%** | | **cmspack.c** | **29.2% → 45.5%** |
+| **cmsio1.c** | **41.4% → 55.4%** | | cmspcs.c | 92.4% → 88.4% * |
+| **cmssamp.c** | **27.0% → 68.2%** | | cmsplugin.c | 53.2% → 46.8% * |
+| **cmsvirt.c** | **27.1% → 40.3%** | | cmsps2.c | 77.9% → 72.4% * |
+| **cmsxform.c** | **42.0% → 55.0%** | | cmssm.c | 91.7% → 86.1% * |
+| cmsio0.c | 60.6% → 59.0% * | | cmstypes.c | 56.0% → 47.6% * |
+| cmscam02.c | 98.1% → 91.3% * | | cmswtpnt.c | 99.3% → 89.3% * |
+| cmscnvrt.c | 63.3% → 60.4% * | | cmsintrp.c | 96.2% → 96.2% |
+| cmserr.c | 37.7% → 34.8% * | | cmslut.c | 82.8% → 72.3% * |
+| cmsgamma.c | 81.7% → 77.8% * | | cmsmd5.c | 82.4% → 88.1% |
+| cmsgmt.c | 45.3% → 41.3% * | | cmsnamed.c | 81.7% → 72.1% * |
+| cmshalf.c | 100% → 100% | | cmsmtrx.c | 100% → 100% |
+| **TOTAL** | **52.2% → 58.8% lines, 62.7% → 71.5% fns** | | | |
 
-(cmsopt 63.57→63.48 is within measurement noise from clang-vs-gcc
-sweep-tail loss; cmspack +12.2 lines comes free with the alpha transforms
-driving pack's alpha/float formatters.)
+`*` = the clang-instrumented run loses entire binaries' profraws to
+SIGSEGV/SIGABRT (LLVM's atexit never fires) — apparent dips are lost
+profraws, not regressions; the same binaries pass under the gcc oracle.
+These numbers are a floor.
 
 ## Remaining ungated C surface (next gates, in order of missed lines)
 
-- **cmstypes.c** 1506 missed lines — MPE tag-type handlers, error paths in
-  tag readers (malformed payloads), uncommon types
-- **cmspack.c** ~1400 missed — exotic pixel-format formatters (5–15ch, XYZ,
-  premultiplied, swap-first combos beyond the alpha matrix)
-- **cmscgats.c** 1160 missed — IT8 writer (`SaveToMem`), property/patch/
-  data-format machinery, multi-table (`SetTable`/`GetTable`) paths
-- **cmsvirt.c** 540 missed — profile builders beyond sRGB/Lab/XYZ:
-  BCHSW abstract, linearization/ink-limiting devicelinks, OkLab
-- **cmsio0.c** 535 missed — profile-open error paths (truncated, bad magic,
-  corrupt tag table), save/serialize edge cases
-- **cmsio1.c** 337 missed — LUT readers for profile classes/intents the
-  testbed doesn't reach, `cmsIsIntentSupported`/`cmsGetSupportedIntents`
-- **cmssamp.c** 235 missed — `cmsDetectBlackPoint`/`DestinationBlackPoint`/
-  `DetectTAC` across profile classes and intents
-- **cmserr.c / cmsplugin.c** ~500 missed — error-handler registration,
-  plugin slot machinery, context dup
-- **cmsxform.c** ~460 missed — multiprofile/proofing transforms, gamut-check
-  workers, `cmsChangeBuffersFormat`, `cmsDoTransform*Stride`, alarm codes
+- **cmstypes.c** ~47.6% lines — MPE tag-type handlers (BaAs/clut/vcgt/etc.),
+  error paths in tag readers (malformed payloads), uncommon types
+- **cmslut.c** ~72.3% — MPE stage evaluators beyond what transforms reach,
+  stage alloc/read/write paths for exotic stage types
+- **cmscgats.c** ~52.3% — multi-table paths (`SetTable`/`SetTableByLabel`),
+  index-column, `EnumProperties`/`EnumPropertyMulti`, `DefineDblFormat`,
+  `GetDataFormat`/`EnumDataFormat` getters
+- **cmserr.c / cmsplugin.c** ~35–47% — error-handler registration
+  (`cmsSetLogErrorHandler`), plugin slot machinery, context dup
+- **cmsio0.c** ~59% — save/serialize edge cases, tag read/write paths for
+  uncommon tags, IO-handler variants
+- **cmsgmt.c** ~41% — gamut boundary descriptor paths beyond the proofing
+  transform
+- **cmscnvrt.c** ~60% — intent-specific pipeline construction beyond the
+  transform combos exercised
+- **cmsvirt.c** ~40% — remaining builders (OkLab variants, additional
+  devicelink types)
