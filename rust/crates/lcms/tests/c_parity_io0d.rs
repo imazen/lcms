@@ -149,3 +149,37 @@ fn iohandler_null_it8_contiguous() {
         c::cmsIT8Free(h);
     }
 }
+
+/// cmsGetProfileInfo* machinery on the corpus — info reads on
+/// every profile x every info kind.
+#[test]
+fn profile_info_sweep() {
+    unsafe {
+        for (_n, data) in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            let mut buf = vec![0u8; 256];
+            for info in [0u32, 1, 2, 3, 4] {
+                // cmsInfoDescription / Manufacturer / Model /
+                // Copyright / ProfileName
+                let n = c::cmsGetProfileInfoASCII(h, info,
+                    b"en\0".as_ptr() as *const _,
+                    b"US\0".as_ptr() as *const _,
+                    buf.as_mut_ptr() as *mut _, 256);
+                let _ = n;
+                let n2 = c::cmsGetProfileInfoUTF8(h, info,
+                    b"en\0".as_ptr() as *const _,
+                    b"US\0".as_ptr() as *const _,
+                    buf.as_mut_ptr() as *mut _, 256);
+                let _ = n2;
+                let mut wbuf = [0u16; 128];
+                let n3 = c::cmsGetProfileInfo(h, info,
+                    b"en\0".as_ptr() as *const _,
+                    b"US\0".as_ptr() as *const _,
+                    wbuf.as_mut_ptr() as *mut std::ffi::c_void, 128);
+                let _ = n3;
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
