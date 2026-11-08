@@ -124,5 +124,38 @@ fn exotic_writes() {
         eprintln!("clro write");
         write_resave(0x636C726F, cco.as_ptr() as *const _,
             TagObject::ColorantOrder(rco), "clro");
+
+        // chad — chromaticAdaptationTag = S15Fixed16Array[9]
+        let mat: [f64; 9] = [1.0479, 0.0229, -0.0502,
+                             0.0296, 0.9904, -0.0171,
+                            -0.0092, 0.0151,  0.7519];
+        eprintln!("chad write");
+        write_resave(0x63686164, mat.as_ptr() as *const _,
+            TagObject::S15Fixed16(mat.to_vec()), "chad");
+
+        // scrn — screeningTag
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct CScreeningChannel { frequency: f64, angle: f64,
+            spot_shape: u32 }
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct CScreening { flag: u32, n_channels: u32,
+            channels: [CScreeningChannel; 16] }
+        let mut cs = CScreening { flag: 0, n_channels: 3,
+            channels: [CScreeningChannel { frequency: 0.0, angle: 0.0,
+                spot_shape: 0 }; 16] };
+        cs.channels[0].frequency = 150.0;
+        cs.channels[1].frequency = 175.0;
+        cs.channels[2].frequency = 200.0;
+        let mut rs = Screening { flag: 0,
+            channels: [ScreeningChannel { frequency: 0.0, angle: 0.0,
+                spot_shape: 0 }; 16], n_channels: 3 };
+        rs.channels[0].frequency = 150.0;
+        rs.channels[1].frequency = 175.0;
+        rs.channels[2].frequency = 200.0;
+        eprintln!("scrn write");
+        write_resave(0x7363726E, &cs as *const _ as *const _,
+            TagObject::Screening(rs), "scrn");
     }
 }
