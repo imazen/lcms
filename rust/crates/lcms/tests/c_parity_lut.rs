@@ -4551,3 +4551,68 @@ fn lut_patchlut_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsopt residual — OptimizeMatrixShaper identity-
+///   product removal: mat followed by its inverse ->
+///   _cmsMAT3per -> identity -> both stages dropped.
+#[test]
+fn lut_mat_ident_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x70726E74);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x4C616220);
+        c::cmsSetProfileVersion(prof, 4.4);
+        let pipe = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 3, 3);
+        let cin = [g, g, g];
+        c::cmsPipelineInsertStage(pipe, 0,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                cin.as_ptr() as *mut _));
+        // mat1: scale by 2 on diagonal
+        let mut m1 = [0.0f64; 9];
+        m1[0] = 2.0; m1[4] = 2.0; m1[8] = 2.0;
+        c::cmsPipelineInsertStage(pipe, 1,
+            c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                m1.as_ptr(), std::ptr::null()));
+        // mat2: inverse = 0.5 diagonal -> product identity
+        let mut m2 = [0.0f64; 9];
+        m2[0] = 0.5; m2[4] = 0.5; m2[8] = 0.5;
+        c::cmsPipelineInsertStage(pipe, 2,
+            c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                m2.as_ptr(), std::ptr::null()));
+        let cout = [g, g, g];
+        c::cmsPipelineInsertStage(pipe, 3,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                cout.as_ptr() as *mut _));
+        c::cmsWriteTag(prof, 0x41324230,
+            pipe as *const _);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let fin = (0u32 << 16) | (3 << 3) | 2;
+        for fl in [0u32, 0x0100] {
+            let t = c::cmsCreateTransform(prof, fin,
+                srgb, fin, 0, fl);
+            eprintln!("mat-ident fl{fl:#x} t={}",
+                !t.is_null());
+            if !t.is_null() {
+                let src = [0x4000u16; 3];
+                let mut dst = [0u16; 3];
+                c::cmsDoTransform(t,
+                    src.as_ptr() as *const _,
+                    dst.as_mut_ptr() as *mut _, 1);
+                eprintln!("  {src:?}->{dst:?}");
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(srgb);
+        c::cmsPipelineFree(pipe);
+        c::cmsFreeToneCurve(g);
+    }
+}
