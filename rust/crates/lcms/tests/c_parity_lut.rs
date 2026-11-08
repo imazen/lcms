@@ -2187,3 +2187,52 @@ fn optimized_pipeline_dup() {
         c::cmsCloseProfile(dl);
     }
 }
+
+/// MPE-element dup/free — cmsPipelineDup on an mpet-loaded pipeline
+/// invokes GenericMPEdup per element (cmsStageDup routes through the
+/// element-type handler's DupPtr); freeing -> GenericMPEfree.
+#[test]
+fn mpe_pipeline_dup_free() {
+    unsafe {
+        let mat: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        let mut ftab = [0f32; 8 * 3];
+        for (i, v) in ftab.iter_mut().enumerate() {
+            *v = i as f32 / 24.0;
+        }
+        let mut samp = [0f32; 256];
+        for (i, v) in samp.iter_mut().enumerate() {
+            *v = i as f32 / 255.0;
+        }
+        let seg = c::CurveSegment {
+            x0: 0.0, x1: 1.0, r#type: 0,
+            params: [0.0; 10],
+            n_grid_points: 256,
+            sampled_points: samp.as_ptr(),
+        };
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let cc = [
+            c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(), 1, &seg),
+            c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(), 1, &seg),
+            c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(), 1, &seg)];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        // store as mpet on a profile then read it back — read rebuilds
+        // the pipeline through the element handlers
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsWriteTag(prof, 0x44324230, p as *const _);
+        let lut = c::cmsReadTag(prof, 0x44324230);
+        eprintln!("mpet lut={}", !lut.is_null());
+        // dup + free through the pipeline -> GenericMPEdup/free
+        let d = c::cmsPipelineDup(lut);
+        eprintln!("mpet dup={}", !d.is_null());
+        if !d.is_null() { c::cmsPipelineFree(d); }
+        // the tag pointer is profile-owned — cmsCloseProfile frees it
+        c::cmsCloseProfile(prof);
+    }
+}
