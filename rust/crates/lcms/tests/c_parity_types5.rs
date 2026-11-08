@@ -3251,3 +3251,23 @@ fn write_dispatch_dict() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a curve-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_curve() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (sig, name) in [
+            (0x72545243u32, "rTRC"), (0x67545243u32, "gTRC"),
+            (0x62545243u32, "bTRC"), (0x6B545243u32, "kTRC"),
+            (0x63696370u32, "cicp")] {
+            let ok = c::cmsWriteTag(h, sig,
+                g as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsFreeToneCurve(g);
+        c::cmsCloseProfile(h);
+    }
+}
