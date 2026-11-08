@@ -400,3 +400,33 @@ fn device_class_branches() {
         }
     }
 }
+
+/// Linked-tag read-through on a loaded profile — the
+/// SearchTag follow-link machinery.
+#[test]
+fn linked_tag_reads() {
+    unsafe {
+        // build a profile with a tag link, save, reload, read
+        let h = c::cmsCreate_sRGBProfile();
+        c::cmsLinkTag(h, 0x63686164, 0x77747074); // chad->wtpt
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        // read the linked tag — C's SearchTag follows the link
+        let linked = c::cmsTagLinkedTo(h2, 0x63686164);
+        let r1 = c::cmsReadTag(h2, 0x63686164);
+        let r2 = c::cmsReadTag(h2, 0x77747074);
+        eprintln!("linked={linked:#x} chad-read={} wtpt-read={}",
+            r1.is_null(), r2.is_null());
+        // read raw on the linked slot
+        let mut tb = [0u8; 8];
+        let rn = c::cmsReadRawTag(h2, 0x63686164,
+            tb.as_mut_ptr() as *mut _, 8);
+        eprintln!("chad raw n={rn}");
+        c::cmsCloseProfile(h2);
+    }
+}
