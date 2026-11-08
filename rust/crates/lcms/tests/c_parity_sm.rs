@@ -342,3 +342,44 @@ fn slice_space_tac() {
         }
     }
 }
+
+/// BlackPointUsingPerceptualBlack + DestinationBlackPoint deeper
+/// paths — class x intent combos on more profile types.
+#[test]
+fn blackpoint_deeper_paths() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let profiles = [
+            c::cmsCreate_sRGBProfile(),
+            c::cmsCreateGrayProfile(&wp as *const _ as *const _,
+                c::cmsBuildGamma(std::ptr::null_mut(), 2.2)),
+            c::cmsCreateLab4Profile(std::ptr::null_mut()),
+        ];
+        // + corpus profiles
+        let mut corpus = Vec::new();
+        for f in ["lcms2cmyk.icc", "lcms2link.icc", "gray3lcms2.icc"] {
+            if let Ok(d) = std::fs::read(dir.join(f)) {
+                let p = c::cmsOpenProfileFromMem(
+                    d.as_ptr() as *const _, d.len() as u32);
+                if !p.is_null() { corpus.push(p); }
+            }
+        }
+        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+        for (pi, p) in profiles.iter().chain(corpus.iter()).enumerate() {
+            for intent in [0u32, 1, 2, 3] {
+                let mut bp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                let r = c::cmsDetectBlackPoint(&mut bp as *mut _ as *mut _,
+                    *p, intent, 0);
+                let r2 = c::cmsDetectDestinationBlackPoint(
+                    &mut bp as *mut _ as *mut _, *p, intent, 0);
+                if r != 0 || r2 != 0 {
+                    eprintln!("p{pi} i{intent} bp=({:.3},{:.3},{:.3}) r={r} d={r2}",
+                        bp.x, bp.y, bp.z);
+                }
+            }
+            c::cmsCloseProfile(*p);
+        }
+    }
+}
