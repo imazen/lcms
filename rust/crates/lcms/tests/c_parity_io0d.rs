@@ -14279,3 +14279,164 @@ fn gdb_float_arms() {
         c::cmsFreeToneCurve(pc);
     }
 }
+
+/// Type_VideoSignal_Read/Write (cicp) + Type_CrdInfo_Write +
+/// Type_MPEcurve_Read + SetData/GenerateCSA arms.
+#[test]
+fn cicp_crdi_mpecurve_arms() {
+    fn be32(v: u32) -> [u8; 4] { v.to_be_bytes() }
+    fn be16(v: u16) -> [u8; 2] { v.to_be_bytes() }
+    unsafe {
+        // cicp — 4 u8s
+        let cicp = [1u8, 13, 0, 1];
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x63696370,
+            cicp.as_ptr() as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let rd = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x63696370)
+        } else { std::ptr::null_mut() };
+        eprintln!("cicp w={w} s={s} rd={}", !rd.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        // crdi — MLU with ppname + #0-#3 keys
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 8);
+        for (lang, key, val) in [
+            (b"en\0" as &[u8], b"US\0" as &[u8],
+                b"nm val\0" as &[u8]),
+            (b"en\0", b"US\0", b"#0 r\0"),
+            (b"en\0", b"US\0", b"#1 g\0"),
+            (b"en\0", b"US\0", b"#2 b\0"),
+            (b"en\0", b"US\0", b"#3 k\0"),
+        ] {
+            c::cmsMLUsetASCII(mlu, lang.as_ptr(),
+                key.as_ptr(), val.as_ptr());
+        }
+        let prof = c::cmsCreate_sRGBProfile();
+        let w = c::cmsWriteTag(prof, 0x63726469,
+            mlu as *const _);
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if s != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let rd = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x63726469)
+        } else { std::ptr::null_mut() };
+        eprintln!("crdi w={w} s={s} rd={}", !rd.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+        c::cmsMLUfree(mlu);
+        // mpet 'curv'/'para' curve elements — MPEcurve_Read
+        let curv_elem = {
+            let mut t = Vec::new();
+            t.extend_from_slice(&be32(0x63757276));   // 'curv'
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be32(3));            // nEntries
+            for v in [0u16, 0x8000, 0xffff] {
+                t.extend_from_slice(&be16(v));
+            }
+            while t.len() % 4 != 0 { t.push(0); }
+            t
+        };
+        let para_elem = {
+            let mut t = Vec::new();
+            t.extend_from_slice(&be32(0x70617261));   // 'para'
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&1u16.to_be_bytes()); // type 1
+            t.extend_from_slice(&[0u8; 2]);
+            for v in [2.2f64, 1.0, 0.0] {
+                t.extend_from_slice(&((v * 65536.0) as i32)
+                    .to_be_bytes());
+            }
+            t
+        };
+        let cvst3 = {
+            let mut t = Vec::new();
+            t.extend_from_slice(&be32(0x63767374));   // 'cvst'
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be16(3));
+            t.extend_from_slice(&be16(3));
+            t.extend_from_slice(&be32(1));            // 1 curve
+            t.extend_from_slice(&be32(32));           // off
+            t.extend_from_slice(&be32(24));           // size
+            // seg curve: nIn/nOut u16, nSeg u16,
+            //   [parf seg]
+            t.extend_from_slice(&be16(3));
+            t.extend_from_slice(&be16(3));
+            t.extend_from_slice(&be16(0));
+            t.extend_from_slice(&be16(1));
+            t.extend_from_slice(&be32(0x70617266));   // 'parf'
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be16(0));
+            for v in [2.2f64] {
+                t.extend_from_slice(&((v * 65536.0) as i32)
+                    .to_be_bytes());
+            }
+            t
+        };
+        fn mpet(elems: &[Vec<u8>]) -> Vec<u8> {
+            let mut t = Vec::new();
+            t.extend_from_slice(&be32(0x6D706574));
+            t.extend_from_slice(&be32(0));
+            t.extend_from_slice(&be16(3));
+            t.extend_from_slice(&be16(3));
+            t.extend_from_slice(&be32(elems.len() as u32));
+            let mut off = 16 + elems.len() as u32 * 8;
+            for e in elems {
+                t.extend_from_slice(&be32(off));
+                t.extend_from_slice(&be32(e.len() as u32));
+                off += e.len() as u32;
+            }
+            for e in elems { t.extend_from_slice(e); }
+            t
+        }
+        for (blob, name) in [
+            (mpet(&[curv_elem.clone(), para_elem.clone()]),
+                "curv+para"),
+            (mpet(&[cvst3]), "cvst-3ch"),
+            (mpet(&[curv_elem.clone(), curv_elem.clone(),
+                curv_elem.clone()]), "3curv"),
+        ] {
+            for sig in [0x44324230u32, 0x42324430] {
+                let prof = c::cmsCreateProfilePlaceholder(
+                    std::ptr::null_mut());
+                c::cmsSetDeviceClass(prof, 0x6D6E7472);
+                c::cmsSetColorSpace(prof, 0x4C616220);
+                c::cmsSetPCS(prof, 0x58595A20);
+                c::cmsSetProfileVersion(prof, 4.4);
+                let w = c::cmsWriteRawTag(prof, sig,
+                    blob.as_ptr() as *const _, blob.len() as u32);
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = if w != 0 {
+                    c::cmsSaveProfileToMem(prof,
+                        buf.as_mut_ptr() as *mut _, &mut n)
+                } else { 0 };
+                let rp = if s != 0 {
+                    c::cmsOpenProfileFromMem(
+                        buf.as_ptr() as *const _, n)
+                } else { std::ptr::null_mut() };
+                let rd = if !rp.is_null() {
+                    c::cmsReadTag(rp, sig)
+                } else { std::ptr::null_mut() };
+                eprintln!("{name} {sig:#x} w={w} s={s} rd={}",
+                    !rd.is_null());
+                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                c::cmsCloseProfile(prof);
+            }
+        }
+    }
+}
