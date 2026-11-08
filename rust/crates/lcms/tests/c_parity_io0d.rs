@@ -997,3 +997,32 @@ fn intent_illuminant_fields() {
         }
     }
 }
+
+/// Flags/attributes machinery — unusual header fields.
+#[test]
+fn flags_attributes_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate flags (offset 24) + attributes (offset 84-92)
+        for (name, off, v) in [
+            ("flags-0", 24, 0u32),
+            ("flags-embedded", 24, 1u32),
+            ("flags-indep", 24, 2u32),
+            ("flags-huge", 24, 0xFFFFFFFFu32),
+            ("attr-0", 84, 0u32),
+            ("attr-huge", 84, 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
