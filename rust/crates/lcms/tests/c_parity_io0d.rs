@@ -938,3 +938,33 @@ fn profile_class_sigs() {
         }
     }
 }
+
+/// Colorspace/PCS machinery — unusual cs/PCS sigs.
+#[test]
+fn colorspace_pcs_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate colorspace (offset 16) + PCS (offset 20)
+        for (name, off, v) in [
+            ("cs-CMYK", 16, 0x434D594Bu32),
+            ("cs-Lab", 16, 0x4C616220),
+            ("cs-0", 16, 0u32),
+            ("cs-huge", 16, 0xFFFFFFFFu32),
+            ("pcs-Lab", 20, 0x4C616220u32),
+            ("pcs-0", 20, 0u32),
+            ("pcs-huge", 20, 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
