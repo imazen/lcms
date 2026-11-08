@@ -81,3 +81,51 @@ fn proofing_transform() {
         c::cmsCloseProfile(h_proof);
     }
 }
+
+/// Multiprofile chains: 3-4 profile links exercise _cmsLinkProfiles
+/// deeper than the 2-profile path.
+#[test]
+fn multiprofile_chains() {
+    unsafe {
+        let in_fmt: u32 = (6 << 16) | (3 << 3) | 1;
+        let out_fmt: u32 = (10 << 16) | (3 << 3) | 1;
+        for n in [3usize, 4] {
+            let mut c_profs: Vec<*mut _> = (0..n).map(|i| {
+                if i % 2 == 0 { c::cmsCreate_sRGBProfile() }
+                else { c::cmsCreateLab4Profile(std::ptr::null_mut()) }
+            }).collect();
+            let ct = c::cmsCreateMultiprofileTransform(
+                c_profs.as_mut_ptr(), n as i32, in_fmt, out_fmt, 0, 0);
+            let mut ps: Vec<Box<lcms::profile::IccProfile>> = (0..n).map(|i| {
+                if i % 2 == 0 { virt::create_srgb_profile(None).unwrap() }
+                else { virt::create_lab4_profile(None, None).unwrap() }
+            }).collect();
+            let mut bpc = vec![false; n];
+            let intents = vec![0u32; n];
+            let adapt = vec![1.0f64; n];
+            let mut rt = xform::create_extended_transform(
+                None, &mut ps, &mut bpc, &intents, &adapt, None, 0,
+                in_fmt, out_fmt, 0);
+            assert_eq!(ct.is_null(), rt.is_none(), "chain n{n}");
+            if !ct.is_null() {
+                for v in [0x1234u16, 0x7fff, 0xf000] {
+                    let inp = [v; 3];
+                    let mut co = [0u16; 3];
+                    let mut ro = vec![0u8; 6];
+                    c::cmsDoTransform(ct, inp.as_ptr() as _,
+                        co.as_mut_ptr() as *mut _, 1);
+                    if let Some(rt) = &mut rt {
+                        let inb: Vec<u8> = inp.iter()
+                            .flat_map(|x| x.to_be_bytes()).collect();
+                        rt.do_transform(&inb, &mut ro, 1);
+                    }
+                    let ro16: Vec<u16> = ro.chunks_exact(2)
+                        .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                    assert_eq!(co, ro16[..3], "chain n{n} v{v:#x}");
+                }
+                c::cmsDeleteTransform(ct);
+            }
+            for h in c_profs { c::cmsCloseProfile(h); }
+        }
+    }
+}
