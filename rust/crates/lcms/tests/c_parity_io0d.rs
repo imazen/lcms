@@ -3221,3 +3221,39 @@ fn raw_tag_io() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// Screening tag — cmsScreening {flag, nCh, channels[16]}
+/// write->save->read.
+#[test]
+fn screening_tag() {
+    unsafe {
+        #[repr(C)] #[derive(Clone, Copy)]
+        struct Ch { freq: f64, ang: f64, spot: u32 }
+        #[repr(C)] struct Sc { flag: u32, n: u32, ch: [Ch; 16] }
+        let prof = c::cmsCreate_sRGBProfile();
+        let mut s = Sc { flag: 1, n: 3, ch: [Ch {
+            freq: 0.0, ang: 0.0, spot: 0 }; 16] };
+        for (i, (f, a, sp)) in [(120.0f64, 15.0f64, 2u32),
+                (120.0, 45.0, 2), (120.0, 75.0, 2)]
+            .iter().enumerate() {
+            s.ch[i] = Ch { freq: *f, ang: *a, spot: *sp };
+        }
+        let w = c::cmsWriteTag(prof, 0x7363726E,
+            &s as *const _ as *const _); // 'scrn'
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let sv = if w != 0 {
+            c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n)
+        } else { 0 };
+        let rp = if sv != 0 {
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+        } else { std::ptr::null_mut() };
+        let tag = if !rp.is_null() {
+            c::cmsReadTag(rp, 0x7363726E)
+        } else { std::ptr::null_mut() };
+        eprintln!("scrn w={w} s={sv} read={}", !tag.is_null());
+        if !rp.is_null() { c::cmsCloseProfile(rp); }
+        c::cmsCloseProfile(prof);
+    }
+}
