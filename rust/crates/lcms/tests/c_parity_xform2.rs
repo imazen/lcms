@@ -3365,3 +3365,107 @@ fn colorspace_switches() {
         }
     }
 }
+
+/// cmsCreateRGBProfileTHR/cmsCreate_OkLabProfile edge arms +
+/// cmsDetectDestinationBlackPoint intent/flag matrix.
+#[test]
+fn create_profile_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 3.1);
+        #[repr(C)] struct XyY { x: f64, y: f64, yy: f64 }
+        #[repr(C)] struct Trip { r: XyY, g: XyY, b: XyY }
+        let wp = XyY { x: 0.3457, y: 0.3585, yy: 1.0 };
+        let prim = Trip {
+            r: XyY { x: 0.64, y: 0.33, yy: 1.0 },
+            g: XyY { x: 0.30, y: 0.60, yy: 1.0 },
+            b: XyY { x: 0.15, y: 0.06, yy: 1.0 } };
+        let curves = [g, g2, g3];
+        let cptr: *const *mut std::ffi::c_void = curves.as_ptr()
+            as *const *mut std::ffi::c_void;
+        // normal RGB profile + NULL/edge-param variants
+        for (wpp, pp, cp, name) in [
+            (&wp as *const _, &prim as *const _, cptr, "ok"),
+            (std::ptr::null(), &prim, cptr, "null-wp"),
+            (&wp, std::ptr::null(), cptr, "null-prim"),
+            (&wp, &prim, std::ptr::null(), "null-curves"),
+            (std::ptr::null(), std::ptr::null(), cptr, "null-2"),
+        ] {
+            let h = c::cmsCreateRGBProfileTHR(
+                std::ptr::null_mut(),
+                wpp as *const _, pp as *const _,
+                cp);
+            eprintln!("rgb {name} h={}", !h.is_null());
+            if !h.is_null() {
+                // serialize → WriteMatrix/curve arms via save
+                let mut buf = vec![0u8; 1 << 20];
+                let mut n = buf.len() as u32;
+                let s = c::cmsSaveProfileToMem(h,
+                    buf.as_mut_ptr() as *mut _, &mut n);
+                eprintln!("rgb {name} save={s}");
+                c::cmsCloseProfile(h);
+            }
+        }
+        // singular/degenerate primaries → matrix inversion fail
+        let bad = Trip {
+            r: XyY { x: 0.5, y: 0.5, yy: 1.0 },
+            g: XyY { x: 0.5, y: 0.5, yy: 1.0 },
+            b: XyY { x: 0.5, y: 0.5, yy: 1.0 } };
+        let hb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            &wp as *const _ as *const _,
+            &bad as *const _ as *const _, cptr);
+        eprintln!("rgb singular h={}", !hb.is_null());
+        if !hb.is_null() { c::cmsCloseProfile(hb); }
+        // OkLab profile
+        let ok = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
+        eprintln!("oklab h={}", !ok.is_null());
+        if !ok.is_null() {
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            c::cmsSaveProfileToMem(ok,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            c::cmsCloseProfile(ok);
+        }
+        // cmsDetectBlackPoint/DestinationBlackPoint matrix
+        let srgb = c::cmsCreate_sRGBProfile();
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (pr, pname) in [
+            (srgb, "srgb"), (cmyk, "cmyk"), (lab, "lab"),
+        ] {
+            if pr.is_null() { continue; }
+            for intent in [0u32, 1, 2, 3, 4, 10, 11] {
+                for flags in [0u32, 1, 2, 0x0040] {
+                    #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
+                    let mut bp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                    let r1 = c::cmsDetectBlackPoint(
+                        &mut bp as *mut _ as *mut _,
+                        pr, intent, flags);
+                    let mut bp2 = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                    let r2 = c::cmsDetectDestinationBlackPoint(
+                        &mut bp2 as *mut _ as *mut _,
+                        pr, intent, flags);
+                    if intent <= 3 && flags == 0 {
+                        eprintln!("bp {pname} i{intent} \
+                            b={r1}({:.3}) d={r2}({:.3})",
+                            bp.x, bp2.x);
+                    }
+                }
+            }
+            let tac = c::cmsDetectTAC(pr);
+            eprintln!("tac {pname}={tac:.2}");
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
