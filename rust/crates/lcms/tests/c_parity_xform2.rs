@@ -2177,3 +2177,53 @@ fn conversion_arms2() {
         if !link.is_null() { c::cmsCloseProfile(link); }
     }
 }
+
+/// OptimizeByResampling deep arms — HIGHRES/LOWRES/GRIDPOINTS
+/// flags on CLUT transforms force resampling grids.
+#[test]
+fn opt_resample_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let link = std::fs::read(dir.join("lcms2link2.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        for (inp, outp, if_, of_, fl, name) in [
+            (cmyk, lab, k16, l16, 0x0400, "cmyk highres"),
+            (cmyk, lab, k16, l16, 0x0800, "cmyk lowres"),
+            (cmyk, lab, k16, l16, 0x0400 | 0x0800, "both"),
+            (cmyk, lab, k16, l16, (9u32 << 16), "grid9"),
+            (cmyk, lab, k16, l16, (33u32 << 16), "grid33"),
+            (cmyk, lab, k16, l16, (2u32 << 16), "grid2"),
+            (srgb, lab, r16, l16, 0x0400, "srgb highres"),
+            (link, lab, k16, l16, 0x0400, "link highres"),
+            (srgb, lab, r16, l16, 0x0800, "srgb lowres"),
+            (cmyk, lab, k16, l16, 0x0400 | (17u32 << 16), "hi+g17"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 64];
+                let mut ob = [0x8000u16; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !link.is_null() { c::cmsCloseProfile(link); }
+    }
+}
