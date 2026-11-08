@@ -2495,3 +2495,26 @@ fn filesize_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Tag-table bounds — truncate inside the tag table
+/// (the tag-table-bounds machinery).
+#[test]
+fn tagtable_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // the tag table starts at 128: count(4) + N*12-byte entries
+        for len in [128usize, 132, 140, 144, 200, 256] {
+            let h = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *mut _, len as u32);
+            eprintln!("len={len} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
