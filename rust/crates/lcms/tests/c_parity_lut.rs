@@ -1340,3 +1340,20 @@ fn identity_stage2() {
         }
     }
 }
+
+/// Named-color-stage internals on more combos — the named
+/// machinery.
+#[test]
+fn named_stage2() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 1, 3,
+            b"P\0".as_ptr() as _,
+            b"S\0".as_ptr() as _);
+        let stage = c::_cmsStageAllocNamedColor(
+            ncl, 0);
+        eprintln!("alloc={}", !stage.is_null());
+        if !stage.is_null() { c::cmsStageFree(stage); }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
