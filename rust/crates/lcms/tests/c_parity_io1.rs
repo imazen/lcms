@@ -791,3 +791,30 @@ fn float_output_normalization() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadDevicelinkLUT/_cmsReadOutputLUT remaining arms —
+/// devicelink + output profiles with varied tag sets.
+#[test]
+fn devicelink_output_remaining() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        // devicelink with AToB0 tag
+        let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(dl, 0x6c696e6b);
+        c::cmsSetColorSpace(dl, 0x52474220);
+        c::cmsSetPCS(dl, 0x4C616220);
+        c::cmsSetProfileVersion(dl, 4.4);
+        c::cmsWriteTag(dl, 0x41324230, p as *const _);
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let t = c::cmsCreateTransform(dl, r16, dl, r16, 0, 0);
+        eprintln!("dl t={}", !t.is_null());
+        if !t.is_null() { c::cmsDeleteTransform(t); }
+        c::cmsCloseProfile(dl);
+        c::cmsPipelineFree(p);
+    }
+}
