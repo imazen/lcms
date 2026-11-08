@@ -598,3 +598,35 @@ fn formatter_for_profile() {
         }
     }
 }
+
+/// _cmsReadOutputLUT gamut/preview fallback arms — profiles with
+/// gamt/pre0-2 tags; intent selects them over B2A.
+#[test]
+fn output_lut_fallbacks() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let prof = c::cmsCreate_sRGBProfile();
+        c::cmsSetProfileVersion(prof, 4.4);
+        // gamut + preview tags -> the fallback read arms
+        for sig in [0x67616d74u32, 0x70726530, 0x70726531] {
+            c::cmsWriteTag(prof, sig, p as *const _);
+        }
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for intent in [0u32, 1, 2, 3, 5, 6] {
+            let t = c::cmsCreateTransform(lab, l16, prof, r16,
+                intent, 0);
+            eprintln!("i{intent} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(lab);
+        c::cmsPipelineFree(p);
+    }
+}
