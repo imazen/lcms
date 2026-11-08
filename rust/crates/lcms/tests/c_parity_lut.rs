@@ -5066,3 +5066,111 @@ fn lut_md5_named_tail_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsopt residual — WhitesAreEqual/IsDegenerated/
+///   OptimizeByResampling on pipelines with unequal
+///   whites, degenerate curves, off-white endpoints.
+#[test]
+fn lut_opt_white_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let frgb = (4u32 << 16) | (3 << 3) | 2;
+        let flab = (10u32 << 16) | (3 << 3) | 2;
+        // pipelines with white endpoints != 65535
+        for (end0, end1, name) in [
+            (0x8000u16, 0xFFFF, "asym-ends"),
+            (0x0000, 0x8000, "half-range"),
+            (0xFFFF, 0xFFFF, "flat-max"),
+            (0x0000, 0x0000, "flat-min"),
+            (0x1000, 0xE000, "narrow"),
+        ] {
+            let mut tab = [0u16; 2];
+            tab[0] = end0; tab[1] = end1;
+            let g = c::cmsBuildTabulatedToneCurve16(
+                std::ptr::null_mut(), 2, tab.as_ptr());
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let tcs = [g, g, g];
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            let dims = vec![4u32; 15];
+            let grid = vec![0x8000u16; 4usize.pow(3) * 3];
+            c::cmsPipelineInsertStage(pipe, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    3, 3, grid.as_ptr()));
+            c::cmsPipelineInsertStage(pipe, 2,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            let lp = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(lp, 0x6C696E6B);
+            c::cmsSetColorSpace(lp, 0x52474220);
+            c::cmsSetPCS(lp, 0x4C616220);
+            c::cmsSetProfileVersion(lp, 4.4);
+            c::cmsWriteTag(lp, 0x41324230,
+                pipe as *const _);
+            for fl in [0u32, 0x0100, 0x2000] {
+                let t = c::cmsCreateTransform(lp, frgb,
+                    lab4, flab, 0, fl);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{name} ok");
+            c::cmsCloseProfile(lp);
+            c::cmsPipelineFree(pipe);
+            c::cmsFreeToneCurve(g);
+        }
+        // degenerate curves (constant, near-constant,
+        //   descending) through resample optimizer
+        for (ty, name) in [
+            (0u8, "const"),
+            (1, "near-const"),
+            (2, "descending"),
+        ] {
+            let g = if ty == 0 {
+                let t2 = [0x4000u16, 0x4000];
+                c::cmsBuildTabulatedToneCurve16(
+                    std::ptr::null_mut(), 2, t2.as_ptr())
+            } else if ty == 1 {
+                let t2 = [0x4000u16, 0x4001];
+                c::cmsBuildTabulatedToneCurve16(
+                    std::ptr::null_mut(), 2, t2.as_ptr())
+            } else {
+                let t2 = [0xFFFFu16, 0x0000];
+                c::cmsBuildTabulatedToneCurve16(
+                    std::ptr::null_mut(), 2, t2.as_ptr())
+            };
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 3, 3);
+            let tcs = [g, g, g];
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 3,
+                    tcs.as_ptr() as *mut _));
+            let lp = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(lp, 0x6C696E6B);
+            c::cmsSetColorSpace(lp, 0x52474220);
+            c::cmsSetPCS(lp, 0x4C616220);
+            c::cmsSetProfileVersion(lp, 4.4);
+            c::cmsWriteTag(lp, 0x41324230,
+                pipe as *const _);
+            let t = c::cmsCreateTransform(lp, frgb,
+                lab4, flab, 0, 0);
+            eprintln!("deg-{name} t={}", !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(lp);
+            c::cmsPipelineFree(pipe);
+            c::cmsFreeToneCurve(g);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab4);
+    }
+}
