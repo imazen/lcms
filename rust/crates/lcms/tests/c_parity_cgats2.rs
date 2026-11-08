@@ -1536,3 +1536,49 @@ fn it8_deep_arms9() {
         }
     }
 }
+
+/// cmscgats remaining internals — WriteHeader/BuildAbsolutePath/
+/// ParseFloatNumber/StringAppend via save + file paths.
+#[test]
+fn it8_deep_arms10() {
+    unsafe {
+        // save to file → BuildAbsolutePath/WriteHeader arms
+        let doc = b"IT8FILE\nKEYWORD \"K\"\nORIGINATOR \"o\"\nDESCRIPTOR \"d\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n";
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        if !p.is_null() {
+            let tmp = std::env::temp_dir().join("it8_test.icc");
+            let path = tmp.to_str().unwrap();
+            let cpath = std::ffi::CString::new(path).unwrap();
+            let s = c::cmsIT8SaveToFile(p, cpath.as_ptr());
+            eprintln!("savefile={s}");
+            // reload from file
+            let rp = c::cmsIT8LoadFromFile(std::ptr::null_mut(),
+                cpath.as_ptr());
+            eprintln!("loadfile={}", !rp.is_null());
+            if !rp.is_null() { c::cmsIT8Free(rp); }
+            let _ = std::fs::remove_file(&tmp);
+            c::cmsIT8Free(p);
+        }
+        // multi-sheet save+load round-trip
+        let doc2 = b"IT8FILE\nDATA_IDENTIFIER \"s1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"s2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n";
+        let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc2.as_ptr() as *const _, doc2.len() as u32);
+        if !p2.is_null() {
+            let tmp = std::env::temp_dir().join("it8_multi.icc");
+            let cpath = std::ffi::CString::new(
+                tmp.to_str().unwrap()).unwrap();
+            let s = c::cmsIT8SaveToFile(p2, cpath.as_ptr());
+            eprintln!("multi-save={s}");
+            let rp = c::cmsIT8LoadFromFile(std::ptr::null_mut(),
+                cpath.as_ptr());
+            if !rp.is_null() {
+                let nt = c::cmsIT8TableCount(rp);
+                eprintln!("multi-load tables={nt}");
+                c::cmsIT8Free(rp);
+            }
+            let _ = std::fs::remove_file(&tmp);
+            c::cmsIT8Free(p2);
+        }
+    }
+}
