@@ -2530,3 +2530,23 @@ fn mlu_desc_sigs() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Remaining XYZ/curve sigs — 'chad'/'chrm'/'bkpt'/'lumi'/
+/// 'wtpt'/'rXYZ'/'gXYZ'/'bXYZ'.
+#[test]
+fn xyz_curve_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        for (sig, name) in [
+            (0x63686164u32, "chad"), (0x6368726Du32, "chrm"),
+            (0x626B7074u32, "bkpt"), (0x6C756D69u32, "lumi"),
+            (0x77747074u32, "wtpt"), (0x7258595Au32, "rXYZ"),
+            (0x6758595Au32, "gXYZ"), (0x6258595Au32, "bXYZ")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &xyz as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
