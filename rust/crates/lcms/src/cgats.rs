@@ -273,16 +273,26 @@ const PREDEFINED_SAMPLE_IDS: &[&str] = &[
 fn is_separator(c: i32) -> bool {
     c == b' ' as i32 || c == b'\t' as i32
 }
+/// `ismiddle` — any printable non-separator except #, ", '
+fn is_middle(c: i32) -> bool {
+    !is_separator(c)
+        && c != b'#' as i32
+        && c != b'"' as i32
+        && c != b'\'' as i32
+        && c > 32
+        && c < 127
+}
+/// `isidchar` = isalnum(c) || ismiddle(c)
 fn is_idchar(c: i32) -> bool {
     (0..128).contains(&c)
-        && ((c as u8 as char).is_ascii_alphanumeric()
-            || c == b'_' as i32
-            || c == b'-' as i32
-            || c == b'(' as i32
-            || c == b')' as i32)
+        && ((c as u8 as char).is_ascii_alphanumeric() || is_middle(c))
 }
+/// `isfirstidchar` — c != '-' && !isdigit(c) && ismiddle(c)
 fn is_first_idchar(c: i32) -> bool {
-    (0..128).contains(&c) && ((c as u8 as char).is_ascii_alphabetic() || c == b'_' as i32)
+    c != b'-' as i32
+        && (0..128).contains(&c)
+        && !(c as u8 as char).is_ascii_digit()
+        && is_middle(c)
 }
 
 fn strcasecmp(a: &str, b: &str) -> i32 {
@@ -1219,13 +1229,17 @@ impl It8 {
     }
 
     /// `Skip`
+    /// `Skip` — advance iff current symbol matches; never errors
+    /// (C: `if (it8->sy == sy && it8->sy != SEOF && it8->sy !=
+    /// SSYNERROR) InSymbol(it8)`).
     fn skip(&mut self, sy: Symbol) -> bool {
-        if self.sy == sy {
+        if self.sy == sy
+            && self.sy != Symbol::Eof
+            && self.sy != Symbol::SynError
+        {
             self.in_symbol();
-            true
-        } else {
-            self.syn_error("Unexpected symbol")
         }
+        true
     }
 
     /// `SkipEOLN`
@@ -1304,9 +1318,7 @@ impl It8 {
             self.skip_eoln();
         }
         self.skip_eoln();
-        if !self.skip(Symbol::EndDataFormat) {
-            return false;
-        }
+        let _ = self.skip(Symbol::EndDataFormat);
         self.skip_eoln();
         if i_field != self.get_table().n_samples {
             return self.syn_error(&format!(
@@ -1363,9 +1375,7 @@ impl It8 {
             self.skip_eoln();
         }
         self.skip_eoln();
-        if !self.skip(Symbol::EndData) {
-            return false;
-        }
+        let _ = self.skip(Symbol::EndData);
         self.skip_eoln();
         if i_set + 1 != self.get_table().n_patches {
             return self.syn_error(&format!(

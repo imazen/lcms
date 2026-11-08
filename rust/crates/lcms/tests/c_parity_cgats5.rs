@@ -136,3 +136,41 @@ fn it8_file_load_save() {
     assert!(rh.save_to_file(&std::env::temp_dir()
         .join("lcms_test_it8_out2.cgats").to_str().unwrap().to_string()));
 }
+
+/// IT8 parser error paths — malformed inputs to
+/// cmsIT8LoadFromMem. Each case hits a different parser error
+/// branch; parity = both sides reject or both accept.
+#[test]
+fn it8_malformed_inputs() {
+    let cases: Vec<(&str, &str)> = vec![
+        // empty input is UB on the C oracle (asserts len!=0)
+        ("just-header", "CGATS.17\n"),
+        ("no-data", "CGATS.17\nNUMBER_OF_FIELDS 2\n"),
+        ("bad-field-count", "CGATS.17\nNUMBER_OF_FIELDS x\n"),
+        ("unterminated-quote",
+            "CGATS.17\nORIGINATOR \"foo\n"),
+        ("data-before-format",
+            "CGATS.17\nBEGIN_DATA\n1 2\nEND_DATA\n"),
+        ("bad-data-count",
+            "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nNUMBER_OF_SETS x\n"),
+        ("missing-end",
+            "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\n"),
+        ("extra-garbage",
+            "CGATS.17\n@#$%^&*()\n"),
+        ("partial-numsets",
+            "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 2\nBEGIN_DATA\n1 2\nEND_DATA\n"),
+    ];
+    for (name, doc) in &cases {
+        unsafe {
+            let ch = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            let rh = cgats::It8::load_from_mem(None,
+                doc.as_bytes());
+            if ch.is_null() != rh.is_none() {
+                eprintln!("{name} c_null={} r_none={}",
+                    ch.is_null(), rh.is_none());
+            }
+            if !ch.is_null() { c::cmsIT8Free(ch); }
+        }
+    }
+}
