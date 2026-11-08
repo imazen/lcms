@@ -346,3 +346,53 @@ fn mpe_element_writes2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Pipeline manipulation: dup/cat/unlink stage parity.
+#[test]
+fn pipeline_manipulation() {
+    unsafe {
+        // build a 2-stage pipeline on both sides
+        let c_pipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g; 3];
+        c::cmsPipelineInsertStage(c_pipe, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, curves.as_ptr()));
+        c::cmsPipelineInsertStage(c_pipe, 1,
+            c::cmsStageAllocIdentity(std::ptr::null_mut(), 3));
+        let rg = lcms::gamma::build_gamma(None, 2.2).unwrap();
+        let mut r_pipe = lut::pipeline_alloc(None, 3, 3).unwrap();
+        r_pipe.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_tone_curves(None, 3, Some(&[&rg; 3])).unwrap());
+        r_pipe.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_identity(None, 3));
+        // stage count
+        assert_eq!(c::cmsPipelineStageCount(c_pipe), r_pipe.stage_count(),
+            "stage count");
+        // dup — eval parity on the copy
+        let c_dup = c::cmsPipelineDup(c_pipe);
+        let r_dup = r_pipe.dup();
+        assert!(!c_dup.is_null());
+        assert!(r_dup.is_some());
+        let r_dup = r_dup.unwrap();
+        let inp = [0x4000u16, 0x8000, 0xc000];
+        let mut co = [0u16; 3];
+        let mut ro = [0u16; 3];
+        c::cmsPipelineEval16(inp.as_ptr(), co.as_mut_ptr(), c_dup);
+        r_dup.eval16(&inp, &mut ro);
+        assert_eq!(co, ro, "dup eval");
+        // cat — append dup to pipe
+        let c_pipe2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(c_pipe2, 1,
+            c::cmsStageAllocIdentity(std::ptr::null_mut(), 3));
+        let mut r_pipe2 = lut::pipeline_alloc(None, 3, 3).unwrap();
+        r_pipe2.insert_stage(lut::StageLoc::AtEnd,
+            lut::stage_alloc_identity(None, 3));
+        assert_eq!(c::cmsPipelineCat(c_pipe, c_pipe2) != 0,
+            r_pipe.cat(&r_pipe2), "cat");
+        assert_eq!(c::cmsPipelineStageCount(c_pipe), r_pipe.stage_count(),
+            "post-cat count");
+        c::cmsPipelineFree(c_dup);
+        c::cmsPipelineFree(c_pipe);
+        c::cmsFreeToneCurve(g);
+    }
+}

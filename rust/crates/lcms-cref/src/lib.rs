@@ -524,7 +524,7 @@ unsafe extern "C" {
         lut: Handle,
     ) -> i32;
     pub fn cmsPipelineInsertStage(lut: Handle, loc: i32, mpe: Handle) -> i32;
-    pub fn cmsPipelineUnlinkStage(lut: Handle, loc: i32, mpe: *mut Handle);
+    pub fn cmsPipelineUnlinkStage(lut: Handle, loc: i32, mpe: *mut Handle) -> i32;
     pub fn cmsPipelineCat(l1: Handle, l2: Handle) -> i32;
     pub fn cmsPipelineStageCount(lut: Handle) -> U32;
     pub fn cmsPipelineGetPtrToFirstStage(lut: Handle) -> Handle;
