@@ -15180,3 +15180,79 @@ fn lut_dispatch_arms() {
         c::cmsFreeToneCurve(tc);
     }
 }
+
+/// Stage allocators (named-color/identity/Lab2XYZ/XYZ2Lab/
+/// IdentityCLut) + SliceSpace + DesaturateLab + black-point.
+#[test]
+fn stage_slice_arms() {
+    unsafe {
+        let nl = c::cmsAllocNamedColorList(std::ptr::null_mut(),
+            4, 4, b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        for i in 0..8 {
+            let name = format!("n{i}\0");
+            c::cmsAppendNamedColor(nl, name.as_ptr(),
+                &[0x1000u16, 0x2000, 0x3000, 0x4000]
+                    as *const u16 as *const _,
+                &[0x5000u16, 0x6000, 0x7000, 0x8000]
+                    as *const u16 as *const _);
+        }
+        for use_pcs in [0i32, 1] {
+            let st = c::_cmsStageAllocNamedColor(nl, use_pcs);
+            eprintln!("ncl pcs={use_pcs} st={}", !st.is_null());
+            if !st.is_null() { c::cmsStageFree(st); }
+        }
+        c::cmsFreeNamedColorList(nl);
+        // identity/Lab2XYZ/XYZ2Lab stages
+        for (n, name) in [(1u32, "id1"), (3, "id3"), (4, "id4")] {
+            let s = c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), n);
+            eprintln!("{name}={}", !s.is_null());
+            if !s.is_null() { c::cmsStageFree(s); }
+        }
+        let fns: [(&str, unsafe extern "C" fn(
+            *mut std::ffi::c_void)
+            -> *mut std::ffi::c_void); 2] = [
+            ("l2x", c::_cmsStageAllocLab2XYZ),
+            ("x2l", c::_cmsStageAllocXYZ2Lab),
+        ];
+        for (name, f) in fns {
+            let s: *mut std::ffi::c_void =
+                f(std::ptr::null_mut());
+            eprintln!("{name}={}", !s.is_null());
+            if !s.is_null() { c::cmsStageFree(s); }
+        }
+        for n in [1u32, 3, 4] {
+            let s = c::_cmsStageAllocIdentityCLut(
+                std::ptr::null_mut(), n);
+            eprintln!("idclut{n}={}", !s.is_null());
+            if !s.is_null() { c::cmsStageFree(s); }
+        }
+        // DesaturateLab
+        for [l, a, b] in [
+            [50.0f64, 127.0, -127.0], [50.0, -50.0, 80.0],
+            [20.0, 10.0, -10.0], [90.0, -127.0, 127.0],
+        ] {
+            let mut lab = c::CieLab { L: l, a, b };
+            let r = c::cmsDesaturateLab(&mut lab as *mut _
+                as *mut _, 50.0, -50.0, 50.0, -50.0);
+            eprintln!("desat {lab:?}={r}");
+        }
+        // DetectBlackPoint/Destination + TAC on profiles
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut bp = [0.0f64; 3];
+        for intent in 0..4u32 {
+            for flags in [0u32, 0x2000] {
+                let r = c::cmsDetectBlackPoint(
+                    bp.as_mut_ptr() as *mut _, srgb, intent, flags);
+                let r2 = c::cmsDetectDestinationBlackPoint(
+                    bp.as_mut_ptr() as *mut _, srgb, intent, flags);
+                if flags == 0 {
+                    eprintln!("bp i{intent} {r}/{r2}");
+                }
+            }
+        }
+        let tac = c::cmsDetectTAC(srgb);
+        eprintln!("tac={tac}");
+        c::cmsCloseProfile(srgb);
+    }
+}
