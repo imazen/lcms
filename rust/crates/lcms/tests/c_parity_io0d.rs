@@ -20249,3 +20249,100 @@ fn internal_final27_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
+///   + LUT-builder internals + tag internals + context internals
+///   + profile-info internals.
+#[test]
+fn internal_final28_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        // multiprofile on all profile-class + intent + flag
+        //   combos
+        let gray = c::cmsCreateGrayProfile(
+            std::ptr::null_mut(), g);
+        for (profs_, name) in [
+            (vec![srgb, lab], "s-l"),
+            (vec![lab, srgb], "l-s"),
+            (vec![gray, lab], "g-l"),
+            (vec![lab, gray], "l-g"),
+            (vec![srgb, gray], "s-g"),
+            (vec![gray, srgb], "g-s"),
+        ] {
+            let mut profs = profs_;
+            for intent in 0..16u32 {
+                let mut bpc = [0i32; 4];
+                let mut intents = [intent; 4];
+                let mut adapt = [0.5f64; 4];
+                let t = c::cmsCreateExtendedTransform(
+                    std::ptr::null_mut(), 2,
+                    profs.as_mut_ptr(), bpc.as_mut_ptr(),
+                    intents.as_mut_ptr(),
+                    adapt.as_mut_ptr(),
+                    std::ptr::null_mut(), 0, r8, r8, 0);
+                if !t.is_null() { c::cmsDeleteTransform(t); }
+            }
+            eprintln!("{name} done");
+        }
+        // transforms on profiles with all tag-payload type
+        //   combinations
+        for (n_, name) in [
+            (1usize, "1ch"), (2, "2ch"), (3, "3ch"),
+            (4, "4ch"), (6, "6ch"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x32434320
+                + ((n_ as u32 - 1) << 16));
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), n_ as u32,
+                n_ as u32);
+            let trcs: Vec<*mut c::ToneCurve> =
+                vec![g; n_];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), n_ as u32,
+                    trcs.as_ptr() as *mut _));
+            let dims: Vec<u32> = vec![3u32; n_];
+            let grid = vec![0x4000u16;
+                3usize.pow(n_ as u32) * n_];
+            c::cmsPipelineInsertStage(p, 1,
+                c::cmsStageAllocCLut16bitGranular(
+                    std::ptr::null_mut(), dims.as_ptr(),
+                    n_ as u32, n_ as u32, grid.as_ptr()));
+            for sig in [0x41324230u32, 0x42324130] {
+                let w = c::cmsWriteTag(prof, sig,
+                    p as *const _);
+                eprintln!("{name} {sig:#x} w={w}");
+            }
+            let mut buf = vec![0u8; 1 << 22];
+            let mut n = buf.len() as u32;
+            let s = c::cmsSaveProfileToMem(prof,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr()
+                    as *const _, n)
+            } else { std::ptr::null_mut() };
+            let t = if !rp.is_null() {
+                c::cmsCreateTransform(rp, r8, srgb,
+                    r8, 0, 0)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} s={s} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+            c::cmsPipelineFree(p);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
