@@ -623,3 +623,36 @@ fn it8_dataformat_patch() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 save+reload round-trip — writer + parser internals.
+#[test]
+fn it8_save_reload() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(h,
+            b"LCMS/IT8\0".as_ptr() as _);
+        c::cmsIT8SetPropertyStr(h,
+            b"ORIGINATOR\0".as_ptr() as _,
+            b"test\0".as_ptr() as _);
+        c::cmsIT8SetPropertyDbl(h,
+            b"GAMMA\0".as_ptr() as _, 2.2);
+        c::cmsIT8SetComment(h,
+            b"a comment\0".as_ptr() as _);
+        let r = c::cmsIT8SaveToFile(h,
+            b"/tmp/ccov_it8.txt\0".as_ptr() as _);
+        eprintln!("save={r}");
+        let h2 = c::cmsIT8LoadFromFile(
+            std::ptr::null_mut(),
+            b"/tmp/ccov_it8.txt\0".as_ptr() as _);
+        eprintln!("reload={}", !h2.is_null());
+        if !h2.is_null() {
+            let p = c::cmsIT8GetProperty(h2,
+                b"ORIGINATOR\0".as_ptr() as _);
+            let d = c::cmsIT8GetPropertyDbl(h2,
+                b"GAMMA\0".as_ptr() as _);
+            eprintln!("prop={} dbl={d}", !p.is_null());
+            c::cmsIT8Free(h2);
+        }
+        c::cmsIT8Free(h);
+    }
+}
