@@ -1068,3 +1068,77 @@ fn sm_gbd_shell_arms() {
         c::cmsCloseProfile(lab4);
     }
 }
+
+/// cmssamp/cmsgmt residual — DetectTAC + Detect-
+///   BlackPoint + DetectDestinationBlackPoint across
+///   profile classes/intents/flags.
+#[test]
+fn sm_blackpoint_tac_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab4 = c::cmsCreateLab4Profile(
+            std::ptr::null_mut());
+        let gray = c::cmsCreateGrayProfileTHR(
+            std::ptr::null_mut(), std::ptr::null(),
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2)
+                as *const std::ffi::c_void);
+        let cmyk_dl = {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6C696E6B);
+            c::cmsSetColorSpace(p, 0x434D594B);
+            c::cmsSetPCS(p, 0x434D594B);
+            c::cmsSetProfileVersion(p, 4.4);
+            let pipe = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 4, 4);
+            let g = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let tcs = [g, g, g, g];
+            c::cmsPipelineInsertStage(pipe, 0,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(), 4,
+                    tcs.as_ptr() as *mut _));
+            c::cmsWriteTag(p, 0x41324230,
+                pipe as *const _);
+            let mut buf = [0u8; 1 << 17];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            c::cmsCloseProfile(p);
+            c::cmsPipelineFree(pipe);
+            pr
+        };
+        for (prof, name) in [
+            (srgb, "srgb"), (lab4, "lab4"),
+            (gray, "gray"), (cmyk_dl, "cmyk-dl"),
+        ] {
+            if prof.is_null() { continue; }
+            let tac = c::cmsDetectTAC(prof);
+            eprintln!("{name} TAC={tac}");
+            for int_ in [0u32, 1, 2, 3] {
+                for fl in [0u32, 0x0004, 0x0040] {
+                    let mut bp = c::CieLab::default();
+                    let ok = c::cmsDetectBlackPoint(
+                        &mut bp as *mut _ as *mut _,
+                        prof, int_, fl);
+                    let mut bp2 = c::CieLab::default();
+                    let ok2 = c::cmsDetectDestinationBlackPoint(
+                        &mut bp2 as *mut _ as *mut _,
+                        prof, int_, fl);
+                    if int_ == 0 && fl == 0 {
+                        eprintln!("  bp={ok} {}/{}/{} \
+                            dbp={ok2} {}/{}/{}",
+                            bp.L, bp.a, bp.b,
+                            bp2.L, bp2.a, bp2.b);
+                    }
+                }
+            }
+        }
+        for p in [gray, cmyk_dl, lab4, srgb] {
+            if !p.is_null() { c::cmsCloseProfile(p); } }
+    }
+}
