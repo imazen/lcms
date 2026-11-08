@@ -261,8 +261,10 @@ fn named_color_input_lut() {
         c::cmsWriteTag(nmcl, 0x6e636c32, ncl as *const _);
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let rgb16 = (4u32 << 16) | (3 << 3) | 2;
+        let lab16 = (10u32 << 16) | (3 << 3) | 2;
         for (out, name) in [(lab, "lab"), (srgb, "srgb")] {
-            let of = if out == srgb { 0x00ff04u32 } else { 0x0a0702 };
+            let of = if out == srgb { rgb16 } else { lab16 };
             let t = c::cmsCreateTransform(nmcl,
                 (1 << 3) | 2, out, of, 0, 0);
             eprintln!("nmcl-in->{name} t={}", !t.is_null());
