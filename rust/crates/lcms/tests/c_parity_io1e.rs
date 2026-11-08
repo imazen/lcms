@@ -2258,3 +2258,38 @@ fn named_sig_resave() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// 'scrn'/'meas'/'view'/'bfd ' resave+read — the struct
+/// serialization internals.
+#[test]
+fn struct_sig_resave2() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // a measurement payload on 'meas' (local struct)
+        #[repr(C)]
+        struct CMeas {
+            observer: u32, backing: c::CieXyz,
+            geometry: u32, flare: f64, illuminant_type: u32,
+        }
+        let meas = CMeas {
+            observer: 1,
+            backing: c::CieXyz { X: 0.0, Y: 0.5, Z: 0.0 },
+            geometry: 1, flare: 0.0, illuminant_type: 2,
+        };
+        let _ = c::cmsWriteTag(h, 0x6D656173,
+            &meas as *const _ as *mut std::ffi::c_void);
+        // resave + read — the struct serialization internals
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x6D656173u32] {
+            let r = c::cmsReadTag(h2, sig);
+            eprintln!("{sig:#x} read={}", r.is_null());
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
