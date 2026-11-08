@@ -3493,3 +3493,49 @@ fn mch_channel_count_sweep() {
         }
     }
 }
+
+/// OPTIMIZED_SH(1) (bit 15) selects the optimized packer cells —
+/// 3-byte optimized + swap + extra + swapfirst variants.
+#[test]
+fn pack_optimized_cells() {
+    unsafe {
+        // OptimizeMatrixShaper needs RGB->RGB + 8-bit input +
+        // shaper-matrix pipeline: srgb->argb/srgb with RGB_8.
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g22 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g22, g22, g22];
+        let wp = [0.3127f64, 0.3290, 1.0]; // D65
+        let prim = [
+            0.64f64, 0.33, 1.0,
+            0.30, 0.60, 1.0,
+            0.15, 0.06, 1.0,
+        ];
+        let argb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+            wp.as_ptr() as *const _, prim.as_ptr() as *const _,
+            curves.as_ptr() as *const _);
+        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        for (inp, outp, f, name) in [
+            (srgb, argb, r8, "srgb-argb"),
+            (argb, srgb, r8, "argb-srgb"),
+            (srgb, srgb, r8, "srgb-srgb"),
+            (srgb, argb, r8 | (1 << 10), "doswap"),
+            (srgb, argb, r8 | (1 << 7), "extra"),
+            (srgb, argb, r8 | (1 << 10) | (1 << 7), "doswap-extra"),
+            (srgb, argb, r8 | (1 << 14) | (1 << 7), "swapfirst-extra"),
+            (srgb, argb, r8 | (1 << 10) | (1 << 14) | (1 << 7),
+             "all-flags"),
+        ] {
+            let t = c::cmsCreateTransform(inp, f, outp, f, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x80u8; 4];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(argb);
+    }
+}
