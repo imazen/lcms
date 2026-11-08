@@ -472,3 +472,45 @@ fn remaining_header_fields2() {
         }
     }
 }
+
+/// Unusual tag-table structures — linked offsets + tag-count
+/// edge cases on crafted directories.
+#[test]
+fn unusual_tag_table() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut d = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, d.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // tag table starts @128: count@128, entries@132
+        // each entry = sig(4) + offset(4) + size(4)
+        for (name, entry_off, field, val) in [
+            // sig of first entry
+            ("sig-zero", 132usize, 0, 0u32),
+            ("sig-huge", 132, 0, 0xFFFFFFFFu32),
+            // offset of first entry
+            ("off-zero", 132, 4, 0u32),
+            ("off-huge", 132, 4, 0xFFFFFFFFu32),
+            ("off-mid", 132, 4, 200u32),
+            // size of first entry
+            ("size-zero", 132, 8, 0u32),
+            ("size-huge", 132, 8, 0xFFFFFFFFu32),
+            ("size-1", 132, 8, 1u32),
+        ] {
+            let mut dd = d.clone();
+            dd[entry_off + field..entry_off + field + 4]
+                .copy_from_slice(&val.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                dd.as_ptr() as _, dd.len() as u32);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() {
+                let sig = c::cmsGetTagSignature(h2, 0);
+                let _ = sig;
+                c::cmsCloseProfile(h2);
+            }
+        }
+    }
+}
