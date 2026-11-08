@@ -1201,3 +1201,55 @@ fn overwrite_same_sig() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Multi-locale MLU serialization — the Type_MLU internals on
+/// several locales.
+#[test]
+fn multi_locale_mlu() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        // several locales
+        for (l, c, t) in [
+            (b"en\0".as_ptr(), b"US\0".as_ptr(),
+             b"English US\0".as_ptr()),
+            (b"en\0".as_ptr(), b"GB\0".as_ptr(),
+             b"English UK\0".as_ptr()),
+            (b"fr\0".as_ptr(), b"FR\0".as_ptr(),
+             b"Francais\0".as_ptr()),
+            (b"de\0".as_ptr(), b"DE\0".as_ptr(),
+             b"Deutsch\0".as_ptr()),
+            (b"ja\0".as_ptr(), b"JP\0".as_ptr(),
+             b"Nihongo\0".as_ptr()),
+        ] {
+            let ok = c::cmsMLUsetASCII(mlu, l, c, t);
+            eprintln!("mlu set={ok}");
+        }
+        // read them back
+        let mut buf = vec![0u8; 64];
+        for (l, c) in [
+            (b"en\0".as_ptr(), b"US\0".as_ptr()),
+            (b"fr\0".as_ptr(), b"FR\0".as_ptr()),
+            (b"ja\0".as_ptr(), b"JP\0".as_ptr()),
+            (b"xx\0".as_ptr(), b"XX\0".as_ptr()),
+        ] {
+            let n = c::cmsMLUgetASCII(mlu, l, c,
+                buf.as_mut_ptr(), 64);
+            eprintln!("mlu get n={n}");
+        }
+        // write + resave — the mluc writer on a 5-locale MLU
+        let ok = c::cmsWriteTag(h, 0x646D6E64,
+            mlu as *mut std::ffi::c_void);
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x646D6E64);
+        eprintln!("write={ok} read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
