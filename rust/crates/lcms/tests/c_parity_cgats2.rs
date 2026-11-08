@@ -1882,3 +1882,41 @@ fn it8_deep_arms17() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/DataSection arms —
+/// more token + table-structure + malformed variants.
+#[test]
+fn it8_deep_arms18() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // property + data sections interleaved (multi-sheet)
+            (b"IT8FILE\nP1 \"v1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nP2 \"v2\"\nIT8FILE\nP3 \"v3\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n".to_vec(), "mixed-sheets"),
+            // DATA_IDENTIFIER in every position
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nDATA_IDENTIFIER \"id\"\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "dataid-mid"),
+            // property with = sign inside quoted value
+            (b"IT8FILE\nP1 \"key=value\"\nP2 \"a=b=c\"\nP3 \"x==y\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "eq-in-str"),
+            // data values with all punctuation inside quotes
+            (b"IT8FILE\nNUMBER_OF_FIELDS 4\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B C D\nEND_DATA_FORMAT\nBEGIN_DATA\n\"a;b\" \"c,d\" \"e.f\" \"g:h\"\n\"i!j\" \"k?l\" \"m/n\" \"o|p\"\nEND_DATA\n".to_vec(), "punct-data"),
+            // numbers that look like identifiers (start with digit)
+            (b"IT8FILE\nP1 123abc\nP2 0xZZZ\nP3 1.2.3\nP4 1e\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "num-ident"),
+            // format section with all-quoted field names
+            (b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\"F1\" \"F2\" \"F3\"\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n".to_vec(), "quoted-fnames"),
+            // property name that IS a number
+            (b"IT8FILE\n123 \"v\"\n456 \"w\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "num-prop"),
+            // whitespace inside number tokens
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n 1\n 2\nEND_DATA\n".to_vec(), "ws-nums"),
+            // EOF after END_DATA
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA".to_vec(), "eof-enddata"),
+            // EOF after IT8FILE
+            (b"IT8FILE".to_vec(), "eof-sig"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
