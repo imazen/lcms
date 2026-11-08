@@ -1359,3 +1359,32 @@ fn tag_sig_fields() {
         }
     }
 }
+
+/// Tag-offset/size machinery — unusual tag bounds.
+#[test]
+fn tag_bounds_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the first tag's offset/size (offsets 136/140)
+        for (name, off, v) in [
+            ("off-0", 136, 0u32),
+            ("off-huge", 136, 0xFFFFFFFFu32),
+            ("off-128", 136, 128u32),
+            ("size-0", 140, 0u32),
+            ("size-huge", 140, 0xFFFFFFFFu32),
+            ("size-8", 140, 8u32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
