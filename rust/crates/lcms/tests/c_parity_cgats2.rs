@@ -1310,3 +1310,57 @@ fn it8_deep_arms5() {
         }
     }
 }
+
+/// cmscgats remaining lexer/parser internals — enum values,
+/// table navigation, property enum coverage.
+#[test]
+fn it8_deep_arms6() {
+    unsafe {
+        // every property enum value through GetProperty
+        let doc = b"IT8FILE\nORIGINATOR \"o\"\nDESCRIPTOR \"d\"\nCREATED \"c\"\nMANUFACTURER \"m\"\nPROD_DATE \"p\"\nSERIAL \"s\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n";
+        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        if !p.is_null() {
+            for (prop, name) in [
+                (b"ORIGINATOR\0".as_ptr() as *const _, "orig"),
+                (b"DESCRIPTOR\0".as_ptr() as *const _, "desc"),
+                (b"CREATED\0".as_ptr() as *const _, "created"),
+                (b"MANUFACTURER\0".as_ptr() as *const _, "mfg"),
+                (b"PROD_DATE\0".as_ptr() as *const _, "pdate"),
+                (b"SERIAL\0".as_ptr() as *const _, "serial"),
+                (b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, "nof"),
+                (b"NUMBER_OF_SETS\0".as_ptr() as *const _, "nos"),
+                (b"DATA_IDENTIFIER\0".as_ptr() as *const _, "dataid"),
+                (b"NUMBER_OF_TABLES\0".as_ptr() as *const _, "notables"),
+                (b"MISSING\0".as_ptr() as *const _, "missing"),
+            ] {
+                let v = c::cmsIT8GetProperty(p, prop);
+                eprintln!("prop {name}={}", !v.is_null());
+            }
+            // enum navigation arms
+            let mut names: *mut *mut i8 = std::ptr::null_mut();
+            let np = c::cmsIT8EnumProperties(p, &mut names);
+            eprintln!("enumprops={np}");
+            let mut fmts: *mut *mut i8 = std::ptr::null_mut();
+            let nf = c::cmsIT8EnumDataFormat(p, &mut fmts);
+            eprintln!("enumfmt={nf}");
+            c::cmsIT8Free(p);
+        }
+        // multi-sheet table navigation + SheetType
+        let doc2 = b"IT8FILE\nDATA_IDENTIFIER \"sheet1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"sheet2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"sheet3\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n3\nEND_DATA\n";
+        let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc2.as_ptr() as *const _, doc2.len() as u32);
+        if !p2.is_null() {
+            let nt = c::cmsIT8TableCount(p2);
+            eprintln!("3sheet tables={nt}");
+            for i in 0..nt + 1 {
+                let ok = c::cmsIT8SetTable(p2, i);
+                if ok != 0 {
+                    let st = c::cmsIT8GetSheetType(p2);
+                    eprintln!("sheet{i} type={}", !st.is_null());
+                }
+            }
+            c::cmsIT8Free(p2);
+        }
+    }
+}
