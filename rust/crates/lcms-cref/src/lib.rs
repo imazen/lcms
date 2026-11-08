@@ -615,6 +615,8 @@ unsafe extern "C" {
     // --- cgats / IT8 ---
     pub fn cmsIT8Alloc(ctx: *mut c_void) -> *mut c_void;
     pub fn cmsIT8LoadFromMem(ctx: *mut c_void, ptr: *const c_void, len: u32) -> *mut c_void;
+    pub fn cmsIT8LoadFromFile(ctx: *mut c_void, file_name: *const i8) -> *mut c_void;
+    pub fn cmsIT8SaveToFile(h: *mut c_void, file_name: *const i8) -> i32;
     pub fn cmsIT8SaveToMem(h: *mut c_void, mem: *mut c_void, bytes_needed: *mut u32) -> i32;
     pub fn cmsIT8GetSheetType(h: *mut c_void) -> *const i8;
     pub fn cmsIT8GetProperty(h: *mut c_void, key: *const i8) -> *const i8;

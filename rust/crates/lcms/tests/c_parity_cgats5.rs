@@ -109,3 +109,30 @@ fn it8_find_format_patchname() {
         c::cmsIT8Free(ch);
     }
 }
+
+/// cmsIT8LoadFromFile + cmsIT8SaveToFile — the file save/load
+/// variants.
+#[test]
+fn it8_file_load_save() {
+    // write a minimal CGATS.17 doc to a temp file
+    let doc = "CGATS.17\nORIGINATOR \"test\"\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1 2\nEND_DATA\n";
+    let path = std::env::temp_dir().join("lcms_test_it8.cgats");
+    std::fs::write(&path, doc).unwrap();
+    let cpath = std::ffi::CString::new(
+        path.to_str().unwrap()).unwrap();
+    unsafe {
+        let ch = c::cmsIT8LoadFromFile(std::ptr::null_mut(),
+            cpath.as_ptr());
+        assert!(!ch.is_null(), "C file load");
+        let out = std::env::temp_dir().join("lcms_test_it8_out.cgats");
+        let cout = std::ffi::CString::new(
+            out.to_str().unwrap()).unwrap();
+        let c_ok = c::cmsIT8SaveToFile(ch, cout.as_ptr());
+        assert_ne!(c_ok, 0, "C file save");
+        c::cmsIT8Free(ch);
+    }
+    // rust side — load_from_file/save_to_file
+    let rh = cgats::It8::load_from_file(None, path.to_str().unwrap()).unwrap();
+    assert!(rh.save_to_file(&std::env::temp_dir()
+        .join("lcms_test_it8_out2.cgats").to_str().unwrap().to_string()));
+}
