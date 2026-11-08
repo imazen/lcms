@@ -3019,3 +3019,29 @@ fn tag_type_sweep() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Tag-type reader sweep — profiles carrying varied tag types hit
+/// the Type_*_Read bodies: chrm/meas/dtim/cprt/desc/signature.
+#[test]
+fn tag_reader_sweep() {
+    unsafe {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        // corpus profiles carry chrm/meas/dtim/etc tags naturally
+        for f in ["lcms2cmyk.icc", "graylcms2.icc", "labv2lcms2.icc",
+                  "sRGB3.icc", "linlcms2.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() { continue; }
+            let n = c::cmsGetTagCount(p);
+            eprintln!("{f}: {n} tags");
+            for i in 0..n {
+                let sig = c::cmsGetTagSignature(p, i as u32);
+                let tag = c::cmsReadTag(p, sig);
+                eprintln!("  #{i} {sig:#x} read={}", !tag.is_null());
+            }
+            c::cmsCloseProfile(p);
+        }
+    }
+}
