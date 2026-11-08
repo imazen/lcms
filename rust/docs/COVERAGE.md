@@ -1018,3 +1018,49 @@ Remaining 0-region functions and their status:
 - `ExtractGray2Y` — gray-profile CRD emission takes the output
   LUT path; needs a gray profile class that routes through the
   1-channel case.
+
+### round 24 — conversion internals + save machinery + tag free/dup batch
+
+77.32% lines / 95.27% fns / 85.70% regions / 69.70% branches.
+
+| file | lines r23 | lines r24 | delta |
+|---|---|---|---|
+| cmsps2.c | 82.51% | 88.18% | +5.67 (ExtractGray2Y via gray+A2B0 CLUT -> WriteInputLUT case-1; WriteNamedColorCRD + BuildColorantList via real nmcl/3CLR profile) |
+| cmsio0.c | 81.35% | 82.48% | +1.13 (save_raw_copy_arms: un-parsed tags copied raw from original IOhandler; NULL/file IOhandler sinks) |
+| cmsgamma.c | 83.09% | 83.24% | +0.15 (tonecurve_alloc_arms) |
+| cmscnvrt.c | 70.05% | 71.10% | +1.05 (nonicc_intent_arms, opt_linearization_arms, opt_matrixshaper4, chad_temp_adapt) |
+| cmsio1.c | 77.60% | 79.00% | +1.40 (lut_builder_arms: gray/RGB/xyz matrix-shaper + D2B0-3 float tags) |
+
+~25 gates landed since round 23: chad_temp_internals +
+chad_temp_adapt (AdaptationState=0.5 + chad tags -> ComputeAbsoluteIntent
+incomplete-adaptation + CHAD2Temp), ps2_gray_named_emitters +
+ps2_gray_lut_emitters + ps2_named_crd_internals (ExtractGray2Y +
+EmitCIEBasedA + WriteNamedColorCRD + BuildColorantList),
+quadratic_bp_intent1 + quadratic_bp_clut(2), tag_free_dup_batch(2)
+(all Type_*_Free/Dup), ncl2_read_arms, multi_item_tag_write_arms,
+opt_linearization_arms (CLUT_PRE/POST_LINEARIZATION),
+opt_matrixshaper4 (absolute-intent 4-stage), nonicc_intent_arms
+(TranslateNonICCIntents), named_devicelink (CreateNamedColorDevicelink),
+lut_builder_arms (cmsio1 builders + float LUT tags),
+tonecurve_alloc_arms, conversion_arms(2,3), save_raw_copy_arms
+(SaveTags raw path), iohandler_edge_arms (NULL/file/mem sinks),
+opt_resample_arms (HIGHRES/LOWRES/GRIDPOINTS).
+
+### final 0-region function inventory
+
+- `RootOfLeastSquaresFitQuadraticCurve` (74 regions) — reachable
+  only via `cmsDetectBlackPoint`/`cmsDetectDestinationBlackPoint`
+  at intent 1 on a valid-class CLUT profile whose L* round-trip
+  is non-straight in the midrange. Corpus + placeholder CLUTs
+  all take `NearlyStraightMidrange`->true; needs a real-printer
+  profile shape.
+- `satob` (16) — dead; the IT8 writer's WRITE_BINARY arm has no
+  caller (no predefined property or API sets WriteAs=WRITE_BINARY).
+- `Pack3Bytes*Optimized` (6 fns) — dead; OPTIMIZED_SH is stripped
+  by `_cmsGetStockOutputFormatter` before the table lookup.
+- `Prelin16dup` — dead; only runs when an already-optimized
+  pipeline is cloned internally (no public path).
+- `GenericMPEdup`/`GenericMPEfree` — dead element-level tag-
+  handler entries; MPE pipelines dup/free through cmsStage* fns.
+- `from16SEto*`/`from*to16SE` (3 pairs) — upstream rejects
+  16SE↔float alpha conversions; dispatch arms covered.
