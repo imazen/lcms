@@ -3327,3 +3327,41 @@ fn lut_element_readers() {
         }
     }
 }
+
+/// cmsPipelineCheckAndRetreiveStages — the variadic
+/// stage-pattern extractor (optimization's shape check).
+#[test]
+fn check_retreive_stages() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        // cv-mx-cv pattern -> extract 3 stage pointers
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g; 3].as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                mat.as_ptr(), std::ptr::null()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g; 3].as_ptr() as *mut _));
+        let mut a: *mut c_void = std::ptr::null_mut();
+        let mut b: *mut c_void = std::ptr::null_mut();
+        let mut c_: *mut c_void = std::ptr::null_mut();
+        // stage sigs: curveSet=0x63767374 'cvst', matrix=0x6d617420
+        let r = c::cmsPipelineCheckAndRetreiveStages(p, 3,
+            0x63767374, 0x6d617420, 0x63767374,
+            &mut a as *mut _ as *mut _,
+            &mut b as *mut _ as *mut _,
+            &mut c_ as *mut _ as *mut _);
+        eprintln!("cv-mx-cv r={r}");
+        // wrong pattern -> reject arm
+        let r2 = c::cmsPipelineCheckAndRetreiveStages(p, 2,
+            0x6d617420, 0x6d617420,
+            &mut a as *mut _ as *mut _,
+            &mut b as *mut _ as *mut _);
+        eprintln!("mx-mx r={r2}");
+        c::cmsPipelineFree(p);
+    }
+}
