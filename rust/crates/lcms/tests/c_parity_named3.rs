@@ -109,3 +109,48 @@ fn named_color_machinery() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Named-color profile machinery — 'ncl2' tag read/write +
+/// the nmcl-class intent machinery.
+#[test]
+fn named_color_profile() {
+    unsafe {
+        // build a named-color profile via a named devicelink
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 3,
+            b"pre\0".as_ptr() as *const _,
+            b"suf\0".as_ptr() as *const _);
+        let mut pcs = [0u16; 3];
+        let mut dev = [0u16; 16];
+        c::cmsAppendNamedColor(ncl,
+            b"c1\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        c::cmsAppendNamedColor(ncl,
+            b"c2\0".as_ptr() as *const u8,
+            pcs.as_ptr(), dev.as_ptr());
+        // write the ncl2 list into a profile tag
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x6E636C32,
+            ncl as *mut std::ffi::c_void); // 'ncl2'
+        eprintln!("ncl2 write={ok}");
+        // resave + read
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x6E636C32);
+        eprintln!("ncl2 read={}", r.is_null());
+        if c::cmsIsTag(h2, 0x6E636C32) != 0 {
+            let mut tb = [0u8; 4];
+            c::cmsReadRawTag(h2, 0x6E636C32,
+                tb.as_mut_ptr() as *mut _, 4);
+            eprintln!("ncl2 type={:#010x}",
+                u32::from_be_bytes(tb));
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
