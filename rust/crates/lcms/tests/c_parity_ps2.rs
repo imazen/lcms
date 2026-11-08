@@ -299,3 +299,32 @@ fn postscript_shapes() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// PostScript color-resource machinery — more shapes +
+/// intents.
+#[test]
+fn postscript_cr() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        // type: 0=CSA, 1=CRD (probably)
+        for (pname, h) in [
+            ("srgb", srgb), ("lab4", lab)] {
+            for ty in [0u32, 1, 2] {
+                let io = c::cmsOpenIOhandlerFromNULL(
+                    std::ptr::null_mut());
+                let n = c::cmsGetPostScriptColorResource(
+                    std::ptr::null_mut(), ty, h, 0, 0, io);
+                eprintln!("{pname} ty{ty} n={n}");
+                if !io.is_null() { c::cmsCloseIOhandler(io); }
+            }
+        }
+        let _ = (dl, srgb, lab);
+        c::cmsFreeToneCurve(g);
+    }
+}
