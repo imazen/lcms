@@ -1211,3 +1211,33 @@ fn profile_id_fields() {
         }
     }
 }
+
+/// Tag-count machinery — unusual tag-count fields.
+#[test]
+fn tag_count_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the tag-count (offset 128)
+        for (name, v) in [
+            ("cnt-0", 0u32),
+            ("cnt-1", 1u32),
+            ("cnt-5", 5u32),
+            ("cnt-50", 50u32),
+            ("cnt-500", 500u32),
+            ("cnt-huge", 0xFFFFFFFFu32),
+            ("cnt-neg", 0x80000000u32)] {
+            let mut d = cbuf.clone();
+            d[128..132].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
