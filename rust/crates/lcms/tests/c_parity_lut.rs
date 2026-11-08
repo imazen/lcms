@@ -3184,3 +3184,38 @@ fn mab_writer_offsets() {
         }
     }
 }
+
+/// PipelineEvalReverseFloat internals — invertible (curves+matrix)
+/// vs non-invertible (CLUT) pipelines -> reverse-eval arms.
+#[test]
+fn pipeline_reverse_eval() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut cc = [g; 3];
+        let m = [2.0f64, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0];
+        // invertible: curves + non-singular matrix
+        let p1 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p1, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(p1, 1,
+            c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+                m.as_ptr(), std::ptr::null()));
+        let mut ti = [0.5f32; 3];
+        let mut ro = [0f32; 3];
+        let mut hint = [0f32; 3];
+        let r1 = c::cmsPipelineEvalReverseFloat(ti.as_mut_ptr(),
+            ro.as_mut_ptr(), hint.as_mut_ptr(), p1);
+        eprintln!("invertible r={r1} ro={ro:?}");
+        c::cmsPipelineFree(p1);
+        // non-invertible: CLUT (no analytic inverse)
+        let tab: Vec<u16> = (0..27*3).map(|i| (i * 9) as u16).collect();
+        let p2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p2, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 3, 3, 3,
+                tab.as_ptr()));
+        let r2 = c::cmsPipelineEvalReverseFloat(ti.as_mut_ptr(),
+            ro.as_mut_ptr(), hint.as_mut_ptr(), p2);
+        eprintln!("clut r={r2}");
+        c::cmsPipelineFree(p2);
+    }
+}
