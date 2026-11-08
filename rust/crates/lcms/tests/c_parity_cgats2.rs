@@ -2973,3 +2973,77 @@ fn cgats_file_cube_arms() {
         c::cmsDeleteContext(ctx);
     }
 }
+
+/// cmscgats residual — ParseCube via
+///   cmsCreateDeviceLinkFromCubeFileTHR (1D/3D LUT cube
+///   files, valid + malformed) + EnumPropertyMulti.
+#[test]
+fn cgats_cube_arms() {
+    unsafe {
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        // cube files: 1D LUT, 3D LUT, malformed variants
+        for (content, name) in [
+            ("TITLE \"1d\"\nLUT_1D_SIZE 2\n\
+              0.0 0.0 0.0\n1.0 1.0 1.0\n", "lut1d"),
+            ("TITLE \"3d\"\nLUT_3D_SIZE 2\n\
+              DOMAIN_MIN 0.0 0.0 0.0\n\
+              DOMAIN_MAX 1.0 1.0 1.0\n\
+              0.0 0.0 0.0\n0.0 0.0 1.0\n0.0 1.0 0.0\n\
+              0.0 1.0 1.0\n1.0 0.0 0.0\n1.0 0.0 1.0\n\
+              1.0 1.0 0.0\n1.0 1.0 1.0\n", "lut3d"),
+            ("LUT_3D_SIZE 2\n\
+              0.0 0.0 0.0\n0.0 0.0 1.0\n0.0 1.0 0.0\n\
+              0.0 1.0 1.0\n1.0 0.0 0.0\n1.0 0.0 1.0\n\
+              1.0 1.0 0.0\n1.0 1.0 1.0\n", "lut3d-nodomain"),
+            ("LUT_1D_SIZE 2\n0.0 0.0 0.0\n", "trunc"),
+            ("LUT_3D_SIZE 2\n0.0 0.0 0.0\n", "trunc3d"),
+            ("GARBAGE\n1 2 3\n", "nocube"),
+            ("", "empty"),
+            ("LUT_1D_SIZE 0\n", "zero1d"),
+            ("LUT_3D_SIZE 0\n", "zero3d"),
+            ("LUT_1D_SIZE 2\nx y z\n0.0 0.0 0.0\n", "badnum"),
+            ("TITLE \"a\"\nLUT_1D_SIZE 2\n\
+              DOMAIN_MIN 0.5 0.5 0.5\n\
+              DOMAIN_MAX 1.5 1.5 1.5\n\
+              0.0 0.0 0.0\n1.0 1.0 1.0\n", "dom"),
+            ("LUT_1D_SIZE 2\n\
+              1e-3 2E+2 -3.5\n.25 +.5 6.\n", "floatfmt"),
+        ] {
+            let path = format!(
+                "/home/lilith/tmp/cube-{name}.cube");
+            std::fs::write(&path, content).unwrap();
+            let p2 = format!("{path}\0");
+            let dl = c::cmsCreateDeviceLinkFromCubeFileTHR(
+                ctx, p2.as_ptr() as *const _);
+            eprintln!("{name} dl={}", !dl.is_null());
+            if !dl.is_null() {
+                c::cmsCloseProfile(dl); }
+            std::fs::remove_file(&path).ok();
+        }
+        // nonexistent + dir
+        let p2 = b"/nonexistent/xx.cube\0";
+        let dl = c::cmsCreateDeviceLinkFromCubeFileTHR(
+            ctx, p2.as_ptr() as *const _);
+        eprintln!("nofile dl={}", !dl.is_null());
+        // EnumPropertyMulti on a multi-prop doc
+        let doc = b"IT8FILE\nORIGINATOR \"o\"\n\
+            KEYWORD k1\nKEYWORD k2\n\
+            BEGIN_DATA\nEND_DATA\n\0";
+        let h = c::cmsIT8LoadFromMem(ctx,
+            doc.as_ptr() as *const _, doc.len() as u32 - 1);
+        if !h.is_null() {
+            for prop in ["ORIGINATOR", "KEYWORD",
+                "NONEXIST", ""] {
+                let mut names: *mut *mut i8 =
+                    std::ptr::null_mut();
+                let n = c::cmsIT8EnumPropertyMulti(h,
+                    format!("{prop}\0").as_ptr()
+                        as *const _, &mut names);
+                eprintln!("enum {prop} n={n}");
+            }
+            c::cmsIT8Free(h);
+        }
+        c::cmsDeleteContext(ctx);
+    }
+}
