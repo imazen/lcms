@@ -213,3 +213,45 @@ fn it8_last_surface() {
             "set dbl");
     }
 }
+
+/// IT8 multi-table + save variants — the writer internals on
+/// more doc shapes.
+#[test]
+fn it8_multi_table() {
+    unsafe {
+        let doc = "CGATS.17\n\
+            NUMBER_OF_FIELDS 2\n\
+            BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\n\
+            BEGIN_DATA\n1 2\nEND_DATA\n\
+            \n\
+            CGATS.17\n\
+            NUMBER_OF_FIELDS 1\n\
+            BEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\n\
+            NUMBER_OF_SETS 1\n\
+            BEGIN_DATA\n9\nEND_DATA\n";
+        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        assert!(!h.is_null());
+        let nt = c::cmsIT8TableCount(h);
+        eprintln!("tables={nt}");
+        // save each variant
+        let mut cb = vec![0u8; 4096];
+        let mut cn = 0u32;
+        let ok = c::cmsIT8SaveToMem(h,
+            cb.as_mut_ptr() as *mut _, &mut cn);
+        eprintln!("save mem ok={ok} n={cn}");
+        // set/get on table 1
+        let ok1 = c::cmsIT8SetPropertyStr(h,
+            b"PROP\0".as_ptr() as *const _,
+            b"val\0".as_ptr() as *const _);
+        let ok2 = c::cmsIT8SetTable(h, 1);
+        let ok3 = c::cmsIT8SetPropertyStr(h,
+            b"PROP1\0".as_ptr() as *const _,
+            b"val1\0".as_ptr() as *const _);
+        eprintln!("prop={ok1} table1={ok2} prop1={ok3}");
+        // enum props across tables
+        c::cmsIT8SetTable(h, 0);
+        c::cmsIT8Free(h);
+    }
+}
