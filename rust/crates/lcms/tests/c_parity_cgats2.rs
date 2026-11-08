@@ -1962,3 +1962,50 @@ fn it8_deep_arms19() {
         }
     }
 }
+
+/// cmscgats remaining InSymbol/HeaderSection/DataSection arms —
+/// more token + table + malformed variants.
+#[test]
+fn it8_deep_arms20() {
+    unsafe {
+        let docs: Vec<(Vec<u8>, &str)> = vec![
+            // table with all field types mixed
+            (b"IT8FILE\nNUMBER_OF_FIELDS 5\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nINT HEX SCI STR ID\nEND_DATA_FORMAT\nBEGIN_DATA\n1 0x1F 2.5e-3 \"str\" ident\n-1 -0xF -1e3 \"s2\" i2\n+3 0x0 .5 \"s3\" i3\nEND_DATA\n".to_vec(), "mixed-fields"),
+            // property values that are data-format names
+            (b"IT8FILE\nP1 SAMPLE_ID\nP2 LAB_L\nP3 RGB_R\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "fmt-props"),
+            // deeply nested quote/escape in data values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n\"a\\tb\\n\" \"c\\u{263A}\"\n\"d\\\\e\" \"f\\\"g\"\nEND_DATA\n".to_vec(), "esc-data2"),
+            // data rows with leading +/-/hex/decimal/scientific
+            (b"IT8FILE\nNUMBER_OF_FIELDS 8\nNUMBER_OF_SETS 4\nBEGIN_DATA_FORMAT\nA B C D E F G H\nEND_DATA_FORMAT\nBEGIN_DATA\n+1 -1 .5 1. 0x1 -0x1 1e0 -1e0\n+0 -0 +.5 -.5 +1. -1. +0x1 -0x1\n+1e0 -1e0 +1E1 -1E1 +.5e1 -.5e1 +1.e1 -1.e1\n0x0 -0x0 +0x0 0xFF -0xFF +0xFF 0xff -0xff\nEND_DATA\n".to_vec(), "all-signs"),
+            // comments at end of every line
+            (b"IT8FILE # hdr\nP1 \"v\" # p\nNUMBER_OF_FIELDS 1 # nf\nNUMBER_OF_SETS 1 # ns\nBEGIN_DATA_FORMAT # bf\nA # f\nEND_DATA_FORMAT # ef\nBEGIN_DATA # bd\n1 # d\nEND_DATA # ed\n".to_vec(), "eol-cmts"),
+            // property names that are single chars
+            (b"IT8FILE\nA \"a\"\nB \"b\"\nC \"c\"\nD \"d\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "1ch-props"),
+            // IT8 with BOM (byte order mark)
+            (b"\xef\xbb\xbfIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "bom"),
+            // null-terminated string in data
+            (b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n\"a\\0b\"\n\"c\"\nEND_DATA\n".to_vec(), "nul-str"),
+            // data with all-hex values
+            (b"IT8FILE\nNUMBER_OF_FIELDS 4\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA B C D\nEND_DATA_FORMAT\nBEGIN_DATA\n0x0 0x1 0xFF 0xFFFF\n-0x0 -0x1 -0xFF -0xFFFF\n+0x0 +0x1 +0xFF +0xFFFF\nEND_DATA\n".to_vec(), "hex-data"),
+            // extremely long data row
+            ({ let mut v = b"IT8FILE\nNUMBER_OF_FIELDS 64\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n".to_vec();
+                for i in 0..64u32 {
+                    v.extend_from_slice(format!("F{i} ").as_bytes());
+                }
+                v.extend_from_slice(b"\nEND_DATA_FORMAT\nBEGIN_DATA\n");
+                for i in 0..64u32 {
+                    v.extend_from_slice(format!("{i} ").as_bytes());
+                }
+                v.extend_from_slice(b"\nEND_DATA\n");
+                v }, "64-fields"),
+        ];
+        for (doc, name) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} parse={}", !p.is_null());
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
