@@ -738,3 +738,42 @@ fn cmyk_lab_byte_order() {
         let _ = c::cmsCloseProfile(gray);
     }
 }
+
+/// Half-float byte-order + planar/swapfirst combos — the
+/// half-float packers on byte-order variants.
+#[test]
+fn half_byte_order() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("bgra-half", (1 << 22) | (4 << 16) | (1 << 10)
+             | (1 << 7) | (3 << 3) | 2u32),
+            ("rgba-half", (1 << 22) | (4 << 16) | (1 << 7)
+             | (3 << 3) | 2),
+            ("bgr-half", (1 << 22) | (4 << 16) | (1 << 10)
+             | (3 << 3) | 2),
+            ("rgb-half-planar", (1 << 22) | (4 << 16) | (1 << 12)
+             | (3 << 3) | 2),
+            ("rgb-half-swap1", (1 << 22) | (4 << 16) | (1 << 14)
+             | (3 << 3) | 2),
+            ("rgb-flt-planar", (1 << 22) | (4 << 16) | (1 << 12)
+             | (3 << 3) | 4),
+            ("rgb-flt-swap1", (1 << 22) | (4 << 16) | (1 << 14)
+             | (3 << 3) | 4),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = [0.5f32, 0.4, 0.3, 1.0, 0.5, 0.4];
+                let mut out = [0.0f32; 8];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
