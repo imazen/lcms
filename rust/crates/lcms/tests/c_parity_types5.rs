@@ -1422,3 +1422,70 @@ fn screening_type() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_ProfileSequenceDesc — 'pseq'/'psid' take a cmsSEQ
+/// payload (alloc + populate + write).
+#[test]
+fn pseq_type() {
+    unsafe {
+        #[repr(C)]
+        struct PSeqDesc {
+            device_mfg: u32,
+            device_model: u32,
+            attributes: u64,
+            technology: u32,
+            profile_id: [u8; 16],
+            manufacturer: *mut std::ffi::c_void,
+            model: *mut std::ffi::c_void,
+            description: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct Seq {
+            n: u32,
+            context_id: *mut std::ffi::c_void,
+            seq: *mut PSeqDesc,
+        }
+        let seq = c::cmsAllocProfileSequenceDescription(
+            std::ptr::null_mut(), 2);
+        assert!(!seq.is_null());
+        // populate the descriptors via the struct
+        let s = seq as *mut Seq;
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"desc\0".as_ptr() as *const u8);
+        for i in 0..2 {
+            (*s).seq.add(i).write(PSeqDesc {
+                device_mfg: 0x4D4647,
+                device_model: 0x4D4F44,
+                attributes: 0,
+                technology: 0x6D667220,
+                profile_id: [i as u8; 16],
+                manufacturer: mlu,
+                model: mlu,
+                description: mlu,
+            });
+        }
+        let h = c::cmsCreate_sRGBProfile();
+        let ok1 = c::cmsWriteTag(h, 0x70736571,
+            seq as *mut std::ffi::c_void); // 'pseq'
+        let ok2 = c::cmsWriteTag(h, 0x70736964,
+            seq as *mut std::ffi::c_void); // 'psid'
+        eprintln!("pseq={ok1} psid={ok2}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x70736571u32, 0x70736964] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let r = c::cmsReadTag(h2, sig);
+                eprintln!("{sig:#x} read={}", r.is_null());
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
