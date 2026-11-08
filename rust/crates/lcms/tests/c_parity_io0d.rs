@@ -25049,3 +25049,94 @@ fn internal_final77_arms() {
         c::cmsFreeToneCurve(oc);
     }
 }
+
+/// cmsio0 residual — OpenIOhandlerFromFile mode branches
+///   ('e', duplicate mode char, unreadable file),
+///   WriteTag over raw tag, unsupported-type errors.
+#[test]
+fn internal_final78_arms() {
+    unsafe {
+        // mode variants: e/close-on-exec + dup mode char
+        for (m, name) in [
+            (&b"r\0"[..], "r"), (&b"w\0"[..], "w"),
+            (&b"e\0"[..], "e"), (&b"re\0"[..], "re"),
+            (&b"rr\0"[..], "rr"), (&b"ww\0"[..], "ww"),
+            (&b"rw\0"[..], "rw"), (&b"x\0"[..], "x"),
+            (&b"b\0"[..], "b"), (&b"rb\0"[..], "rb"),
+        ] {
+            let path = b"/tmp/lcms_iotest.bin\0";
+            let io = c::cmsOpenIOhandlerFromFile(
+                std::ptr::null_mut(),
+                path.as_ptr() as *const _,
+                m.as_ptr() as *const _);
+            eprintln!("mode {name} io={}", !io.is_null());
+            if !io.is_null() {
+                c::cmsCloseIOhandler(io);
+            }
+        }
+        // nonexistent file read-mode
+        let io = c::cmsOpenIOhandlerFromFile(
+            std::ptr::null_mut(),
+            b"/nonexistent_dir_x/f\0".as_ptr() as *const _,
+            b"r\0".as_ptr() as *const _);
+        eprintln!("noent io={}", !io.is_null());
+        if !io.is_null() { c::cmsCloseIOhandler(io); }
+        // proc file (size may be 0/unknowable)
+        for path in [
+            b"/proc/self/stat\0".as_slice(),
+            b"/proc/version\0".as_slice(),
+            b"/dev/null\0".as_slice(),
+            b"/dev/zero\0".as_slice(),
+        ] {
+            let io = c::cmsOpenIOhandlerFromFile(
+                std::ptr::null_mut(),
+                path.as_ptr() as *const _,
+                b"r\0".as_ptr() as *const _);
+            eprintln!("{:?} io={}",
+                std::str::from_utf8(path).unwrap_or("?"),
+                !io.is_null());
+            if !io.is_null() {
+                c::cmsCloseIOhandler(io); }
+        }
+        // WriteTag over previously-raw tag →
+        //   "already saved as RAW" error
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x58595A20);
+        let raw = b"data\0\0\0\0\x01\x02\x03\x04";
+        c::cmsWriteRawTag(prof, 0x70736430,
+            raw.as_ptr() as *const _, raw.len() as u32);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let wt = c::cmsWriteTag(prof, 0x70736430,
+            g as *const _);
+        eprintln!("typed-over-raw w={wt}");
+        c::cmsCloseProfile(prof);
+        // write same tag twice typed → overwrite path
+        let prof2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof2, 0x6D6E7472);
+        c::cmsSetColorSpace(prof2, 0x52474220);
+        c::cmsSetPCS(prof2, 0x58595A20);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let w = [0x41i32, 0];
+        c::cmsMLUsetWide(mlu,
+            b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            w.as_ptr());
+        let w1 = c::cmsWriteTag(prof2, 0x64657363,
+            mlu as *const _);
+        let mlu2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let w2v = [0x42i32, 0];
+        c::cmsMLUsetWide(mlu2,
+            b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            w2v.as_ptr());
+        let w2 = c::cmsWriteTag(prof2, 0x64657363,
+            mlu2 as *const _);
+        eprintln!("typed-over-typed w1={w1} w2={w2}");
+        c::cmsCloseProfile(prof2);
+        c::cmsFreeToneCurve(g);
+    }
+}
