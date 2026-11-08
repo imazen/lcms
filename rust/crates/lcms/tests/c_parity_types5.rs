@@ -1340,3 +1340,41 @@ fn ucrbg_type() {
         c::cmsFreeToneCurve(g3);
     }
 }
+
+/// Type_vcgt — the 3-curve video-gamma payload (tabulated
+/// curves, not formula-type-5).
+#[test]
+fn vcgt_type() {
+    unsafe {
+        // vcgt takes cmsToneCurve** — the write checks each
+        // curve's type; tabulated curves produce type-5 data
+        let vals = [0u16, 0x8000, 0xFFFF];
+        let g1 = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 3, vals.as_ptr());
+        let g2 = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 3, vals.as_ptr());
+        let g3 = c::cmsBuildTabulatedToneCurve16(
+            std::ptr::null_mut(), 3, vals.as_ptr());
+        let curves: [*mut std::ffi::c_void; 3] = [
+            g1 as *mut std::ffi::c_void,
+            g2 as *mut std::ffi::c_void,
+            g3 as *mut std::ffi::c_void];
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x76636774,
+            curves.as_ptr() as *mut std::ffi::c_void); // 'vcgt'
+        eprintln!("vcgt write={ok}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x76636774);
+        eprintln!("vcgt read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsFreeToneCurve(g1);
+        c::cmsFreeToneCurve(g2);
+        c::cmsFreeToneCurve(g3);
+    }
+}
