@@ -870,3 +870,78 @@ fn pipeline_dup_mpe() {
         c::cmsPipelineFree(pl);
     }
 }
+
+/// Stage-type internals — CheckAndRetreiveStages on more
+/// pipeline shapes + stage-type queries.
+#[test]
+fn stage_type_machinery() {
+    unsafe {
+        // build pipelines with different stage mixes and query
+        // the stage types
+        let pl1 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        c::cmsPipelineInsertStage(pl1, 1,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr()));
+        let mat_v = [1.0f64, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0];
+        c::cmsPipelineInsertStage(pl1, 1,
+            c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3, mat_v.as_ptr(),
+                std::ptr::null()));
+        let grid = [4u32; 3];
+        let tab = [0.5f32; 4 * 4 * 4 * 3];
+        c::cmsPipelineInsertStage(pl1, 1,
+            c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+                tab.as_ptr()));
+        eprintln!("stagecount={}", c::cmsPipelineStageCount(pl1));
+        // CheckAndRetreiveStages — the variadic stage-shape
+        // query
+        let mut s1: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut s2: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut s3: *mut std::ffi::c_void = std::ptr::null_mut();
+        // convention: n types first, then n pointers
+        let ok = c::cmsPipelineCheckAndRetreiveStages(pl1, 3,
+            0x63767374u32, 0x6D617466u32, 0x636C7574u32,
+            &mut s1, &mut s2, &mut s3);
+        eprintln!("check cvst+matf+clut={ok}");
+        // a mismatched check (wrong order)
+        let ok2 = c::cmsPipelineCheckAndRetreiveStages(pl1, 3,
+            0x6D617466u32, 0x63767374u32, 0x636C7574u32,
+            &mut s1, &mut s2, &mut s3);
+        eprintln!("check wrong-order={ok2}");
+        // input/output channel queries
+        let ic = c::cmsPipelineInputChannels(pl1);
+        let oc = c::cmsPipelineOutputChannels(pl1);
+        eprintln!("channels {ic}/{oc}");
+        c::cmsPipelineFree(pl1);
+    }
+}
+
+/// Stage-type introspection — cmsStageType on each stage.
+#[test]
+fn stage_type_introspection() {
+    unsafe {
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let s1 = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3, curves.as_ptr());
+        let mat_v = [1.0f64, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0];
+        let s2 = c::cmsStageAllocMatrix(
+            std::ptr::null_mut(), 3, 3, mat_v.as_ptr(),
+            std::ptr::null());
+        eprintln!("curves type={:#x}",
+            c::cmsStageType(s1));
+        eprintln!("matrix type={:#x}",
+            c::cmsStageType(s2));
+        c::cmsStageFree(s1);
+        c::cmsStageFree(s2);
+        c::cmsPipelineFree(pl);
+    }
+}
