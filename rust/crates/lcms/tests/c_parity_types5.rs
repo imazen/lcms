@@ -284,3 +284,72 @@ fn meas_payload() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// More writeable sigs — scrn/gamt/pre/bTRC/clrt/rXYZ/kTRC/bkpt.
+#[test]
+fn more_writable_sigs() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        // scrn (screening desc) — cmsScreening struct
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct CScreening {
+            flag: u32,
+            n_channels: u32,
+            channels: [CScreeningChannel; 16],
+        }
+        #[repr(C)]
+        #[derive(Clone, Copy)]
+        struct CScreeningChannel {
+            frequency: f64, screen_angle: f64, spot_shape: u32,
+        }
+        let mut scrn = CScreening {
+            flag: 0, n_channels: 1,
+            channels: [CScreeningChannel {
+                frequency: 0.0, screen_angle: 0.0, spot_shape: 0
+            }; 16],
+        };
+        scrn.channels[0] = CScreeningChannel {
+            frequency: 60.0, screen_angle: 45.0, spot_shape: 1,
+        };
+        let ok1 = c::cmsWriteTag(h, 0x7363726E,
+            &scrn as *const _ as *mut c_void); // 'scrn'
+        // 'gamt' (gamut CLUT) needs an MPE/lut pipeline with a
+        // serializable shape — the identity-stage pipeline
+        // crashes the lut8 writer; defer
+        let ok2 = 0i32;
+        // rXYZ — CIEXYZ
+        let xyz = c::CieXyz { X: 0.5, Y: 0.4, Z: 0.3 };
+        let ok3 = c::cmsWriteTag(h, 0x7258595A,
+            &xyz as *const _ as *mut c_void); // 'rXYZ'
+        // kTRC — a curve
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let ok4 = c::cmsWriteTag(h, 0x6B545243,
+            g as *mut c_void); // 'kTRC'
+        // bkpt — CIEXYZ
+        let ok5 = c::cmsWriteTag(h, 0x626B7074,
+            &xyz as *const _ as *mut c_void); // 'bkpt'
+        // clrt — colorant table (ncl2-style, but clrt is the out
+        // table)
+        eprintln!("scrn={ok1} gamt={ok2} rXYZ={ok3} kTRC={ok4} \
+            bkpt={ok5}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x7363726Eu32, 0x7258595A,
+                    0x6B545243, 0x626B7074] {
+            if c::cmsIsTag(h2, sig) != 0 {
+                let mut tb = [0u8; 4];
+                c::cmsReadRawTag(h2, sig,
+                    tb.as_mut_ptr() as *mut _, 4);
+                eprintln!("{sig:#x} type={:#010x}",
+                    u32::from_be_bytes(tb));
+            }
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+    }
+}
