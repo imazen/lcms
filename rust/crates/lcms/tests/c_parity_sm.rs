@@ -563,3 +563,62 @@ fn quadratic_bp_internals() {
         }
     }
 }
+
+/// Quadratic black-point fit — a complete prtr/CMYK profile with
+/// a real B2A0 CLUT reaches the least-squares path.
+#[test]
+fn quadratic_bp_clut() {
+    let _g = CTX_LOCK.lock().unwrap();
+    unsafe {
+        // complete prtr profile: desc + wtpt + TRCs + A2B0/B2A0
+        let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x70727472);
+        c::cmsSetColorSpace(prof, 0x434d594b);
+        c::cmsSetPCS(prof, 0x4c616220);
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
+        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        c::cmsWriteTag(prof, 0x64657363, ml as *const _);
+        let wp = [0.9642f64, 1.0, 0.8249];
+        c::cmsWriteTag(prof, 0x77747074, wp.as_ptr() as *const _);
+        // B2A0 pipeline: 4in->3out, curves->clut->curves
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+        let curves4 = [g, g, g, g];
+        let curves3 = [g, g, g];
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 4, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 4,
+                curves4.as_ptr() as *mut _));
+        let mut grid = vec![0u16; 17 * 17 * 17 * 17 * 3];
+        // non-monotone: dark plateau then rising L* response so
+        // NearlyStraightMidrange fails and the fit path runs
+        let n = 17 * 17 * 17 * 17 * 3;
+        for (i, v) in grid.iter_mut().enumerate() {
+            let t = i as f64 / (n - 1) as f64;
+            let shaped = if t < 0.15 { 0.0 } else {
+                ((t - 0.15) / 0.85).powf(0.7) * 65535.0
+            };
+            *v = shaped as u16;
+        }
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 4, 3,
+                grid.as_ptr()));
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                curves3.as_ptr() as *mut _));
+        let w = c::cmsWriteTag(prof, 0x42324130, p as *const _);
+        eprintln!("b2a0 w={w}");
+        let mut bp = [0.0f64; 3];
+        for intent in 0..4u32 {
+            let r = c::cmsDetectDestinationBlackPoint(
+                bp.as_mut_ptr() as *mut _, prof, intent, 0);
+            eprintln!("i{intent} r={r} bp=({:.3},{:.3},{:.3})",
+                bp[0], bp[1], bp[2]);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+        c::cmsMLUfree(ml);
+    }
+}
