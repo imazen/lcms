@@ -3333,3 +3333,91 @@ fn cgats_label_pair_arms() {
         c::cmsIT8Free(it8);
     }
 }
+
+/// cmscgats residual — InSymbol '+'-signed numbers,
+///   non-integer DoubleFormatter branch, include-open
+///   + deep-nesting overflow paths.
+#[test]
+fn cgats_symbol_arms() {
+    unsafe {
+        // '+'-signed + float-formatted data cells
+        for (doc, name) in [
+            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               +5\nEND_DATA\n\0".as_slice(), "plus"),
+            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               +1.5e3\nEND_DATA\n\0".as_slice(), "plusf"),
+            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               -7\nEND_DATA\n\0".as_slice(), "minus"),
+            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               1.25e-2\nEND_DATA\n\0".as_slice(), "float"),
+            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               0x1F\nEND_DATA\n\0".as_slice(), "hex"),
+            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+               0b101\nEND_DATA\n\0".as_slice(), "bin"),
+        ] {
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} it8={}", !it8.is_null());
+            if !it8.is_null() {
+                let v = c::cmsIT8GetDataDbl(it8,
+                    b"0\0".as_ptr() as *const _,
+                    b"SAMPLE_ID\0".as_ptr() as *const _);
+                eprintln!("  dbl={v}");
+                c::cmsIT8Free(it8);
+            }
+        }
+        // #INCLUDE into a real file — open-success path
+        let inc_path = b"/tmp/lcms_inc.it8\0";
+        std::fs::write("/tmp/lcms_inc.it8",
+            b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+              NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
+              SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
+              42\nEND_DATA\n").unwrap();
+        let doc = b"#INCLUDE \"/tmp/lcms_inc.it8\"\n\0";
+        let it8 = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _, doc.len() as u32);
+        eprintln!("include-real it8={}", !it8.is_null());
+        if !it8.is_null() {
+            let v = c::cmsIT8GetDataDbl(it8,
+                b"0\0".as_ptr() as *const _,
+                b"SAMPLE_ID\0".as_ptr() as *const _);
+            eprintln!("  inc-dbl={v}");
+            c::cmsIT8Free(it8);
+        }
+        // nested includes → IncludeSP++ path
+        for i in 0..12 {
+            let inner = format!(
+                "#INCLUDE \"/tmp/lcms_inc{}.it8\"\n", i);
+            let this = format!(
+                "/tmp/lcms_inc{}.it8",
+                if i == 0 { "".into() }
+                else { format!("{}", i - 1) });
+            std::fs::write(&this, &inner).unwrap();
+        }
+        let doc2 = b"#INCLUDE \"/tmp/lcms_inc11.it8\"\n\0";
+        let it8b = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc2.as_ptr() as *const _, doc2.len() as u32);
+        eprintln!("include-deep it8={}", !it8b.is_null());
+        if !it8b.is_null() { c::cmsIT8Free(it8b); }
+        let _ = std::fs::remove_file("/tmp/lcms_inc.it8");
+        for i in 0..12 {
+            let _ = std::fs::remove_file(
+                format!("/tmp/lcms_inc{}.it8", i));
+        }
+    }
+}
