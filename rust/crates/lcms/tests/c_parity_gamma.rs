@@ -919,3 +919,96 @@ fn reverse_seg_arms() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// cmsBuildSegmentedToneCurve multi-seg validation +
+/// DupPluginCurvesList via context-dup with cnvP plugins.
+#[test]
+fn seg_validation_arms() {
+    fn body(crash: bool) {
+        unsafe {
+            fn seg(x0: f32, x1: f32, ty: i32, p0: f64, p1: f64)
+                -> c::CurveSegment {
+                c::CurveSegment {
+                    x0, x1, r#type: ty,
+                    params: { let mut p = [0.0f64; 10];
+                        p[0] = p0; p[1] = p1; p },
+                    n_grid_points: 0,
+                    sampled_points: std::ptr::null(),
+                }
+            }
+            for (segs, name) in [
+                (vec![seg(-1e5, 0.0, 6, 0.0, 0.0),
+                    seg(0.0, 1e5, 8, 1.0, 0.0)], "6-8"),
+                (vec![seg(-1e5, 0.0, 7, 1.0, 0.0),
+                    seg(0.0, 1e5, 7, 1.0, 0.0)], "7-7"),
+                (vec![seg(-1e5, 0.0, 8, 1.0, 0.0),
+                    seg(0.0, 1e5, 8, 1.0, 0.0)], "8-8"),
+                (vec![seg(-1e5, 0.0, 6, 0.0, 0.0),
+                    seg(0.0, 0.5, 7, 1.0, 0.0),
+                    seg(0.5, 1e5, 8, 1.0, 0.0)], "6-7-8"),
+                (vec![seg(-1e5, 0.0, 6, 0.0, 0.0)], "1seg"),
+                (if !crash { vec![] } else { vec![
+                    seg(-1e5, 0.0, 99, 0.0, 0.0),
+                    seg(0.0, 1e5, 8, 1.0, 0.0)] }, "bad99"),
+                (if !crash { vec![] } else { vec![
+                    seg(-1e5, 0.0, -1, 0.0, 0.0),
+                    seg(0.0, 1e5, 8, 1.0, 0.0)] }, "badneg"),
+                (if !crash { vec![] } else { vec![
+                    seg(0.0, 0.0, 6, 0.0, 0.0),
+                    seg(0.0, 1e5, 8, 1.0, 0.0)] }, "zerospan"),
+            ] {
+                let sc = c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), segs.len() as u32,
+                    segs.as_ptr() as *const _);
+                eprintln!("{name} sc={}", !sc.is_null());
+                if !sc.is_null() {
+                    let ev = c::cmsEvalToneCurveFloat(sc, 0.5);
+                    eprintln!("  eval={ev}");
+                    c::cmsFreeToneCurve(sc);
+                }
+            }
+            // sampled seg — valid pointer + NULL (crash)
+            if crash {
+                let pts = [0.0f32, 0.3, 0.7, 1.0];
+                let mut s = seg(-1e5, 0.0, 0, 0.0, 0.0);
+                s.n_grid_points = 4;
+                s.sampled_points = pts.as_ptr();
+                let sc = c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &s as *const _);
+                eprintln!("sampled sc={}", !sc.is_null());
+                if !sc.is_null() { c::cmsFreeToneCurve(sc); }
+            }
+            // NULL sampled points — upstream SIGSEGV.
+            // only in the forked child via `crash` flag
+            if crash {
+                let s2 = seg(-1e5, 0.0, 0, 0.0, 0.0);
+                let sc2 = c::cmsBuildSegmentedToneCurve(
+                    std::ptr::null_mut(), 1, &s2 as *const _);
+                eprintln!("null-pts sc={}", !sc2.is_null());
+                if !sc2.is_null() { c::cmsFreeToneCurve(sc2); }
+            }
+        }
+    }
+    unsafe extern "C" { fn fork() -> i32;
+        fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
+        fn _exit(code: i32) -> !;
+        fn dlsym(h: *mut std::ffi::c_void,
+            n: *const i8) -> *mut std::ffi::c_void; }
+    let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+        let f = dlsym(std::ptr::null_mut(),
+            b"__llvm_profile_write_file\0".as_ptr() as *const i8);
+        if f.is_null() { None } else { Some(std::mem::transmute(f)) }
+    };
+    let pid = unsafe { fork() };
+    if pid == 0 {
+        body(true);
+        unsafe {
+            if let Some(f) = flush { f(); }
+            _exit(0);
+        }
+    }
+    body(false);
+    let mut st = 0i32;
+    unsafe { waitpid(pid, &mut st, 0); }
+    eprintln!("segv child st={st}");
+}
