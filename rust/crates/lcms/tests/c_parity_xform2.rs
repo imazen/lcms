@@ -300,3 +300,51 @@ fn alarm_and_adaptation() {
         assert_eq!(c_out, r_out, "gamut flags={flags:#x}");
     }
 }
+
+/// cmscnvrt intent-pipeline coverage: transforms at intents 1/2/3 use
+/// different _cmsLinkProfiles construction paths than the intent-0 cases.
+#[test]
+fn intent_pipelines() {
+    let profiles: Vec<String> = std::fs::read_dir(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../"),
+    ).unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let n_px = 16;
+    for intent in 1..4u32 {
+        for f in &profiles {
+            let data = std::fs::read(f).unwrap();
+            let ch = unsafe { c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32) };
+            if ch.is_null() { continue; }
+            let mut rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
+            // input/output format from the profile's own colorspace
+            let cs = rp.color_space;
+            let (fi, fo) = (cs | 3 << 3 | 1, cs | 3 << 3 | 1); // u8 chunky
+            let ct = unsafe { c::cmsCreateTransform(ch, fi, ch, fo, intent, 0) };
+            let mut profs = vec![rp.clone()];
+            let mut bpc = [false];
+            let intents = [intent];
+            let adapt = [1.0f64];
+            let rt = lcms::xform::create_extended_transform(
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, 0,
+            );
+            assert_eq!(ct.is_null(), rt.is_none(),
+                "{} intent {intent} transform presence", f);
+            if ct.is_null() || rt.is_none() { continue; }
+            let mut rt = rt.unwrap();
+            let in_sz = n_px * ((fi >> 3) & 15) as usize;
+            let out_sz = n_px * ((fo >> 3) & 15) as usize;
+            let inp: Vec<u8> = (0..in_sz).map(|i| (i * 7 + intent as usize) as u8).collect();
+            let mut co = vec![0u8; out_sz];
+            let mut ro = vec![0u8; out_sz];
+            unsafe { c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as _, n_px as u32) };
+            rt.do_transform(&inp, &mut ro, n_px as u32);
+            assert_eq!(co, ro, "{} intent {intent}", f);
+            unsafe { c::cmsDeleteTransform(ct) };
+            unsafe { c::cmsCloseProfile(ch) };
+        }
+    }
+}
