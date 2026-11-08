@@ -2904,3 +2904,35 @@ fn n_input_clut_eval() {
         }
     }
 }
+
+/// Interpolation input-channel arms — 1-in (LinLerp1D/Eval1Input),
+/// 2-in (Bilinear), plus the trilinear flag path on 3-in.
+#[test]
+fn interp_channel_arms() {
+    unsafe {
+        for (nin, name) in [(1u32, "1-in"), (2, "2-in"), (3, "3-in")] {
+            let n_cells = (4usize).pow(nin) * 3;
+            let tab: Vec<u16> = (0..n_cells)
+                .map(|i| (i * 3) as u16).collect();
+            let ftab: Vec<f32> = (0..n_cells)
+                .map(|i| i as f32 / n_cells as f32).collect();
+            let st = c::cmsStageAllocCLut16bit(std::ptr::null_mut(),
+                4, nin, 3, tab.as_ptr());
+            let stf = c::cmsStageAllocCLutFloat(std::ptr::null_mut(),
+                4, nin, 3, ftab.as_ptr());
+            for s in [st, stf] {
+                if s.is_null() { continue; }
+                let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nin, 3);
+                c::cmsPipelineInsertStage(p, 1, s);
+                let ib = vec![0x4000u16; nin as usize];
+                let mut ob = [0u16; 3];
+                c::cmsPipelineEval16(ib.as_ptr(), ob.as_mut_ptr(), p);
+                let ibf = vec![0.5f32; nin as usize];
+                let mut obf = [0f32; 3];
+                c::cmsPipelineEvalFloat(ibf.as_ptr(), obf.as_mut_ptr(), p);
+                c::cmsPipelineFree(p);
+            }
+            eprintln!("{name} ran");
+        }
+    }
+}
