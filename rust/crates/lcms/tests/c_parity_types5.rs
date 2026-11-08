@@ -3404,3 +3404,33 @@ fn write_dispatch_meas() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on a viewing-conditions payload — the
+/// write machinery on different object types.
+#[test]
+fn write_dispatch_view() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        #[repr(C)]
+        struct View {
+            x: f64, y: f64, z: f64,
+            x2: f64, y2: f64, z2: f64,
+            x3: f64, y3: f64, z3: f64,
+            x4: f64, y4: f64, z4: f64,
+            x5: f64, y5: f64, z5: f64,
+        }
+        let v = View {
+            x: 0.9, y: 1.0, z: 0.9,
+            x2: 0.0, y2: 0.0, z2: 0.0,
+            x3: 0.0, y3: 0.0, z3: 0.0,
+            x4: 0.0, y4: 0.0, z4: 0.0,
+            x5: 0.0, y5: 0.0, z5: 0.0 };
+        for (sig, name) in [
+            (0x76696577u32, "view"), (0x63616C74u32, "calt")] {
+            let ok = c::cmsWriteTag(h, sig,
+                &v as *const _ as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
