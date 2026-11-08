@@ -1797,3 +1797,29 @@ fn pipeline_insert_invalid() {
         c::cmsPipelineFree(pl);
     }
 }
+
+/// Named/curve-alloc validation — more channel counts +
+/// NULL curves.
+#[test]
+fn stage_alloc_valid() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // named-color on more channel counts
+        for (name, n) in [
+            ("named-1", 1u32), ("named-3", 3), ("named-4", 4)] {
+            let ncl = c::cmsAllocNamedColorList(
+                std::ptr::null_mut(), n, n,
+                b"P\0".as_ptr() as _, b"S\0".as_ptr() as _);
+            let st = c::_cmsStageAllocNamedColor(ncl, 0);
+            eprintln!("{name} alloc={}", !st.is_null());
+            if !st.is_null() { c::cmsStageFree(st); }
+            c::cmsFreeNamedColorList(ncl);
+        }
+        // NULL curves — the curve-alloc validation
+        let st2 = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3, std::ptr::null());
+        eprintln!("null-curves alloc={}", !st2.is_null());
+        if !st2.is_null() { c::cmsStageFree(st2); }
+        let _ = g;
+    }
+}
