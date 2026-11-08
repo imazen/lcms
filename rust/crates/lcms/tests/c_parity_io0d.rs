@@ -1969,3 +1969,32 @@ fn version_bounds() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// ColorSpace-sig bounds — mutate the colorSpace field
+/// then open (the colorspace validation machinery).
+#[test]
+fn colorspace_bounds() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut n = 0u32;
+        c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut n);
+        let mut buf = vec![0u8; n as usize];
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        // colorSpace is a u32be at offset 16
+        for (name, val) in [
+            ("rgb", 0x52474220u32), ("gray", 0x47524159),
+            ("lab", 0x4C616220), ("cmyk", 0x434D594B),
+            ("xyz", 0x58595A20), ("zero", 0),
+            ("junk", 0x12345678), ("max", 0xffffffff)] {
+            let mut b = buf.clone();
+            b[16..20].copy_from_slice(&val.to_be_bytes());
+            let h = c::cmsOpenProfileFromMem(
+                b.as_ptr() as *mut _, n);
+            eprintln!("{name} cs={val:#x} h={}", !h.is_null());
+            if !h.is_null() { c::cmsCloseProfile(h); }
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
