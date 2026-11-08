@@ -1525,3 +1525,37 @@ fn corpus_dotransform() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// Corpus mem round-trip — open file, save to mem, reopen
+/// from mem (the real-profile mem machinery).
+#[test]
+fn corpus_mem_roundtrip() {
+    unsafe {
+        for (name, path) in [
+            ("lcms2link", b"../../lcms2link.icc\0" as &[u8]),
+            ("gray", b"../../graylcms2.icc\0"),
+            ("labv2", b"../../labv2lcms2.icc\0"),
+            ("labv4", b"../../labv4lcms2.icc\0"),
+            ("xyz", b"../../xyzlcms2.icc\0"),
+            ("lin", b"../../linlcms2.icc\0")] {
+            let h = c::cmsOpenProfileFromFile(
+                path.as_ptr() as _, b"r\0".as_ptr() as _);
+            if h.is_null() {
+                eprintln!("{name} open=NULL");
+                continue;
+            }
+            let mut n = 0u32;
+            c::cmsSaveProfileToMem(h,
+                std::ptr::null_mut(), &mut n);
+            let mut buf = vec![0u8; n as usize];
+            let w = c::cmsSaveProfileToMem(h,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let h2 = c::cmsOpenProfileFromMem(
+                buf.as_ptr() as *mut _, n);
+            eprintln!("{name} n={n} w={w} reopen={}",
+                !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
