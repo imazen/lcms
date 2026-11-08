@@ -25298,3 +25298,106 @@ fn internal_final79_arms() {
         eprintln!("del-null child st={st:#x}");
     }
 }
+
+/// cmscnvrt residual — CMYK devicelink at chain end
+///   (is_cmyk_devicelink walk-back + trailing-devlink
+///   insert) on black-preserving intents 13-15.
+#[test]
+fn internal_final80_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let trcs = [g, g, g, g];
+        // CMYK output profile
+        let cmyk = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(cmyk, 0x70726E74);
+        c::cmsSetColorSpace(cmyk, 0x434D594B);
+        c::cmsSetPCS(cmyk, 0x4C616220);
+        c::cmsSetProfileVersion(cmyk, 4.4);
+        let p1 = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 3, 4);
+        let g3 = [g, g, g];
+        c::cmsPipelineInsertStage(p1, 0,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                g3.as_ptr() as *mut _));
+        let dims = [3u32; 15];
+        let grid = vec![0x4000u16; 27 * 4];
+        c::cmsPipelineInsertStage(p1, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(),
+                3, 4, grid.as_ptr()));
+        c::cmsPipelineInsertStage(p1, 2,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 4,
+                trcs.as_ptr() as *mut _));
+        c::cmsWriteTag(cmyk, 0x41324230,
+            p1 as *const _);
+        // PCS->device direction for the chain middle
+        let p1b = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 3, 4);
+        c::cmsPipelineInsertStage(p1b, 0,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3,
+                g3.as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(p1b, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(),
+                3, 4, grid.as_ptr()));
+        c::cmsWriteTag(cmyk, 0x42324130,
+            p1b as *const _);
+        // CMYK devicelink (class=link, cs=CMYK, pcs=CMYK)
+        let link = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(link, 0x6C696E6B);
+        c::cmsSetColorSpace(link, 0x434D594B);
+        c::cmsSetPCS(link, 0x434D594B);
+        c::cmsSetProfileVersion(link, 4.4);
+        let p2 = c::cmsPipelineAlloc(
+            std::ptr::null_mut(), 4, 4);
+        c::cmsPipelineInsertStage(p2, 0,
+            c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 4,
+                trcs.as_ptr() as *mut _));
+        c::cmsWriteTag(link, 0x41324230,
+            p2 as *const _);
+        // chains ending in the CMYK devicelink
+        let fin = (0u32 << 16) | (3 << 3) | 1;
+        let f4 = (0u32 << 16) | (4 << 3) | 1;
+        for (int_, iname) in [
+            (13u32, "kplane"), (14, "konly"), (15, "kpre"),
+            (0, "std"),
+        ] {
+            // 3-profile chain: srgb → cmyk → cmyk-link
+            let mut profs = [srgb, cmyk, link];
+            let t = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 3, fin, f4, int_, 0);
+            eprintln!("{iname} 3chain t={}",
+                !t.is_null());
+            if !t.is_null() {
+                c::cmsDeleteTransform(t); }
+            // 4-profile chain: srgb → cmyk → link → link
+            let mut profs4 = [srgb, cmyk, link, link];
+            let t4 = c::cmsCreateMultiprofileTransform(
+                profs4.as_mut_ptr(), 4, fin, f4, int_, 0);
+            eprintln!("{iname} 4chain t={}",
+                !t4.is_null());
+            if !t4.is_null() {
+                c::cmsDeleteTransform(t4); }
+            // with BPC flag
+            let tb = c::cmsCreateMultiprofileTransform(
+                profs.as_mut_ptr(), 3, fin, f4,
+                int_, 0x4000);
+            if !tb.is_null() {
+                c::cmsDeleteTransform(tb); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(cmyk);
+        c::cmsCloseProfile(link);
+        c::cmsPipelineFree(p1);
+        c::cmsPipelineFree(p1b);
+        c::cmsPipelineFree(p2);
+        c::cmsFreeToneCurve(g);
+    }
+}
