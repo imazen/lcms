@@ -3962,3 +3962,39 @@ fn misc_type_handlers() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// Per-tag-sig dispatch — devicelink mpet tags (A2B0/B2A0/D2B0/
+/// B2D0/AToB/BToA/gamt/pre) through WriteTag/ReadTag.
+#[test]
+fn devicelink_tag_dispatch() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        for sig in [0x41324230u32, 0x42324130, 0x44324230,
+                    0x42324430, 0x67616d74, 0x70726530] {
+            let prof = c::cmsCreate_sRGBProfile();
+            c::cmsSetProfileVersion(prof, 4.4);
+            let w = c::cmsWriteTag(prof, sig, p as *const _);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("sig{sig:#x} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsPipelineFree(p);
+    }
+}
