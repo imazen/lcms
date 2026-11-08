@@ -1601,3 +1601,29 @@ fn stored_mab_reads() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// Stored-type reads on corpus unusual sigs — the real
+/// Type_*_Read machinery on the corpus's less-common tags.
+#[test]
+fn unusual_sig_reads() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            for sig in [0x6D657461u32, 0x70736571, 0x70736964,
+                        0x63616C74, 0x76696577, 0x6D656173,
+                        0x7363726E, 0x6368726D, 0x62666420,
+                        0x636C6F74, 0x636C7274, 0x6E64696E,
+                        0x74617267, 0x74656368, 0x73637264,
+                        0x76756564, 0x76756574, 0x63696370,
+                        0x72696730, 0x72696773, 0x736D6D6D,
+                        0x636C6964, 0x63696964, 0x63656964] {
+                if c::cmsIsTag(h, sig) != 0 {
+                    let r = c::cmsReadTag(h, sig);
+                    let _ = r;
+                }
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
