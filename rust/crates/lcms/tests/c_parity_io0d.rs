@@ -25463,3 +25463,66 @@ fn internal_final81_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — tag-table introspection edges:
+///   IsTag/ReadRawTag/GetTagSignature/GetTagCount/
+///   linked-tag chains on a mixed raw+typed+linked
+///   profile, bad indices, OOB reads.
+#[test]
+fn internal_final82_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x58595A20);
+        c::cmsSetProfileVersion(p, 4.4);
+        // typed tag
+        c::cmsWriteTag(p, 0x6B545243,
+            g as *const _);
+        // raw tag
+        let raw = [0x63u8, 0x75, 0x72, 0x76,
+            0, 0, 0, 0, 0, 0, 0, 1, 0x80, 0];
+        c::cmsWriteRawTag(p, 0x72545243,
+            raw.as_ptr() as *const _, raw.len() as u32);
+        // linked tag -> rTRC
+        c::cmsLinkTag(p, 0x67545243, 0x72545243);
+        // chain: bTRC -> gTRC -> rTRC
+        c::cmsLinkTag(p, 0x62545243, 0x67545243);
+        // self-link cycle
+        c::cmsLinkTag(p, 0x77676774, 0x77676774);
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(p,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let pr = c::cmsOpenProfileFromMem(
+            buf.as_ptr() as *const _, n);
+        eprintln!("prof={}", !pr.is_null());
+        if !pr.is_null() {
+            let tc = c::cmsGetTagCount(pr);
+            eprintln!("count={tc}");
+            for i in -1..(tc + 2) {
+                let sig = c::cmsGetTagSignature(pr,
+                    i as u32);
+                let is = c::cmsIsTag(pr, sig);
+                let mut rawbuf = [0u8; 64];
+                let rn = c::cmsReadRawTag(pr, sig,
+                    rawbuf.as_mut_ptr() as *mut _,
+                    rawbuf.len() as u32);
+                eprintln!("  i{i} sig={sig:#x} \
+                    is={is} raw={rn}");
+            }
+            // linked reads resolve to destination
+            for sig in [0x67545243u32, 0x62545243,
+                0x77676774, 0x7A7A7A7A] {
+                let t = c::cmsReadTag(pr, sig);
+                eprintln!("  rd {sig:#x}={}",
+                    !t.is_null());
+            }
+            c::cmsCloseProfile(pr);
+        }
+        c::cmsCloseProfile(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
