@@ -958,3 +958,32 @@ fn u16_modifier_matrix() {
         let _ = c::cmsCloseProfile(ho);
     }
 }
+
+/// u8-format modifier matrix — the u8 packer bodies.
+#[test]
+fn u8_modifier_matrix() {
+    unsafe {
+        let hi = c::cmsCreate_sRGBProfile();
+        let ho = c::cmsCreate_sRGBProfile();
+        for (name, fmt) in [
+            ("u8-planar", (4 << 16) | (1 << 12) | (3 << 3) | 1u32),
+            ("u8-doswap", (4 << 16) | (1 << 10) | (3 << 3) | 1),
+            ("u8-swapf", (4 << 16) | (1 << 14) | (3 << 3) | 1),
+            ("u8-end16", (4 << 16) | (1 << 11) | (3 << 3) | 1),
+            ("u8-flavor", (4 << 16) | (1 << 13) | (3 << 3) | 1),
+            ("u8-x1", (4 << 16) | (1 << 7) | (3 << 3) | 1),
+            ("u8-x2", (4 << 16) | (2 << 7) | (3 << 3) | 1),
+            ("u8-x3", (4 << 16) | (3 << 7) | (3 << 3) | 1),
+            ("u8-x4", (4 << 16) | (4 << 7) | (3 << 3) | 1),
+            ("u8-premul", (4 << 16) | (1 << 23) | (1 << 7)
+             | (3 << 3) | 1),
+        ] {
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(hi);
+        let _ = c::cmsCloseProfile(ho);
+    }
+}
