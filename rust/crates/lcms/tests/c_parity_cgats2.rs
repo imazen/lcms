@@ -523,3 +523,28 @@ fn it8_rowcol() {
         c::cmsIT8Free(it8);
     }
 }
+
+
+/// IT8 property machinery on more property types.
+#[test]
+fn it8_property_types() {
+    unsafe {
+        let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(it8, b"TEST\0".as_ptr() as _);
+        // str/dbl properties on more names
+        for (name, v) in [
+            ("ORIGINATOR", "x"), ("INSTRUMENT", "y"),
+            ("MANUFACTURER", "z")] {
+            let ok = c::cmsIT8SetPropertyStr(it8,
+                name.as_ptr() as *const i8 as _,
+                v.as_ptr() as *const i8 as _);
+            eprintln!("{name} str={ok}");
+        }
+        for name in ["NUMBER_OF_FIELDS", "NUMBER_OF_SETS"] {
+            let ok = c::cmsIT8SetPropertyDbl(it8,
+                name.as_ptr() as *const i8 as _, 4.0);
+            eprintln!("{name} dbl={ok}");
+        }
+        c::cmsIT8Free(it8);
+    }
+}
