@@ -1543,3 +1543,56 @@ fn cnvt_class_intent_matrix() {
         c::cmsCloseProfile(xyz);
     }
 }
+
+/// cmscnvrt named-color + abstract + preview chains — profiles
+/// with named-color/abstract classes hit the layer-detection
+/// internals.
+#[test]
+fn cnvt_named_abstract() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        // abstract profile transforms
+        if let Ok(d) = std::fs::read(dir.join("brightness.icc")) {
+            let ab = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
+                d.len() as u32);
+            if !ab.is_null() {
+                for intent in 0..4u32 {
+                    let t = c::cmsCreateTransform(srgb, r16, ab,
+                        l16, intent, 0);
+                    eprintln!("abst-i{intent} t={}", !t.is_null());
+                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                }
+                c::cmsCloseProfile(ab);
+            }
+        }
+        // multi-profile chains through abstract
+        for f in ["bchslcms2.icc", "glablcms2.icc", "labv4lcms2.icc",
+                  "labv2lcms2.icc", "aRGBlcms2.icc", "gray3lcms2.icc",
+                  "lcms2mxyz.icc", "lcms2mgray.icc", "lcms2link.icc"] {
+            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
+                d.len() as u32);
+            if p.is_null() { continue; }
+            let profs = [srgb, p, lab];
+            let t = c::cmsCreateMultiprofileTransform(
+                profs.as_ptr() as *mut _, 3, r16, l16, 0, 0);
+            eprintln!("multi-{f} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+            c::cmsCloseProfile(p);
+        }
+        // proofing with gamut check flag
+        for flags in [0x0001u32, 0x0002, 0x0004, 0x2000] {
+            let t = c::cmsCreateProofingTransform(srgb, r16, srgb,
+                r16, lab, 0, 1, flags);
+            eprintln!("proof-f{flags:#x} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+    }
+}
