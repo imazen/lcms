@@ -1764,3 +1764,30 @@ fn line_stride_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// Alpha formats on the devicelinks — the alpha machinery
+/// on more channel counts.
+#[test]
+fn alpha_devicelink() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 4];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x434D594B,
+            curves.as_mut_ptr());
+        for (name, fmt) in [
+            ("4ch-x1", (0 << 16) | (1 << 7) | (4 << 3) | 1),
+            ("4ch-x2", (0 << 16) | (2 << 7) | (4 << 3) | 1),
+            ("4ch-x3", (0 << 16) | (3 << 7) | (4 << 3) | 1),
+            ("4ch-x4", (0 << 16) | (4 << 7) | (4 << 3) | 1),
+            ("4ch-a1u8", (0 << 16) | (1 << 7) | (4 << 3) | 1),
+            ("4ch-a1u16", (0 << 16) | (1 << 7) | (4 << 3) | 2),
+        ] {
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{name} t={}", !ct.is_null());
+            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        }
+        let _ = c::cmsCloseProfile(dl);
+    }
+}
