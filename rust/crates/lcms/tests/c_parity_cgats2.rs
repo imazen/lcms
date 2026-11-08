@@ -2485,3 +2485,61 @@ fn it8_struct_arms() {
         }
     }
 }
+
+/// CookPointers — LABEL/$-prefixed fields with forward/backward
+/// table references + SAMPLE_ID field arms.
+#[test]
+fn it8_cookptr_arms() {
+    let docs: &[(&str, &str)] = &[
+        ("label-ref",
+         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA LABEL\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1 \"t2\"\nEND_DATA\n\
+          IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n2\nEND_DATA\n"),
+        ("dollar-ref",
+         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA $REF\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1 \"t2\"\nEND_DATA\n\
+          IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n2\nEND_DATA\n"),
+        ("sample-id",
+         "IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
+          BEGIN_DATA_FORMAT\nSAMPLE_ID A B\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1 \"a\" 5\n2 \"b\" 6\nEND_DATA\n"),
+        ("multi-ref",
+         "IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
+          BEGIN_DATA_FORMAT\nA LABEL $NEXT\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1 \"t2\" \"t3\"\n2 \"t3\" \"t2\"\nEND_DATA\n\
+          IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n5\nEND_DATA\n\
+          IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n6\nEND_DATA\n"),
+        ("self-ref",
+         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA_FORMAT\nA LABEL\nEND_DATA_FORMAT\n\
+          BEGIN_DATA\n1 \"t1\"\nEND_DATA\n"),
+        ("nodataformat",
+         "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n1\nEND_DATA\n"),
+    ];
+    unsafe {
+        for (name, doc) in docs {
+            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
+                doc.as_ptr() as *const _, doc.len() as u32);
+            eprintln!("{name} load={}", !p.is_null());
+            if !p.is_null() {
+                let n = c::cmsIT8SetTable(p, 0);
+                let p0 = c::cmsIT8GetPatchByName(p,
+                    b"1\0".as_ptr() as *const i8);
+                let d = c::cmsIT8GetDataRowCol(p, 0, 1);
+                eprintln!("  tbl={n} patch={p0} d={d:?}");
+                c::cmsIT8Free(p);
+            }
+        }
+    }
+}
