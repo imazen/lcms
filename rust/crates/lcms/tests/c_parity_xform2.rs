@@ -2835,3 +2835,77 @@ fn conversion_arms6() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// DefaultICCintents/AddConversion deep arms — BPC x intents x
+/// profile versions x float transforms.
+#[test]
+fn conversion_arms7() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lab2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
+            .map(|d| c::cmsOpenProfileFromMem(
+                d.as_ptr() as *const _, d.len() as u32))
+            .unwrap_or(std::ptr::null_mut());
+        let fl = 1u32 << 22;
+        let rf = (4u32 << 16) | (3 << 3) | 4 | fl;
+        let lf = (10u32 << 16) | (3 << 3) | 4 | fl;
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let l16 = (10u32 << 16) | (3 << 3) | 2;
+        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        let g16 = (3u32 << 16) | (1 << 3) | 2;
+        // BPC x intents on all class pairs
+        for (inp, outp, if_, of_, name) in [
+            (srgb, cmyk, r16, k16, "srgb->cmyk"),
+            (cmyk, srgb, k16, r16, "cmyk->srgb"),
+            (srgb, lab, r16, l16, "srgb->lab"),
+            (lab, srgb, l16, r16, "lab->srgb"),
+            (gray, cmyk, g16, k16, "gray->cmyk"),
+            (cmyk, gray, k16, g16, "cmyk->gray"),
+            (lab2, cmyk, l16, k16, "v2lab->cmyk"),
+            (cmyk, lab2, k16, l16, "cmyk->v2lab"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            for intent in 0..4u32 {
+                for bpc in [0u32, 0x2000] {
+                    let t = c::cmsCreateTransform(inp, if_, outp,
+                        of_, intent, bpc);
+                    eprintln!("{name} i{intent} bpc={bpc} t={}",
+                        !t.is_null());
+                    if !t.is_null() {
+                        let ib = [0x8000u16; 8];
+                        let mut ob = [0x8000u16; 8];
+                        c::cmsDoTransform(t,
+                            ib.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _, 2);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+        }
+        // float transforms on class pairs
+        for (inp, outp, intent, name) in [
+            (srgb, lab, 0, "f-srgb->lab"),
+            (srgb, cmyk, 0, "f-srgb->cmyk"),
+            (cmyk, srgb, 0, "f-cmyk->srgb"),
+            (srgb, cmyk, 1, "f-srgb->cmyk rel"),
+        ] {
+            if inp.is_null() || outp.is_null() { continue; }
+            let t = c::cmsCreateTransform(inp, rf, outp, lf,
+                intent, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(lab2);
+        c::cmsCloseProfile(gray);
+        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        c::cmsFreeToneCurve(g);
+    }
+}
