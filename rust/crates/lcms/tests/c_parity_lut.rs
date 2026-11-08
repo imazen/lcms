@@ -1320,3 +1320,23 @@ fn pipeline_eval16() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Identity-stage internals on more combos — the identity
+/// machinery.
+#[test]
+fn identity_stage2() {
+    unsafe {
+        for (name, n) in [
+            ("1ch", 1u32), ("3ch", 3), ("4ch", 4), ("15ch", 15)] {
+            let pl = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), n, n);
+            let stage = c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), n);
+            eprintln!("{name} alloc={}", !stage.is_null());
+            if !stage.is_null() {
+                c::cmsPipelineInsertStage(pl, 1, stage);
+            }
+            c::cmsPipelineFree(pl);
+        }
+    }
+}
