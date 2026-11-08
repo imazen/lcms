@@ -667,6 +667,91 @@ fn crafted_type_reads() {
             for _ in 0..768 { b.push(0x80u8); }
             cases.push((0x42324130, b));
         }
+        // 'lut16' on 'B2A0' — Lut16Type read
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"lut16");
+            b.extend_from_slice(&[0; 4]);
+            b.push(3); b.push(3); // ich, och
+            b.push(2); // clut gridpoints
+            b.push(0); // pad
+            for _ in 0..9 {
+                b.extend_from_slice(&0x00010000u32.to_be_bytes());
+            }
+            // input/output table sizes + entries
+            b.extend_from_slice(&256u16.to_be_bytes()); // n_in
+            b.extend_from_slice(&256u16.to_be_bytes()); // n_out
+            for _ in 0..768 {
+                b.extend_from_slice(&0x8000u16.to_be_bytes());
+            }
+            for _ in 0..24 {
+                b.extend_from_slice(&0x8000u16.to_be_bytes());
+            }
+            for _ in 0..768 {
+                b.extend_from_slice(&0x8000u16.to_be_bytes());
+            }
+            cases.push((0x42324130, b));
+        }
+        // 'mAB ' on 'A2B0' — LutAtoBType read
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"mAB ");
+            b.extend_from_slice(&[0; 4]);
+            b.push(3); b.push(3); // ich, och
+            b.extend_from_slice(&[0; 2]);
+            // B-curve, matrix, M-curve, CLUT, A-curve offsets
+            let mut off = 32u32; // header = 32
+            for _ in 0..5 {
+                b.extend_from_slice(&off.to_be_bytes());
+                off += 12; // each "curve" stub = 12 bytes
+            }
+            // 5 curve stubs: 'curv' + reserved + n=0 (identity)
+            for _ in 0..5 {
+                b.extend_from_slice(b"curv");
+                b.extend_from_slice(&[0; 4]);
+                b.extend_from_slice(&0u32.to_be_bytes());
+            }
+            cases.push((0x41324230, b));
+        }
+        // 'dict' on 'meta' — dictionary type
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"dict");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u32.to_be_bytes()); // nrec
+            b.extend_from_slice(&16u32.to_be_bytes()); // recsz
+            // 1 record: name off/len, value off/len
+            b.extend_from_slice(&32u32.to_be_bytes());
+            b.extend_from_slice(&4u32.to_be_bytes());
+            b.extend_from_slice(&36u32.to_be_bytes());
+            b.extend_from_slice(&4u32.to_be_bytes());
+            b.extend_from_slice(&[0, b'k', 0, b'e']);
+            b.extend_from_slice(&[0, b'v', 0, b'a']);
+            cases.push((0x6D657461, b));
+        }
+        // 'nui64' on 'clrt' — UInt64 array
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"nui64");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&2u32.to_be_bytes());
+            for _ in 0..2 {
+                b.extend_from_slice(&42u64.to_be_bytes());
+            }
+            cases.push((0x636C7274, b));
+        }
+        // 'vued' on 'vued' — viewing-cond description (mluc+XYZ)
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"vued");
+            b.extend_from_slice(&[0; 4]);
+            // mluc (0 records)
+            b.extend_from_slice(b"mluc");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&0u32.to_be_bytes());
+            b.extend_from_slice(&12u32.to_be_bytes());
+            cases.push((0x76756564, b));
+        }
         for (i, (sig, bytes)) in cases.iter().enumerate() {
             let h2 = c::cmsCreate_sRGBProfile();
             let ok = c::cmsWriteRawTag(h2, *sig,
