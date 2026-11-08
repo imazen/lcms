@@ -23761,3 +23761,165 @@ fn internal_final65_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmscnvrt residual — BlackPreservingK*Intents +
+///   AddConversion/DupPluginIntentsList internals via
+///   CMYK→CMYK transforms on intents 10-15 × flag combos
+///   + registered intent plugins.
+#[test]
+fn internal_final66_arms() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // CMYK devicelink-ish profile with A2B0 cv+clut
+        for (st, sname) in [
+            (0u32, "cv"), (1, "clut"), (2, "cvclut"),
+        ] {
+            let dl = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(dl, 0x6C696E6B);
+            c::cmsSetColorSpace(dl, 0x434D594B);
+            c::cmsSetPCS(dl, 0x434D594B);
+            c::cmsSetProfileVersion(dl, 4.4);
+            let p = c::cmsPipelineAlloc(
+                std::ptr::null_mut(), 4, 4);
+            let trcs = [g, g, g, g];
+            let dims = [2u32; 4];
+            let grid = vec![0x4000u16; 16 * 4];
+            match st {
+                0 => { c::cmsPipelineInsertStage(p, 0,
+                    c::cmsStageAllocToneCurves(
+                        std::ptr::null_mut(), 4,
+                        trcs.as_ptr() as *mut _)); },
+                1 => { c::cmsPipelineInsertStage(p, 0,
+                    c::cmsStageAllocCLut16bitGranular(
+                        std::ptr::null_mut(),
+                        dims.as_ptr(), 4, 4,
+                        grid.as_ptr())); },
+                _ => {
+                    c::cmsPipelineInsertStage(p, 0,
+                        c::cmsStageAllocToneCurves(
+                            std::ptr::null_mut(), 4,
+                            trcs.as_ptr() as *mut _));
+                    c::cmsPipelineInsertStage(p, 1,
+                        c::cmsStageAllocCLut16bitGranular(
+                            std::ptr::null_mut(),
+                            dims.as_ptr(), 4, 4,
+                            grid.as_ptr()));
+                },
+            }
+            c::cmsWriteTag(dl, 0x41324230, p as *const _);
+            c::cmsWriteTag(dl, 0x42324130, p as *const _);
+            // intents 10-15 = PreserveKOnly/KPlane variants
+            for it in 0..16u32 {
+                for (flags, fname) in [
+                    (0u32, "0"), (0x2000, "bpc"),
+                ] {
+                    let fin = (6u32 << 16) | (4 << 3) | 2;
+                    let t = c::cmsCreateTransform(dl, fin,
+                        dl, fin, it, flags);
+                    eprintln!("{sname} i{it} {fname} \
+                        t={}", !t.is_null());
+                    if !t.is_null() {
+                        let src = [0x4000u16; 4];
+                        let mut dst = [0u16; 4];
+                        c::cmsDoTransform(t,
+                            src.as_ptr() as *const _,
+                            dst.as_mut_ptr() as *mut _, 1);
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
+            c::cmsCloseProfile(dl);
+            c::cmsPipelineFree(p);
+        }
+        // intent plugin registration + ctx-dup →
+        //   AddConversion/DupPluginIntentsList
+        #[repr(C)]
+        struct PluginBase {
+            magic: u32, ver: u32, typ: u32,
+            next: *mut std::ffi::c_void,
+        }
+        #[repr(C)]
+        struct IntentPlugin {
+            base: PluginBase,
+            intent: u32,
+            link: *const std::ffi::c_void,
+            desc: [u8; 256],
+        }
+        unsafe extern "C" fn my_link(
+            ctx: *mut std::ffi::c_void,
+            n: u32, intents: *mut u32,
+            profs: *mut *mut std::ffi::c_void,
+            bpc: *mut i32,
+            adapt: *mut f64, flags: u32)
+            -> *mut std::ffi::c_void {
+            eprintln!("  mylink n={n} flags={flags}");
+            // build a simple cv pipeline as the result
+            let g2 = c::cmsBuildGamma(
+                std::ptr::null_mut(), 1.0);
+            let p = c::cmsPipelineAlloc(ctx, 4, 4);
+            let trcs = [g2, g2, g2, g2];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(ctx, 4,
+                    trcs.as_ptr() as *mut _));
+            p
+        }
+        for (which, name) in [
+            (0u32, "single"), (2, "two"),
+        ] {
+            let ctx = c::cmsCreateContext(
+                std::ptr::null_mut(), std::ptr::null_mut());
+            let mut plugs = vec![];
+            for i in 0..which.max(1) {
+                plugs.push(IntentPlugin {
+                    base: PluginBase {
+                        magic: 0x61637070,
+                        ver: 2200,
+                        typ: 0x696E7448,
+                        next: std::ptr::null_mut(),
+                    },
+                    intent: 42 + i,
+                    link: my_link
+                        as *const std::ffi::c_void,
+                    desc: [0u8; 256],
+                });
+            }
+            for p_ in &plugs {
+                let r = c::cmsPluginTHR(ctx,
+                    p_ as *const _ as *mut _);
+                eprintln!("{name} reg={r}");
+            }
+            // CMYK dl + custom-intent transform on ctx
+            let dl = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(dl, 0x6C696E6B);
+            c::cmsSetColorSpace(dl, 0x434D594B);
+            c::cmsSetPCS(dl, 0x434D594B);
+            c::cmsSetProfileVersion(dl, 4.4);
+            let p = c::cmsPipelineAlloc(ctx, 4, 4);
+            let trcs = [g, g, g, g];
+            c::cmsPipelineInsertStage(p, 0,
+                c::cmsStageAllocToneCurves(ctx, 4,
+                    trcs.as_ptr() as *mut _));
+            c::cmsWriteTag(dl, 0x41324230, p as *const _);
+            c::cmsWriteTag(dl, 0x42324130, p as *const _);
+            let fin = (6u32 << 16) | (4 << 3) | 2;
+            for it in [0u32, 42, 43] {
+                let t = c::cmsCreateTransformTHR(ctx,
+                    dl, fin, dl, fin, it, 0);
+                eprintln!("{name} i{it} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t); }
+            }
+            let d = c::cmsDupContext(ctx,
+                std::ptr::null_mut());
+            eprintln!("{name} dup={}", !d.is_null());
+            if !d.is_null() {
+                c::cmsDeleteContext(d); }
+            c::cmsCloseProfile(dl);
+            c::cmsPipelineFree(p);
+            c::cmsDeleteContext(ctx);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
