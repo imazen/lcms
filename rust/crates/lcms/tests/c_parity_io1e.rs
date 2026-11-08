@@ -724,3 +724,27 @@ fn full_table_serialize() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// cmsReadTag on unusual stored-type LUT formats — 'mft1'/
+/// 'mft2'/'mAB '/'mBA ' on A2B/B2A sigs.
+#[test]
+fn unusual_lut_types() {
+    unsafe {
+        for data in corpus() {
+            let h = c::cmsOpenProfileFromMem(
+                data.as_ptr() as _, data.len() as u32);
+            // read all the LUT-type sigs — exercises the mAB/
+            // mft/lut8/lut16 LUT readers on whatever the corpus
+            // stored
+            for sig in [0x41324230u32, 0x41324231, 0x41324232,
+                        0x42324130, 0x42324131, 0x42324132,
+                        0x44324230, 0x44324231, 0x44324232,
+                        0x44324233, 0x42424430, 0x42424431,
+                        0x42424432, 0x42424433, 0x67616D74,
+                        0x70726530, 0x70726531, 0x70726532] {
+                let _ = c::cmsReadTag(h, sig);
+            }
+            c::cmsCloseProfile(h);
+        }
+    }
+}
