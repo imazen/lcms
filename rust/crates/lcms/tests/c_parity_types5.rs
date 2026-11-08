@@ -2375,3 +2375,46 @@ fn screening_types() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Type_UcrBg internals — 'bfd ' takes a cmsUcrBg payload
+/// {Ucr, Bg, Desc}.
+#[test]
+fn ucrbg_type2() {
+    unsafe {
+        #[repr(C)]
+        struct UcrBg {
+            ucr: *mut std::ffi::c_void,  // cmsToneCurve*
+            bg: *mut std::ffi::c_void,   // cmsToneCurve*
+            desc: *mut std::ffi::c_void, // cmsMLU*
+        }
+        let ucr = c::cmsBuildGamma(std::ptr::null_mut(), 1.5);
+        let bg = c::cmsBuildGamma(std::ptr::null_mut(), 0.8);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"ucrbg\0".as_ptr() as *const u8);
+        let ub = UcrBg {
+            ucr: ucr as *mut std::ffi::c_void,
+            bg: bg as *mut std::ffi::c_void,
+            desc: mlu as *mut std::ffi::c_void,
+        };
+        let h = c::cmsCreate_sRGBProfile();
+        let ok = c::cmsWriteTag(h, 0x62666420,
+            &ub as *const _ as *mut std::ffi::c_void); // 'bfd '
+        eprintln!("bfd write={ok}");
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        let r = c::cmsReadTag(h2, 0x62666420);
+        eprintln!("bfd read={}", r.is_null());
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+        c::cmsFreeToneCurve(ucr);
+        c::cmsFreeToneCurve(bg);
+    }
+}
