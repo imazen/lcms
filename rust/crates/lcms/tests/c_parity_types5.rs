@@ -474,6 +474,81 @@ fn crafted_type_reads() {
         }
         // built profiles have no IOHANDLER for the read path —
         // write raw, save to mem, reopen, then Type_*_Read runs
+        // 'clro' on 'clro' — UInt8 array
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"clro");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&4u32.to_be_bytes()); // n
+            for v in [0u8, 1, 2, 3] { b.push(v); }
+            cases.push((0x636C726F, b));
+        }
+        // 'ncl2' on 'ncl2' — named color
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"ncl2");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&0u16.to_be_bytes()); // vendor
+            b.extend_from_slice(&1u32.to_be_bytes()); // ncolors
+            b.extend_from_slice(&3u32.to_be_bytes()); // ncoord
+            // prefix(32)+suffix(32)+root(32) chars
+            for _ in 0..96 { b.extend_from_slice(&0u16.to_be_bytes()); }
+            // 1 color record: root(32) + pcs(3) + device(3)
+            for _ in 0..32 { b.extend_from_slice(&0u16.to_be_bytes()); }
+            for _ in 0..6 { b.extend_from_slice(&0x8000u16.to_be_bytes()); }
+            cases.push((0x6E636C32, b));
+        }
+        // 'rcs2' on 'rcs2' — response curve set (16ch variant)
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"rcs2");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&1u16.to_be_bytes()); // channels
+            b.extend_from_slice(&0u16.to_be_bytes()); // reserved
+            b.extend_from_slice(&0u16.to_be_bytes()); // nmeas
+            b.extend_from_slice(&0u16.to_be_bytes());
+            b.extend_from_slice(&0xFFFFu32.to_be_bytes()); // freq
+            b.extend_from_slice(&0u32.to_be_bytes());
+            b.extend_from_slice(&0u32.to_be_bytes());
+            b.extend_from_slice(&0u32.to_be_bytes());
+            cases.push((0x72637332, b));
+        }
+        // 'view' on 'view' — viewing conditions
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"view");
+            b.extend_from_slice(&[0; 4]);
+            for v in [0x0000F6D6u32, 0x00010000, 0x0000D32D, // illum XYZ
+                      0x00008000u32, 0x00008000, 0x00008000] { // surround
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            b.extend_from_slice(&2u32.to_be_bytes()); // illum type
+            cases.push((0x76696577, b));
+        }
+        // 'chrm' on 'chrm' — chromaticity
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"chrm");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&3u16.to_be_bytes()); // nch
+            b.extend_from_slice(&0u16.to_be_bytes()); // reserved
+            for v in [0x0000A3D7u32, 0x00005477, // r x,y
+                      0x00004DA3u32, 0x0000999A, // g
+                      0x00002666u32, 0x00000F5C] { // b
+                b.extend_from_slice(&v.to_be_bytes());
+            }
+            cases.push((0x6368726D, b));
+        }
+        // 'data' on 'ps2i' — ps2 rendering intent
+        {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"data");
+            b.extend_from_slice(&[0; 4]);
+            b.extend_from_slice(&4u32.to_be_bytes()); // size
+            b.extend_from_slice(&0u32.to_be_bytes()); // flag
+            b.extend_from_slice(&1u32.to_be_bytes()); // data
+            cases.push((0x70733269, b));
+        }
         for (i, (sig, bytes)) in cases.iter().enumerate() {
             let h2 = c::cmsCreate_sRGBProfile();
             let ok = c::cmsWriteRawTag(h2, *sig,
