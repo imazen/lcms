@@ -3028,3 +3028,41 @@ fn header_getters3() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Tag-presence sweep — cmsIsTag on a broad sig set on
+/// more profile shapes.
+#[test]
+fn is_tag_sweep() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut curves = [g; 3];
+        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+            std::ptr::null_mut(), 0x52474220,
+            curves.as_mut_ptr());
+        let srgb = c::cmsCreate_sRGBProfile();
+        let ph = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for (pname, h) in [
+            ("devlink", dl), ("srgb", srgb), ("ph", ph)] {
+            let mut present = 0;
+            let mut absent = 0;
+            for sig in [
+                0x41324230u32, 0x41324231, 0x41324232,
+                0x42324130, 0x42324131, 0x42324132,
+                0x64657363, 0x63707274, 0x77747074,
+                0x626b7074, 0x6c756d69, 0x63686164,
+                0x7258595a, 0x6758595a, 0x6258595a,
+                0x72545243, 0x67545243, 0x62545243,
+                0x6368726d, 0x63616c74, 0x74617267,
+                0x63696162, 0x63696767, 0x63696774,
+                0x636c6f74, 0x636c6973, 0x636c7263,
+                0x636c7274, 0x636C7232, 0x63697061] {
+                if c::cmsIsTag(h, sig) == 1 { present += 1; }
+                else { absent += 1; }
+            }
+            eprintln!("{pname} present={present} absent={absent}");
+        }
+        let _ = (dl, srgb, ph);
+        c::cmsFreeToneCurve(g);
+    }
+}
