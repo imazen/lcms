@@ -3163,3 +3163,28 @@ fn write_dispatch_stage() {
         c::cmsCloseProfile(h);
     }
 }
+
+/// Write dispatch on an MLU-typed payload — the write
+/// machinery on different object types.
+#[test]
+fn write_dispatch_mlu() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetWide(mlu, b"en\0".as_ptr() as _,
+            b"US\0".as_ptr() as _,
+            &[0x74u16, 0x65, 0x73, 0x74] as *const u16 as _);
+        for (sig, name) in [
+            (0x64657363u32, "desc"), (0x63707274u32, "cprt"),
+            (0x646D6464u32, "dmdd"), (0x646D6E64u32, "dmnd"),
+            (0x76756564u32, "vued"), (0x73637264u32, "scrd"),
+            (0x63696973u32, "ciis"), (0x74656368u32, "tech"),
+            (0x76756574u32, "vuet")] {
+            let ok = c::cmsWriteTag(h, sig,
+                mlu as *mut std::ffi::c_void);
+            eprintln!("{name} write={ok}");
+        }
+        c::cmsMLUfree(mlu);
+        c::cmsCloseProfile(h);
+    }
+}
