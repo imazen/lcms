@@ -1431,7 +1431,9 @@ xform parallel+gamut, ps2 named+lock fix, gamma smooth/reverse/join,
 lut interp/gbd/cam/md5 + patchlut + mat-ident, sm destbp/desat,
 types4 vcgt/mft1/mpet/mhc2/dict/lut8-write arms)
 
-Note: c_parity_cam02 and c_parity_pcs intermittently fail under the
-instrumented coverage build only (timing-sensitive shared-static
-race like the ps2 one, now investigated); they pass on the normal
-build every time. Their profraw loss understates those two files.
+Note: one test each in c_parity_cam02 (reverse_all_surrounds) and
+c_parity_pcs fails under the instrumented build with ~3ulp drift in
+libm-heavy paths (coverage instrumentation changes float codegen);
+the binaries still exit normally and emit profraw, so those files'
+coverage IS counted. The ps2 shared-static race (_cmsPSActualColumn)
+that lost a whole profraw in run14 is fixed via PS_LOCK.
