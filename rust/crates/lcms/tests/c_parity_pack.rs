@@ -6802,3 +6802,50 @@ fn opt_channel_arms() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmssamp residual — black-point detection arms:
+///   isInkColorspace, BlackPointUsingPerceptualBlack
+///   (ink+output+relcol), BlackPointAsDarkerColorant
+///   (matrix-shaper), Adobe quadratic-fit (LUT output),
+///   DetectBlackPoint fallback — per class x intent.
+#[test]
+fn bp_class_arms() {
+    unsafe {
+        #[repr(C)]
+        struct Xyz { x: f64, y: f64, z: f64 }
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let gray = open("graylcms2.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let link = open("lcms2link.icc");
+        let null5 = open("nullcms2.icc");
+        for (p, nm) in [
+            (srgb, "srgb"), (cmyk, "cmyk"), (gray, "gray"),
+            (lab4, "lab4"), (link, "link"), (null5, "n5")] {
+            if p.is_null() {
+                eprintln!("{nm}: null"); continue; }
+            for intent in 0..6u32 {
+                let mut bp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                let mut bp2 = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                let r1 = c::cmsDetectBlackPoint(
+                    &mut bp as *mut _ as *mut _,
+                    p, intent, 0);
+                let r2 = c::cmsDetectDestinationBlackPoint(
+                    &mut bp2 as *mut _ as *mut _,
+                    p, intent, 0);
+                if r1 != 0 || r2 != 0 {
+                    eprintln!(
+                        "{nm} i{intent}: in={r1}({:.2},{:.2},{:.2}) dst={r2}({:.2},{:.2},{:.2})",
+                        bp.x, bp.y, bp.z, bp2.x, bp2.y, bp2.z); } } }
+        for p in [srgb, cmyk, gray, lab4, link, null5] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
