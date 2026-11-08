@@ -25526,3 +25526,74 @@ fn internal_final82_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio0 residual — OpenProfileFromIOhandler/memory-
+///   handler edge combos, SaveProfileToMem size query,
+///   CloseProfile on linked/partially-read states.
+#[test]
+fn internal_final83_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let mut buf = [0u8; 1 << 17];
+        let mut n = buf.len() as u32;
+        c::cmsSaveProfileToMem(srgb,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        let prof_bytes = buf[..n as usize].to_vec();
+        // size query: NULL buffer returns needed size
+        let mut need = 0u32;
+        let rq = c::cmsSaveProfileToMem(srgb,
+            std::ptr::null_mut(), &mut need);
+        eprintln!("size-query rq={rq} need={need} n={n}");
+        // too-small buffer
+        let mut small = [0u8; 16];
+        let mut sn = small.len() as u32;
+        let rs = c::cmsSaveProfileToMem(srgb,
+            small.as_mut_ptr() as *mut _, &mut sn);
+        eprintln!("small rs={rs} sn={sn}");
+        // open from IOhandler over the mem buffer
+        let io = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            prof_bytes.as_ptr() as *mut _,
+            n, b"r\0".as_ptr() as *const _);
+        eprintln!("io={}", !io.is_null());
+        if !io.is_null() {
+            let p = c::cmsOpenProfileFromIOhandlerTHR(
+                std::ptr::null_mut(), io);
+            eprintln!("prof-from-io={}", !p.is_null());
+            if !p.is_null() {
+                // partially-read state then close
+                let _ = c::cmsReadTag(p, 0x6B545243);
+                c::cmsCloseProfile(p);
+            } else {
+                c::cmsCloseIOhandler(io); }
+        }
+        // truncated profile opens
+        for cut in [n as usize - 1, n as usize / 2,
+                    128, 64, 32, 8] {
+            let p = c::cmsOpenProfileFromMem(
+                prof_bytes.as_ptr() as *const _,
+                cut as u32);
+            eprintln!("cut{cut} prof={}", !p.is_null());
+            if !p.is_null() {
+                // read a tag past the cut -> NULL
+                let t = c::cmsReadTag(p, 0x6B545243);
+                eprintln!("  rd={}", !t.is_null());
+                c::cmsCloseProfile(p);
+            }
+        }
+        // write-mode IOhandler -> save into it
+        let mut wbuf = vec![0u8; 1 << 17];
+        let wio = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            wbuf.as_mut_ptr() as *mut _,
+            wbuf.len() as u32, b"w\0".as_ptr() as *const _);
+        eprintln!("wio={}", !wio.is_null());
+        if !wio.is_null() {
+            let sw = c::cmsSaveProfileToIOhandler(
+                srgb, wio);
+            eprintln!("save-to-io={sw}");
+            c::cmsCloseIOhandler(wio);
+        }
+        c::cmsCloseProfile(srgb);
+    }
+}
