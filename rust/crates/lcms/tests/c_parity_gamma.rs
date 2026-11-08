@@ -551,3 +551,26 @@ fn tonecurve_alloc_arms() {
         c::cmsMLUfree(ml);
     }
 }
+
+/// Parametric types 108/109 + inverses — sigmoid_factory,
+/// inverse_sigmoid_factory, and the -108/-109 reverse arms.
+#[test]
+fn parametric_type_108_109() {
+    unsafe {
+        for ty in [108i32, 109, -108, -109] {
+            let params = [
+                2.2f64, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            ];
+            let c = c::cmsBuildParametricToneCurve(
+                std::ptr::null_mut(), ty, params.as_ptr());
+            eprintln!("ty{ty} null={}", c.is_null());
+            if c.is_null() { continue; }
+            for x in [0.0f64, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9,
+                      0.99, 1.0, -0.1, 1.1] {
+                let y = c::cmsEvalToneCurveFloat(c, x as f32);
+                let _ = y;
+            }
+            c::cmsFreeToneCurve(c);
+        }
+    }
+}
