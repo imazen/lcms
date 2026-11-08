@@ -325,3 +325,44 @@ fn premul_formats() {
         }
     }
 }
+
+/// Exotic-modifier matrix — SWAPFIRST/FLAVOR/ENDIAN16 × channel
+/// counts.
+#[test]
+fn modifier_matrix() {
+    unsafe {
+        // modifiers × channel counts — each combo hits a different
+        // pack/unroll dispatch
+        for (mname, bits) in [
+            ("swapfirst", 1u32 << 18),
+            ("flavor", 1u32 << 19),
+            ("endian16", 1u32 << 24),
+            ("swapfirst+flavor", (1 << 18) | (1 << 19)),
+            ("endian16+swapfirst", (1 << 24) | (1 << 18)),
+        ] {
+            for nch in [1u32, 3, 4, 8] {
+                let in_fmt = (4 << 16) | (nch << 3) | 2 | bits;
+                let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+                let hi = c::cmsCreate_sRGBProfile();
+                let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+                let ct = c::cmsCreateTransform(hi, in_fmt, ho,
+                    out_fmt, 0, 0);
+                let _ = c::cmsCloseProfile(hi);
+                let _ = c::cmsCloseProfile(ho);
+                let mut rp1 = virt::create_srgb_profile(None).unwrap();
+                let mut rp2 = virt::create_lab4_profile(None, None)
+                    .unwrap();
+                let mut profs = vec![rp1.clone(), rp2.clone()];
+                let mut bpc = [false; 2];
+                let intents = [0u32; 2];
+                let adapt = [1.0f64; 2];
+                let rt = xform::create_extended_transform(
+                    None, &mut profs, &mut bpc, &intents, &adapt,
+                    None, 0, in_fmt, out_fmt, 0);
+                assert_eq!(ct.is_null(), rt.is_none(),
+                    "{mname} {nch}ch");
+                if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            }
+        }
+    }
+}
