@@ -1103,3 +1103,41 @@ fn clut_stage_machinery() {
         }
     }
 }
+
+/// Stage-alloc internals — more stage-type variants.
+#[test]
+fn stage_alloc_variants() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let curves = [g, g, g];
+        let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let grid = [4u32; 3];
+        let tab = [0.5f32; 4 * 4 * 4 * 3];
+        for (name, st) in [
+            ("identity-3", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 3)),
+            ("identity-4", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 4)),
+            ("identity-15", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 15)),
+            ("identity-16", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 16)),
+            ("curves", c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, curves.as_ptr())),
+            ("matrix", c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3, mat.as_ptr(),
+                std::ptr::null())),
+            ("clut-flt", c::cmsStageAllocCLutFloatGranular(
+                std::ptr::null_mut(), grid.as_ptr(), 3, 3,
+                tab.as_ptr())),
+        ] {
+            eprintln!("{name} null={}", st.is_null());
+            if !st.is_null() {
+                let pl = c::cmsPipelineAlloc(
+                    std::ptr::null_mut(), 3, 3);
+                c::cmsPipelineInsertStage(pl, 1, st);
+                c::cmsPipelineFree(pl);
+            }
+        }
+    }
+}
