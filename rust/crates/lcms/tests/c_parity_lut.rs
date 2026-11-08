@@ -1551,3 +1551,33 @@ fn stage_type() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// Stage-dup machinery — cmsStageDup on more stage types.
+#[test]
+fn stage_dup() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let c3 = [g, g, g];
+        for (name, st) in [
+            ("identity", c::cmsStageAllocIdentity(
+                std::ptr::null_mut(), 3)),
+            ("curves", c::cmsStageAllocToneCurves(
+                std::ptr::null_mut(), 3, c3.as_ptr())),
+            ("matrix", c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3,
+                [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0]
+                    .as_ptr(), std::ptr::null())),
+            ("clut16", c::cmsStageAllocCLut16bit(
+                std::ptr::null_mut(), 2, 3, 3,
+                std::ptr::null())),
+            ("clutf", c::cmsStageAllocCLutFloat(
+                std::ptr::null_mut(), 2, 3, 3,
+                std::ptr::null()))] {
+            let d = c::cmsStageDup(st);
+            eprintln!("{name} dup={}", !d.is_null());
+            if !d.is_null() { c::cmsStageFree(d); }
+            c::cmsStageFree(st);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
