@@ -2805,3 +2805,27 @@ fn header_getters2() {
         let _ = (dl, dl4, srgb, lab, ph);
     }
 }
+
+/// Profile-info machinery — cmsGetProfileInfo/ASCII on
+/// more info types.
+#[test]
+fn profile_info_types() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        for (info, name) in [
+            (0u32, "desc"), (1, "copyright"), (2, "model"),
+            (3, "manufacturer"), (4, "mfr2"), (5, "unknown")] {
+            let mut buf = [0u16; 128];
+            let n = c::cmsGetProfileInfo(h, info,
+                b"en\0".as_ptr() as _,
+                b"US\0".as_ptr() as _,
+                buf.as_mut_ptr() as *mut _, 128);
+            let mut abuf = [0u8; 128];
+            let na = c::cmsGetProfileInfoASCII(h, info,
+                b"en\0".as_ptr() as _, b"US\0".as_ptr() as _,
+                abuf.as_mut_ptr() as *mut _, 128);
+            eprintln!("{name} w={n} a={na}");
+        }
+        c::cmsCloseProfile(h);
+    }
+}
