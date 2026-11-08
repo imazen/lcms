@@ -374,3 +374,38 @@ fn float_lut_lab_normalization() {
         c::cmsPipelineFree(p);
     }
 }
+
+/// _cmsReadFloatDevicelinkTag — devicelink profile + DToB/BToD
+/// mpet tag in transform position -> the float devicelink reader.
+#[test]
+fn float_devicelink_tag() {
+    unsafe {
+        let ftab: Vec<f32> = (0..8*3)
+            .map(|i| i as f32 / 24.0).collect();
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
+                ftab.as_ptr()));
+        let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(dl, 0x6c696e6b); // 'link'
+        c::cmsSetColorSpace(dl, 0x52474220);   // 'RGB '
+        c::cmsSetPCS(dl, 0x4C616220);           // 'Lab '
+        c::cmsSetProfileVersion(dl, 4.4);
+        c::cmsWriteTag(dl, 0x41324230, p as *const _); // A2B0 mpet
+        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let rf = (4u32 << 16) | (1 << 22) | (3 << 3) | 4;
+        for (f, name) in [(r16, "u16"), (rf, "f32")] {
+            let t = c::cmsCreateTransform(dl, f, dl, f, 0, 0);
+            eprintln!("{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x40u8; 16];
+                let mut ob = [0u8; 16];
+                c::cmsDoTransform(t, ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(dl);
+        c::cmsPipelineFree(p);
+    }
+}
