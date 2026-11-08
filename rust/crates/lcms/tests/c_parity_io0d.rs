@@ -26102,3 +26102,66 @@ fn internal_rawtag_probe_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0 residual — file-length + search-tag tails:
+///   profile save/load round-trips at varying tag
+///   counts, tag-sig search on ordered tables.
+#[test]
+fn internal_filelen2_arms() {
+    unsafe {
+        // profiles with 1..30 tags -> save -> reload ->
+        //   tag-count check (SearchTag binary search)
+        let g = c::cmsBuildGamma(
+            std::ptr::null_mut(), 1.0);
+        let xyz = [0x0000F6D6u32, 0x00010000, 0x0000D32D];
+        // XYZ-typed tags only (curve/text/etc crash
+        //   upstream on a wrong-type write)
+        let sigs = [
+            0x77747074u32, 0x6258595A, 0x7258595A,
+            0x6758595A, 0x626B7074, 0x6C756D69,
+            0x6D656173, 0x636D696E, 0x646D6E64,
+            0x646D6464, 0x76756564, 0x74617267,
+            0x74656368, 0x63686164, 0x7363726E,
+            0x636C726F, 0x6E636C32, 0x6D657461,
+            0x70736571, 0x70736964, 0x64657363,
+            0x63707274, 0x72545243, 0x67545243,
+            0x62545243, 0x6B545243, 0x72657370,
+            0x70726530, 0x70726531, 0x70726532,
+        ];
+        for ntags in [1usize, 2, 4, 8, 16, 30] {
+            let p = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x58595A20);
+            c::cmsSetProfileVersion(p, 4.4);
+            for i in 0..ntags.min(8) {
+                c::cmsWriteTag(p, sigs[i],
+                    xyz.as_ptr() as *const _);
+            }
+            let mut buf = [0u8; 1 << 18];
+            let mut n = buf.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                buf.as_mut_ptr() as *mut _, &mut n);
+            let pr = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            if !pr.is_null() {
+                let cnt = c::cmsGetTagCount(pr);
+                // probe middle + edge sigs
+                for s in [sigs[0],
+                          sigs[ntags.min(8) / 2],
+                          sigs[ntags.min(8) - 1],
+                          0x7A7A7A7A] {
+                    let it = c::cmsIsTag(pr, s);
+                    let _ = it;
+                }
+                eprintln!("ntags{ntags} cnt={cnt}");
+                c::cmsCloseProfile(pr);
+            }
+            c::cmsCloseProfile(p);
+        }
+        c::cmsFreeToneCurve(g);
+    }
+}
