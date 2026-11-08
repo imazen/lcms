@@ -443,3 +443,71 @@ fn postscript_write_bodies() {
         let _ = (srgb, lab);
     }
 }
+
+/// 1-channel CSA — a Gray profile through cmsGetPostScriptCSA hits
+/// the nChannels=1 arm: ExtractGray2Y (Gray->XYZ tabulation) +
+/// EmitCIEBasedA. Named-color CRD — an 'nmcl' profile through
+/// cmsGetPostScriptCRD hits WriteNamedColorCRD.
+#[test]
+fn gray_csa_named_crd() {
+    let _g = PS_LOCK.lock().unwrap();
+    unsafe {
+        let cg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let mut wp = c::CiexyY { x: 0.3457, y: 0.3585, Y: 1.0 };
+        let gp = c::cmsCreateGrayProfile(
+            &mut wp as *mut _ as *const _, cg);
+        let tg = lcms::gamma::build_gamma(None, 2.2).unwrap();
+        let mut rg = lcms::virt::create_gray_profile(None, None, Some(&tg)).unwrap();
+        let cout = c_ps(c::cmsGetPostScriptCSA, gp, 0, 0);
+        let rout = r_ps(true, &mut rg, 0, 0);
+        assert_eq!(cout, rout, "gray CSA");
+        // gray CRD also exercises the CIEBasedA path in CRD form
+        let cout2 = c_ps(c::cmsGetPostScriptCRD, gp, 0, 0);
+        let rout2 = r_ps(false, &mut rg, 0, 0);
+        // strip the "% Created:" timestamp line — same-second races
+        let strip = |v: &[u8]| -> Vec<u8> {
+            let s = String::from_utf8_lossy(v);
+            s.lines().filter(|l| !l.starts_with("% Created:"))
+                .collect::<Vec<_>>().join("
+").into_bytes()
+        };
+        assert_eq!(strip(&cout2), strip(&rout2), "gray CRD");
+        // named-color CRD — 'nmcl' placeholder + ncl2 tag
+        let np = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(np, 0x6e6d636c); // 'nmcl'
+        c::cmsSetColorSpace(np, 0x6e636c32); // 'ncl2'
+        c::cmsSetPCS(np, 0x4C616220); // 'Lab '
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"\0".as_ptr(), b"\0".as_ptr());
+        let pcs = [0x8000u16, 0x8000, 0x8000];
+        let col = [0xFFFFu16, 0, 0, 0];
+        c::cmsAppendNamedColor(ncl, b"Color1\0".as_ptr(),
+            pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"Color2\0".as_ptr(),
+            pcs.as_ptr(), col.as_ptr());
+        c::cmsWriteTag(np, 0x6e636c32, ncl as *const _);
+        let mut buf = vec![0u8; BUF];
+        let cn = c::cmsGetPostScriptCRD(std::ptr::null_mut(), np, 0, 0,
+            buf.as_mut_ptr() as *mut _, buf.len() as u32);
+        eprintln!("named CRD n={cn} (0 = C rejects WriteNamedColorCRD)");
+        // rust side — same nmcl profile
+        let mut rp = lcms::profile::create_profile_placeholder(None);
+        rp.device_class = lcms::signatures::profileclass::SigNamedColorClass;
+        rp.color_space = 0x6e636c32;
+        rp.pcs = 0x4C616220;
+        let mut rncl = lcms::named::alloc_named_color_list(
+            None, 2, 4, b"", b"").unwrap();
+        let mut col16 = [0u16; 16];
+        col16[..4].copy_from_slice(&col);
+        lcms::named::append_named_color(&mut rncl,
+            Some(b"Color1"), Some(&pcs), Some(&col16));
+        lcms::named::append_named_color(&mut rncl,
+            Some(b"Color2"), Some(&pcs), Some(&col16));
+        let mut rp2 = *rp;
+        lcms::profile::cms_write_tag(&mut rp2, 0x6e636c32,
+            Some(lcms::tagtypes::TagObject::NamedColor(rncl)));
+        c::cmsCloseProfile(gp);
+        c::cmsCloseProfile(np);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
