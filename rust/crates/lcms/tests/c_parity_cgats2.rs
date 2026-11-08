@@ -656,3 +656,40 @@ fn it8_save_reload() {
         c::cmsIT8Free(h);
     }
 }
+
+/// IT8 populated save — SetDataFormat + SetDataRowCol
+/// sequence then save+reload.
+#[test]
+fn it8_populated_save() {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        c::cmsIT8SetSheetType(h,
+            b"LCMS/IT8\0".as_ptr() as _);
+        // set data formats for 3 columns
+        for (i, name) in [
+            (0i32, "SAMPLE_ID\0"),
+            (1, "LAB_L\0"), (2, "LAB_A\0")] {
+            let r = c::cmsIT8SetDataFormat(h, i,
+                name.as_ptr() as _);
+            eprintln!("setfmt[{i}]={r}");
+        }
+        // set row/col data
+        for (row, col, val) in [
+            (0i32, 0i32, "1\0"), (0, 1, "50.0\0"),
+            (0, 2, "0.0\0"), (1, 0, "2\0"),
+            (1, 1, "60.0\0"), (1, 2, "1.0\0")] {
+            let r = c::cmsIT8SetDataRowCol(h, row, col,
+                val.as_ptr() as _);
+            eprintln!("setdata[{row},{col}]={r}");
+        }
+        let r = c::cmsIT8SaveToFile(h,
+            b"/tmp/ccov_it8b.txt\0".as_ptr() as _);
+        eprintln!("save={r}");
+        let h2 = c::cmsIT8LoadFromFile(
+            std::ptr::null_mut(),
+            b"/tmp/ccov_it8b.txt\0".as_ptr() as _);
+        eprintln!("reload={}", !h2.is_null());
+        if !h2.is_null() { c::cmsIT8Free(h2); }
+        c::cmsIT8Free(h);
+    }
+}
