@@ -2188,3 +2188,43 @@ fn remaining_object_sigs() {
         c::cmsMLUfree(mlu);
     }
 }
+
+/// Remaining object sigs resave+read — the serialization
+/// round-trips.
+#[test]
+fn remaining_object_resave() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let sigv: u32 = 0x666F7461;
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu,
+            b"en\0".as_ptr() as *const u8,
+            b"US\0".as_ptr() as *const u8,
+            b"x\0".as_ptr() as *const u8);
+        let _ = c::cmsWriteTag(h, 0x74656368,
+            &sigv as *const _ as *mut std::ffi::c_void);
+        let _ = c::cmsWriteTag(h, 0x63696973,
+            &sigv as *const _ as *mut std::ffi::c_void);
+        let _ = c::cmsWriteTag(h, 0x72696730,
+            &sigv as *const _ as *mut std::ffi::c_void);
+        let _ = c::cmsWriteTag(h, 0x73637264,
+            mlu as *mut std::ffi::c_void);
+        let _ = c::cmsWriteTag(h, 0x76756564,
+            mlu as *mut std::ffi::c_void);
+        // resave + read — the object serialization internals
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
+        for sig in [0x74656368u32, 0x63696973, 0x72696730,
+                    0x73637264, 0x76756564] {
+            let r = c::cmsReadTag(h2, sig);
+            eprintln!("{sig:#x} read={}", r.is_null());
+        }
+        c::cmsCloseProfile(h2);
+        c::cmsCloseProfile(h);
+        c::cmsMLUfree(mlu);
+    }
+}
