@@ -5391,3 +5391,48 @@ fn ucrbg_tag() {
         c::cmsMLUfree(m);
     }
 }
+
+/// Type_Chromaticity + Type_ColorantTable — chrm primaries and
+/// clrt/clro colorant tables.
+#[test]
+fn chrm_clrt_tags() {
+    unsafe {
+        #[repr(C)] struct Xy { x: f64, y: f64, yy: f64 }
+        #[repr(C)] struct Triple { r: Xy, g: Xy, b: Xy }
+        let mut tr = Triple {
+            r: Xy { x: 0.64, y: 0.33, yy: 1.0 },
+            g: Xy { x: 0.30, y: 0.60, yy: 1.0 },
+            b: Xy { x: 0.15, y: 0.06, yy: 1.0 } };
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2,
+            3, b"\0".as_ptr(), b"\0".as_ptr());
+        let pcs = [0x8000u16; 3];
+        c::cmsAppendNamedColor(ncl, b"Cyan\0".as_ptr(),
+            pcs.as_ptr(), std::ptr::null());
+        c::cmsAppendNamedColor(ncl, b"Magenta\0".as_ptr(),
+            pcs.as_ptr(), std::ptr::null());
+        for (sig, payload, name) in [
+            (0x6368726Du32, &mut tr as *mut _ as *const _, "chrm"),
+            (0x636C7274, ncl as *const _, "clrt"),
+            (0x636C726F, ncl as *const _, "clro"),
+        ] {
+            let prof = c::cmsCreate_sRGBProfile();
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            c::cmsCloseProfile(prof);
+        }
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
