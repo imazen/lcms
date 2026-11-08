@@ -22891,3 +22891,79 @@ fn internal_final57_arms() {
         c::cmsCloseProfile(srgb);
     }
 }
+
+/// cmsio0 residual — save-to-file / save-to-IOhandler /
+///   write-error paths (SaveTags internals + IOhandler
+///   write machinery).
+#[test]
+fn internal_final58_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // save-to-file on writeable + failing paths
+        for (path, name) in [
+            ("/home/lilith/tmp/io58-a.icc", "ok"),
+            ("/home/lilith/tmp/io58-b.icc", "ok2"),
+            ("/nonexistent-dir-x/xx.icc", "nodir"),
+            ("/dev/full", "full"),
+            ("/proc/xx.icc", "proc"),
+            ("", "empty"),
+        ] {
+            let prof = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(prof, 0x6D6E7472);
+            c::cmsSetColorSpace(prof, 0x52474220);
+            c::cmsSetPCS(prof, 0x58595A20);
+            c::cmsSetProfileVersion(prof, 4.4);
+            c::cmsWriteTag(prof, 0x72545243,
+                g as *const _);
+            c::cmsWriteTag(prof, 0x77747074,
+                &c::CieXyz { X: 0.9, Y: 1.0, Z: 0.9 }
+                    as *const _ as *const _);
+            let p2 = format!("{path}\0");
+            let s = c::cmsSaveProfileToFile(prof,
+                p2.as_ptr() as *const _);
+            eprintln!("{name} s={s}");
+            c::cmsCloseProfile(prof);
+        }
+        // reopen the saved files + verify tag content
+        for path in [
+            "/home/lilith/tmp/io58-a.icc",
+            "/home/lilith/tmp/io58-b.icc",
+        ] {
+            let p2 = format!("{path}\0");
+            let rp = c::cmsOpenProfileFromFile(
+                p2.as_ptr() as *const _,
+                b"r\0".as_ptr() as *const _);
+            if !rp.is_null() {
+                let t = c::cmsReadTag(rp, 0x72545243);
+                let cnt = c::cmsGetTagCount(rp);
+                eprintln!("{path} cnt={cnt} \
+                    trc={}", !t.is_null());
+                c::cmsCloseProfile(rp);
+            }
+            std::fs::remove_file(path).ok();
+        }
+        // save-to-IOhandler on a mem handler
+        let prof = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        c::cmsSetDeviceClass(prof, 0x6D6E7472);
+        c::cmsSetColorSpace(prof, 0x52474220);
+        c::cmsSetPCS(prof, 0x58595A20);
+        c::cmsWriteTag(prof, 0x72545243, g as *const _);
+        let mut buf = vec![0u8; 1 << 18];
+        let io = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            buf.as_mut_ptr() as *mut _,
+            buf.len() as u32,
+            b"w\0".as_ptr() as *const _);
+        if !io.is_null() {
+            let s = c::cmsSaveProfileToIOhandler(prof, io);
+            eprintln!("ioh s={s}");
+            c::cmsCloseIOhandler(io);
+        }
+        c::cmsCloseProfile(prof);
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
