@@ -239,3 +239,44 @@ fn matrix_shaper_directions() {
         c::cmsCloseProfile(lab);
     }
 }
+
+/// _cmsReadInputLUT named-color arm — nmcl-class profile in input
+/// position: ncl2 -> named-color stage + LabV2ToV4 + empty pipeline.
+#[test]
+fn named_color_input_lut() {
+    unsafe {
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
+            b"suf\0".as_ptr());
+        for (name, pcs) in [("S1\0", [0x9000u16, 0x5500, 0x5500]),
+                            ("S2\0", [0x3000, 0x2000, 0x9000])] {
+            let col = [0xFFFFu16; 4];
+            c::cmsAppendNamedColor(ncl, name.as_ptr(),
+                pcs.as_ptr(), col.as_ptr());
+        }
+        let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
+        c::cmsSetDeviceClass(nmcl, 0x6e6d636c);
+        c::cmsSetColorSpace(nmcl, 0x6e636c32);
+        c::cmsSetPCS(nmcl, 0x4C616220);
+        c::cmsWriteTag(nmcl, 0x6e636c32, ncl as *const _);
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        for (out, name) in [(lab, "lab"), (srgb, "srgb")] {
+            let of = if out == srgb { 0x00ff04u32 } else { 0x0a0702 };
+            let t = c::cmsCreateTransform(nmcl,
+                (1 << 3) | 2, out, of, 0, 0);
+            eprintln!("nmcl-in->{name} t={}", !t.is_null());
+            if !t.is_null() {
+                let idx = [0u16, 1];
+                let mut ob = [0u8; 8];
+                c::cmsDoTransform(t, idx.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
+        c::cmsCloseProfile(nmcl);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsFreeNamedColorList(ncl);
+    }
+}
