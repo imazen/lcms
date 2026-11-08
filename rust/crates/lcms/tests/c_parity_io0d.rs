@@ -1241,3 +1241,34 @@ fn tag_count_fields() {
         }
     }
 }
+
+/// Reserved-field machinery — unusual header reserved
+/// fields.
+#[test]
+fn reserved_fields() {
+    unsafe {
+        let h = c::cmsCreate_sRGBProfile();
+        let mut cn = 0u32;
+        c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
+        let mut cbuf = vec![0u8; cn as usize];
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
+            &mut cn);
+        c::cmsCloseProfile(h);
+        // mutate the reserved fields (offsets 36-40 acsp,
+        // 40-44 platform, 52-56 reserved)
+        for (name, off, v) in [
+            ("r52-0", 52, 0u32),
+            ("r52-huge", 52, 0xFFFFFFFFu32),
+            ("r56-0", 56, 0u32),
+            ("r56-huge", 56, 0xFFFFFFFFu32),
+            ("r60-0", 60, 0u32),
+            ("r60-huge", 60, 0xFFFFFFFFu32)] {
+            let mut d = cbuf.clone();
+            d[off..off+4].copy_from_slice(&v.to_be_bytes());
+            let h2 = c::cmsOpenProfileFromMem(
+                d.as_ptr() as _, cn);
+            eprintln!("{name} open={}", !h2.is_null());
+            if !h2.is_null() { c::cmsCloseProfile(h2); }
+        }
+    }
+}
