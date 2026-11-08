@@ -1659,3 +1659,31 @@ fn double_byte_order_devicelink() {
         let _ = c::cmsCloseProfile(dl);
     }
 }
+
+/// cmsDoTransform on the devicelinks — the transform eval
+/// machinery on more channel counts.
+#[test]
+fn devicelink_transform_eval() {
+    unsafe {
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        for (nch, sig) in [
+            (2usize, 0x32434C52u32), (4, 0x434D594B),
+            (6, 0x36434C52), (8, 0x38434C52)] {
+            let mut curves = vec![g; nch];
+            let dl = c::cmsCreateLinearizationDeviceLinkTHR(
+                std::ptr::null_mut(), sig, curves.as_mut_ptr());
+            let fmt: u32 = (0 << 16) | ((nch as u32) << 3) | 1;
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
+                0, 0);
+            eprintln!("{nch}ch t={}", !ct.is_null());
+            if !ct.is_null() {
+                let inp = vec![0x40u8; nch];
+                let mut out = vec![0u8; nch];
+                c::cmsDoTransform(ct, inp.as_ptr() as _,
+                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ct);
+            }
+            let _ = c::cmsCloseProfile(dl);
+        }
+    }
+}
