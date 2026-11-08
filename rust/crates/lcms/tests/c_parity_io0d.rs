@@ -3091,3 +3091,34 @@ fn tag_types_2() {
         c::cmsCloseProfile(prof);
     }
 }
+
+/// IsTag/SearchOneTag/linked-tag/NULLWrite arms — tag binary
+/// search over present/absent sigs, tag linking, save to NULL IO.
+#[test]
+fn tag_search_linked_null() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        // IsTag over present + absent sigs -> SearchOneTag both ways
+        for sig in [0x77747074u32, 0x64657363, 0x41324230,
+                    0xdeadbeef, 0x00000000] {
+            let t = c::cmsIsTag(prof, sig);
+            eprintln!("istag {sig:#x}={t}");
+        }
+        // linked tags — write gTRC then link rTRC to it
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        c::cmsWriteTag(prof, 0x67545243, g as *const _); // 'gTRC'
+        let l = c::cmsLinkTag(prof, 0x72545243, 0x67545243); // rTRC->gTRC
+        eprintln!("link={l}");
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n = buf.len() as u32;
+        let s = c::cmsSaveProfileToMem(prof,
+            buf.as_mut_ptr() as *mut _, &mut n);
+        eprintln!("save={s}");
+        // NULL-IOhandler save -> NULLWrite
+        let io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+        let s2 = c::cmsSaveProfileToIOhandler(prof, io);
+        eprintln!("null-save={s2}");
+        if !io.is_null() { c::cmsCloseIOhandler(io); }
+        c::cmsCloseProfile(prof);
+    }
+}
