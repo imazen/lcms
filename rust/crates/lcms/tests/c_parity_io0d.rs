@@ -23637,3 +23637,127 @@ fn internal_final64_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsio1 residual — BuildGrayInput/Output +
+///   BuildRGBInput/OutputMatrixShaper internals via
+///   matrix-shaper profile transforms in all tag combos.
+#[test]
+fn internal_final65_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let wp_xyz = c::CieXyz { X: 0.9642, Y: 1.0,
+            Z: 0.8249 };
+        // gray profiles with tag combos
+        for (tc, wp, name) in [
+            (true, true, "tc+wp"),
+            (true, false, "tc"),
+            (false, true, "wp"),
+            (false, false, "none"),
+        ] {
+            let gp = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(gp, 0x6D6E7472);
+            c::cmsSetColorSpace(gp, 0x47524159);
+            c::cmsSetPCS(gp, 0x58595A20);
+            c::cmsSetProfileVersion(gp, 4.4);
+            if tc {
+                c::cmsWriteTag(gp, 0x6B545243,
+                    g as *const _); }
+            if wp {
+                c::cmsWriteTag(gp, 0x77747074,
+                    &wp_xyz as *const _ as *const _); }
+            // gray→gray + gray→srgb + srgb→gray
+            let fin_g = (3u32 << 16) | (1 << 3) | 2;
+            let fin_r = (4u32 << 16) | (3 << 3) | 2;
+            for (dir, dname) in [
+                (0u32, "g2g"), (1, "g2s"), (2, "s2g"),
+            ] {
+                let t = match dir {
+                    0 => c::cmsCreateTransform(gp, fin_g,
+                        gp, fin_g, 0, 0),
+                    1 => c::cmsCreateTransform(gp, fin_g,
+                        srgb, fin_r, 0, 0),
+                    _ => c::cmsCreateTransform(srgb, fin_r,
+                        gp, fin_g, 0, 0),
+                };
+                eprintln!("gray {name} {dname} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = [0x4000u16; 3];
+                    let mut dst = [0u16; 3];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(gp);
+        }
+        // rgb matrix profiles — TRC-only/matrix-only combos
+        let mats = [
+            0x4A77u32, 0xC5F8, 0x07A7,
+            0xB6A0, 0xC9D5, 0x7C46,
+            0x4BF0, 0xBCF1, 0xB30B,
+        ];
+        for (has_trc, has_mat, name) in [
+            (true, true, "trc+mat"),
+            (true, false, "trc"),
+            (false, true, "mat"),
+            (false, false, "none"),
+        ] {
+            let rp = c::cmsCreateProfilePlaceholder(
+                std::ptr::null_mut());
+            c::cmsSetDeviceClass(rp, 0x6D6E7472);
+            c::cmsSetColorSpace(rp, 0x52474220);
+            c::cmsSetPCS(rp, 0x58595A20);
+            c::cmsSetProfileVersion(rp, 4.4);
+            if has_trc {
+                for sig in [0x72545243u32, 0x67545243,
+                    0x62545243] {
+                    c::cmsWriteTag(rp, sig,
+                        g as *const _); }
+            }
+            if has_mat {
+                for (i, sig) in [0x7258595Au32,
+                    0x6758595A, 0x6258595A]
+                        .iter().enumerate() {
+                    let xyz = c::CieXyz {
+                        X: mats[i*3] as f64 / 65536.0,
+                        Y: mats[i*3+1] as f64 / 65536.0,
+                        Z: mats[i*3+2] as f64 / 65536.0 };
+                    c::cmsWriteTag(rp, *sig,
+                        &xyz as *const _ as *const _);
+                }
+            }
+            c::cmsWriteTag(rp, 0x77747074,
+                &wp_xyz as *const _ as *const _);
+            let fin_r = (4u32 << 16) | (3 << 3) | 2;
+            for (dir, dname) in [
+                (0u32, "r2r"), (1, "r2s"), (2, "s2r"),
+            ] {
+                let t = match dir {
+                    0 => c::cmsCreateTransform(rp, fin_r,
+                        rp, fin_r, 0, 0),
+                    1 => c::cmsCreateTransform(rp, fin_r,
+                        srgb, fin_r, 0, 0),
+                    _ => c::cmsCreateTransform(srgb, fin_r,
+                        rp, fin_r, 0, 0),
+                };
+                eprintln!("rgb {name} {dname} t={}",
+                    !t.is_null());
+                if !t.is_null() {
+                    let src = [0x4000u16; 3];
+                    let mut dst = [0u16; 3];
+                    c::cmsDoTransform(t,
+                        src.as_ptr() as *const _,
+                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(rp);
+        }
+        c::cmsCloseProfile(srgb);
+        c::cmsFreeToneCurve(g);
+    }
+}
