@@ -1006,3 +1006,90 @@ fn utf8_decode_arms() {
         c::cmsFreeNamedColorList(nl);
     }
 }
+
+/// cmsnamed residual — decodeUTF8 edge sequences +
+///   DupNamedColorList/DictDup internals.
+#[test]
+fn named_utf8_dup_arms() {
+    unsafe {
+        let ctx = c::cmsCreateContext(
+            std::ptr::null_mut(), std::ptr::null_mut());
+        // named-color list with all UTF-8 sequence classes
+        for (n_, name) in [
+            (1u32, "ascii"), (4, "multi"),
+        ] {
+            let nl = c::cmsAllocNamedColorList(ctx, n_,
+                4, b"p\0".as_ptr(), b"s\0".as_ptr());
+            let mut pcs = [0x1000u16; 16];
+            let col = [0x2000u16; 16];
+            // UTF-8 sequences: 1/2/3/4-byte valid, overlong,
+            //   surrogate-range, truncated, continuation-
+            //   only, invalid lead bytes
+            let names: Vec<Vec<u8>> = vec![
+                b"a\0".to_vec(),
+                b"\xC3\xA9\0".to_vec(),           // é 2B
+                b"\xE2\x82\xAC\0".to_vec(),       // € 3B
+                b"\xF0\x9F\x98\x80\0".to_vec(),   // 😀 4B
+                b"\xC0\x80\0".to_vec(),           // overlong /
+                b"\xE0\x80\x80\0".to_vec(),       // overlong 3
+                b"\xF0\x80\x80\x80\0".to_vec(),   // overlong 4
+                b"\x80\0".to_vec(),               // cont-only
+                b"\xC3\0".to_vec(),               // truncated 2
+                b"\xE2\x82\0".to_vec(),           // truncated 3
+                b"\xFF\0".to_vec(),               // invalid FF
+                b"\xFE\0".to_vec(),               // invalid FE
+                b"\xC2\x20\0".to_vec(),           // 2B + ASCII
+                b"\xED\xA0\x80\0".to_vec(),       // surrogate
+                b"\xF4\x8F\xBF\xBF\0".to_vec(),   // U+10FFFF
+                b"\xF5\x80\x80\x80\0".to_vec(),   // >U+10FFFF
+                b"abc\xE2\x82\xACxyz\0".to_vec(), // mixed
+            ];
+            for (i, nm) in names.iter().enumerate() {
+                pcs[0] = i as u16;
+                let r = c::cmsAppendNamedColor(nl,
+                    nm.as_ptr(), pcs.as_ptr(),
+                    col.as_ptr());
+                eprintln!("{name} [{i}] ap={r}");
+            }
+            // read back → decodeUTF8 on each
+            let cnt = c::cmsNamedColorCount(nl);
+            eprintln!("  cnt={cnt}");
+            for i in 0..cnt.min(4) {
+                let mut nm = [0u8; 64];
+                let mut pfx = [0u8; 64];
+                let mut sfx = [0u8; 64];
+                let mut pcs2 = [0u16; 16];
+                let mut col2 = [0u16; 16];
+                let info = c::cmsNamedColorInfo(nl, i,
+                    nm.as_mut_ptr(),
+                    pfx.as_mut_ptr(),
+                    sfx.as_mut_ptr(),
+                    pcs2.as_mut_ptr(),
+                    col2.as_mut_ptr());
+                eprintln!("  info[{i}]={info}");
+            }
+            // dup the list → DupNamedColorList
+            let d = c::cmsDupNamedColorList(nl);
+            eprintln!("  dup={}", !d.is_null());
+            if !d.is_null() {
+                c::cmsFreeNamedColorList(d); }
+            c::cmsFreeNamedColorList(nl);
+        }
+        // dict dup via ctx-dup + DictDup directly
+        let dict = c::cmsDictAlloc(ctx);
+        let mut kw = [0i32; 4];
+        let mut vw = [0i32; 4];
+        for (j, ch) in "k\0".chars().enumerate() {
+            kw[j] = ch as i32; }
+        for (j, ch) in "v\0".chars().enumerate() {
+            vw[j] = ch as i32; }
+        c::cmsDictAddEntry(dict, kw.as_ptr(),
+            vw.as_ptr(), std::ptr::null_mut(),
+            std::ptr::null_mut());
+        let dd = c::cmsDictDup(dict);
+        eprintln!("dictdup={}", !dd.is_null());
+        if !dd.is_null() { c::cmsDictFree(dd); }
+        c::cmsDictFree(dict);
+        c::cmsDeleteContext(ctx);
+    }
+}
