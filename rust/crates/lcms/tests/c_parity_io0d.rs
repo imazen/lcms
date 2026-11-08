@@ -15574,3 +15574,86 @@ fn extra_chan_floatin_arms() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsMLUdup/getUTF8 + cmsPipelineDup/CheckAndRetrieve +
+/// cmsStageDup arms.
+#[test]
+fn mlu_pipe_dup_arms() {
+    unsafe {
+        // MLU dup + UTF8 getter
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 4);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(),
+            b"US\0".as_ptr(), b"hello\0".as_ptr());
+        c::cmsMLUsetASCII(mlu, b"de\0".as_ptr(),
+            b"DE\0".as_ptr(), b"hallo\0".as_ptr());
+        let d = c::cmsMLUdup(mlu);
+        let mut u8buf = [0u8; 256];
+        for lang in [b"en\0" as &[u8], b"US\0", b"de\0",
+            b"DE\0", b"xx\0"] {
+            let n = c::cmsMLUgetUTF8(d,
+                lang.as_ptr(), lang.as_ptr(),
+                u8buf.as_mut_ptr() as *mut _,
+                u8buf.len() as u32);
+            eprintln!("utf8 {lang:?}={n}");
+        }
+        c::cmsMLUfree(d);
+        c::cmsMLUfree(mlu);
+        // pipeline + stage dup
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        c::cmsPipelineInsertStage(p, 0,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3,
+                [g, g, g].as_ptr() as *mut _));
+        let dims = [3u32; 3];
+        let grid = vec![0x4000u16; 81];
+        c::cmsPipelineInsertStage(p, 1,
+            c::cmsStageAllocCLut16bitGranular(
+                std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+                grid.as_ptr()));
+        let pd = c::cmsPipelineDup(p);
+        eprintln!("pipedup={}", !pd.is_null());
+        if !pd.is_null() { c::cmsPipelineFree(pd); }
+        // stage dup — curveset + clut + matrix
+        let cs_ = c::cmsStageAllocToneCurves(
+            std::ptr::null_mut(), 3,
+            [g, g, g].as_ptr() as *mut _);
+        let cd = c::cmsStageDup(cs_);
+        eprintln!("curvedup={}", !cd.is_null());
+        if !cd.is_null() { c::cmsStageFree(cd); }
+        c::cmsStageFree(cs_);
+        let cl = c::cmsStageAllocCLut16bitGranular(
+            std::ptr::null_mut(), dims.as_ptr(), 3, 3,
+            grid.as_ptr());
+        let cld = c::cmsStageDup(cl);
+        eprintln!("clutdup={}", !cld.is_null());
+        if !cld.is_null() { c::cmsStageFree(cld); }
+        c::cmsStageFree(cl);
+        // CheckAndRetreiveStages — sig sequences
+        let curv_sig = 0x63767374u32;   // 'cvst' element
+        let clut_sig = 0x636C7574u32;
+        let mat_sig = 0x6D617466u32;
+        // types first, then elem pointers
+        let mut e1: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut e2: *mut std::ffi::c_void = std::ptr::null_mut();
+        let r2 = c::cmsPipelineCheckAndRetreiveStages(p, 2,
+            curv_sig, clut_sig, &mut e1, &mut e2);
+        let mut e1b: *mut std::ffi::c_void = std::ptr::null_mut();
+        let mut e2b: *mut std::ffi::c_void = std::ptr::null_mut();
+        let r2b = c::cmsPipelineCheckAndRetreiveStages(p, 2,
+            clut_sig, curv_sig, &mut e1b, &mut e2b);
+        let mut e3: *mut std::ffi::c_void = std::ptr::null_mut();
+        let r3 = c::cmsPipelineCheckAndRetreiveStages(p, 3,
+            curv_sig, clut_sig, mat_sig, &mut e1b,
+            &mut e2b, &mut e3);
+        let mut e4: *mut std::ffi::c_void = std::ptr::null_mut();
+        let r4 = c::cmsPipelineCheckAndRetreiveStages(p, 4,
+            curv_sig, clut_sig, mat_sig, curv_sig,
+            &mut e1b, &mut e2b, &mut e3, &mut e4);
+        let cnt = c::cmsPipelineStageCount(p);
+        let st0 = c::cmsStageType(
+            c::cmsPipelineGetPtrToFirstStage(p));
+        eprintln!("checkstages {r2}/{r2b}/{r3}/{r4} cnt={cnt}             st0={st0:#x}");
+        c::cmsPipelineFree(p);
+        c::cmsFreeToneCurve(g);
+    }
+}
