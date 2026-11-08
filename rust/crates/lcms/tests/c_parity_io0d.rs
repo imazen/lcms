@@ -3717,3 +3717,37 @@ fn unsupported_type_arms() {
         c::cmsCloseProfile(p);
     }
 }
+
+/// Numeric-array tag types — UInt8/16/32/64 + S15/U16Fixed16
+/// arrays -> Type_UInt*/Fixed16Array serializers.
+#[test]
+fn numeric_array_tags() {
+    unsafe {
+        let prof = c::cmsCreate_sRGBProfile();
+        let u16s = [1u16, 2, 3, 0x8000];
+        let u32s = [1u32, 0xDEADBEEF];
+        let s15 = [0x4000u32, 0xFFFF8000, 0x00010000];
+        for (sig, payload, name) in [
+            (0x4E4C5520u32, u16s.as_ptr() as *const _, "u16arr"),
+            (0x4E4C5532, u32s.as_ptr() as *const _, "u32arr"),
+            (0x53463136, s15.as_ptr() as *const _, "s15arr"),
+        ] {
+            let w = c::cmsWriteTag(prof, sig, payload);
+            let mut buf = vec![0u8; 1 << 20];
+            let mut n = buf.len() as u32;
+            let s = if w != 0 {
+                c::cmsSaveProfileToMem(prof,
+                    buf.as_mut_ptr() as *mut _, &mut n)
+            } else { 0 };
+            let rp = if s != 0 {
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else { std::ptr::null_mut() };
+            let tag = if !rp.is_null() {
+                c::cmsReadTag(rp, sig)
+            } else { std::ptr::null_mut() };
+            eprintln!("{name} w={w} s={s} read={}", !tag.is_null());
+            if !rp.is_null() { c::cmsCloseProfile(rp); }
+        }
+        c::cmsCloseProfile(prof);
+    }
+}
