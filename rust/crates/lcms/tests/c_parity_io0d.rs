@@ -15307,3 +15307,60 @@ fn create_profile_arms2() {
         c::cmsFreeToneCurve(g);
     }
 }
+
+/// cmsGetPostScriptColorResource + GetPostScriptCSA/CRD +
+/// MD5 + device-class/version getters.
+#[test]
+fn ps_res_arms() {
+    unsafe {
+        let srgb = c::cmsCreate_sRGBProfile();
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
+        let mut buf = vec![0u8; 1 << 20];
+        for (p, name) in [(srgb, "srgb"), (lab, "lab"),
+            (gray, "gray")] {
+            // ColorResource types: 0=CSA 1=CRD
+            for ty in [0u32, 1] {
+                let io = c::cmsOpenIOhandlerFromMem(
+                    std::ptr::null_mut(),
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32,
+                    b"w\0".as_ptr());
+                let r = c::cmsGetPostScriptColorResource(
+                    std::ptr::null_mut(), ty, p, 0, 0, io);
+                eprintln!("{name} res{ty}={r}");
+                if !io.is_null() { c::cmsCloseIOhandler(io); }
+            }
+            // MD5 alloc/add/finish
+            let md = c::cmsMD5alloc(std::ptr::null_mut());
+            if !md.is_null() {
+                let data = [0x55u8; 128];
+                c::cmsMD5add(md, data.as_ptr(), 128);
+                let mut pid = [0u8; 16];
+                c::cmsMD5finish(
+                    pid.as_mut_ptr() as *mut _, md);
+                eprintln!("{name} md5={pid:?}");
+            }
+            let ver = c::cmsGetProfileVersion(p);
+            let cls = c::cmsGetDeviceClass(p);
+            let cs = c::cmsGetColorSpace(p);
+            let pcs = c::cmsGetPCS(p);
+            eprintln!("{name} ver={ver} cls={cls:#x} cs={cs:#x} \
+                pcs={pcs:#x}");
+        }
+        // version set/get round-trip
+        let p2 = c::cmsCreateProfilePlaceholder(
+            std::ptr::null_mut());
+        for v in [2.1f64, 4.0, 4.3, 4.4] {
+            c::cmsSetProfileVersion(p2, v);
+            let g2 = c::cmsGetProfileVersion(p2);
+            eprintln!("ver {v}={g2}");
+        }
+        c::cmsCloseProfile(p2);
+        c::cmsCloseProfile(srgb);
+        c::cmsCloseProfile(lab);
+        c::cmsCloseProfile(gray);
+        c::cmsFreeToneCurve(g);
+    }
+}
