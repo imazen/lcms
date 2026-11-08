@@ -1000,3 +1000,48 @@ fn stage_machinery() {
         c::cmsFreeNamedColorList(ncl);
     }
 }
+
+/// Reverse-eval + slice-space internals — EvalReverseFloat +
+/// SliceSpace16/Float on more shapes.
+#[test]
+fn reverse_slice_machinery() {
+    unsafe {
+        // EvalReverseFloat — the reverse-iteration machinery
+        let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+        let mat_v = [1.0f64, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0];
+        c::cmsPipelineInsertStage(pl, 1,
+            c::cmsStageAllocMatrix(
+                std::ptr::null_mut(), 3, 3, mat_v.as_ptr(),
+                std::ptr::null()));
+        let mut target = [0.5f32, 0.5, 0.5];
+        let mut result = [0.0f32; 3];
+        let mut hint = [0.0f32; 3];
+        let ok = c::cmsPipelineEvalReverseFloat(
+            target.as_mut_ptr(), result.as_mut_ptr(),
+            hint.as_mut_ptr(), pl);
+        eprintln!("reverse eval={ok}");
+        c::cmsPipelineFree(pl);
+        // SliceSpace16 — iterate the input space via a sampler
+        unsafe extern "C" fn slice16(
+            inp: *const u16, _out: *mut u16,
+            _c: *mut std::ffi::c_void) -> i32 {
+            let _ = inp;
+            1
+        }
+        let grid = [4u32; 3];
+        let ok2 = c::cmsSliceSpace16(3, grid.as_ptr(), slice16,
+            std::ptr::null_mut());
+        eprintln!("slice16 ok={ok2}");
+        unsafe extern "C" fn slicef(
+            inp: *const f32, _out: *mut f32,
+            _c: *mut std::ffi::c_void) -> i32 {
+            let _ = inp;
+            1
+        }
+        let ok3 = c::cmsSliceSpaceFloat(3, grid.as_ptr(), slicef,
+            std::ptr::null_mut());
+        eprintln!("slicef ok={ok3}");
+    }
+}
