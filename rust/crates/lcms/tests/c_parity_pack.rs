@@ -6621,3 +6621,94 @@ fn formatter_matrix() {
                 c::cmsCloseProfile(p); } }
     }
 }
+
+/// cmscnvrt residual — AddConversion PCS-pair arms:
+///   XYZ->XYZ, XYZ->Lab, Lab->XYZ, Lab->Lab via
+///   multiprofile chains mixing Lab-PCS and XYZ-PCS
+///   profiles, with BPC/adaptation producing empty vs
+///   non-empty layers.
+#[test]
+fn pcs_mix_arms() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let f16 = |pt: u32, ch: u32| -> u32 {
+            (pt << 16) | (ch << 3) | 2 };
+        let open = |n: &str| {
+            let p = format!("{}/../../{}",
+                env!("CARGO_MANIFEST_DIR"), n);
+            let cs = std::ffi::CString::new(p).unwrap();
+            c::cmsOpenProfileFromFile(
+                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+        };
+        let srgb = open("sRGBlcms2.icc");
+        let cmyk = open("lcms2cmyk.icc");
+        let lab4 = open("labv4lcms2.icc");
+        let xyz = open("xyzlcms2.icc");
+        // build a Lab-PCS abst profile and an XYZ-PCS abst
+        //   profile via placeholders + a pipeline
+        let mk_abst = |pcs: u32| -> *mut c_void {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, 0x61627374); // 'abst'
+            c::cmsSetColorSpace(p, 0x4C616220);
+            c::cmsSetPCS(p, pcs);
+            c::cmsSetProfileVersion(p, 4.4);
+            let g = c::cmsBuildGamma(ctx, 1.0);
+            let lut = c::cmsPipelineAlloc(ctx, 3, 3);
+            let cv = c::cmsStageAllocToneCurves(ctx, 3,
+                vec![g; 3].as_ptr());
+            c::cmsPipelineInsertStage(lut, 1, cv);
+            c::cmsWriteTag(p, 0x41324230,
+                lut as *const _);
+            let mut sb = [0u8; 1 << 18];
+            let mut sn = sb.len() as u32;
+            let sv = c::cmsSaveProfileToMem(p,
+                sb.as_mut_ptr() as *mut _, &mut sn);
+            let p2 = if sv != 0 {
+                c::cmsOpenProfileFromMem(
+                    sb.as_ptr() as *const _, sn)
+            } else { p };
+            if !g.is_null() { c::cmsFreeToneCurve(g); }
+            if p2 != p { c::cmsCloseProfile(p); }
+            p2
+        };
+        let lab_abst = mk_abst(0x4C616220); // Lab PCS
+        let xyz_abst = mk_abst(0x58595A20); // XYZ PCS
+        // multiprofile chains: [in, mid..., out]
+        let mpt = |profs: &[*mut c_void],
+                   fmt: u32, flags: u32, nm: &str| {
+            let t = c::cmsCreateMultiprofileTransform(
+                profs.as_ptr() as *mut _,
+                profs.len() as i32,
+                fmt, fmt, 0, flags);
+            eprintln!("{nm}: {}", !t.is_null());
+            if !t.is_null() {
+                let ib = [0x4000u16; 8];
+                let mut ob = [0u16; 8];
+                c::cmsDoTransform(t,
+                    ib.as_ptr() as *const _,
+                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t); } };
+        let rgb = f16(4, 3); let labf = f16(10, 3);
+        for flags in [0u32, 0x0200 /*BPC*/, 0x0400 /*NOWHITEONWHITEFIXUP?*/ ] {
+            for (nm, profs, fmt) in [
+                ("srgb-lab-srgb",
+                 vec![srgb, lab_abst, srgb], rgb),
+                ("srgb-xyz-srgb",
+                 vec![srgb, xyz_abst, srgb], rgb),
+                ("lab-lab-srgb",
+                 vec![lab4, lab_abst, srgb], labf),
+                ("xyz-xyz-srgb",
+                 vec![xyz, xyz_abst, srgb], f16(9, 3)),
+                ("srgb-lab-cmyk",
+                 vec![srgb, lab_abst, cmyk], rgb),
+                ("srgb-3x",
+                 vec![srgb, lab_abst, xyz_abst, cmyk], rgb),
+            ] {
+                mpt(&profs, fmt, flags,
+                    &format!("{nm} f{flags:#x}")); }
+        }
+        for p in [srgb, cmyk, lab4, xyz, lab_abst, xyz_abst] {
+            if !p.is_null() {
+                c::cmsCloseProfile(p); } }
+    }
+}
