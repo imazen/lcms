@@ -176,21 +176,14 @@ the corpus adds no new flag-path coverage.
   values on the BCHSW profile's mAB/mpet pipeline. Pinned in
   c_parity_virt4; the create parity still exercises the readers.
 
-- [finding] EXTRA_SH(1) input transform eval diverges — C
-  [23321,32940,21682] vs Rust [21116,23420,38229] on RGBA16
-  input; neither channel order matches. Rust's extra-channel
-  formatter maps the alpha into the transform differently.
+- [CORRECTED] The EXTRA_SH/DOSWAP/u16-format eval "divergences"
+  were a test-side endianness bug: C's cmsDoTransform takes
+  native u16s (as_ptr()) while the tests passed be-bytes. With
+  native-endian input all formats match — see c_parity_pack2.
 
-- [finding] DOSWAP input format also diverges the same way as
-  EXTRA_SH — the format-bit channel mapping in do_transform is
-  incomplete; the u16 pack/unroll paths produce the same wrong
-  output class regardless of the DOSWAP/EXTRA modifiers.
 
-- [finding] u16 srgb→Lab4 transform eval diverges broadly — C
-  [31826,31835,21909] vs Rust [21116,23420,38229] on
-  RGB[0x1234,0x5678,0x9abc]; the same wrong output appears
-  regardless of format modifier bits (extra/doswap/swapfirst/
-  endian16/flavor/planar). The u8 formats work — the u16-format
-  transform eval path is broken deeper than the channel mapping.
-  Also found: rd16 in pack.rs panics out-of-bounds on premul
-  formats with short inputs (bounds check missing).
+
+- [CORRECTED] The u16-format eval "divergence" was the same
+  test-side endianness bug — all formats pass with native-endian
+  input (c_parity_pack2). The rd16 bounds panic on premul short
+  inputs is a real (minor) bounds check gap in pack.rs.
