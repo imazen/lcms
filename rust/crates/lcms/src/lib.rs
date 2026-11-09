@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 pub mod alpha;
+pub mod api;
 pub mod cam02;
 pub mod cgats;
 pub mod context;

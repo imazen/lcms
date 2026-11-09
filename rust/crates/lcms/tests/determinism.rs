@@ -742,3 +742,20 @@ fn profile_freeze_sync() {
     profile::freeze(&mut p);
     assert!(profile::read_tag_frozen(&p, 0x72545243).is_some()); // rTRC
 }
+
+/// api layer smoke: Profile + Plan + Scratch, srgb->lab4 round trip
+#[test]
+fn api_smoke() {
+    use lcms::api::*;
+    let mut srgb = Profile::srgb().unwrap();
+    let mut lab4 = Profile::lab4().unwrap();
+    srgb.freeze();
+    lab4.freeze();
+    let plan = Plan::new(&mut srgb, &mut lab4, Format::RgbU8, Format::LabU8).unwrap();
+    let mut sc = plan.scratch();
+    let src = [255u8, 0, 0]; // pure red
+    let mut dst = [0u8; 3];
+    plan.apply_n(&mut sc, &src, &mut dst, 1);
+    // Lab L* > 0 for red
+    assert!(dst[0] > 0, "red -> Lab L* nonzero: {:?}", dst);
+}
