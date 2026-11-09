@@ -16,9 +16,20 @@ test:
 gate name:
     cargo test -p lcms --test c_parity_{{name}}
 
+# Determinism gate: manifest under math-sys (C==R on shared system libm)
+# AND math-libm (XX confined to transcendental cells) — the transitive
+# trust argument for canonical math backends.
+determinism-gate:
+    bench/determinism-gate.sh
+
+# Write per-platform cell hashes for the cross-platform compare job:
+#   just determinism-goldens out/<triple>/
+determinism-goldens dir:
+    bench/determinism-gate.sh --goldens {{dir}}
+
 # Full gate: cargo tests + upstream testbed + api-doc check + bench
 # differentials — the whole port-conformance sweep.
-verify: test testbed api-doc-check
+verify: test determinism-gate testbed api-doc-check
     bench/bench.sh 2>&1 | grep -A10 "differentials"
 
 # Build + run the upstream testbed (testcms2) against both libs in a scratch
