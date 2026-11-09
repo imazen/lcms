@@ -10,7 +10,7 @@ use crate::lut::{
     StageLoc, pipeline_alloc, stage_alloc_clut16bit, stage_alloc_identity_clut,
     stage_alloc_identity_curves, stage_alloc_tone_curves, stage_sample_clut16bit,
 };
-use crate::named::{Wchar, alloc_profile_seq_desc, mlu_alloc, mlu_set_ascii, mlu_set_wide};
+use crate::named::{Wchar, alloc_profile_seq_desc, mlu_alloc, mlu_set_wide};
 use crate::pcs::{channels_of_color_space, float2lab_encoded, lab2lch, lab2xyz, lch2lab, xyz2lab};
 use crate::profile::{self, IccProfile, cms_link_tag, cms_write_tag, create_profile_placeholder};
 use crate::signatures::colorspace as cs;

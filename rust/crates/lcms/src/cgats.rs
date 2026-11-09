@@ -4,7 +4,7 @@
 
 use crate::context::Context;
 use crate::gamma::ToneCurve;
-use crate::lut::{Pipeline, Stage, StageLoc};
+use crate::lut::StageLoc;
 use crate::profile::IccProfile;
 
 pub const MAXSTR: usize = 1024;

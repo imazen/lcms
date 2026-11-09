@@ -375,7 +375,7 @@ fn optimize_by_joining_curves(
     _of: &mut u32,
     dw_flags: &mut u32,
 ) -> bool {
-    use crate::lut::{StageData, StageLoc};
+    use crate::lut::StageLoc;
     // C: float formats aren't 16-bit optimizable
     if crate::pack::t_float(*input_format) != 0 {
         return false;
@@ -416,7 +416,7 @@ fn optimize_by_joining_curves(
         return false;
     };
     let linear = all_curves_are_linear(&obtained);
-    let mut dest = crate::lut::pipeline_alloc(None, lut.input_channels, lut.output_channels);
+    let dest = crate::lut::pipeline_alloc(None, lut.input_channels, lut.output_channels);
     let Some(mut dest) = dest else { return false };
     if !linear {
         if !dest.insert_stage(StageLoc::AtBegin, obtained) {
@@ -1313,7 +1313,7 @@ fn optimize_by_computing_linearization(
             return false;
         }
     }
-    let mut optimized = crate::lut::pipeline_alloc(None, lut.input_channels, lut.output_channels);
+    let optimized = crate::lut::pipeline_alloc(None, lut.input_channels, lut.output_channels);
     let Some(mut optimized) = optimized else {
         return false;
     };
@@ -1475,7 +1475,7 @@ fn optimize_by_resampling(
         }
         g
     };
-    let mut dest = crate::lut::pipeline_alloc(None, lut.input_channels, lut.output_channels);
+    let dest = crate::lut::pipeline_alloc(None, lut.input_channels, lut.output_channels);
     let Some(mut dest) = dest else { return false };
     let mut keep_pre: Option<Stage> = None;
     let mut keep_post: Option<Stage> = None;

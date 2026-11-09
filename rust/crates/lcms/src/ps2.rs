@@ -550,7 +550,7 @@ fn write_input_lut(w: &mut PsWriter, icc: &mut IccProfile, intent: u32, mut dw_f
     let mut bpc = [false, false];
     let intents = [intent, intent];
     let adapt = [1.0f64, 1.0];
-    let Some(mut xform) = crate::xform::create_extended_transform(
+    let Some(xform) = crate::xform::create_extended_transform(
         None,
         &mut profs,
         &mut bpc,
@@ -845,7 +845,7 @@ fn write_output_lut(
     let mut bpc = [false, false];
     let intents = [rel_intent, rel_intent];
     let adapt = [1.0f64, 1.0];
-    let Some(mut xform) = crate::xform::create_extended_transform(
+    let Some(xform) = crate::xform::create_extended_transform(
         None,
         &mut profs,
         &mut bpc,

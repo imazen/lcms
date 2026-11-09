@@ -817,7 +817,7 @@ pub fn build_parametric_tone_curve(
     r#type: i32,
     params: &[f64],
 ) -> Option<ToneCurve> {
-    let (pos, n_params) = match get_parametric_curve_by_type(ctx, r#type) {
+    let (_pos, n_params) = match get_parametric_curve_by_type(ctx, r#type) {
         Some((pos, c)) => (pos, c.parameter_count[pos] as usize),
         // C-registered `cmsPluginParametricCurves` collection arm.
         None => match parametric_curve_in_c_sets(ctx, r#type) {

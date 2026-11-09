@@ -2075,17 +2075,17 @@ impl Transform {
                             }
                             // Concrete-kernel dispatch — the fn ptr resolves
                             // once so the per-pixel call inlines fully.
-                            if f == ip::eval4_inputs as InterpFn16 {
+                            if std::ptr::fn_addr_eq(f, ip::eval4_inputs as InterpFn16) {
                                 run!(ip::eval4_inputs)
-                            } else if f == ip::tetrahedral_interp16 as InterpFn16 {
+                            } else if std::ptr::fn_addr_eq(f, ip::tetrahedral_interp16 as InterpFn16) {
                                 run!(ip::tetrahedral_interp16)
-                            } else if f == ip::trilinear_interp16 as InterpFn16 {
+                            } else if std::ptr::fn_addr_eq(f, ip::trilinear_interp16 as InterpFn16) {
                                 run!(ip::trilinear_interp16)
-                            } else if f == ip::bilinear_interp16 as InterpFn16 {
+                            } else if std::ptr::fn_addr_eq(f, ip::bilinear_interp16 as InterpFn16) {
                                 run!(ip::bilinear_interp16)
-                            } else if f == ip::lin_lerp_1d as InterpFn16 {
+                            } else if std::ptr::fn_addr_eq(f, ip::lin_lerp_1d as InterpFn16) {
                                 run!(ip::lin_lerp_1d)
-                            } else if f == ip::eval1_input as InterpFn16 {
+                            } else if std::ptr::fn_addr_eq(f, ip::eval1_input as InterpFn16) {
                                 run!(ip::eval1_input)
                             } else {
                                 return xform16_run(
@@ -2433,11 +2433,11 @@ impl Transform {
                                 )
                             };
                         }
-                        if f == ip::eval4_inputs_float as InterpFnFloat {
+                        if std::ptr::fn_addr_eq(f, ip::eval4_inputs_float as InterpFnFloat) {
                             run!(ip::eval4_inputs_float)
-                        } else if f == ip::tetrahedral_interp_float as InterpFnFloat {
+                        } else if std::ptr::fn_addr_eq(f, ip::tetrahedral_interp_float as InterpFnFloat) {
                             run!(ip::tetrahedral_interp_float)
-                        } else if f == ip::trilinear_interp_float as InterpFnFloat {
+                        } else if std::ptr::fn_addr_eq(f, ip::trilinear_interp_float as InterpFnFloat) {
                             run!(ip::trilinear_interp_float)
                         } else {
                             run!(f)
@@ -2475,11 +2475,11 @@ impl Transform {
                                 )
                             };
                         }
-                        if f == ip::eval4_inputs as InterpFn16 {
+                        if std::ptr::fn_addr_eq(f, ip::eval4_inputs as InterpFn16) {
                             run16!(ip::eval4_inputs)
-                        } else if f == ip::tetrahedral_interp16 as InterpFn16 {
+                        } else if std::ptr::fn_addr_eq(f, ip::tetrahedral_interp16 as InterpFn16) {
                             run16!(ip::tetrahedral_interp16)
-                        } else if f == ip::trilinear_interp16 as InterpFn16 {
+                        } else if std::ptr::fn_addr_eq(f, ip::trilinear_interp16 as InterpFn16) {
                             run16!(ip::trilinear_interp16)
                         } else {
                             run16!(f)
@@ -2766,7 +2766,7 @@ fn alloc_empty_transform(
         if let Some(l) = &mut t.lut {
             if t.gamut_check.is_some() {
                 let mut g_out = [0u16; MAX_CHANNELS];
-                let mut z_in = [0u16; MAX_CHANNELS];
+                let z_in = [0u16; MAX_CHANNELS];
                 let mut z_out = [0u16; MAX_CHANNELS];
                 if let Some(g) = &mut t.gamut_check {
                     g.eval16(&z_in, &mut g_out);
@@ -2820,7 +2820,7 @@ pub fn create_extended_transform(
     bpc: &mut [bool],
     intents: &[u32],
     adaptation_states: &[f64],
-    mut gamut_profile: Option<&mut IccProfile>,
+    gamut_profile: Option<&mut IccProfile>,
     gamut_pcs_position: u32,
     input_format: u32,
     output_format: u32,

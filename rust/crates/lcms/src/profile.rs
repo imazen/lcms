@@ -178,7 +178,7 @@ fn invoke_header_plugin(icc: &IccProfile, io: &mut IoHandler, is_read: bool) -> 
 /// The borrow-free core of `invoke_header_plugin` — call sites that already
 /// hold `icc.io` use this directly.
 fn invoke_header_raw(
-    cb: usize,
+    _cb: usize,
     ctx_handle: usize,
     icc_ptr: usize,
     io: &mut IoHandler,

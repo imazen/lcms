@@ -9,7 +9,6 @@
 //! factory returns `None` where C returns a zeroed union.
 
 use crate::context::{Context, or_global};
-use std::ffi::c_void;
 use crate::err;
 use crate::fixed::{fixed_rest_to_int, fixed_to_int, round_fixed_to_int, to_fixed_domain};
 use crate::types::{ERROR_RANGE, ERROR_UNKNOWN_EXTENSION};
@@ -765,7 +764,6 @@ pub(crate) fn trilinear_interp_float(input: &[f32], output: &mut [f32], p: &Inte
 
 /// `TrilinearInterp16` — trilinear, fixed point.
 #[inline]
-#[inline(always)]
 pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let total_out = p.n_outputs as usize;
@@ -838,7 +836,6 @@ pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPa
 }
 
 /// `TetrahedralInterpFloat` — Sakamoto tetrahedral interpolation, float.
-#[inline]
 #[inline]
 pub(crate) fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
@@ -938,8 +935,6 @@ pub(crate) fn tetrahedral_interp_float(input: &[f32], output: &mut [f32], p: &In
 /// `t = Rest+0x8001; x = (t + (t>>16)) >> 16` — off by one at 0x7fff/0x17ffe,
 /// which is C's actual behaviour and is preserved.
 #[inline]
-#[inline]
-#[inline(always)]
 pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut total_out = p.n_outputs as usize;
@@ -966,7 +961,7 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
     let mut z1 = if input[2] == 0xFFFF { 0 } else { p.opta[0] };
 
     let base = (x0i + y0i + z0i) as usize;
-    let mut li = base; // index into lut_table, incremented per output channel
+    let _li = base; // index into lut_table, incremented per output channel
     let mut oi = 0usize;
 
     if rx >= ry {
@@ -2166,8 +2161,6 @@ pub(crate) fn eval16_trilinear_v3(
 
 /// `Eval4Inputs` — CMYK: two tetrahedral cells + linear blend, fixed point.
 #[inline]
-#[inline]
-#[inline(always)]
 pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) {
     let lut_table = p.table_u16();
     let mut tmp1 = [0u16; MAX_STAGE_CHANNELS];
@@ -2338,7 +2331,6 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
 
 /// `Eval4InputsFloat` — two tetrahedral evals + lerp, float.
 #[inline]
-#[inline]
 pub(crate) fn eval4_inputs_float(input: &[f32], output: &mut [f32], p: &InterpParams) {
     let lut_table = p.table_f32();
     let mut tmp1 = [0.0f32; MAX_STAGE_CHANNELS];
@@ -2432,7 +2424,7 @@ fn eval_chain16(input: &[u16], output: &mut [u16], p: &InterpParams, n: usize) {
 fn eval_chain_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: usize) {
     let lut_table = p.table_f32();
     let mut tmp1 = [0.0f32; MAX_STAGE_CHANNELS];
-    let mut tmp2 = [0.0f32; MAX_STAGE_CHANNELS];
+    let _tmp2 = [0.0f32; MAX_STAGE_CHANNELS];
     let mut tmp2 = [0.0f32; MAX_STAGE_CHANNELS];
 
     let pk = fclamp(input[0]) * p.domain[0] as f32;

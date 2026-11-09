@@ -103,7 +103,7 @@ fn compute_absolute_intent(
         if adaptation_state == 0.0 {
             let mut m2 = Mat3::default();
             crate::mtrx::mat3_per(&mut m2, chad_out, &scale);
-            let mut m3 = *chad_in;
+            let m3 = *chad_in;
             let mut m4 = Mat3::default();
             if !crate::mtrx::mat3_inverse(&m3, &mut m4) {
                 return false;
@@ -111,7 +111,7 @@ fn compute_absolute_intent(
             let _ = m3;
             crate::mtrx::mat3_per(m, &m2, &m4);
         } else {
-            let mut m1 = *chad_in;
+            let m1 = *chad_in;
             let mut m2 = Mat3::default();
             if !crate::mtrx::mat3_inverse(&m1, &mut m2) {
                 return false;
@@ -352,7 +352,7 @@ fn default_icc_intents(
 
         let mut m = Mat3::default();
         let mut off = Vec3::default();
-        let mut lut: Option<Pipeline>;
+        let lut: Option<Pipeline>;
         if is_device_link || (class_sig == pc::SigNamedColorClass && n == 1) {
             lut = io1::read_devicelink_lut(&mut profiles[i], intent);
             if lut.is_none() {
@@ -624,7 +624,7 @@ fn black_preserving_k_only_intents(
     }
     let mut result = crate::lut::pipeline_alloc(ctx, 4, 4)?;
     // normal ICC transform over the preservation profiles
-    let mut cmyk2cmyk = default_icc_intents(
+    let cmyk2cmyk = default_icc_intents(
         ctx,
         &mut profiles[..preservation_count],
         &icc_intents[..preservation_count],
@@ -715,7 +715,7 @@ fn black_preserving_k_plane_intents(
         );
     }
     // LabK→cmyk: the last profile's input LUT (searched inverse)
-    let mut labk2cmyk = crate::io1::read_input_lut(
+    let labk2cmyk = crate::io1::read_input_lut(
         &mut profiles[last_pos],
         crate::types::INTENT_RELATIVE_COLORIMETRIC,
     )?;
@@ -724,7 +724,7 @@ fn black_preserving_k_plane_intents(
     if max_tac <= 0.0 {
         return None;
     }
-    let mut cmyk2cmyk = default_icc_intents(
+    let cmyk2cmyk = default_icc_intents(
         ctx,
         &mut profiles[..preservation_count],
         &icc_intents[..preservation_count],

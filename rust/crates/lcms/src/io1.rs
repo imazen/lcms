@@ -2,7 +2,6 @@
 //! matrix-shaper/gray pipelines, and the input/output/devicelink LUT
 //! readers that turn profile tags into runnable pipelines.
 
-use crate::context::Context;
 use crate::gamma::{ToneCurve, build_tabulated_tone_curve16};
 use crate::lut::{Pipeline, StageLoc, pipeline_alloc, stage_alloc_matrix, stage_alloc_tone_curves};
 use crate::profile::{self, IccProfile};

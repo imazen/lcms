@@ -92,10 +92,10 @@ pub(crate) fn formatter_for_colorspace(icc: &IccProfile, n_bytes: u32, is_float:
 /// `_cmsLCMScolorSpace` inverse — colorspace signature → PT_* enum
 /// `CreateRoundtripXForm` — Lab4→prof→prof→Lab4 (rel, intent, rel, rel)
 fn create_roundtrip_xform(icc: &mut IccProfile, intent: u32) -> Option<crate::xform::Transform> {
-    let mut hlab = virt::create_lab4_profile(None, None)?;
+    let hlab = virt::create_lab4_profile(None, None)?;
     // TYPE_Lab_DBL = float|colorspace(Lab)|3chan|bytes0
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3 | 0;
-    let mut hlab2 = virt::create_lab4_profile(None, None)?;
+    let hlab2 = virt::create_lab4_profile(None, None)?;
     // the round-trip uses the same profile twice — duplicate via serialize+reopen
     let bytes = crate::profile::save_profile_to_mem(icc)?;
     let prof1 = crate::profile::open_profile_from_mem(None, &bytes)?;
@@ -174,7 +174,7 @@ fn black_point_as_darker_colorant(icc: &mut IccProfile, intent: u32) -> Option<C
     if n_ch != crate::pack::t_channels(fmt) {
         return None;
     }
-    let mut hlab = virt::create_lab2_profile(None, None)?;
+    let hlab = virt::create_lab2_profile(None, None)?;
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3 | 0;
     let bytes = crate::profile::save_profile_to_mem(icc)?;
     let prof = crate::profile::open_profile_from_mem(None, &bytes)?;
@@ -530,14 +530,14 @@ pub fn create_gamut_check_pipeline(
     h_gamut: &mut IccProfile,
 ) -> Option<crate::lut::Pipeline> {
     use crate::pack;
-    use crate::signatures::colorspace as cs;
+    
     let n = profiles.len();
     if n_gamut_pcs_position == 0 || n_gamut_pcs_position > 255 {
         crate::err::signal_error(ctx, crate::types::ERROR_RANGE, "Wrong position of PCS");
         return None;
     }
     let pos = n_gamut_pcs_position as usize;
-    let mut hlab = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
+    let hlab = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
     let threshold = if is_matrix_shaper(h_gamut) { 1.0 } else { 5.0 };
     // input chain: profiles[0..pos] + Lab4 → Lab_DBL
     let mut chain: Vec<Box<IccProfile>> = Vec::new();
@@ -551,11 +551,11 @@ pub fn create_gamut_check_pipeline(
     intents_l.push(INTENT_RELATIVE_COLORIMETRIC);
     let mut states_l = adaptation_states[..pos].to_vec();
     states_l.push(1.0);
-    let input_cs = chain[0].color_space;
+    let _input_cs = chain[0].color_space;
     let n_in = pack::t_channels(formatter_for_colorspace(&chain[0], 2, false)) as usize;
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3 | 0;
     let dw_fmt = ((n_in as u32) << 3) | 2;
-    let mut h_input = crate::xform::create_extended_transform(
+    let h_input = crate::xform::create_extended_transform(
         ctx.cloned(),
         &mut chain,
         &mut bpc_l,
@@ -571,12 +571,12 @@ pub fn create_gamut_check_pipeline(
     let gamut_cs = h_gamut.color_space;
     let n_ch = crate::pcs::channels_of_color_space(gamut_cs) as usize;
     let dw_fmt2 = ((n_ch as u32) << 3) | 2;
-    let mut hlab2 = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
+    let hlab2 = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
     let mut pf = vec![hlab2, Box::new(dup_profile(h_gamut)?)];
     let mut bpc2 = [false; 2];
     let intents2 = [INTENT_RELATIVE_COLORIMETRIC; 2];
     let states2 = [1.0f64; 2];
-    let mut h_forward = crate::xform::create_extended_transform(
+    let h_forward = crate::xform::create_extended_transform(
         ctx.cloned(),
         &mut pf,
         &mut bpc2,
@@ -589,9 +589,9 @@ pub fn create_gamut_check_pipeline(
         crate::xform::FLAGS_NOCACHE,
     )?;
     // reverse: gamut → Lab
-    let mut hlab3 = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
+    let hlab3 = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
     let mut pr = vec![Box::new(dup_profile(h_gamut)?), hlab3];
-    let mut h_reverse = crate::xform::create_extended_transform(
+    let h_reverse = crate::xform::create_extended_transform(
         ctx.cloned(),
         &mut pr,
         &mut bpc2,
@@ -614,7 +614,7 @@ pub fn create_gamut_check_pipeline(
         gamut_cs,
         crate::xform::FLAGS_HIGHRESPRECALC,
     );
-    let mut clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, n_ch as u32, 1, None)?;
+    let clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, n_ch as u32, 1, None)?;
     if !gamut.insert_stage(crate::lut::StageLoc::AtBegin, clut) {
         return None;
     }
