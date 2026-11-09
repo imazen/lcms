@@ -1059,3 +1059,88 @@ fn dbg_resampled_clut() {
         }
     }
 }
+
+/// bisect10: lab4 B2A0 pipeline eval — same XYZ input both sides
+#[test]
+fn dbg_lab4_b2a0() {
+    unsafe {
+        let l = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let lb = save_c(l);
+        let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
+        let lut = c::cmsReadTag(l2, 0x42324130); // B2A0
+        eprintln!("B2A0 lut {:p}", lut);
+        for inp in [[0.5f32,0.5,0.5],[0.25,0.25,0.25],[0.1,0.11,0.12]] {
+            let mut oc = [0f32;3];
+            c::cmsPipelineEvalFloat(inp.as_ptr(), oc.as_mut_ptr(), lut);
+            let mut rl = profile::open_profile_from_mem(None, &lb).unwrap();
+            let ro = {
+                let mut o = [0f32;3];
+                if let Some(lcms::tagtypes::TagObject::LutB2A(lut)) =
+                    profile::cms_read_tag(&mut rl, 0x42324130) {
+                    lut.eval_float(&inp, &mut o);
+                }
+                o
+            };
+            eprintln!("in {inp:?} C={oc:?} R={ro:?}");
+        }
+    }
+}
+
+/// bisect11: which opt path does srgb>lab4 float take?
+#[test]
+fn dbg_lab4_opt() {
+    unsafe {
+        let s = c::cmsCreate_sRGBProfile();
+        let l = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let sb = save_c(s); let lb = save_c(l);
+        let mut rs = profile::open_profile_from_mem(None, &sb).unwrap();
+        let mut rl = profile::open_profile_from_mem(None, &lb).unwrap();
+        let mut profs: Vec<Box<IccProfile>> = vec![rs, rl];
+        let mut bpc = vec![false;2]; let ints = vec![0u32;2]; let ad = vec![1.0;2];
+        // TYPE_RGB_FLT->TYPE_Lab_FLT
+        let ifmt = ff32(4,3); let ofmt = ff32(10,3);
+        let mut rt = xform::create_extended_transform(None, &mut profs,
+            &mut bpc, &ints, &ad, None, 0, ifmt, ofmt, 0).unwrap();
+        if let Some(lut) = &rt.lut {
+            eprintln!("opt={:?} stages:", lut.opt_data.as_ref().map(|d| std::mem::discriminant(d)));
+            let mut st = lut.elements.as_deref();
+            let mut i = 0;
+            while let Some(s) = st {
+                eprintln!("  st{i} {:#x}", s.stage_type());
+                st = s.next.as_deref(); i += 1;
+            }
+        }
+        // and eval one pixel through the transform vs the C oracle
+        let s2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sb.len() as u32);
+        let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
+        let t = c::cmsCreateTransform(s2, ff32(4,3), l2, ff32(10,3), 0, 0);
+        let inp = [0.5f32,0.5,0.5];
+        let mut oc = [0f32;3];
+        c::cmsDoTransform(t, inp.as_ptr() as *const _, oc.as_mut_ptr() as *mut _, 1);
+        let mut ob = [0u8;12];
+        rt.do_transform(unsafe { std::slice::from_raw_parts(inp.as_ptr() as *const u8, 12) }, &mut ob, 1);
+        let ro: &[f32] = unsafe { std::slice::from_raw_parts(ob.as_ptr() as *const f32, 3) };
+        eprintln!("C={oc:?} R={ro:?}");
+    }
+}
+
+/// bisect12: C-side link stage types for srgb>lab4
+#[test]
+fn dbg_c_link_stages() {
+    unsafe {
+        let s = c::cmsCreate_sRGBProfile();
+        let l = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let sb = save_c(s); let lb = save_c(l);
+        let s2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sb.len() as u32);
+        let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
+        let t = c::cmsCreateTransform(s2, ff32(4,3), l2, ff32(10,3), 0, 0);
+        let lut = c::cref_xform_lut(t);
+        let mut st = c::cmsPipelineGetPtrToFirstStage(lut);
+        let mut i = 0;
+        while !st.is_null() {
+            eprintln!("C st{i} {:#x}", c::cmsStageType(st));
+            st = c::cmsStageNext(st);
+            i += 1;
+        }
+    }
+}
