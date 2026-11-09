@@ -116,7 +116,7 @@ impl ToneCurve {
     pub fn eval16(&self, v: u16) -> u16 {
         // Fast path — `LinLerp1D` over `table16`/`domain0` without building
         // a full `InterpParams` (C caches the params inside cmsToneCurve).
-        if self.interp16 == crate::intrp::lin_lerp_1d as InterpFn16 {
+        if std::ptr::fn_addr_eq(self.interp16, crate::intrp::lin_lerp_1d as InterpFn16) {
             let d = self.domain0;
             if v == 0xffff || d == 0 {
                 return crate::intrp::tbl_get16(&self.table16, d as usize) as u16;

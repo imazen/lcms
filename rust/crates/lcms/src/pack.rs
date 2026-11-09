@@ -2972,7 +2972,7 @@ const TYPE_ALABV2_8: u32 = cs_sh(PT_LABV2) | ch_sh(3) | by_sh(1) | ex_sh(1) | sf
 const TYPE_LABV2_16: u32 = cs_sh(PT_LABV2) | ch_sh(3) | by_sh(2);
 
 /// `cmsFormatter` — direction-resolved formatter choice
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy)]
 pub enum Formatter {
     None,
     Unpack16(Unpack16Fn),
