@@ -774,7 +774,10 @@ where compiler_builtins' trig differs).
 - lcms lib: all x64v3 SIMD dispatch arms cfg-gated to x86_64
   (aarch64/musl use scalar fallbacks). `LCMS_DISABLE_V3` env
   forces scalar on x86_64 for testing.
-- Windows: not yet built — needs windows-gnu/mingw or cargo-xwin;
-  shim MSVC branch exists (separate sin/cos + no -lm).
+- Windows: `cargo xwin test --target x86_64-pc-windows-msvc` builds
+  via clang-cl/lld-link (cargo-xwin 0.23); run under portable wine
+  (Kron4ek build). 35/51 — `Rust == C` holds under MSVCRT; cam02
+  drift hash == musl's (simpler impls share approximations).
+  The debug exe needs no CRT DLLs under wine-10.
 - musl: `CC=musl-gcc cargo test --target x86_64-unknown-linux-musl`
-  — 35/51 same as glibc.
+  — 35/51 same as glibc; only pcs/deltaE/cam02 drift (fdlibm).
