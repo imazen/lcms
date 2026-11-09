@@ -1069,6 +1069,7 @@ fn dbg_lab4_b2a0() {
         let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
         let lut = c::cmsReadTag(l2, 0x42324130); // B2A0
         eprintln!("B2A0 lut {:p}", lut);
+        if lut.is_null() { return; }
         for inp in [[0.5f32,0.5,0.5],[0.25,0.25,0.25],[0.1,0.11,0.12]] {
             let mut oc = [0f32;3];
             c::cmsPipelineEvalFloat(inp.as_ptr(), oc.as_mut_ptr(), lut);
@@ -1141,6 +1142,77 @@ fn dbg_c_link_stages() {
             eprintln!("C st{i} {:#x}", c::cmsStageType(st));
             st = c::cmsStageNext(st);
             i += 1;
+        }
+    }
+}
+
+/// bisect13: stage-by-stage intermediates for srgb>lab4 float
+#[test]
+fn dbg_stage_bisect() {
+    unsafe {
+        let s = c::cmsCreate_sRGBProfile();
+        let l = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let sb = save_c(s); let lb = save_c(l);
+        let s2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sb.len() as u32);
+        let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
+        let t = c::cmsCreateTransform(s2, ff32(4,3), l2, ff32(10,3), 0, 0);
+        let lut = c::cref_xform_lut(t);
+        let inp = [0.5f32,0.5,0.5];
+        // C intermediates: dup link, unlink from end, eval prefix
+        for keep in 1..=4usize {
+            let d = c::cmsPipelineDup(lut);
+            for _ in keep..4 {
+                let mut st: *mut c_void = std::ptr::null_mut();
+                c::cmsPipelineUnlinkStage(d, 1, &mut st); // AT_END
+            }
+            let mut o = [0f32;3];
+            c::cmsPipelineEvalFloat(inp.as_ptr(), o.as_mut_ptr(), d);
+            eprintln!("C prefix{keep} = {:08x} {:08x} {:08x}", o[0].to_bits(), o[1].to_bits(), o[2].to_bits());
+        }
+        // Rust intermediates: walk stages
+        let mut rs = profile::open_profile_from_mem(None, &sb).unwrap();
+        let mut rl = profile::open_profile_from_mem(None, &lb).unwrap();
+        let mut profs: Vec<Box<IccProfile>> = vec![rs, rl];
+        let mut bpc = vec![false;2]; let ints = vec![0u32;2]; let ad = vec![1.0;2];
+        let rt = xform::create_extended_transform(None, &mut profs,
+            &mut bpc, &ints, &ad, None, 0, ff32(4,3), ff32(10,3), 0).unwrap();
+        if let Some(lut2) = &rt.lut {
+            let mut buf = inp;
+            let mut tmp = [0f32; 16];
+            let mut st = lut2.elements.as_deref();
+            let mut i = 0;
+            while let Some(s) = st {
+                s.eval(&buf, &mut tmp);
+                buf.copy_from_slice(&tmp[..3]);
+                eprintln!("R after st{i} = {:08x} {:08x} {:08x}", buf[0].to_bits(), buf[1].to_bits(), buf[2].to_bits());
+                st = s.next.as_deref(); i += 1;
+            }
+        }
+    }
+}
+
+/// bisect14: unroll Lab float input — C vs Rust normalized bits
+#[test]
+fn dbg_unroll_lab() {
+    unsafe {
+        let s = c::cmsCreate_sRGBProfile();
+        let l = c::cmsCreateLab4Profile(std::ptr::null_mut());
+        let sb = save_c(s); let lb = save_c(l);
+        let s2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sb.len() as u32);
+        let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
+        let t = c::cmsCreateTransform(l2, ff32(10,3), s2, ff32(4,3), 0, 0);
+        // run a few lab inputs; capture both final and, via a Lab->Lab
+        // identity-ish transform, the normalized value
+        for inp in [[50.0f32, 0.5, -0.25],[53.39, 0.0, 0.0],[0.0, 0.0, 0.0],[100.0, 127.0, -128.0]] {
+            let mut oc = [0f32;3];
+            c::cmsDoTransform(t, inp.as_ptr() as *const _, oc.as_mut_ptr() as *mut _, 1);
+            // normalized: Lab->identity Lab? use XYZ->XYZ? simplest: eval
+            // the unroll directly via a Lab->Lab2 transform is hard; instead
+            // recompute the C unroll formula both ways and compare to R's
+            let norm_f64_a = ((inp[1] as f64 + 128.0) / 255.0) as f32;
+            let norm_f32_a = (inp[1] + 128.0) / 255.0;
+            eprintln!("in={inp:?} Cout={oc:?} a_norm f64={:08x} f32={:08x}",
+                norm_f64_a.to_bits(), norm_f32_a.to_bits());
         }
     }
 }

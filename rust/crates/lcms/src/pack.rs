@@ -2571,9 +2571,9 @@ pub fn pack_lab_float_from_float(
     out: &mut [u8],
     stride: u32,
 ) -> usize {
-    let l = w[0] * 100.0;
-    let a = w[1] * 255.0 - 128.0;
-    let b = w[2] * 255.0 - 128.0;
+    let l = (w[0] as f64 * 100.0) as f32;
+    let a = (w[1] as f64 * 255.0 - 128.0) as f32;
+    let b = (w[2] as f64 * 255.0 - 128.0) as f32;
     if t_planar(i.output_format) != 0 {
         let s = stride as usize / pixel_size(i.output_format) as usize;
         out[0..4].copy_from_slice(&l.to_le_bytes());

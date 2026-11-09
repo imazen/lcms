@@ -700,6 +700,15 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
 
 ### Fixed
 
+- **Lab-float formatter precision** (was the `xfl:srgb>lab4`/
+  `cicp>lab4` ~6e-6 residual + `xfl:labdl` 1ulp): C's
+  `PackLabFloatFromFloat` uses DOUBLE literals — `w*255.0-128.0`,
+  `w*100.0` compute in f64 then cast to f32; Rust used f32. Fixed
+  `pack_lab_float_from_float` to `as f64`. The input side
+  (`unroll_lab_float_to_float`) stays f32 — C's `x+128` add is
+  f32-exact in-domain and `x/255` f32-div coincides with
+  f64-div+cast on all swept inputs. `xfl:labdl` went exact too —
+  it was the same formatter. NOW 39/51 (all transform cells).
 - **`x16:mab>srgb` vertex-0 black** (was a REAL bug): the fused
   cached u64 loops (`clut16_tetra_cached_v3`, scalar fallback,
   Curves16 arm) used a LOCAL `cv`/`co` cache zero-initialized —
@@ -722,11 +731,6 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
 
 ### Open residuals
 
-- `xfl:srgb>lab4`, `xfl:cicp>lab4` — ~6e-6 Lab-cancellation
-  residual (few-ulp XYZ noise amplified; deterministic,
-  same on all platforms — likely a bounded f32/f64 ordering
-  difference in the PCS-insert stage chain).
-- `xfl:labdl` — 1 ulp.
 - `ser:*` resave diffs — deterministic per-platform resave
   parity gap (same on all platforms; separate serialization
   issue, not platform drift).
