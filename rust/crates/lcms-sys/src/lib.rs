@@ -1,91 +1,145 @@
-//! Safe wrappers over real glibc libm functions.
+//! Safe wrappers over a compile-time-selectable math provider.
 //!
-//! Rust's `f64` math intrinsics (`llvm.cos`, `llvm.sin`, `llvm.sincos`,
-//! `llvm.atan2`, `llvm.tan`, ...) resolve to `compiler_builtins`/`fdlibm`
-//! in the final binary, which differs from the system glibc `libm` by
-//! roughly one ULP on some inputs. For bit-exact parity with C code that
-//! calls `cos`/`sin`/`sincos`/... these wrappers call a tiny `cc`-built
-//! shim whose libm calls resolve to the real glibc implementation.
+//! Three providers, picked by Cargo feature (default `math-sys`):
+//!
+//! - **`math-sys`** — a tiny `cc`-built C shim whose `cos`/`sin`/`pow`/...
+//!   calls stay PLT calls into the *local* system libm (glibc on GNU,
+//!   Apple libm, MSVCRT, musl). This is the oracle-parity provider: the
+//!   C reference resolves the same symbols on the same box.
+//! - **`math-rust`** — pure `f64` methods (compiler_builtins/fdlibm).
+//!   Deterministic across hosts on a given toolchain, but not oracle-exact.
+//! - **`math-zen`** — reserved for a correctly-rounded `zenmath` impl.
+//!   Selected by feature; no API surface yet.
+//!
+//! Rust's `f64` intrinsics (`llvm.cos`, `llvm.sin`, `llvm.pow`, ...) can
+//! resolve to `compiler_builtins`/fdlibm in the final binary, which differs
+//! from the system libm by ~1 ULP on some inputs — the shim keeps the
+//! call bound to the same libm the C oracle uses.
 
-unsafe extern "C" {
-    #[link_name = "lcms_g_cos"] fn g_cos(x: f64) -> f64;
-    #[link_name = "lcms_g_sin"] fn g_sin(x: f64) -> f64;
-    #[link_name = "lcms_g_tan"] fn g_tan(x: f64) -> f64;
-    #[link_name = "lcms_g_atan2"] fn g_atan2(y: f64, x: f64) -> f64;
-    #[link_name = "lcms_g_atan"] fn g_atan(x: f64) -> f64;
-    #[link_name = "lcms_g_asin"] fn g_asin(x: f64) -> f64;
-    #[link_name = "lcms_g_acos"] fn g_acos(x: f64) -> f64;
-    #[link_name = "lcms_g_hypot"] fn g_hypot(x: f64, y: f64) -> f64;
-    #[link_name = "lcms_g_fmod"] fn g_fmod(x: f64, y: f64) -> f64;
-    #[link_name = "lcms_g_cbrt"] fn g_cbrt(x: f64) -> f64;
-    #[link_name = "lcms_g_log2"] fn g_log2(x: f64) -> f64;
-    #[link_name = "lcms_g_exp2"] fn g_exp2(x: f64) -> f64;
-    #[link_name = "lcms_g_expm1"] fn g_expm1(x: f64) -> f64;
-    #[link_name = "lcms_g_log1p"] fn g_log1p(x: f64) -> f64;
-    #[link_name = "lcms_g_sincos"] fn g_sincos(x: f64, s: *mut f64, c: *mut f64);
+// --- provider impls — one `mod imp` per feature -------------------------
+
+#[cfg(feature = "math-sys")]
+mod imp {
+    unsafe extern "C" {
+        #[link_name = "lcms_g_cos"] fn g_cos(x: f64) -> f64;
+        #[link_name = "lcms_g_sin"] fn g_sin(x: f64) -> f64;
+        #[link_name = "lcms_g_tan"] fn g_tan(x: f64) -> f64;
+        #[link_name = "lcms_g_atan2"] fn g_atan2(y: f64, x: f64) -> f64;
+        #[link_name = "lcms_g_atan"] fn g_atan(x: f64) -> f64;
+        #[link_name = "lcms_g_asin"] fn g_asin(x: f64) -> f64;
+        #[link_name = "lcms_g_acos"] fn g_acos(x: f64) -> f64;
+        #[link_name = "lcms_g_hypot"] fn g_hypot(x: f64, y: f64) -> f64;
+        #[link_name = "lcms_g_fmod"] fn g_fmod(x: f64, y: f64) -> f64;
+        #[link_name = "lcms_g_cbrt"] fn g_cbrt(x: f64) -> f64;
+        #[link_name = "lcms_g_log2"] fn g_log2(x: f64) -> f64;
+        #[link_name = "lcms_g_exp2"] fn g_exp2(x: f64) -> f64;
+        #[link_name = "lcms_g_expm1"] fn g_expm1(x: f64) -> f64;
+        #[link_name = "lcms_g_log1p"] fn g_log1p(x: f64) -> f64;
+        #[link_name = "lcms_g_pow"] fn g_pow(x: f64, y: f64) -> f64;
+        #[link_name = "lcms_g_exp"] fn g_exp(x: f64) -> f64;
+        #[link_name = "lcms_g_log"] fn g_log(x: f64) -> f64;
+        #[link_name = "lcms_g_log10"] fn g_log10(x: f64) -> f64;
+        #[link_name = "lcms_g_atanh"] fn g_atanh(x: f64) -> f64;
+        #[link_name = "lcms_g_acosh"] fn g_acosh(x: f64) -> f64;
+        #[link_name = "lcms_g_sincos"] fn g_sincos(x: f64, s: *mut f64, c: *mut f64);
+    }
+    #[inline] pub fn cos(x: f64) -> f64 { unsafe { g_cos(x) } }
+    #[inline] pub fn sin(x: f64) -> f64 { unsafe { g_sin(x) } }
+    #[inline] pub fn tan(x: f64) -> f64 { unsafe { g_tan(x) } }
+    #[inline] pub fn atan2(y: f64, x: f64) -> f64 { unsafe { g_atan2(y, x) } }
+    #[inline] pub fn atan(x: f64) -> f64 { unsafe { g_atan(x) } }
+    #[inline] pub fn asin(x: f64) -> f64 { unsafe { g_asin(x) } }
+    #[inline] pub fn acos(x: f64) -> f64 { unsafe { g_acos(x) } }
+    #[inline] pub fn hypot(x: f64, y: f64) -> f64 { unsafe { g_hypot(x, y) } }
+    #[inline] pub fn fmod(x: f64, y: f64) -> f64 { unsafe { g_fmod(x, y) } }
+    #[inline] pub fn cbrt(x: f64) -> f64 { unsafe { g_cbrt(x) } }
+    #[inline] pub fn log2(x: f64) -> f64 { unsafe { g_log2(x) } }
+    #[inline] pub fn exp2(x: f64) -> f64 { unsafe { g_exp2(x) } }
+    #[inline] pub fn expm1(x: f64) -> f64 { unsafe { g_expm1(x) } }
+    #[inline] pub fn log1p(x: f64) -> f64 { unsafe { g_log1p(x) } }
+    #[inline] pub fn pow(x: f64, y: f64) -> f64 { unsafe { g_pow(x, y) } }
+    #[inline] pub fn exp(x: f64) -> f64 { unsafe { g_exp(x) } }
+    #[inline] pub fn ln(x: f64) -> f64 { unsafe { g_log(x) } }
+    #[inline] pub fn log10(x: f64) -> f64 { unsafe { g_log10(x) } }
+    #[inline] pub fn atanh(x: f64) -> f64 { unsafe { g_atanh(x) } }
+    #[inline] pub fn acosh(x: f64) -> f64 { unsafe { g_acosh(x) } }
+    /// `sincos` — glibc computes `sin`/`cos` in one libcall (matches C's
+    /// GCC-merged `cos(h)`/`sin(h)`). Returns `(sin, cos)`.
+    #[inline]
+    pub fn sin_cos(x: f64) -> (f64, f64) {
+        let (mut s, mut c) = (0.0, 0.0);
+        unsafe { g_sincos(x, &mut s, &mut c) };
+        (s, c)
+    }
 }
 
-#[inline]
-pub fn cos(x: f64) -> f64 {
-    unsafe { g_cos(x) }
+#[cfg(all(not(feature = "math-sys"), feature = "math-rust"))]
+mod imp {
+    #[inline] pub fn cos(x: f64) -> f64 { x.cos() }
+    #[inline] pub fn sin(x: f64) -> f64 { x.sin() }
+    #[inline] pub fn tan(x: f64) -> f64 { x.tan() }
+    #[inline] pub fn atan2(y: f64, x: f64) -> f64 { y.atan2(x) }
+    #[inline] pub fn atan(x: f64) -> f64 { x.atan() }
+    #[inline] pub fn asin(x: f64) -> f64 { x.asin() }
+    #[inline] pub fn acos(x: f64) -> f64 { x.acos() }
+    #[inline] pub fn hypot(x: f64, y: f64) -> f64 { x.hypot(y) }
+    #[inline] pub fn fmod(x: f64, y: f64) -> f64 { x % y }
+    #[inline] pub fn cbrt(x: f64) -> f64 { x.cbrt() }
+    #[inline] pub fn log2(x: f64) -> f64 { x.log2() }
+    #[inline] pub fn exp2(x: f64) -> f64 { x.exp2() }
+    #[inline] pub fn expm1(x: f64) -> f64 { x.exp_m1() }
+    #[inline] pub fn log1p(x: f64) -> f64 { x.ln_1p() }
+    #[inline] pub fn pow(x: f64, y: f64) -> f64 { x.powf(y) }
+    #[inline] pub fn exp(x: f64) -> f64 { x.exp() }
+    #[inline] pub fn ln(x: f64) -> f64 { x.ln() }
+    #[inline] pub fn log10(x: f64) -> f64 { x.log10() }
+    #[inline] pub fn atanh(x: f64) -> f64 { x.atanh() }
+    #[inline] pub fn acosh(x: f64) -> f64 { x.acosh() }
+    /// `sin_cos` — `f64::sin_cos` is the fused libcall when the stdlib
+    /// provides it; falls back to separate sin/cos otherwise.
+    #[inline]
+    pub fn sin_cos(x: f64) -> (f64, f64) { x.sin_cos() }
 }
-#[inline]
-pub fn sin(x: f64) -> f64 {
-    unsafe { g_sin(x) }
+
+#[cfg(all(
+    not(feature = "math-sys"),
+    not(feature = "math-rust"),
+    feature = "math-zen"
+))]
+mod imp {
+    // `zenmath` provider — correctly-rounded implementations, intended to
+    // be bit-identical across platforms AND to the oracle's libm where
+    // glibc is already correctly rounded. Not yet wired to a crate;
+    // falls back to the pure-Rust impl until zenmath lands.
+    #[inline] pub fn cos(x: f64) -> f64 { x.cos() }
+    #[inline] pub fn sin(x: f64) -> f64 { x.sin() }
+    #[inline] pub fn tan(x: f64) -> f64 { x.tan() }
+    #[inline] pub fn atan2(y: f64, x: f64) -> f64 { y.atan2(x) }
+    #[inline] pub fn atan(x: f64) -> f64 { x.atan() }
+    #[inline] pub fn asin(x: f64) -> f64 { x.asin() }
+    #[inline] pub fn acos(x: f64) -> f64 { x.acos() }
+    #[inline] pub fn hypot(x: f64, y: f64) -> f64 { x.hypot(y) }
+    #[inline] pub fn fmod(x: f64, y: f64) -> f64 { x % y }
+    #[inline] pub fn cbrt(x: f64) -> f64 { x.cbrt() }
+    #[inline] pub fn log2(x: f64) -> f64 { x.log2() }
+    #[inline] pub fn exp2(x: f64) -> f64 { x.exp2() }
+    #[inline] pub fn expm1(x: f64) -> f64 { x.exp_m1() }
+    #[inline] pub fn log1p(x: f64) -> f64 { x.ln_1p() }
+    #[inline] pub fn pow(x: f64, y: f64) -> f64 { x.powf(y) }
+    #[inline] pub fn exp(x: f64) -> f64 { x.exp() }
+    #[inline] pub fn ln(x: f64) -> f64 { x.ln() }
+    #[inline] pub fn log10(x: f64) -> f64 { x.log10() }
+    #[inline] pub fn atanh(x: f64) -> f64 { x.atanh() }
+    #[inline] pub fn acosh(x: f64) -> f64 { x.acosh() }
+    #[inline]
+    pub fn sin_cos(x: f64) -> (f64, f64) { x.sin_cos() }
 }
-#[inline]
-pub fn tan(x: f64) -> f64 {
-    unsafe { g_tan(x) }
-}
-#[inline]
-pub fn atan2(y: f64, x: f64) -> f64 {
-    unsafe { g_atan2(y, x) }
-}
-#[inline]
-pub fn atan(x: f64) -> f64 {
-    unsafe { g_atan(x) }
-}
-#[inline]
-pub fn asin(x: f64) -> f64 {
-    unsafe { g_asin(x) }
-}
-#[inline]
-pub fn acos(x: f64) -> f64 {
-    unsafe { g_acos(x) }
-}
-#[inline]
-pub fn hypot(x: f64, y: f64) -> f64 {
-    unsafe { g_hypot(x, y) }
-}
-#[inline]
-pub fn fmod(x: f64, y: f64) -> f64 {
-    unsafe { g_fmod(x, y) }
-}
-#[inline]
-pub fn cbrt(x: f64) -> f64 {
-    unsafe { g_cbrt(x) }
-}
-#[inline]
-pub fn log2(x: f64) -> f64 {
-    unsafe { g_log2(x) }
-}
-#[inline]
-pub fn exp2(x: f64) -> f64 {
-    unsafe { g_exp2(x) }
-}
-#[inline]
-pub fn expm1(x: f64) -> f64 {
-    unsafe { g_expm1(x) }
-}
-#[inline]
-pub fn log1p(x: f64) -> f64 {
-    unsafe { g_log1p(x) }
-}
-/// `sincos` — glibc computes `sin`/`cos` in one libcall (matches C's
-/// GCC-merged `cos(h)`/`sin(h)`). Returns `(sin, cos)`.
-#[inline]
-pub fn sin_cos(x: f64) -> (f64, f64) {
-    let (mut s, mut c) = (0.0, 0.0);
-    unsafe { g_sincos(x, &mut s, &mut c) };
-    (s, c)
-}
+
+#[cfg(not(any(
+    feature = "math-sys",
+    feature = "math-rust",
+    feature = "math-zen"
+)))]
+compile_error!("lcms-sys: select a math provider: math-sys | math-rust | math-zen");
+
+pub use imp::*;

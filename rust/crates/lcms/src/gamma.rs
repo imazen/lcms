@@ -316,7 +316,7 @@ pub fn register_parametric_curves(ctx: &mut Context, collection: Option<Parametr
 /// `sigmoid_base`
 #[inline]
 fn sigmoid_base(k: f64, t: f64) -> f64 {
-    (1.0 / (1.0 + (-k * t).exp())) - 0.5
+    (1.0 / (1.0 + lcms_sys::exp(-k * t))) - 0.5
 }
 
 /// `inverted_sigmoid_base`

@@ -502,7 +502,7 @@ pub fn cie2000_delta_e(lab1: &CieLab, lab2: &CieLab, kl: f64, kc: f64, kh: f64) 
     let sc = 1.0 + 0.045 * (c_p + c_ps) / 2.0;
     let sh = 1.0 + 0.015 * ((c_ps + c_p) / 2.0) * t;
 
-    let delta_ro = 30.0 * (-sqr((meanh_p - 275.0) / 25.0)).exp();
+    let delta_ro = 30.0 * lcms_sys::exp(-sqr((meanh_p - 275.0) / 25.0));
 
     let rc = 2.0 * (mean_c_p.cpow(7.0) / (mean_c_p.cpow(7.0) + 25.0_f64.cpow(7.0))).sqrt();
 

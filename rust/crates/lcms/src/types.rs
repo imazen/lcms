@@ -317,7 +317,7 @@ impl CpowExt for f64 {
         } else if exp.is_nan() {
             exp
         } else {
-            self.powf(exp)
+            lcms_sys::pow(self, exp)
         }
     }
     #[inline]
@@ -327,7 +327,7 @@ impl CpowExt for f64 {
         } else if self < 0.0 {
             domain_nan()
         } else {
-            self.ln()
+            lcms_sys::ln(self)
         }
     }
     #[inline]
@@ -337,7 +337,7 @@ impl CpowExt for f64 {
         } else if self < 0.0 {
             domain_nan()
         } else {
-            self.log10()
+            lcms_sys::log10(self)
         }
     }
     #[inline]
@@ -347,7 +347,7 @@ impl CpowExt for f64 {
         } else if self < -1.0 || self > 1.0 {
             domain_nan()
         } else {
-            self.acos()
+            lcms_sys::acos(self)
         }
     }
     #[inline]
@@ -357,7 +357,7 @@ impl CpowExt for f64 {
         } else if self < -1.0 || self > 1.0 {
             domain_nan()
         } else {
-            self.asin()
+            lcms_sys::asin(self)
         }
     }
     #[inline]
@@ -367,7 +367,7 @@ impl CpowExt for f64 {
         } else if self <= -1.0 || self >= 1.0 {
             domain_nan()
         } else {
-            self.atanh()
+            lcms_sys::atanh(self)
         }
     }
     #[inline]
@@ -377,7 +377,7 @@ impl CpowExt for f64 {
         } else if self < 1.0 {
             domain_nan()
         } else {
-            self.acosh()
+            lcms_sys::acosh(self)
         }
     }
 }

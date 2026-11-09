@@ -32,4 +32,10 @@ double lcms_g_log2(double x)   { return log2(x); }
 double lcms_g_exp2(double x)   { return exp2(x); }
 double lcms_g_expm1(double x)  { return expm1(x); }
 double lcms_g_log1p(double x)  { return log1p(x); }
+double lcms_g_pow(double x, double y)   { return pow(x, y); }
+double lcms_g_exp(double x)    { return exp(x); }
+double lcms_g_log(double x)    { return log(x); }
+double lcms_g_log10(double x)  { return log10(x); }
+double lcms_g_atanh(double x)  { return atanh(x); }
+double lcms_g_acosh(double x)  { return acosh(x); }
 void   lcms_g_sincos(double x, double *s, double *c) { m_sincos(x, s, c); }
