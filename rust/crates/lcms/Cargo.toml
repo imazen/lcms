@@ -11,17 +11,17 @@ repository.workspace = true
 # tests call the C oracle through lcms-cref and need unsafe FFI.
 
 [features]
-# Math provider for transcendental fns (lcms-math) — pick one.
+# Math provider for transcendental fns (the lcms math module) — pick one.
 # - math-libm (default): pure-Rust libm; deterministic, unsafe-free.
 # - math-rust: pure f64 methods; host-deterministic, not oracle-exact.
 # - math-zen: reserved for a correctly-rounded zenmath impl.
 default = ["math-libm"]
-math-rust = ["lcms-math/math-rust"]
-math-zen = ["lcms-math/math-zen"]
-math-libm = ["lcms-math/math-libm"]
+math-rust = []
+math-zen = []
+math-libm = ["dep:libm"]
 
 [dependencies]
-lcms-math = { path = "../lcms-math", default-features = false }
+libm = { version = "0.2.11", optional = true }
 # Fallible zeroed allocation for the big optimizer/CLUT tables — avoids the
 # write-then-memset of `vec![0; n]` and returns Result instead of panicking.
 bytemuck = { version = "1.25.0", default-features = false, features = ["extern_crate_alloc"] }

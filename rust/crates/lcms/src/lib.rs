@@ -22,6 +22,7 @@ pub mod gamma;
 pub(crate) mod gmath;
 pub mod gbd;
 pub mod half;
+pub mod math;
 pub mod half_tables;
 pub mod intrp;
 pub mod io;

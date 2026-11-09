@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/lcms", "crates/lcms-cref", "crates/lcms2-ffi", "crates/lcms-math"]
+members = ["crates/lcms", "crates/lcms-cref", "crates/lcms2-ffi"]
 
 [workspace.package]
 edition = "2024"

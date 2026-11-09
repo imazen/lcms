@@ -696,7 +696,7 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   `atanh`/`acosh`/`cbrt`/`hypot`/`fmod`/`log2`/`exp2`/`expm1`/`log1p`/
   `sincos` → `libm::*`; the executable's own symbols win over libm.so).
   **C == R is bit-exact by construction on EVERY platform — 51/51.**
-  `math-sys` provider deleted; `lcms-math` is unconditional
+  `math-sys` provider deleted; `the lcms math module` is unconditional
   `forbid(unsafe_code)`, pure Rust. `LCMS_CREF_MATH=sys` rebuilds the
   oracle against the system libm for math-delta documentation
   (XX confined to pcs/deltaE/cam02). Historical notes below kept for
@@ -762,13 +762,13 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   stay exact. DIGEST shifts to `2811a4fbdd8afff4` — `R:hash` on those
   3 cells is now the cross-CI fingerprint, C-compare expected XX.
 - **`forbid(unsafe_code)` — whole workspace** — `lcms` had it;
-  `lcms-math` now has it UNCONDITIONALLY (the `math-sys` C-shim
+  `the lcms math module` now has it UNCONDITIONALLY (the `math-sys` C-shim
   provider is deleted — the oracle interposition replaced it). The
   production dep tree is 100% unsafe-free: `cargo add lcms` gets
-  `lcms` + `lcms-math` + `libm` + `archmage`/`magetypes`, all pure
+  `lcms` + `the lcms math module` + `libm` + `archmage`/`magetypes`, all pure
   safe Rust, no `cc`, no FFI. `lcms-cref` (oracle FFI) is dev-dep
   only — its unsafe never reaches the shipped tree.
-- **`lcms-sys` renamed `lcms-math`** — `-sys` canonically means FFI
+- **`lcms-sys` renamed `the lcms math module`** — `-sys` canonically means FFI
   bindings to the C lib (that's `lcms-cref`'s role — vendored lcms2 +
   FFI); this crate is the math-provider shim, not bindings.
 - **Golden scope** — `triple` alone is NOT enough for a system-libm

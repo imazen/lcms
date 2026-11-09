@@ -317,7 +317,7 @@ impl CpowExt for f64 {
         } else if exp.is_nan() {
             exp
         } else {
-            lcms_math::pow(self, exp)
+            crate::math::pow(self, exp)
         }
     }
     #[inline]
@@ -327,7 +327,7 @@ impl CpowExt for f64 {
         } else if self < 0.0 {
             domain_nan()
         } else {
-            lcms_math::ln(self)
+            crate::math::ln(self)
         }
     }
     #[inline]
@@ -337,7 +337,7 @@ impl CpowExt for f64 {
         } else if self < 0.0 {
             domain_nan()
         } else {
-            lcms_math::log10(self)
+            crate::math::log10(self)
         }
     }
     #[inline]
@@ -347,7 +347,7 @@ impl CpowExt for f64 {
         } else if self < -1.0 || self > 1.0 {
             domain_nan()
         } else {
-            lcms_math::acos(self)
+            crate::math::acos(self)
         }
     }
     #[inline]
@@ -357,7 +357,7 @@ impl CpowExt for f64 {
         } else if self < -1.0 || self > 1.0 {
             domain_nan()
         } else {
-            lcms_math::asin(self)
+            crate::math::asin(self)
         }
     }
     #[inline]
@@ -367,7 +367,7 @@ impl CpowExt for f64 {
         } else if self <= -1.0 || self >= 1.0 {
             domain_nan()
         } else {
-            lcms_math::atanh(self)
+            crate::math::atanh(self)
         }
     }
     #[inline]
@@ -377,7 +377,7 @@ impl CpowExt for f64 {
         } else if self < 1.0 {
             domain_nan()
         } else {
-            lcms_math::acosh(self)
+            crate::math::acosh(self)
         }
     }
 }

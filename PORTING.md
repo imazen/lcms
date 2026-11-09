@@ -1094,7 +1094,7 @@ sincos — differ by ~1 ULP on some inputs (verified: h=0x3fecf3ef67b23c5a
 -> cos e10b vs e10c, sin e10b-same, atan2 MATCHES). Same class as
 ln/log10/pow/exp domain issues, but trig has WRONG VALUES not just NaN
 sign. exp/pow/log/sqrt/ln DO call libm (PLT calls in disasm) and match.
-RESOLVED: math providers live in `lcms-math` (pure Rust, forbid(unsafe_code));
+RESOLVED: math providers live in `the lcms math module` (pure Rust, forbid(unsafe_code));
 the oracle resolves to the SAME impls via symbol interposition in lcms-cref
 (extern "C" pow/sin/... -> libm::*). No C shim needed — deleted.
 cos/sin/sincos/atan2/tan/asin/acos/atan/hypot/fmod/cbrt/log2/exp2 via
@@ -1103,12 +1103,12 @@ wrappers live in a dep crate. cos/sin alone insufficient: #[link_name]
 still resolved to compiler_builtins' cos (e10b) — needs versioned
 cos@GLIBC_* or dlsym/dlopen to reach libm.so's cos.
 
-### trig: math providers — RESOLVED via lcms-math + oracle interposition
+### trig: math providers — RESOLVED via the lcms math module + oracle interposition
 
 `lab_lch_round`/`delta_e` `a-back`/`DeltaE` 1-ULP diffs traced to
 `llvm.cos`/`llvm.sin`/`llvm.sincos` lowering to compiler_builtins/fdlibm
 in the binary (`cos(h)=e10b`) vs glibc `libm.so` (`e10c`). RESOLVED:
-`lcms-math` crate provides the math fns (pure Rust `libm` crate, default);
+`the lcms math module` crate provides the math fns (pure Rust `libm` crate, default);
 the lcms-cref oracle's `pow`/`sin`/`cos`/... calls interpose to the same
 `libm` implementations via Rust-exported `extern "C"` symbols — bit-exact
 by construction. The `cc`-built C shim approach (former `lcms-sys`+shims)
