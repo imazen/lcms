@@ -11,7 +11,7 @@
 //! - **`math-zen`** — reserved for a correctly-rounded `zenmath` impl.
 //!   Selected by feature; no API surface yet.
 //!
-#![cfg_attr(not(feature = "math-sys"), forbid(unsafe_code))]
+#![forbid(unsafe_code)]
 
 //! Rust's `f64` intrinsics (`llvm.cos`, `llvm.sin`, `llvm.pow`, ...) can
 //! resolve to `compiler_builtins`/fdlibm in the final binary, which differs
@@ -20,62 +20,7 @@
 
 // --- provider impls — one `mod imp` per feature -------------------------
 
-#[cfg(feature = "math-sys")]
-mod imp {
-    unsafe extern "C" {
-        #[link_name = "lcms_g_cos"] fn g_cos(x: f64) -> f64;
-        #[link_name = "lcms_g_sin"] fn g_sin(x: f64) -> f64;
-        #[link_name = "lcms_g_tan"] fn g_tan(x: f64) -> f64;
-        #[link_name = "lcms_g_atan2"] fn g_atan2(y: f64, x: f64) -> f64;
-        #[link_name = "lcms_g_atan"] fn g_atan(x: f64) -> f64;
-        #[link_name = "lcms_g_asin"] fn g_asin(x: f64) -> f64;
-        #[link_name = "lcms_g_acos"] fn g_acos(x: f64) -> f64;
-        #[link_name = "lcms_g_hypot"] fn g_hypot(x: f64, y: f64) -> f64;
-        #[link_name = "lcms_g_fmod"] fn g_fmod(x: f64, y: f64) -> f64;
-        #[link_name = "lcms_g_cbrt"] fn g_cbrt(x: f64) -> f64;
-        #[link_name = "lcms_g_log2"] fn g_log2(x: f64) -> f64;
-        #[link_name = "lcms_g_exp2"] fn g_exp2(x: f64) -> f64;
-        #[link_name = "lcms_g_expm1"] fn g_expm1(x: f64) -> f64;
-        #[link_name = "lcms_g_log1p"] fn g_log1p(x: f64) -> f64;
-        #[link_name = "lcms_g_pow"] fn g_pow(x: f64, y: f64) -> f64;
-        #[link_name = "lcms_g_exp"] fn g_exp(x: f64) -> f64;
-        #[link_name = "lcms_g_log"] fn g_log(x: f64) -> f64;
-        #[link_name = "lcms_g_log10"] fn g_log10(x: f64) -> f64;
-        #[link_name = "lcms_g_atanh"] fn g_atanh(x: f64) -> f64;
-        #[link_name = "lcms_g_acosh"] fn g_acosh(x: f64) -> f64;
-        #[link_name = "lcms_g_sincos"] fn g_sincos(x: f64, s: *mut f64, c: *mut f64);
-    }
-    #[inline] pub fn cos(x: f64) -> f64 { unsafe { g_cos(x) } }
-    #[inline] pub fn sin(x: f64) -> f64 { unsafe { g_sin(x) } }
-    #[inline] pub fn tan(x: f64) -> f64 { unsafe { g_tan(x) } }
-    #[inline] pub fn atan2(y: f64, x: f64) -> f64 { unsafe { g_atan2(y, x) } }
-    #[inline] pub fn atan(x: f64) -> f64 { unsafe { g_atan(x) } }
-    #[inline] pub fn asin(x: f64) -> f64 { unsafe { g_asin(x) } }
-    #[inline] pub fn acos(x: f64) -> f64 { unsafe { g_acos(x) } }
-    #[inline] pub fn hypot(x: f64, y: f64) -> f64 { unsafe { g_hypot(x, y) } }
-    #[inline] pub fn fmod(x: f64, y: f64) -> f64 { unsafe { g_fmod(x, y) } }
-    #[inline] pub fn cbrt(x: f64) -> f64 { unsafe { g_cbrt(x) } }
-    #[inline] pub fn log2(x: f64) -> f64 { unsafe { g_log2(x) } }
-    #[inline] pub fn exp2(x: f64) -> f64 { unsafe { g_exp2(x) } }
-    #[inline] pub fn expm1(x: f64) -> f64 { unsafe { g_expm1(x) } }
-    #[inline] pub fn log1p(x: f64) -> f64 { unsafe { g_log1p(x) } }
-    #[inline] pub fn pow(x: f64, y: f64) -> f64 { unsafe { g_pow(x, y) } }
-    #[inline] pub fn exp(x: f64) -> f64 { unsafe { g_exp(x) } }
-    #[inline] pub fn ln(x: f64) -> f64 { unsafe { g_log(x) } }
-    #[inline] pub fn log10(x: f64) -> f64 { unsafe { g_log10(x) } }
-    #[inline] pub fn atanh(x: f64) -> f64 { unsafe { g_atanh(x) } }
-    #[inline] pub fn acosh(x: f64) -> f64 { unsafe { g_acosh(x) } }
-    /// `sincos` — glibc computes `sin`/`cos` in one libcall (matches C's
-    /// GCC-merged `cos(h)`/`sin(h)`). Returns `(sin, cos)`.
-    #[inline]
-    pub fn sin_cos(x: f64) -> (f64, f64) {
-        let (mut s, mut c) = (0.0, 0.0);
-        unsafe { g_sincos(x, &mut s, &mut c) };
-        (s, c)
-    }
-}
-
-#[cfg(all(not(feature = "math-sys"), feature = "math-rust"))]
+#[cfg(all(not(feature = "math-libm"), feature = "math-rust"))]
 mod imp {
     #[inline] pub fn cos(x: f64) -> f64 { x.cos() }
     #[inline] pub fn sin(x: f64) -> f64 { x.sin() }
@@ -109,11 +54,7 @@ mod imp {
 /// system-libm oracle wherever libm's approximation differs (the
 /// correctly-rounded glibc fns on 2.39+ mostly match; musl/fdlibm and
 /// MSVCRT diverge more).
-#[cfg(all(
-    not(feature = "math-sys"),
-    not(feature = "math-rust"),
-    feature = "math-libm"
-))]
+#[cfg(all(not(feature = "math-rust"), feature = "math-libm"))]
 mod imp {
     #[inline] pub fn cos(x: f64) -> f64 { libm::cos(x) }
     #[inline] pub fn sin(x: f64) -> f64 { libm::sin(x) }
@@ -143,7 +84,6 @@ mod imp {
 }
 
 #[cfg(all(
-    not(feature = "math-sys"),
     not(feature = "math-rust"),
     not(feature = "math-libm"),
     feature = "math-zen"
@@ -178,11 +118,10 @@ mod imp {
 }
 
 #[cfg(not(any(
-    feature = "math-sys",
     feature = "math-rust",
     feature = "math-libm",
     feature = "math-zen"
 )))]
-compile_error!("lcms-math: select a math provider: math-sys | math-rust | math-libm | math-zen");
+compile_error!("lcms-math: select a math provider: math-rust | math-libm | math-zen");
 
 pub use imp::*;

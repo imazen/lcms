@@ -39,7 +39,8 @@ fn main() {
 
     // Rebuild only when the submodule HEAD (or this script) changes.
     let submodule_head = repo_root.join(".git/modules/reference/lcms2/HEAD");
-    let mut stamp_key = String::from("lcms-cref-v2:");
+    let math_mode = env::var("LCMS_CREF_MATH").ok().unwrap_or_else(|| "abi".into());
+    let mut stamp_key = format!("lcms-cref-v3:{math_mode}:");
     if submodule_head.exists() {
         println!("cargo:rerun-if-changed={}", submodule_head.display());
         stamp_key.push_str(&fs::read_to_string(&submodule_head).unwrap_or_default());
@@ -52,7 +53,7 @@ fn main() {
             .unwrap()
             .filter_map(|e| e.ok())
             .map(|e| e.path())
-            .filter(|p| p.extension().map(|x| x == "c").unwrap_or(false))
+            .filter(|p| p.extension().map(|x| x == "c" || x == "h").unwrap_or(false))
             .collect();
         shim_files.sort();
         for f in &shim_files {
@@ -89,16 +90,21 @@ fn main() {
         println!("cargo:rerun-if-changed={}", f.display());
     }
 
-    cc::Build::new()
-        .files(&c_files)
+    println!("cargo:rerun-if-env-changed=LCMS_CREF_MATH");
+    let math_sys = env::var("LCMS_CREF_MATH").ok().as_deref() == Some("sys");
+    if math_sys {
+        println!("cargo:rustc-cfg=math_sys");
+    }
+    let mut b = cc::Build::new();
+    b.files(&c_files)
         .include(c_root.join("include"))
         .include(&src_dir)
         .include(&shims_dir)
         .opt_level(2)
         .warnings(false)
         .flag_if_supported("-fno-strict-aliasing") // the half-float union trick
-        .out_dir(&out_dir)
-        .compile("lcms2cref");
+        .out_dir(&out_dir);
+    b.compile("lcms2cref");
 
     fs::write(&stamp_path, &stamp_key).unwrap();
     emit_link(&out_dir);

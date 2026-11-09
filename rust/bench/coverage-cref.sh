@@ -36,7 +36,7 @@ export RUSTFLAGS="-L $(dirname "$PROFILE_RT") -l clang_rt.profile-x86_64 -C link
 export LLVM_PROFILE_FILE="$OUT/raw/%p.profraw"
 
 cd "$RUST"
-cargo test -p lcms --features math-sys --no-fail-fast 2>&1 | grep -E 'test result: FAILED|^error' || true
+cargo test -p lcms --no-fail-fast 2>&1 | grep -E 'test result: FAILED|^error' || true
 
 cd "$OUT"
 llvm-profdata-14 merge raw/*.profraw -o all.profdata

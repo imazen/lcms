@@ -12,13 +12,10 @@ repository.workspace = true
 
 [features]
 # Math provider for transcendental fns (lcms-math) — pick one.
-# - math-sys: C shim -> system libm; oracle-parity. UNSAFE, opt-in
-#   for the parity harness only — not the shipped default.
 # - math-libm (default): pure-Rust libm; deterministic, unsafe-free.
 # - math-rust: pure f64 methods; host-deterministic, not oracle-exact.
 # - math-zen: reserved for a correctly-rounded zenmath impl.
 default = ["math-libm"]
-math-sys = ["lcms-math/math-sys"]
 math-rust = ["lcms-math/math-rust"]
 math-zen = ["lcms-math/math-zen"]
 math-libm = ["lcms-math/math-libm"]

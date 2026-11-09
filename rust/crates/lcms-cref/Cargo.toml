@@ -8,5 +8,8 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[dependencies]
+libm = "0.2.11"
+
 [build-dependencies]
 cc = "1"

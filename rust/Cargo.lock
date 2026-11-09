@@ -376,13 +376,13 @@ name = "lcms-cref"
 version = "0.0.0"
 dependencies = [
  "cc",
+ "libm",
 ]
 
 [[package]]
 name = "lcms-math"
 version = "0.1.0"
 dependencies = [
- "cc",
  "libm",
 ]
 

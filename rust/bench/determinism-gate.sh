@@ -1,92 +1,70 @@
 #!/usr/bin/env bash
-# determinism-gate — CI parity+determinism gate for the math providers.
+# determinism-gate — CI parity+determinism gate.
 #
-# Trust model:
-#   1. math-sys: Rust's C shim and the lcms-cref oracle both call the
-#      LOCAL system libm -> C==R bit-exact is expected on EVERY cell.
-#      This proves the port's code paths are oracle-faithful.
-#   2. math-libm: same code paths, but the 21 transcendental entry
-#      points swap to the pure-Rust `libm` crate. Cells exercising them
-#      diverge from the oracle by ulp amounts — that XX set must be
-#      confined to TRANSCENDENTAL_CELLS. Any other cell going XX means
-#      the provider swap leaked into a non-math path -> real bug.
-#   3. R-hashes under math-libm are platform-deterministic -> CI matrix
-#      compares DIGEST/R-hashes across runners for drift.
+# Model (post-interposition): the lcms-cref oracle links against the
+# SAME libm-crate implementations the Rust port uses — the oracle's
+# `pow`/`sin`/... resolve to Rust-exported `extern "C"` symbols (the
+# executable's own symbols interpose the dynamic libm). So C==R is
+# bit-exact BY CONSTRUCTION on every platform, all providers are pure
+# Rust, and `forbid(unsafe_code)` is unconditional.
+#
+# Legs:
+#   1. default (math-libm + interposed oracle): ALL cells must be C==R
+#      — parity under canonical math.
+#   2. LCMS_CREF_MATH=sys (system-libm oracle): divergence must stay
+#      confined to the transcendental cells — documents the libm delta.
 #
 # Usage: bench/determinism-gate.sh [--goldens DIR]
-#   --goldens DIR  write $DIR/<provider>.cells (name\trh\tch) for the
-#                  cross-platform compare job.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 TRANSCENDENTAL="pcs deltaE cam02 adapt estg1 estg2 estg3 estg4 estg5 estg6 estg7 estg8 param"
 GOLDENS=""
 [ "${1:-}" = "--goldens" ] && GOLDENS="$2" && mkdir -p "$GOLDENS"
-
-# libm identity — math-sys digests depend on the RUNTIME libm, not just
-# the target triple (glibc 2.35 vs 2.39 differ; multiarch dispatch
-# varies by CPU features). Scope math-sys goldens by impl+version;
-# math-libm/math-zen are deterministic and need only the triple.
-libm_tag() {
-    # tag the libm the TEST BINARY will link, from the target triple —
-    # not what the host happens to have installed.
-    case "$TRIPLE" in
-        *-musl)      echo "musl";;
-        *-msvc)      echo "msvcrt";;
-        *-gnu|*-gnullvm)
-            local v; v=$(ldd --version 2>&1 | head -1)
-            case "$v" in *GNU*|*GLIBC*) echo "glibc-${v##* }";; *) echo "gnu-unknown";; esac;;
-        *-darwin*)   echo "apple-libm";;
-        *)           echo "unknown-libm";;
-    esac
-}
 TRIPLE=$(rustc -vV | awk '/host:/{print $2}')
 
-run_provider () {
-    local name="$1"; shift
+run_manifest () {
     cargo test -p lcms --test determinism "$@" -- --nocapture 2>&1 \
         | grep -E '^(CELL|DIGEST)'
 }
 
-check () { # $1 provider $2 cells-output
-    local prov="$1" cells="$2"
+check () { # $1 label $2 cells $3 mode (all|confined)
+    local label="$1" cells="$2" mode="$3"
     local fails
     fails=$(echo "$cells" | awk -F'|' '/^CELL/{if($4==0)print substr($1,6)}')
-    if [ "$prov" = "math-sys" ]; then
+    if [ "$mode" = "all" ]; then
         if [ -n "$fails" ]; then
-            echo "FAIL math-sys: oracle-parity cells diverged:" >&2
-            echo "$fails" >&2; return 1
+            echo "FAIL $label: cells diverged:" >&2; echo "$fails" >&2
+            return 1
         fi
-        echo "PASS math-sys: all $(echo "$cells" | grep -c '^CELL') cells C==R bit-exact"
+        echo "PASS $label: all $(echo "$cells" | grep -c '^CELL') cells C==R bit-exact"
     else
         local bad=""
         for c in $fails; do
             case " $TRANSCENDENTAL " in *" $c "*) ;; *) bad="$bad $c" ;; esac
         done
         if [ -n "$bad" ]; then
-            echo "FAIL $prov: non-transcendental cells diverged:$bad" >&2
+            echo "FAIL $label: non-transcendental cells diverged:$bad" >&2
             return 1
         fi
-        local n=$(echo "$fails" | grep -c . || true)
-        echo "PASS $prov: divergence confined to ${n:-0} transcendental cells"
+        echo "PASS $label: divergence confined to $(echo "$fails" | grep -c . || true) transcendental cells"
         echo "$cells" | awk -F'|' '/^CELL/{if($4==0)print "   XX " substr($1,6) "  dmax=" $5}'
     fi
 }
 
-SYS=$(run_provider math-sys --no-default-features --features math-sys)
-LIBM=$(run_provider math-libm --no-default-features --features math-libm)
+ABI=$(run_manifest)
+SYS=$(LCMS_CREF_MATH=sys run_manifest)
 
-check math-sys "$SYS"
-check math-libm "$LIBM"
+check "abi(libm)" "$ABI" all
+check "sys-libm" "$SYS" confined
 
-echo "$SYS"  | grep DIGEST | sed 's/^/sys  /'
-echo "$LIBM" | grep DIGEST | sed 's/^/libm /'
+echo "$ABI" | grep DIGEST | sed 's/^/abi /'
+echo "$SYS" | grep DIGEST | sed 's/^/sys /'
 
 if [ -n "$GOLDENS" ]; then
-    LTAG=$(libm_tag)
-    echo "$SYS"  | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' \
-        > "$GOLDENS/sys.$TRIPLE.$LTAG.cells"
-    echo "$LIBM" | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' \
-        > "$GOLDENS/libm.$TRIPLE.cells"
-    echo "wrote $GOLDENS/sys.$TRIPLE.$LTAG.cells + libm.$TRIPLE.cells"
+    echo "$ABI" | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' \
+        > "$GOLDENS/abi.$TRIPLE.cells"
+    echo "$SYS" | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' \
+        > "$GOLDENS/sys.$TRIPLE.cells"
+    echo "wrote $GOLDENS/{abi,sys}.$TRIPLE.cells"
 fi

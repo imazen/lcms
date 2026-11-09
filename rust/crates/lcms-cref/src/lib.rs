@@ -811,3 +811,49 @@ unsafe extern "C" {
     pub fn _cmsSetHeaderCMM(p: *mut c_void, cmm: u32);
     pub fn _cmsDefaultICCintents(ctx: *mut c_void, n: u32, intents: *const u32, profs: *const *mut c_void, bpc: *const i32, adapt: *const f64, flags: u32) -> *mut c_void;
 }
+
+// Canonical-math interposition: symbols named exactly like the libm
+// functions lcms2 calls. A static-linked oracle resolves `pow`/`sin`/
+// ... to THESE definitions (the executable's own symbols win over
+// libm.so at link time), so the oracle runs the same `libm`-crate code
+// the port uses under `math-libm` — bit-exact by construction on every
+// platform, no -D defines, no unsafe on the lcms side.
+// `LCMS_CREF_MATH=sys` (cfg math_sys) restores the real system libm
+// oracle for math-delta documentation.
+#[cfg(not(math_sys))]
+pub mod math_abi {
+    macro_rules! m {
+        ($n:ident, $f:ident, $($a:ident : f64),*) => {
+            #[unsafe(no_mangle)]
+            pub extern "C" fn $n($($a: f64),*) -> f64 { libm::$f($($a),*) }
+        };
+    }
+    m!(pow, pow, x: f64, y: f64);
+    m!(cos, cos, x: f64);
+    m!(sin, sin, x: f64);
+    m!(log, log, x: f64);
+    m!(exp, exp, x: f64);
+    m!(atan, atan, x: f64);
+    m!(atan2, atan2, y: f64, x: f64);
+    m!(log10, log10, x: f64);
+    m!(tan, tan, x: f64);
+    m!(asin, asin, x: f64);
+    m!(acos, acos, x: f64);
+    m!(atanh, atanh, x: f64);
+    m!(acosh, acosh, x: f64);
+    m!(cbrt, cbrt, x: f64);
+    m!(hypot, hypot, x: f64, y: f64);
+    m!(fmod, fmod, x: f64, y: f64);
+    m!(log2, log2, x: f64);
+    m!(exp2, exp2, x: f64);
+    m!(expm1, expm1, x: f64);
+    m!(log1p, log1p, x: f64);
+
+    // GCC may fuse sin+cos pairs into `sincos` PLT calls in the oracle —
+    // interpose that too so the fused path runs libm as well.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn sincos(x: f64, s: *mut f64, c: *mut f64) {
+        let (sv, cv) = libm::sincos(x);
+        unsafe { *s = sv; *c = cv };
+    }
+}
