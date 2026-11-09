@@ -15,7 +15,15 @@ repository.workspace = true
 # - math-libm (default): pure-Rust libm; deterministic, unsafe-free.
 # - math-rust: pure f64 methods; host-deterministic, not oracle-exact.
 # - math-zen: reserved for a correctly-rounded zenmath impl.
-default = ["math-libm"]
+# Surface features:
+# - little-cms-api (default): the C-parity `cms*`/`pub mod` surface —
+#   what the differential gates test. Off => those modules go pub(crate);
+#   consumers get only `lcms::api` (+ `lcms2` compat under lcms2-api).
+# - lcms2-api: lcms::lcms2 — a drop-in API shim matching the `lcms2`
+#   crate's shape (Transform<I,O> + Pod pixels) for easy migrations.
+default = ["little-cms-api", "math-libm"]
+little-cms-api = []
+lcms2-api = []
 math-rust = []
 math-zen = []
 math-libm = ["dep:libm"]

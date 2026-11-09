@@ -770,3 +770,17 @@ fn api_error_real_message() {
     assert!(!e.message.is_empty());
     eprintln!("api err: {} (id {})", e.message, e.id);
 }
+
+/// lcms2-api shim smoke: Profile + typed Transform<[u8;3],[u8;3]>.
+#[test]
+#[cfg(feature = "lcms2-api")]
+fn lcms2_smoke() {
+    use lcms::lcms2::*;
+    let srgb = Profile::new_srgb();
+    let lab4 = Profile::new_lab4();
+    let t: Transform<[u8; 3], [u8; 3]> =
+        Transform::new(&srgb, PixelFormat::RGB_8, &lab4, PixelFormat::LAB_8, Intent::Perceptual).unwrap();
+    let mut dst = [[0u8; 3]];
+    t.transform_pixels(&[[255u8, 0, 0]], &mut dst);
+    assert!(dst[0][0] > 0, "red->Lab L* nonzero: {:?}", dst);
+}
