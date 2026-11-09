@@ -117,12 +117,18 @@ fn ff32(pt: u32, ch: u32) -> u32 { 1 << 22 | pt << 16 | ch << 3 | 4 }
 // ---- canonical profiles (C-built bytes) ------------------------
 
 unsafe fn save_c(p: *mut c_void) -> Vec<u8> {
-    let mut buf = vec![0u8; 1 << 20];
+    // cmsSaveProfileToMem's *BytesNeeded is IN-only on write — the
+    // real size comes from the NULL query, not the post-write value.
+    let mut n0: u32 = 0;
+    if c::cmsSaveProfileToMem(p, std::ptr::null_mut(), &mut n0) == 0 || n0 == 0 {
+        return Vec::new();
+    }
+    let mut buf = vec![0u8; n0 as usize];
     let mut n = buf.len() as u32;
     if c::cmsSaveProfileToMem(p, buf.as_mut_ptr() as *mut _, &mut n) == 0 {
         return Vec::new();
     }
-    buf.truncate(n as usize);
+    buf.truncate(n0 as usize);
     buf
 }
 
@@ -1214,5 +1220,57 @@ fn dbg_unroll_lab() {
             eprintln!("in={inp:?} Cout={oc:?} a_norm f64={:08x} f32={:08x}",
                 norm_f64_a.to_bits(), norm_f32_a.to_bits());
         }
+    }
+}
+
+/// ser bisect: byte-level first-diff for each profile
+#[test]
+fn dbg_ser_diff() {
+    unsafe {
+        let profs = c_profiles();
+        for (name, bytes) in &profs {
+            let cp = c::cmsOpenProfileFromMem(bytes.as_ptr() as *const _, bytes.len() as u32);
+            let mut cb = if !cp.is_null() {
+                let mut b = save_c(cp);
+                c::cmsCloseProfile(cp); mask(&mut b); b } else { Vec::new() };
+            let mut rb = profile::open_profile_from_mem(None, bytes)
+                .and_then(|mut icc| profile::save_profile_to_mem(&mut icc))
+                .unwrap_or_default();
+            mask(&mut cb); mask(&mut rb);
+            if rb == cb { eprintln!("{name}: EQ"); continue; }
+            eprintln!("{name}: lenC={} lenR={}", cb.len(), rb.len());
+            let n = rb.len().min(cb.len());
+            let mut shown = 0;
+            for i in 0..n {
+                if rb[i] != cb[i] {
+                    let ctx = 8;
+                    eprintln!("  @{i:#x} R={:02x} C={:02x}  R={:02x?}  C={:02x?}",
+                        rb[i], cb[i], &rb[i.saturating_sub(ctx)..(i+ctx).min(n)],
+                        &cb[i.saturating_sub(ctx)..(i+ctx).min(n)]);
+                    shown += 1;
+                    if shown >= 3 { break; }
+                }
+            }
+            if rb.len() != cb.len() { eprintln!("  len differs"); }
+        }
+    }
+}
+
+#[test]
+fn dbg_save_size() {
+    unsafe {
+        let s = c::cmsCreate_sRGBProfile();
+        let sb = save_c(s);
+        eprintln!("orig len {}", sb.len());
+        let p2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sb.len() as u32);
+        // size query
+        let mut n0: u32 = 0;
+        let r0 = c::cmsSaveProfileToMem(p2, std::ptr::null_mut(), &mut n0);
+        eprintln!("query: ret={r0} n={n0}");
+        // real save into 1MB
+        let mut buf = vec![0u8; 1 << 20];
+        let mut n1 = buf.len() as u32;
+        let r1 = c::cmsSaveProfileToMem(p2, buf.as_mut_ptr() as *mut _, &mut n1);
+        eprintln!("save: ret={r1} n={n1}");
     }
 }

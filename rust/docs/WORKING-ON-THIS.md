@@ -731,9 +731,11 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
 
 ### Open residuals
 
-- `ser:*` resave diffs — deterministic per-platform resave
-  parity gap (same on all platforms; separate serialization
-  issue, not platform drift).
+- `ser:*` resave diffs — WAS A HARNESS BUG: `cmsSaveProfileToMem`'s
+  *BytesNeeded is IN-only on write; `save_c` returned the 1MB
+  capacity buffer, not the ~300-600B profile (real size comes
+  from the NULL query). Fixed: query-then-save. ALL 12 ser cells
+  now byte-identical. **51/51 bit-exact on dev.**
 
 ### libm surface (only drift-capable calls)
 
