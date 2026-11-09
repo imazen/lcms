@@ -19,6 +19,11 @@ fn fnv(b: &[u8]) -> u64 {
     zenhash::xxh3_64(b)
 }
 
+thread_local! {
+    static CELLS: std::cell::RefCell<Vec<(String, Vec<u8>, Vec<u8>)>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
 /// manifest-level digest: xxh3 over every cell's bytes in order — one
 /// value CI can diff across platforms.
 fn digest(cells: &[(String, Vec<u8>, Vec<u8>)]) -> u64 {
@@ -38,6 +43,8 @@ fn mask(b: &mut Vec<u8>) {
 }
 
 fn emit(name: &str, r: &[u8], cb: &[u8]) {
+    CELLS.with(|c| c.borrow_mut().push(
+        (name.to_string(), r.to_vec(), cb.to_vec())));
     let (rh, ch) = (fnv(r), fnv(cb));
     let eq = r == cb;
     // element-wise diffs: f32-ulp for xfl cells, u16 otherwise
@@ -624,7 +631,6 @@ unsafe fn scalars() {
 fn manifest() {
     unsafe {
         let profs = c_profiles();
-        let mut cells: Vec<(String, Vec<u8>, Vec<u8>)> = Vec::new();
         // ser cells: canonical bytes -> reopen+resave on each side
         for (name, bytes) in &profs {
             let cp = c::cmsOpenProfileFromMem(
@@ -639,7 +645,6 @@ fn manifest() {
             mask(&mut cbytes);
             mask(&mut rbytes);
             emit(&format!("ser:{name}"), &rbytes, &cbytes);
-            cells.push((format!("ser:{name}"), rbytes, cbytes));
         }
         // transform cells
         let get = |n: &str| -> &[u8] {
@@ -661,24 +666,57 @@ fn manifest() {
                 let (r, cb) = run_x16(get(inm), get(outm),
                     f16(*ipt, *ich), f16(*opt, *och), *ich as usize, i);
                 emit(&format!("x16:{inm}>{outm}:{i}"), &r, &cb);
-                cells.push((format!("x16:{inm}>{outm}:{i}"), r, cb));
                 let (r, cb) = run_xfl(get(inm), get(outm),
                     ff32(*ipt, *ich), ff32(*opt, *och), *ich as usize, i);
                 emit(&format!("xfl:{inm}>{outm}:{i}"), &r, &cb);
-                cells.push((format!("xfl:{inm}>{outm}:{i}"), r, cb));
             }
         }
         // labdl single-profile devicelink
         let (r, cb) = run_x16(get("labdl"), &[],
             f16(10, 3), f16(10, 3), 3, 0);
         emit("x16:labdl", &r, &cb);
-        cells.push(("x16:labdl".into(), r, cb));
         let (r, cb) = run_xfl(get("labdl"), &[],
             ff32(10, 3), ff32(10, 3), 3, 0);
         emit("xfl:labdl", &r, &cb);
-        cells.push(("xfl:labdl".into(), r, cb));
         scalars();
-        eprintln!("DIGEST {:016x} ({} cells)", digest(&cells), cells.len());
+        let cells = CELLS.with(|c| c.borrow().clone());
+        let d = digest(&cells);
+        eprintln!("DIGEST {d:016x} ({} cells)", cells.len());
+        // golden baseline: LCMS_GOLDEN=<file> writes `name\trh\tch` per
+        // cell + the digest; LCMS_GOLDEN_UPDATE=1 regenerates after a
+        // canonical-math swap. Compares and reports drift if it exists.
+        if let Ok(g) = std::env::var("LCMS_GOLDEN") {
+            let mut txt = format!("DIGEST {d:016x}
+");
+            for (n, r, c) in &cells {
+                txt += &format!("{n}\t{:016x}\t{:016x}\n", fnv(r), fnv(c));
+            }
+            let upd = std::env::var("LCMS_GOLDEN_UPDATE").is_ok();
+            let old = std::fs::read_to_string(&g).ok();
+            match (old, upd) {
+                (_, true) => { std::fs::write(&g, &txt).unwrap();
+                    eprintln!("GOLDEN wrote {g}"); }
+                (Some(o), false) if o != txt => {
+                    let on: std::collections::HashMap<_, _> = o.lines().skip(1)
+                        .filter_map(|l| {
+                            let mut it = l.split('\t');
+                            it.next().zip(it.next())
+                        }).collect();
+                    for (n, r, _c) in &cells {
+                        let rh = format!("{:016x}", fnv(r));
+                        if let Some(&or) = on.get(n.as_str()) {
+                            if or != rh {
+                                eprintln!("GOLDEN-DRIFT {n}: {or} -> {rh}");
+                            }
+                        }
+                    }
+                    eprintln!("GOLDEN differs (LCMS_GOLDEN_UPDATE=1 to refresh)");
+                }
+                (None, false) => { std::fs::write(&g, &txt).unwrap();
+                    eprintln!("GOLDEN seeded {g}"); }
+                _ => eprintln!("GOLDEN ok"),
+            }
+        }
     }
 }
 
