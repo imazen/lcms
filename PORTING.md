@@ -1094,19 +1094,25 @@ sincos — differ by ~1 ULP on some inputs (verified: h=0x3fecf3ef67b23c5a
 -> cos e10b vs e10c, sin e10b-same, atan2 MATCHES). Same class as
 ln/log10/pow/exp domain issues, but trig has WRONG VALUES not just NaN
 sign. exp/pow/log/sqrt/ln DO call libm (PLT calls in disasm) and match.
-FIX NEEDED: lcms-sys micro-crate with safe wrappers calling real glibc
+RESOLVED: math providers live in `lcms-math` (pure Rust, forbid(unsafe_code));
+the oracle resolves to the SAME impls via symbol interposition in lcms-cref
+(extern "C" pow/sin/... -> libm::*). No C shim needed — deleted.
 cos/sin/sincos/atan2/tan/asin/acos/atan/hypot/fmod/cbrt/log2/exp2 via
 #[link_name]+#[link(name="m")]+unsafe — lcms is forbid(unsafe_code) so
 wrappers live in a dep crate. cos/sin alone insufficient: #[link_name]
 still resolved to compiler_builtins' cos (e10b) — needs versioned
 cos@GLIBC_* or dlsym/dlopen to reach libm.so's cos.
 
-### trig: lcms-sys real-glibc wrappers — FIXED (cos/sin/sincos/atan2/...)
+### trig: math providers — RESOLVED via lcms-math + oracle interposition
 
 `lab_lch_round`/`delta_e` `a-back`/`DeltaE` 1-ULP diffs traced to
 `llvm.cos`/`llvm.sin`/`llvm.sincos` lowering to compiler_builtins/fdlibm
-in the binary (`cos(h)=e10b`) vs glibc `libm.so` (`e10c`). New `lcms-sys`
-micro-crate: a `cc`-compiled C shim (`shims/libm_shim.c`) whose
+in the binary (`cos(h)=e10b`) vs glibc `libm.so` (`e10c`). RESOLVED:
+`lcms-math` crate provides the math fns (pure Rust `libm` crate, default);
+the lcms-cref oracle's `pow`/`sin`/`cos`/... calls interpose to the same
+`libm` implementations via Rust-exported `extern "C"` symbols — bit-exact
+by construction. The `cc`-built C shim approach (former `lcms-sys`+shims)
+was deleted.
 `cos`/`sin`/`sincos`/`atan2`/`tan`/`asin`/`acos`/`atan`/`hypot`/`fmod`/
 `cbrt`/`log2`/`exp2`/`expm1`/`log1p` calls resolve to real glibc PLT.
 `lcms::gmath::GmathExt` adds `.g_cos()`/`.g_sin()`/... f64 methods; all
@@ -1133,6 +1139,6 @@ all matched two-op path (sum=c202 -> sqrt=568f) yet `C`=5690. Root
 cause: lcms2 calls `pow(x,0.5)` NOT `sqrt` at cmspcs.c:352 (cmsLab2LCh
 `C`), :446 (cmsDeltaE), :469 (dhsq) — `pow(c202,0.5)`=5690/`pow(c4,0.5)`
 =f116 differ from `sqrt` by ~1 ULP. Restored `.cpow(0.5)` at exactly
-those 3 sites (lcms-sys-consistent glibc `pow`); `sqrt` sites stay
+those 3 sites (provider-bound `pow`); `sqrt` sites stay
 `.sqrt()`. All 8 c_parity_pcs green. Net: audit cpow-vs-sqrt is
 per-C-callsite (pow!=sqrt != interchangeable).

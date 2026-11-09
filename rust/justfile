@@ -16,9 +16,10 @@ test:
 gate name:
     cargo test -p lcms --test c_parity_{{name}}
 
-# Determinism gate: manifest under math-sys (C==R on shared system libm)
-# AND math-libm (XX confined to transcendental cells) — the transitive
-# trust argument for canonical math backends.
+# Determinism gate: manifest under canonical math (C oracle resolves
+# to the same libm-crate impls via symbol interposition -> C==R by
+# construction, all cells) AND LCMS_CREF_MATH=sys (system-libm oracle
+# for math-delta docs; XX confined to transcendental cells).
 determinism-gate:
     bench/determinism-gate.sh
 

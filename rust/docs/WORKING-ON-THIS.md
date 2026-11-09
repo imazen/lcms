@@ -690,7 +690,19 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
 - **All u16 + float transform paths bit-exact everywhere** —
   fixed-point evaluators, interpolation, table evals, and the f32
   pipeline chain are deterministic across ISAs/OSes.
-- **Per-platform `Rust == C` holds on musl too** (35/51): musl's
+- **FINAL MODEL (canonical math)**: the lcms-cref oracle links the
+  same `libm`-crate impls via symbol interposition (`extern "C"`
+  `pow`/`sin`/`log`/`exp`/`atan`/`atan2`/`log10`/`tan`/`asin`/`acos`/
+  `atanh`/`acosh`/`cbrt`/`hypot`/`fmod`/`log2`/`exp2`/`expm1`/`log1p`/
+  `sincos` → `libm::*`; the executable's own symbols win over libm.so).
+  **C == R is bit-exact by construction on EVERY platform — 51/51.**
+  `math-sys` provider deleted; `lcms-math` is unconditional
+  `forbid(unsafe_code)`, pure Rust. `LCMS_CREF_MATH=sys` rebuilds the
+  oracle against the system libm for math-delta documentation
+  (XX confined to pcs/deltaE/cam02). Historical notes below kept for
+  the record — the sys-libm cells were 35/51→39/51→51/51 across the
+  fixes.
+- ~~Per-platform `Rust == C` holds on musl too** (35/51): musl's
   fdlibm-derived libm drifts vs glibc on only `pcs`/`deltaE`/`cam02`
   — and the C oracle drifts identically on that platform.
 - **f64-transcendental drift is confined to 3 scalar cells**
@@ -708,7 +720,8 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   (`unroll_lab_float_to_float`) stays f32 — C's `x+128` add is
   f32-exact in-domain and `x/255` f32-div coincides with
   f64-div+cast on all swept inputs. `xfl:labdl` went exact too —
-  it was the same formatter. NOW 39/51 (all transform cells).
+  it was the same formatter. NOW 51/51 (canonical-math parity —
+  oracle interposed to libm).
 - **`x16:mab>srgb` vertex-0 black** (was a REAL bug): the fused
   cached u64 loops (`clut16_tetra_cached_v3`, scalar fallback,
   Curves16 arm) used a LOCAL `cv`/`co` cache zero-initialized —
@@ -748,26 +761,18 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   canonical-math trade-off); `adapt`/`estg*`/`param` + all transforms
   stay exact. DIGEST shifts to `2811a4fbdd8afff4` — `R:hash` on those
   3 cells is now the cross-CI fingerprint, C-compare expected XX.
-- **`forbid(unsafe_code)` (geiger trust)** — the shipped default is
-  now `math-libm`: `lcms` + `lcms-sys` both compile with
-  `forbid(unsafe_code)` ACTIVE under default features — zero unsafe
-  in the production dep tree, and the dep tree loses `cc` (no C
-  build). `math-sys` is demoted to the opt-in parity-harness provider
-  (`--features math-sys` on test runs) — it carries the only unsafe
-  (the 22-site C shim) and is never in the shipped default. Consumers
-  verify via: the `forbid` attrs (compile-error proof, not lint),
-  `cargo geiger` under default features, and the docs.rs unsafe badge.
-  `lcms-cref` (oracle FFI) is dev-dep only — its unsafe never reaches
-  the shipped tree.
-- **`forbid(unsafe_code)`** — `lcms` lib already had it; `lcms-sys`
-  gets `#![cfg_attr(not(feature="math-sys"), forbid(unsafe_code))]` —
-  unsafe lives ONLY in the `math-sys` C-shim block (22 sites, cfg-gated);
-  `math-rust`/`math-libm` are 100% safe. `lcms-cref` (oracle FFI) is
-  unsafe by design — it's the C reference, not the port.
+- **`forbid(unsafe_code)` — whole workspace** — `lcms` had it;
+  `lcms-math` now has it UNCONDITIONALLY (the `math-sys` C-shim
+  provider is deleted — the oracle interposition replaced it). The
+  production dep tree is 100% unsafe-free: `cargo add lcms` gets
+  `lcms` + `lcms-math` + `libm` + `archmage`/`magetypes`, all pure
+  safe Rust, no `cc`, no FFI. `lcms-cref` (oracle FFI) is dev-dep
+  only — its unsafe never reaches the shipped tree.
 - **`lcms-sys` renamed `lcms-math`** — `-sys` canonically means FFI
   bindings to the C lib (that's `lcms-cref`'s role — vendored lcms2 +
   FFI); this crate is the math-provider shim, not bindings.
-- **Golden scope** — `triple` alone is NOT enough for `math-sys`:
+- **Golden scope** — `triple` alone is NOT enough for a system-libm
+  compare (the `LCMS_CREF_MATH=sys` oracle):
   the digest depends on the runtime libm (glibc 2.35 vs 2.39 differ)
   AND on glibc's ifunc/multiarch dispatch (different `libmvec` impls
   per CPU features — same glibc, different CPU => drift). Goldens are
