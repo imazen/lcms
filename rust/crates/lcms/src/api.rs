@@ -42,8 +42,15 @@ impl fmt::Display for Error {
 }
 impl std::error::Error for Error {}
 
-fn _unused<T>(id: i32, msg: &str) -> Result<T, Error> {
-    Err(Error { id, message: msg.into() })
+impl Error {
+    /// Build from the last `signal_error` this thread produced, or the
+    /// fallback if the failing path didn't signal one.
+    pub fn from_last(fallback_id: i32, fallback: &str) -> Self {
+        match crate::err::take_last_error() {
+            Some((id, message)) => Error { id, message },
+            None => Error { id: fallback_id, message: fallback.into() },
+        }
+    }
 }
 
 // -- Format ---------------------------------------------------------------
@@ -141,10 +148,21 @@ pub struct Profile {
     pub(crate) icc: Box<crate::profile::IccProfile>,
 }
 
+impl fmt::Debug for Profile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Profile")
+            .field("device_class", &format_args!("0x{:x}", self.icc.device_class))
+            .field("color_space", &format_args!("0x{:x}", self.icc.color_space))
+            .field("pcs", &format_args!("0x{:x}", self.icc.pcs))
+            .field("version", &format_args!("0x{:x}", self.icc.version))
+            .finish()
+    }
+}
+
 impl Profile {
     fn wrap(icc: Option<Box<crate::profile::IccProfile>>, what: &str) -> Result<Self, Error> {
         icc.map(|icc| Profile { icc })
-            .ok_or_else(|| Error { id: types::ERROR_READ, message: format!("{what} failed") })
+            .ok_or_else(|| Error::from_last(types::ERROR_READ, &format!("{what} failed")))
     }
 
     /// `cmsCreate_sRGBProfile`
@@ -175,7 +193,7 @@ impl Profile {
     /// `cmsSaveProfileToMem` — serialized ICC bytes.
     pub fn save(&mut self) -> Result<Vec<u8>, Error> {
         profile::save_profile_to_mem(&mut self.icc)
-            .ok_or_else(|| Error { id: types::ERROR_WRITE, message: "save_profile_to_mem failed".into() })
+            .ok_or_else(|| Error::from_last(types::ERROR_WRITE, "save_profile_to_mem failed"))
     }
     /// Eagerly materialize all tags — after `freeze`, `Arc<Profile>`
     /// reads via [`Profile::tag`] are `Sync`-safe.
@@ -202,6 +220,16 @@ impl Profile {
 /// Cheap `Scratch` clones run the pixels; the plan is the expensive part.
 pub struct Plan {
     pub(crate) inner: xform::TransformPlan,
+}
+
+impl fmt::Debug for Plan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Plan")
+            .field("input_format", &format_args!("0x{:x}", self.inner.input_format))
+            .field("output_format", &format_args!("0x{:x}", self.inner.output_format))
+            .field("intent", &self.inner.rendering_intent)
+            .finish()
+    }
 }
 
 /// Per-run pixel scratch (~64 B) — `plan.scratch()`, or pooled.
@@ -254,9 +282,8 @@ impl Plan {
         let [sb, db] = profs;
         src.icc = sb;
         dst.icc = db;
-        let t = t.ok_or_else(|| Error {
-            id: types::ERROR_UNDEFINED,
-            message: "create_transform failed".into(),
+        let t = t.ok_or_else(|| {
+            Error::from_last(types::ERROR_UNDEFINED, "create_transform failed")
         })?;
         let xform::Transform { plan, .. } = *t;
         Ok(Plan { inner: plan })

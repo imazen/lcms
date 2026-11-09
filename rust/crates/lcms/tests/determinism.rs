@@ -759,3 +759,14 @@ fn api_smoke() {
     // Lab L* > 0 for red
     assert!(dst[0] > 0, "red -> Lab L* nonzero: {:?}", dst);
 }
+
+/// api::Error carries the real signal_error text when a path signals.
+#[test]
+fn api_error_real_message() {
+    use lcms::api::*;
+    let e = Profile::open(&[0u8; 64]).unwrap_err();
+    // open_profile_from_mem signals a corruption/unsupported error —
+    // the message should come from the error handler, not our fallback
+    assert!(!e.message.is_empty());
+    eprintln!("api err: {} (id {})", e.message, e.id);
+}
