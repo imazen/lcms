@@ -200,7 +200,7 @@ pub fn create_rgb_profile(
         if !cms_write_tag(
             &mut icc,
             tags::SigChromaticityTag,
-            Some(TagObject::Chromaticity(pr.clone())),
+            Some(TagObject::Chromaticity(*pr)),
         ) {
             return None;
         }
@@ -510,7 +510,7 @@ pub fn create_oklab_profile(ctx: Option<Context>) -> Option<Box<IccProfile>> {
         -0.557799980651822,
         0.281256148966468,
         -0.040580178423281,
-        1.112256869616830,
+        1.112_256_869_616_83,
         -0.071676678665601,
         -0.076381284505707,
         -0.421481978418013,
@@ -1073,15 +1073,14 @@ pub fn transform2_device_link(
 
     // Colorant tables have special rules depending on device class
     if let Some(clrt) = &xform.input_colorants {
-        if device_class == pc::SigLinkClass || device_class == pc::SigInputClass {
-            if !cms_write_tag(
+        if (device_class == pc::SigLinkClass || device_class == pc::SigInputClass)
+            && !cms_write_tag(
                 &mut icc,
                 tags::SigColorantTableTag,
                 Some(TagObject::ColorantTable(clrt.clone())),
             ) {
                 return None;
             }
-        }
     }
     if let Some(clrt) = &xform.output_colorants {
         let tag = if device_class == pc::SigLinkClass {

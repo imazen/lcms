@@ -256,7 +256,7 @@ pub fn global() -> &'static Context {
 
 /// Resolve a `Option<&Context>` to a concrete context (C's NULL → global).
 #[inline]
-pub fn or_global<'a>(ctx: Option<&'a Context>) -> &'a Context {
+pub fn or_global(ctx: Option<&Context>) -> &Context {
     ctx.unwrap_or_else(|| global())
 }
 
@@ -314,10 +314,10 @@ impl Context {
         for p in plugins {
             match p {
                 Plugin::Interp(f) => self.interpolators = Some(*f),
-                Plugin::TagType(h) => self.tag_type_handlers.push(h.clone()),
-                Plugin::Tag(sig, d) => self.tag_descriptors.push((*sig, d.clone())),
+                Plugin::TagType(h) => self.tag_type_handlers.push(*h),
+                Plugin::Tag(sig, d) => self.tag_descriptors.push((*sig, *d)),
                 Plugin::ParametricCurve(pc) => self.parametric_curves.push(pc.clone()),
-                Plugin::Mpe(h) => self.mpe_handlers.push(h.clone()),
+                Plugin::Mpe(h) => self.mpe_handlers.push(*h),
                 // formatters/intents/optimization/transform live in their own
                 // context slots (cmsformatters/cmscnvrt/cmsopt/cmsxform chunks)
                 _ => {}

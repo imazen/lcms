@@ -304,8 +304,8 @@ impl Plan {
         // create_extended_transform takes &mut [Box<IccProfile>] — swap
         // the boxes out of the Profiles for the call, swap back after.
         let mut profs = [
-            std::mem::replace(&mut src.icc, Box::new(Default::default())),
-            std::mem::replace(&mut dst.icc, Box::new(Default::default())),
+            std::mem::take(&mut src.icc),
+            std::mem::take(&mut dst.icc),
         ];
         let mut bpc = [false, false];
         let intents = [intent.code(); 2];

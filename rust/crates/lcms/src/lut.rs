@@ -297,7 +297,7 @@ fn evaluate_matrix(input: &[f32], output: &mut [f32], mpe: &Stage) {
         // f64x4: the n_out lanes multiply-accumulate columns in the same
         // j-order as the scalar — each product rounds then adds, so the
         // per-lane result is bit-identical. (No FMA.)
-        if n_in <= 4 && n_out <= 4 && n_out >= 1 {
+        if n_in <= 4 && (1..=4).contains(&n_out) {
             #[cfg(target_arch = "x86_64")]
             if let Some(t) = crate::intrp::x64v3_cached() {
                 return evaluate_matrix_v3(t, input, output, n_in, n_out, double, offset.as_ref());
@@ -334,15 +334,14 @@ fn evaluate_matrix_v3(
         for i in 0..n_out {
             col[i] = double[i * n_in + j];
         }
-        acc = acc
-            + V::splat_t(token, input[j] as f64) * V::from_array_t(token, col);
+        acc += V::splat_t(token, input[j] as f64) * V::from_array_t(token, col);
     }
     if let Some(off) = offset {
         let mut a = [0f64; 4];
         for i in 0..n_out {
             a[i] = off[i];
         }
-        acc = acc + V::from_array_t(token, a);
+        acc += V::from_array_t(token, a);
     }
     let r = acc.to_array();
     for i in 0..n_out {
@@ -1291,9 +1290,7 @@ impl Pipeline {
     /// `cmsPipelineUnlinkStage` — returns the unlinked stage (C writes it to an
     /// out-param or frees it when the out-param is NULL; we always return it).
     pub fn unlink_stage(&mut self, loc: StageLoc) -> Option<Stage> {
-        if self.elements.is_none() {
-            return None;
-        }
+        self.elements.as_ref()?;
         let unlinked = match loc {
             StageLoc::AtBegin => {
                 let mut elem = self.elements.take().unwrap();
@@ -1461,5 +1458,5 @@ fn euclidean_distance(a: &[f32], b: &[f32], n: usize) -> f64 {
         let dif = b[i] - a[i];
         sum += dif * dif;
     }
-    (sum as f32).sqrt() as f64
+    sum.sqrt() as f64
 }

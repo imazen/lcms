@@ -2858,7 +2858,7 @@ fn detect_rgb_profile_gamma(icc: &mut IccProfile, threshold: f64) -> f64 {
         if let Some(TagObject::Curve(c)) | Some(TagObject::ParametricCurve(c)) =
             crate::profile::cms_read_tag(icc, sig)
         {
-            let e = crate::gamma::estimate_gamma(&c, threshold);
+            let e = crate::gamma::estimate_gamma(c, threshold);
             if e > 0.0 {
                 sum += e;
                 n += 1;

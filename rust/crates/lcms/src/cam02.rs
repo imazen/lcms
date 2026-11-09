@@ -93,8 +93,8 @@ fn cat02_to_hpe(mut clr: Cam02Color) -> Cam02Color {
 fn nonlinear_compression(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     for i in 0..3 {
         if clr.rgbp[i] < 0.0 {
-            let temp = (-1.0 * m.fl * clr.rgbp[i] / 100.0).cpow(0.42);
-            clr.rgbpa[i] = (-1.0 * 400.0 * temp) / (temp + 27.13) + 0.1;
+            let temp = (-m.fl * clr.rgbp[i] / 100.0).cpow(0.42);
+            clr.rgbpa[i] = (-400.0 * temp) / (temp + 27.13) + 0.1;
         } else {
             let temp = (m.fl * clr.rgbp[i] / 100.0).cpow(0.42);
             clr.rgbpa[i] = (400.0 * temp) / (temp + 27.13) + 0.1;

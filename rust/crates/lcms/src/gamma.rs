@@ -239,10 +239,10 @@ fn is_in_set(r#type: i32, c: &ParametricCurves) -> Option<usize> {
 }
 
 /// `GetParametricCurveByType` — plugins first, then the built-in defaults.
-fn get_parametric_curve_by_type<'a>(
-    ctx: Option<&'a Context>,
+fn get_parametric_curve_by_type(
+    ctx: Option<&Context>,
     r#type: i32,
-) -> Option<(usize, &'a ParametricCurves)> {
+) -> Option<(usize, &ParametricCurves)> {
     let c = or_global(ctx);
     for entry in &c.parametric_curves {
         if let Some(pos) = is_in_set(r#type, entry) {
@@ -281,10 +281,10 @@ pub fn set_parametric_eval_hook(h: ForeignParametricEval) {
 
 /// Walk the ctx's C-registered `cmsPluginParametricCurves` collections —
 /// the `abs(Type)` match C applies in `_cmsGetParametricCurveByType`.
-pub(crate) fn parametric_curve_in_c_sets<'a>(
-    ctx: Option<&'a Context>,
+pub(crate) fn parametric_curve_in_c_sets(
+    ctx: Option<&Context>,
     r#type: i32,
-) -> Option<(usize, &'a crate::context::CParametricSet)> {
+) -> Option<(usize, &crate::context::CParametricSet)> {
     let c = or_global(ctx);
     for (i, set) in c.c_parametric_curves.iter().enumerate() {
         if set.function_types.iter().any(|&t| t == r#type.abs()) {

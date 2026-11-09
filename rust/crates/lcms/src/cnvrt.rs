@@ -355,9 +355,7 @@ fn default_icc_intents(
         let lut: Option<Pipeline>;
         if is_device_link || (class_sig == pc::SigNamedColorClass && n == 1) {
             lut = io1::read_devicelink_lut(&mut profiles[i], intent);
-            if lut.is_none() {
-                return None;
-            }
+            lut.as_ref()?;
             if class_sig == pc::SigAbstractClass && i > 0 {
                 if !compute_conversion(
                     i,
@@ -387,14 +385,10 @@ fn default_icc_intents(
         } else {
             if is_input {
                 lut = io1::read_input_lut(&mut profiles[i], intent);
-                if lut.is_none() {
-                    return None;
-                }
+                lut.as_ref()?;
             } else {
                 lut = io1::read_output_lut(&mut profiles[i], intent);
-                if lut.is_none() {
-                    return None;
-                }
+                lut.as_ref()?;
                 if !compute_conversion(
                     i,
                     profiles,
@@ -892,7 +886,7 @@ fn run_lab_transform_f(t: &mut crate::xform::Transform, cmyk: &[f32; 4]) -> [f32
 // ---------------------------------------------------------------------------
 
 const TYPE_CMYK_FLT: u32 = (1 << 22) | (6 << 16) | (4 << 3) | 4;
-const TYPE_LAB_DBL: u32 = (1 << 22) | (10 << 16) | (3 << 3) | 0;
+const TYPE_LAB_DBL: u32 = (1 << 22) | (10 << 16) | (3 << 3);
 
 /// `_cmsChain2Lab` — profiles + a trailing Lab4 profile → transform to Lab.
 fn chain2lab(
@@ -1057,7 +1051,7 @@ fn formatter_for_colorspace_of_profile(p: &IccProfile, n_bytes: u32, is_float: b
         return 0;
     }
     let float = if is_float { 1u32 } else { 0 };
-    (float << 22) | (color_space_bits << 16) | ((n_bytes & 7) << 0) | ((n_out as u32) << 3)
+    (float << 22) | (color_space_bits << 16) | (n_bytes & 7) | ((n_out as u32) << 3)
 }
 
 /// `cmsDetectTAC` — total area coverage via a Lab→profile roundtrip sampled

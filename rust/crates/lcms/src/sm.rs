@@ -94,7 +94,7 @@ pub(crate) fn formatter_for_colorspace(icc: &IccProfile, n_bytes: u32, is_float:
 fn create_roundtrip_xform(icc: &mut IccProfile, intent: u32) -> Option<crate::xform::Transform> {
     let hlab = virt::create_lab4_profile(None, None)?;
     // TYPE_Lab_DBL = float|colorspace(Lab)|3chan|bytes0
-    let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3 | 0;
+    let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
     let hlab2 = virt::create_lab4_profile(None, None)?;
     // the round-trip uses the same profile twice — duplicate via serialize+reopen
     let bytes = crate::profile::save_profile_to_mem(icc)?;
@@ -175,7 +175,7 @@ fn black_point_as_darker_colorant(icc: &mut IccProfile, intent: u32) -> Option<C
         return None;
     }
     let hlab = virt::create_lab2_profile(None, None)?;
-    let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3 | 0;
+    let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
     let bytes = crate::profile::save_profile_to_mem(icc)?;
     let prof = crate::profile::open_profile_from_mem(None, &bytes)?;
     let mut profs = vec![prof, hlab];
@@ -428,16 +428,16 @@ pub fn desaturate_lab(lab: &mut CieLab, amax: f64, amin: f64, bmax: f64, bmin: f
         let lch = crate::pcs::lab2lch(lab);
         let slope = lab.b / lab.a;
         let h = lch.h;
-        if (h >= 0.0 && h < 45.0) || (h >= 315.0 && h <= 360.0) {
+        if (0.0..45.0).contains(&h) || (315.0..=360.0).contains(&h) {
             lab.a = amax;
             lab.b = amax * slope;
-        } else if h >= 45.0 && h < 135.0 {
+        } else if (45.0..135.0).contains(&h) {
             lab.b = bmax;
             lab.a = bmax / slope;
-        } else if h >= 135.0 && h < 225.0 {
+        } else if (135.0..225.0).contains(&h) {
             lab.a = amin;
             lab.b = amin * slope;
-        } else if h >= 225.0 && h < 315.0 {
+        } else if (225.0..315.0).contains(&h) {
             lab.b = bmin;
             lab.a = bmin / slope;
         } else {
@@ -553,7 +553,7 @@ pub fn create_gamut_check_pipeline(
     states_l.push(1.0);
     let _input_cs = chain[0].color_space;
     let n_in = pack::t_channels(formatter_for_colorspace(&chain[0], 2, false)) as usize;
-    let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3 | 0;
+    let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
     let dw_fmt = ((n_in as u32) << 3) | 2;
     let h_input = crate::xform::create_extended_transform(
         ctx.cloned(),

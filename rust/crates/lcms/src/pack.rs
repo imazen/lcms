@@ -310,7 +310,7 @@ fn rd64f(b: &[u8], o: usize) -> f64 {
     ])
 }
 fn fom_lab_v2_to_v4(x: u16) -> u16 {
-    let a = (((x as u32) << 8 | x as u32) >> 8) as u32;
+    let a = ((x as u32) << 8 | x as u32) >> 8;
     if a > 0xffff { 0xffff } else { a as u16 }
 }
 fn fom_lab_v4_to_v2(x: u16) -> u16 {
@@ -1523,7 +1523,7 @@ pub fn pack6_bytes(
     o += 1;
     out[o] = f16to8(w[5]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack6_bytes_swap(
@@ -1545,7 +1545,7 @@ pub fn pack6_bytes_swap(
     o += 1;
     out[o] = f16to8(w[0]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack6_words(
@@ -1573,7 +1573,7 @@ pub fn pack6_words(
     out[o] = (w[5] & 0xff) as u8;
     out[o + 1] = (w[5] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack6_words_swap(
@@ -1601,7 +1601,7 @@ pub fn pack6_words_swap(
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 /// `UnrollAnyWords` specialized to chunky 4ch+ex1 (TYPE_RGBA_16 & kin):
@@ -1686,7 +1686,7 @@ pub fn pack4_bytes(
     o += 1;
     out[o] = f16to8(w[3]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack4_bytes_reverse(
@@ -1704,7 +1704,7 @@ pub fn pack4_bytes_reverse(
     o += 1;
     out[o] = 0xff - f16to8(w[3]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack4_bytes_swap_first(
@@ -1722,7 +1722,7 @@ pub fn pack4_bytes_swap_first(
     o += 1;
     out[o] = f16to8(w[2]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack4_bytes_swap(
@@ -1740,7 +1740,7 @@ pub fn pack4_bytes_swap(
     o += 1;
     out[o] = f16to8(w[0]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack4_bytes_swap_swap_first(
@@ -1758,7 +1758,7 @@ pub fn pack4_bytes_swap_swap_first(
     o += 1;
     out[o] = f16to8(w[3]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack4_words(
@@ -1780,7 +1780,7 @@ pub fn pack4_words(
     out[o] = (w[3] & 0xff) as u8;
     out[o + 1] = (w[3] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack4_words_reverse(
@@ -1806,7 +1806,7 @@ pub fn pack4_words_reverse(
     out[o] = (v & 0xff) as u8;
     out[o + 1] = (v >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack4_words_swap(
@@ -1828,7 +1828,7 @@ pub fn pack4_words_swap(
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack4_words_big_endian(
@@ -1850,7 +1850,7 @@ pub fn pack4_words_big_endian(
     out[o] = (w[3] >> 8) as u8;
     out[o + 1] = (w[3] & 0xff) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack3_bytes(
@@ -1880,7 +1880,7 @@ pub fn pack3_bytes_swap(
     o += 1;
     out[o] = f16to8(w[0]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack3_words(
@@ -1900,7 +1900,7 @@ pub fn pack3_words(
     out[o] = (w[2] & 0xff) as u8;
     out[o + 1] = (w[2] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack3_words_swap(
@@ -1920,7 +1920,7 @@ pub fn pack3_words_swap(
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack3_words_big_endian(
@@ -1940,7 +1940,7 @@ pub fn pack3_words_big_endian(
     out[o] = (w[2] >> 8) as u8;
     out[o + 1] = (w[2] & 0xff) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack3_bytes_and_skip1(
@@ -1957,7 +1957,7 @@ pub fn pack3_bytes_and_skip1(
     out[o] = f16to8(w[2]);
     o += 1;
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack3_bytes_and_skip1_swap_first(
@@ -1974,7 +1974,7 @@ pub fn pack3_bytes_and_skip1_swap_first(
     o += 1;
     out[o] = f16to8(w[2]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack3_bytes_and_skip1_swap(
@@ -1991,7 +1991,7 @@ pub fn pack3_bytes_and_skip1_swap(
     o += 1;
     out[o] = f16to8(w[0]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack3_bytes_and_skip1_swap_swap_first(
@@ -2008,7 +2008,7 @@ pub fn pack3_bytes_and_skip1_swap_swap_first(
     out[o] = f16to8(w[0]);
     o += 1;
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack3_words_and_skip1(
@@ -2028,7 +2028,7 @@ pub fn pack3_words_and_skip1(
     out[o + 1] = (w[2] >> 8) as u8;
     o += 2;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack3_words_and_skip1_swap(
@@ -2048,7 +2048,7 @@ pub fn pack3_words_and_skip1_swap(
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack3_words_and_skip1_swap_first(
@@ -2068,7 +2068,7 @@ pub fn pack3_words_and_skip1_swap_first(
     out[o] = (w[2] & 0xff) as u8;
     out[o + 1] = (w[2] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack3_words_and_skip1_swap_swap_first(
@@ -2088,7 +2088,7 @@ pub fn pack3_words_and_skip1_swap_swap_first(
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack1_byte(
@@ -2100,7 +2100,7 @@ pub fn pack1_byte(
     let mut o = 0usize;
     out[o] = f16to8(w[0]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack1_byte_reversed(
@@ -2112,7 +2112,7 @@ pub fn pack1_byte_reversed(
     let mut o = 0usize;
     out[o] = 0xff - f16to8(w[0]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack1_byte_skip1(
@@ -2125,7 +2125,7 @@ pub fn pack1_byte_skip1(
     out[o] = f16to8(w[0]);
     o += 1;
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack1_byte_skip1_swap_first(
@@ -2138,7 +2138,7 @@ pub fn pack1_byte_skip1_swap_first(
     o += 1;
     out[o] = f16to8(w[0]);
     o += 1;
-    o + 0
+    o
 }
 
 pub fn pack1_word(
@@ -2151,7 +2151,7 @@ pub fn pack1_word(
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack1_word_reversed(
@@ -2165,7 +2165,7 @@ pub fn pack1_word_reversed(
     out[o] = (v & 0xff) as u8;
     out[o + 1] = (v >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack1_word_big_endian(
@@ -2178,7 +2178,7 @@ pub fn pack1_word_big_endian(
     out[o] = (w[0] >> 8) as u8;
     out[o + 1] = (w[0] & 0xff) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack1_word_skip1(
@@ -2192,7 +2192,7 @@ pub fn pack1_word_skip1(
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
     o += 2;
-    o + 0
+    o
 }
 
 pub fn pack1_word_skip1_swap_first(
@@ -2206,7 +2206,7 @@ pub fn pack1_word_skip1_swap_first(
     out[o] = (w[0] & 0xff) as u8;
     out[o + 1] = (w[0] >> 8) as u8;
     o += 2;
-    o + 0
+    o
 }
 
 // ---------------------------------------------------------------------------

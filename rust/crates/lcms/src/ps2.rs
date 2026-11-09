@@ -47,7 +47,7 @@ impl<'a> PsWriter<'a> {
         for c in txt.bytes() {
             if c == b'\\' || c == b'(' || c == b')' {
                 self.out(&format!("\\{}", c as char));
-            } else if c < 0x20 || c >= 0x7f {
+            } else if !(0x20..0x7f).contains(&c) {
                 self.out(&format!("\\{:03o}", c));
             } else {
                 self.out(&(c as char).to_string());
@@ -304,7 +304,7 @@ fn write_clut(
     };
     w.out("[");
     for i in 0..n_ins as usize {
-        if i < crate::intrp::MAX_INPUT_DIMENSIONS as usize {
+        if i < crate::intrp::MAX_INPUT_DIMENSIONS {
             w.out(&format!(" {} ", grid[i]));
         }
     }
@@ -498,8 +498,8 @@ fn dup_profile(icc: &mut IccProfile) -> Option<Box<IccProfile>> {
 }
 
 const TYPE_GRAY_8: u32 = crate::types::PT_GRAY << 16 | 1 << 3 | 1;
-const TYPE_XYZ_DBL: u32 = 1 << 22 | crate::types::PT_XYZ << 16 | 3 << 3 | 0;
-const TYPE_LAB_DBL: u32 = 1 << 22 | crate::types::PT_LAB << 16 | 3 << 3 | 0;
+const TYPE_XYZ_DBL: u32 = 1 << 22 | crate::types::PT_XYZ << 16 | 3 << 3;
+const TYPE_LAB_DBL: u32 = 1 << 22 | crate::types::PT_LAB << 16 | 3 << 3;
 const TYPE_LAB_16: u32 = crate::types::PT_LAB << 16 | 3 << 3 | 2;
 const TYPE_NAMED_COLOR_INDEX: u32 = 1 << 3 | 2;
 
@@ -938,7 +938,7 @@ fn write_output_lut(
 
 /// `BuildColorantList` — "0.000 1.000 ..." string of normalized colorants
 fn build_colorant_list(n_colorant: usize, out: &[u16]) -> String {
-    let n = n_colorant.min(crate::lut::MAX_CHANNELS as usize);
+    let n = n_colorant.min(crate::lut::MAX_CHANNELS);
     (0..n)
         .map(|j| format!("{:.3}", out[j] as f64 / 65535.0))
         .collect::<Vec<_>>()
@@ -991,9 +991,9 @@ fn write_named_color_crd(
             continue;
         };
         let inp = (i as u16).to_le_bytes();
-        let mut outb = [0u8; 2 * crate::lut::MAX_CHANNELS as usize];
+        let mut outb = [0u8; 2 * crate::lut::MAX_CHANNELS];
         xform.do_transform(&inp, &mut outb, 1);
-        let mut out = [0u16; crate::lut::MAX_CHANNELS as usize];
+        let mut out = [0u16; crate::lut::MAX_CHANNELS];
         for (j, o) in out.iter_mut().enumerate() {
             *o = u16::from_le_bytes([outb[2 * j], outb[2 * j + 1]]);
         }

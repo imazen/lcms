@@ -317,8 +317,7 @@ fn format_dbl(fmt: &str, val: f64) -> String {
         Some(i) => {
             let prec = spec[..i]
                 .rfind('.')
-                .map(|d| spec[d + 1..i].parse::<usize>().ok())
-                .flatten();
+                .and_then(|d| spec[d + 1..i].parse::<usize>().ok());
             (prec, spec.as_bytes()[i])
         }
         None => (None, b'g'),
@@ -719,7 +718,7 @@ impl It8 {
             .get_property("NUMBER_OF_SETS")
             .map(|s| satoi(&s))
             .unwrap_or(0);
-        if n < 0 || n > 0x7ffe || p < 0 || p > 0x7ffe || n * p > 200000 {
+        if !(0..=0x7ffe).contains(&n) || !(0..=0x7ffe).contains(&p) || n * p > 200000 {
             self.syn_error("AllocateDataSet: too much data");
             return false;
         }
@@ -893,7 +892,7 @@ impl It8 {
     /// `cmsIT8GetDataRowColDbl`
     pub fn get_data_row_col_dbl(&self, row: usize, col: usize) -> f64 {
         self.get_data(row, col)
-            .map(|s| parse_float_number(s))
+            .map(parse_float_number)
             .unwrap_or(0.0)
     }
 
@@ -1042,7 +1041,7 @@ impl It8 {
             }
             self.dnum += frac / xpow10(prec);
         }
-        if (self.ch as u8 as char).to_ascii_uppercase() == 'E' {
+        if (self.ch as u8 as char).eq_ignore_ascii_case(&'E') {
             self.next_ch();
             let mut sgn = 1i32;
             if self.ch == b'-' as i32 {
@@ -1125,7 +1124,7 @@ impl It8 {
                 self.sy = Symbol::Inum;
                 if self.ch == b'0' as i32 {
                     self.next_ch();
-                    if (self.ch as u8 as char).to_ascii_uppercase() == 'X' {
+                    if (self.ch as u8 as char).eq_ignore_ascii_case(&'X') {
                         self.next_ch();
                         while (self.ch as u8).is_ascii_hexdigit() {
                             let c = (self.ch as u8 as char).to_ascii_uppercase();
@@ -1143,7 +1142,7 @@ impl It8 {
                         }
                         return;
                     }
-                    if (self.ch as u8 as char).to_ascii_uppercase() == 'B' {
+                    if (self.ch as u8 as char).eq_ignore_ascii_case(&'B') {
                         self.next_ch();
                         while self.ch == b'0' as i32 || self.ch == b'1' as i32 {
                             let j = self.ch - b'0' as i32;
@@ -1436,11 +1435,9 @@ impl It8 {
                         .valid_keywords
                         .iter()
                         .any(|(k, _)| strcasecmp(k, &var_name) == 0)
-                    {
-                        if !self.add_available_property(&var_name.clone(), WriteMode::Uncooked) {
+                        && !self.add_available_property(&var_name.clone(), WriteMode::Uncooked) {
                             return false;
                         }
-                    }
                     let write_as = self
                         .valid_keywords
                         .iter()
@@ -1474,8 +1471,8 @@ impl It8 {
                             if let Some(comma) = pair.rfind(',') {
                                 let sub = pair[..comma].trim();
                                 let val = pair[comma + 1..].trim();
-                                if !sub.is_empty() && !val.is_empty() {
-                                    if !self.add_to_list(
+                                if !sub.is_empty() && !val.is_empty()
+                                    && !self.add_to_list(
                                         true,
                                         &var_name.clone(),
                                         Some(sub),
@@ -1484,7 +1481,6 @@ impl It8 {
                                     ) {
                                         return false;
                                     }
-                                }
                             }
                         }
                     }
@@ -1838,7 +1834,7 @@ impl It8 {
                         return false;
                     }
                     shaper_size = self.inum as usize;
-                    if shaper_size < 2 || shaper_size > 65536 {
+                    if !(2..=65536).contains(&shaper_size) {
                         return self
                             .syn_error(&format!("LUT_1D_SIZE '{shaper_size}' is out of bounds"));
                     }
@@ -1884,7 +1880,7 @@ impl It8 {
                         *shaper = Some(sh);
                     }
                     if lut_size > 0 {
-                        if lut_size < 2 || lut_size > 65 {
+                        if !(2..=65).contains(&lut_size) {
                             return self
                                 .syn_error(&format!("LUT size '{lut_size}' is not allowed"));
                         }
@@ -1902,7 +1898,7 @@ impl It8 {
                             lut[i * 3 + 1] = ((nums[1] - domain_min[1])
                                 / (domain_max[1] - domain_min[1]))
                                 as f32;
-                            lut[i * 3 + 0] = ((nums[2] - domain_min[2])
+                            lut[i * 3] = ((nums[2] - domain_min[2])
                                 / (domain_max[2] - domain_min[2]))
                                 as f32;
                         }

@@ -123,7 +123,7 @@ pub(crate) fn x64v3_cached() -> Option<archmage::X64V3Token> {
     use archmage::SimdToken;
     static TOK: std::sync::OnceLock<Option<archmage::X64V3Token>> =
         std::sync::OnceLock::new();
-    *TOK.get_or_init(|| archmage::X64V3Token::summon())
+    *TOK.get_or_init(archmage::X64V3Token::summon)
 }
 
 /// The borrowed LUT a params struct points at.
@@ -209,7 +209,7 @@ impl<'a> InterpParams<'a> {
             }
             KernelKind::Trilinear => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_trilinear_v3(t, input, output, self);
@@ -219,7 +219,7 @@ impl<'a> InterpParams<'a> {
             }
             KernelKind::Bilinear => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_bilinear_v3(t, input, output, self);
@@ -229,7 +229,7 @@ impl<'a> InterpParams<'a> {
             }
             KernelKind::Eval1 => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_eval1_v3(t, input, output, self);
@@ -258,7 +258,7 @@ impl<'a> InterpParams<'a> {
         match self.kernel {
             KernelKind::Eval4F => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_eval4_v3(t, input, output, n_out, self);
@@ -268,7 +268,7 @@ impl<'a> InterpParams<'a> {
             }
             KernelKind::Tetra3F => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_tetra3_v3(t, input, output, n_out, self);
@@ -278,7 +278,7 @@ impl<'a> InterpParams<'a> {
             }
             KernelKind::TrilinearF => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_trilinear_v3(t, input, output, n_out, self);
@@ -288,7 +288,7 @@ impl<'a> InterpParams<'a> {
             }
             KernelKind::BilinearF => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_bilinear_v3(t, input, output, n_out, self);
@@ -298,7 +298,7 @@ impl<'a> InterpParams<'a> {
             }
             KernelKind::Eval1F => {
                 let n_out = self.n_outputs as usize;
-                if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+                if (1..=4).contains(&n_out) && output.len() >= n_out {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return evalflt_eval1_v3(t, input, output, n_out, self);
@@ -951,13 +951,13 @@ pub(crate) fn tetrahedral_interp16(input: &[u16], output: &mut [u16], p: &Interp
     let ry = fixed_rest_to_int(fy);
     let rz = fixed_rest_to_int(fz);
 
-    let x0i = (p.opta[2] as u32).wrapping_mul(x0 as u32);
+    let x0i = p.opta[2].wrapping_mul(x0 as u32);
     let mut x1 = if input[0] == 0xFFFF { 0 } else { p.opta[2] };
 
-    let y0i = (p.opta[1] as u32).wrapping_mul(y0 as u32);
+    let y0i = p.opta[1].wrapping_mul(y0 as u32);
     let mut y1 = if input[1] == 0xFFFF { 0 } else { p.opta[1] };
 
-    let z0i = (p.opta[0] as u32).wrapping_mul(z0 as u32);
+    let z0i = p.opta[0].wrapping_mul(z0 as u32);
     let mut z1 = if input[2] == 0xFFFF { 0 } else { p.opta[0] };
 
     let base = (x0i + y0i + z0i) as usize;
@@ -1138,11 +1138,11 @@ pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
     let ry = fixed_rest_to_int(fy);
     let rz = fixed_rest_to_int(fz);
 
-    let x0i = (p.opta[2] as u32).wrapping_mul(x0 as u32);
+    let x0i = p.opta[2].wrapping_mul(x0 as u32);
     let mut x1 = if vin[0] == 0xFFFF { 0 } else { p.opta[2] };
-    let y0i = (p.opta[1] as u32).wrapping_mul(y0 as u32);
+    let y0i = p.opta[1].wrapping_mul(y0 as u32);
     let mut y1 = if vin[1] == 0xFFFF { 0 } else { p.opta[1] };
-    let z0i = (p.opta[0] as u32).wrapping_mul(z0 as u32);
+    let z0i = p.opta[0].wrapping_mul(z0 as u32);
     let mut z1 = if vin[2] == 0xFFFF { 0 } else { p.opta[0] };
 
     let base = (x0i + y0i + z0i) as usize;
@@ -1253,11 +1253,11 @@ pub(crate) fn tetra3_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     let ry = fixed_rest_to_int(fy);
     let rz = fixed_rest_to_int(fz);
 
-    let x0i = (p.opta[2] as u32).wrapping_mul(x0 as u32);
+    let x0i = p.opta[2].wrapping_mul(x0 as u32);
     let mut x1 = if vin[0] == 0xFFFF { 0 } else { p.opta[2] };
-    let y0i = (p.opta[1] as u32).wrapping_mul(y0 as u32);
+    let y0i = p.opta[1].wrapping_mul(y0 as u32);
     let mut y1 = if vin[1] == 0xFFFF { 0 } else { p.opta[1] };
-    let z0i = (p.opta[0] as u32).wrapping_mul(z0 as u32);
+    let z0i = p.opta[0].wrapping_mul(z0 as u32);
     let mut z1 = if vin[2] == 0xFFFF { 0 } else { p.opta[0] };
 
     let base = (x0i + y0i + z0i) as usize;
@@ -2489,7 +2489,7 @@ fn eval_dispatch_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: u
     match n {
         4 => {
             let n_out = p.n_outputs as usize;
-            if n_out <= 4 && n_out >= 1 && output.len() >= n_out {
+            if (1..=4).contains(&n_out) && output.len() >= n_out {
                 #[cfg(target_arch = "x86_64")]
                 if let Some(t) = x64v3_cached() {
                     return evalflt_eval4_v3(t, input, output, n_out, p);

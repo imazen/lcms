@@ -2132,9 +2132,9 @@ fn read_8bit_tables(io: &mut IoHandler, lut: &mut Pipeline, n_channels: u32) -> 
     let Some(stage) = stage_alloc_tone_curves(None, n_channels, Some(&refs)) else {
         return false;
     };
-    let ok = lut.insert_stage(StageLoc::AtEnd, stage);
-    if !ok {}
-    ok
+    
+    
+    lut.insert_stage(StageLoc::AtEnd, stage)
 }
 
 /// `Write8bitTables` — C quirk: NULL Tables writes NOTHING (loop no-ops)
@@ -3025,7 +3025,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
     if lut.elements.is_some() {
         let ok = if is_b2a {
             if let Some(v) = pipeline_stage_match(lut, &[ssig::SigCurveSetElemType]) {
-                b = v.get(0).copied();
+                b = v.first().copied();
                 true
             } else if let Some(v) = pipeline_stage_match(
                 lut,
@@ -3035,7 +3035,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
                     ssig::SigCurveSetElemType,
                 ],
             ) {
-                b = v.get(0).copied();
+                b = v.first().copied();
                 matrix = v.get(1).copied();
                 m = v.get(2).copied();
                 true
@@ -3047,7 +3047,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
                     ssig::SigCurveSetElemType,
                 ],
             ) {
-                b = v.get(0).copied();
+                b = v.first().copied();
                 clut = v.get(1).copied();
                 a = v.get(2).copied();
                 true
@@ -3061,7 +3061,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
                     ssig::SigCurveSetElemType,
                 ],
             ) {
-                b = v.get(0).copied();
+                b = v.first().copied();
                 matrix = v.get(1).copied();
                 m = v.get(2).copied();
                 clut = v.get(3).copied();
@@ -3071,7 +3071,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
                 false
             }
         } else if let Some(v) = pipeline_stage_match(lut, &[ssig::SigCurveSetElemType]) {
-            b = v.get(0).copied();
+            b = v.first().copied();
             true
         } else if let Some(v) = pipeline_stage_match(
             lut,
@@ -3081,7 +3081,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
                 ssig::SigCurveSetElemType,
             ],
         ) {
-            m = v.get(0).copied();
+            m = v.first().copied();
             matrix = v.get(1).copied();
             b = v.get(2).copied();
             true
@@ -3093,7 +3093,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
                 ssig::SigCurveSetElemType,
             ],
         ) {
-            a = v.get(0).copied();
+            a = v.first().copied();
             clut = v.get(1).copied();
             b = v.get(2).copied();
             true
@@ -3107,7 +3107,7 @@ fn type_lut_v4_write(s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, is_b
                 ssig::SigCurveSetElemType,
             ],
         ) {
-            a = v.get(0).copied();
+            a = v.first().copied();
             clut = v.get(1).copied();
             m = v.get(2).copied();
             matrix = v.get(3).copied();

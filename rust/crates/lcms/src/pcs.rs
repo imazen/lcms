@@ -133,22 +133,12 @@ pub fn lab_encoded2float(w_lab: [u16; 3]) -> CieLab {
 fn clamp_l_double_v2(mut l: f64) -> f64 {
     let l_max = (0xFFFF as f64 * 100.0) / 0xFF00 as f64;
 
-    if l < 0.0 {
-        l = 0.0;
-    }
-    if l > l_max {
-        l = l_max;
-    }
+    l = l.clamp(0.0, l_max);
     l
 }
 
 fn clamp_ab_double_v2(mut ab: f64) -> f64 {
-    if ab < MIN_ENCODEABLE_AB2 {
-        ab = MIN_ENCODEABLE_AB2;
-    }
-    if ab > MAX_ENCODEABLE_AB2 {
-        ab = MAX_ENCODEABLE_AB2;
-    }
+    ab = ab.clamp(MIN_ENCODEABLE_AB2, MAX_ENCODEABLE_AB2);
     ab
 }
 
@@ -164,22 +154,12 @@ pub fn float2lab_encoded_v2(f_lab: &CieLab) -> [u16; 3] {
 }
 
 fn clamp_l_double_v4(mut l: f64) -> f64 {
-    if l < 0.0 {
-        l = 0.0;
-    }
-    if l > 100.0 {
-        l = 100.0;
-    }
+    l = l.clamp(0.0, 100.0);
     l
 }
 
 fn clamp_ab_double_v4(mut ab: f64) -> f64 {
-    if ab < MIN_ENCODEABLE_AB4 {
-        ab = MIN_ENCODEABLE_AB4;
-    }
-    if ab > MAX_ENCODEABLE_AB4 {
-        ab = MAX_ENCODEABLE_AB4;
-    }
+    ab = ab.clamp(MIN_ENCODEABLE_AB4, MAX_ENCODEABLE_AB4);
     ab
 }
 

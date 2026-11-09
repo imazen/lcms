@@ -446,8 +446,8 @@ pub fn mlu_get_wide(
     };
 
     match buffer_size_wchars {
-        None => return (str_len + 4, Vec::new()),
-        Some(bs) if bs < 4 => return (0, Vec::new()),
+        None => (str_len + 4, Vec::new()),
+        Some(bs) if bs < 4 => (0, Vec::new()),
         Some(bs) => {
             let mut sl = str_len;
             if bs < sl + 4 {

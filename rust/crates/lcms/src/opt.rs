@@ -501,9 +501,9 @@ pub(crate) fn mat_shaper_eval16(input: &[u16], output: &mut [u16], d: &OptData) 
         let ri = (input[0] & 0xff) as usize;
         let gi = (input[1] & 0xff) as usize;
         let bi = (input[2] & 0xff) as usize;
-        let r = s10[ri] as i32;
-        let g = s11[gi] as i32;
-        let b = s12[bi] as i32;
+        let r = s10[ri];
+        let g = s11[gi];
+        let b = s12[bi];
         let l1 = (p.mat[0][0].wrapping_mul(r)
             + p.mat[0][1].wrapping_mul(g)
             + p.mat[0][2].wrapping_mul(b)
@@ -1231,11 +1231,10 @@ fn optimize_by_computing_linearization(
     if crate::pack::t_planar(*output_format) != 0 {
         return false;
     }
-    if crate::pack::t_bytes(*input_format) != 1 {
-        if *dw_flags & crate::types::FLAGS_CLUT_PRE_LINEARIZATION == 0 {
+    if crate::pack::t_bytes(*input_format) != 1
+        && *dw_flags & crate::types::FLAGS_CLUT_PRE_LINEARIZATION == 0 {
             return false;
         }
-    }
     let color_space = crate::pcs::icc_color_space(crate::pack::t_colorspace(*input_format) as i32);
     let output_space =
         crate::pcs::icc_color_space(crate::pack::t_colorspace(*output_format) as i32);
@@ -1377,11 +1376,10 @@ fn optimize_by_computing_linearization(
     if intent == crate::types::INTENT_ABSOLUTE_COLORIMETRIC {
         *dw_flags |= crate::types::FLAGS_NOWHITEONWHITEFIXUP;
     }
-    if *dw_flags & crate::types::FLAGS_NOWHITEONWHITEFIXUP == 0 {
-        if !fix_white_misalignment(&mut optimized, color_space, output_space) {
+    if *dw_flags & crate::types::FLAGS_NOWHITEONWHITEFIXUP == 0
+        && !fix_white_misalignment(&mut optimized, color_space, output_space) {
             return false;
         }
-    }
     let clut_data = {
         let mut st = optimized.elements.as_deref();
         let mut found = None;
