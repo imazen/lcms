@@ -8,7 +8,7 @@
 //! the Rust column the port's. All profiles are built in-memory so
 //! the test is self-contained.
 
-use lcms::{cam02, gamma, pcs, profile, types::*, wtpnt, xform};
+use lcms::{cam02, gamma, pcs, profile, types::*, virt, wtpnt, xform};
 use lcms::profile::IccProfile;
 use lcms_cref as c;
 use std::ffi::c_void;
@@ -730,4 +730,15 @@ fn plan_sync_send() {
     assert_send::<xform::TransformPlan>();
     assert_send::<xform::Transform>();
     assert_send::<xform::TransformScratch>();
+}
+
+/// Frozen profiles are Sync-shareable for reads.
+#[test]
+fn profile_freeze_sync() {
+    fn assert_send<T: Send>() {}
+    assert_send::<profile::IccProfile>();
+    // freeze a real profile then read via the frozen path
+    let mut p = virt::create_srgb_profile(None).unwrap();
+    profile::freeze(&mut p);
+    assert!(profile::read_tag_frozen(&p, 0x72545243).is_some()); // rTRC
 }

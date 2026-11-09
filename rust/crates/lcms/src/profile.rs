@@ -439,6 +439,38 @@ pub fn cms_is_tag(icc: &IccProfile, sig: u32) -> bool {
 }
 
 /// `cmsReadTag` — cooked read through the type handler
+/// Eagerly materialize every tag in the directory — after `freeze`,
+/// `read_tag_frozen(&self, ...)` is a pure `&IccProfile` read, so a
+/// frozen `Arc<IccProfile>` can be shared across threads (`Sync`).
+/// For a proxy server: `let p = Arc::new(open(...)?.freeze());`
+pub fn freeze(icc: &mut IccProfile) {
+    // collect the tag sigs first (read_tag mutates tag_ptrs)
+    let sigs: Vec<u32> = (0..MAX_TABLE_TAG)
+        .filter_map(|i| {
+            let sig = icc.tag_names[i];
+            (sig != 0).then_some(sig)
+        })
+        .collect();
+    for sig in sigs {
+        let _ = cms_read_tag(icc, sig);
+    }
+}
+
+/// Read a tag from a FROZEN profile — `&IccProfile`, `Sync`-safe.
+/// Returns the in-memory cooked object; `None` for a tag that wasn't
+/// materialized (i.e., `freeze` wasn't called or the read failed).
+pub fn read_tag_frozen(icc: &IccProfile, sig: u32) -> Option<&TagObject> {
+    let n = search_tag(icc, sig, true);
+    if n < 0 {
+        return None;
+    }
+    let n = n as usize;
+    if icc.tag_type_sigs[n] == 0 || icc.tag_save_as_raw[n] {
+        return None;
+    }
+    icc.tag_ptrs[n].as_ref()
+}
+
 pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
     let ctx = icc.ctx.as_ref();
     let avoid_check = avoid_type_check_on_tags(ctx);
