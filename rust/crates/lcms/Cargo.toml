@@ -19,6 +19,7 @@ default = ["math-sys"]
 math-sys = ["lcms-sys/math-sys"]
 math-rust = ["lcms-sys/math-rust"]
 math-zen = ["lcms-sys/math-zen"]
+math-libm = ["lcms-sys/math-libm"]
 
 [dependencies]
 lcms-sys = { path = "../lcms-sys", default-features = false }

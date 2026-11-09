@@ -741,6 +741,18 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   a manifest-level `DIGEST` (streaming `Xxh3` over all 51 cells —
   `737b5de1adc3a350`) — one fingerprint to diff across
   platforms/CI. xxh3 is bit-identical on every target/SIMD tier.
+- **`math-libm` provider** — the pure-Rust `libm` crate; Rust output
+  is platform-deterministic by construction (same bits on every OS/ISA).
+  Under it, ONLY `pcs`/`deltaE`/`cam02` diverge from the oracle (ulp-level;
+  libm's approximations vs glibc's CORE-MATH — unfixable, it IS the
+  canonical-math trade-off); `adapt`/`estg*`/`param` + all transforms
+  stay exact. DIGEST shifts to `2811a4fbdd8afff4` — `R:hash` on those
+  3 cells is now the cross-CI fingerprint, C-compare expected XX.
+- **`forbid(unsafe_code)`** — `lcms` lib already had it; `lcms-sys`
+  gets `#![cfg_attr(not(feature="math-sys"), forbid(unsafe_code))]` —
+  unsafe lives ONLY in the `math-sys` C-shim block (22 sites, cfg-gated);
+  `math-rust`/`math-libm` are 100% safe. `lcms-cref` (oracle FFI) is
+  unsafe by design — it's the C reference, not the port.
 - **Golden baseline** for canonical-math swaps:
   `LCMS_GOLDEN=<file>` — seeds/compares `name\trh\tch` per cell;
   `LCMS_GOLDEN_UPDATE=1` regenerates after a math-backend change.

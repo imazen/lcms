@@ -11,6 +11,8 @@
 //! - **`math-zen`** — reserved for a correctly-rounded `zenmath` impl.
 //!   Selected by feature; no API surface yet.
 //!
+#![cfg_attr(not(feature = "math-sys"), forbid(unsafe_code))]
+
 //! Rust's `f64` intrinsics (`llvm.cos`, `llvm.sin`, `llvm.pow`, ...) can
 //! resolve to `compiler_builtins`/fdlibm in the final binary, which differs
 //! from the system libm by ~1 ULP on some inputs — the shim keeps the
@@ -101,9 +103,49 @@ mod imp {
     pub fn sin_cos(x: f64) -> (f64, f64) { x.sin_cos() }
 }
 
+/// `math-libm` — the pure-Rust `libm` crate: C99 math with no libm
+/// dependency. Deterministic on every platform by construction — the
+/// same input produces the same bits everywhere. Diverges from the
+/// system-libm oracle wherever libm's approximation differs (the
+/// correctly-rounded glibc fns on 2.39+ mostly match; musl/fdlibm and
+/// MSVCRT diverge more).
 #[cfg(all(
     not(feature = "math-sys"),
     not(feature = "math-rust"),
+    feature = "math-libm"
+))]
+mod imp {
+    #[inline] pub fn cos(x: f64) -> f64 { libm::cos(x) }
+    #[inline] pub fn sin(x: f64) -> f64 { libm::sin(x) }
+    #[inline] pub fn tan(x: f64) -> f64 { libm::tan(x) }
+    #[inline] pub fn atan2(y: f64, x: f64) -> f64 { libm::atan2(y, x) }
+    #[inline] pub fn atan(x: f64) -> f64 { libm::atan(x) }
+    #[inline] pub fn asin(x: f64) -> f64 { libm::asin(x) }
+    #[inline] pub fn acos(x: f64) -> f64 { libm::acos(x) }
+    #[inline] pub fn hypot(x: f64, y: f64) -> f64 { libm::hypot(x, y) }
+    #[inline] pub fn fmod(x: f64, y: f64) -> f64 { libm::fmod(x, y) }
+    #[inline] pub fn cbrt(x: f64) -> f64 { libm::cbrt(x) }
+    #[inline] pub fn log2(x: f64) -> f64 { libm::log2(x) }
+    #[inline] pub fn exp2(x: f64) -> f64 { libm::exp2(x) }
+    #[inline] pub fn expm1(x: f64) -> f64 { libm::expm1(x) }
+    #[inline] pub fn log1p(x: f64) -> f64 { libm::log1p(x) }
+    #[inline] pub fn pow(x: f64, y: f64) -> f64 { libm::pow(x, y) }
+    #[inline] pub fn exp(x: f64) -> f64 { libm::exp(x) }
+    #[inline] pub fn ln(x: f64) -> f64 { libm::log(x) }
+    #[inline] pub fn log10(x: f64) -> f64 { libm::log10(x) }
+    #[inline] pub fn atanh(x: f64) -> f64 { libm::atanh(x) }
+    #[inline] pub fn acosh(x: f64) -> f64 { libm::acosh(x) }
+    /// `sincos` — libm computes `sin`/`cos` independently (no fused
+    /// kernel), matching neither GCC's merged `sincos` codegen nor
+    /// Apple's `__sincos` — but deterministic.
+    #[inline]
+    pub fn sin_cos(x: f64) -> (f64, f64) { libm::sincos(x) }
+}
+
+#[cfg(all(
+    not(feature = "math-sys"),
+    not(feature = "math-rust"),
+    not(feature = "math-libm"),
     feature = "math-zen"
 ))]
 mod imp {
@@ -138,8 +180,9 @@ mod imp {
 #[cfg(not(any(
     feature = "math-sys",
     feature = "math-rust",
+    feature = "math-libm",
     feature = "math-zen"
 )))]
-compile_error!("lcms-sys: select a math provider: math-sys | math-rust | math-zen");
+compile_error!("lcms-sys: select a math provider: math-sys | math-rust | math-libm | math-zen");
 
 pub use imp::*;
