@@ -78,7 +78,19 @@ pub struct ForeignXform {
 }
 
 /// `_cmsTRANSFORM`
-pub struct Transform {
+/// `_cmsCACHE` — the only mutable state during `do_transform`: the
+/// 16-bit in/out pixel cache (seeded by the zero eval at link).
+/// Per-request scratch — ~64 bytes, cloneable for parallel chunks.
+#[derive(Clone)]
+pub struct TransformScratch {
+    pub cache_in: [u16; MAX_CHANNELS],
+    pub cache_out: [u16; MAX_CHANNELS],
+}
+
+/// The immutable transform plan — pipelines, flattened interp tables,
+/// format descriptors. `Sync`: build once, `Arc`-share, evaluate from
+/// many threads (each with its own `TransformScratch`).
+pub struct TransformPlan {
     pub input_format: u32,
     pub output_format: u32,
     pub lut: Option<Pipeline>,
@@ -88,9 +100,8 @@ pub struct Transform {
     pub stride: Stride,
     fmt: Fmt,
     pub worker: Worker,
-    /// `_cmsCACHE` — the per-pixel in/out cache (16-bit path)
-    pub cache_in: [u16; MAX_CHANNELS],
-    pub cache_out: [u16; MAX_CHANNELS],
+    /// Seed for a fresh `TransformScratch` (post-zero-eval cache state)
+    pub scratch_seed: TransformScratch,
     /// entry/exit color-space signatures
     pub entry_color_space: u32,
     pub exit_color_space: u32,
@@ -107,6 +118,21 @@ pub struct Transform {
     /// `_cmsTRANSFORM::OutputColorant` — dup of the output profile's colorant table
     pub output_colorants: Option<crate::named::NamedColorList>,
     _pad: (),
+}
+
+/// `cmsTRANSFORM` — plan + per-run scratch. Field access resolves to
+/// the plan via `Deref`; `do_transform` mutates only `scratch`.
+pub struct Transform {
+    pub plan: TransformPlan,
+    pub scratch: TransformScratch,
+}
+
+impl std::ops::Deref for Transform {
+    type Target = TransformPlan;
+    fn deref(&self) -> &TransformPlan { &self.plan }
+}
+impl std::ops::DerefMut for Transform {
+    fn deref_mut(&mut self) -> &mut TransformPlan { &mut self.plan }
 }
 
 fn pixel_size(fmt: u32) -> u32 {
@@ -493,7 +519,7 @@ fn clut8_tetra_loop_v3(
 
 /// Cached variant of `clut16_tetra_loop_v3` — C's `CachedXFORM` u64
 /// compare (w_in[3..16] is always zero), misses eval tetra3_i32x4.
-/// `cv`/`co` seed from `self.cache_in`/`cache_out` — C pre-fills
+/// `cv`/`co` seed from `scratch.cache_in`/`cache_out` — C pre-fills
 /// CacheOut with `Eval16(zeros)` so a leading black pixel isn't a
 /// stale zero hit (was: zero-init — returned black for first-pixel-0).
 #[archmage::arcane]
@@ -942,32 +968,78 @@ fn handle_extra_channels(
     );
 }
 
+
+/// `cmsTRANSFORM` parity entry points — delegate to the plan with the
+/// transform's own scratch.
 impl Transform {
-    /// `cmsDoTransform` — n pixels, default stride
+    /// `cmsDoTransform`
     pub fn do_transform(&mut self, input: &[u8], output: &mut [u8], n: u32) {
-        let stride = Stride {
+        self.plan.apply(&mut self.scratch, input, output, n);
+    }
+
+    /// `cmsDoTransformStride`
+    pub fn do_transform_stride(&mut self, input: &[u8], output: &mut [u8], n: u32, stride_b: u32) {
+        self.plan.apply_stride(&mut self.scratch, input, output, n, stride_b);
+    }
+
+    /// `cmsDoTransformLineStride`
+    pub fn do_transform_line_stride(
+        &mut self,
+        input: &[u8],
+        output: &mut [u8],
+        ppl: u32,
+        lines: u32,
+        bytes_per_line_in: u32,
+        bytes_per_line_out: u32,
+        bytes_per_plane_in: u32,
+        bytes_per_plane_out: u32,
+    ) {
+        self.plan.apply_line_stride(&mut self.scratch, input, output, ppl, lines, bytes_per_line_in, bytes_per_line_out, bytes_per_plane_in, bytes_per_plane_out);
+    }
+
+    /// Parallel `cmsDoTransform` — each chunk gets a fresh 64B scratch
+    /// instead of the old deep pipeline clone.
+    pub fn do_transform_par(&mut self, input: &[u8], output: &mut [u8], n: u32, threads: usize) {
+        self.plan.apply_par(input, output, n, threads);
+    }
+}
+
+impl TransformPlan {
+    /// `cmsDoTransform` — n pixels, default stride
+    /// Fresh per-run scratch — clones the seeded cache state.
+    pub fn scratch(&self) -> TransformScratch { self.scratch_seed.clone() }
+
+    /// `cmsDoTransform` on the shared plan — `scratch` is the only
+    /// mutable state; `&self` is `Sync`.
+    pub fn apply(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], n: u32) {
+        self.apply_strided(scratch, input, output, n, 1, &Stride {
             bytes_per_line_in: 0,
             bytes_per_line_out: 0,
             bytes_per_plane_in: n * pixel_size(self.input_format),
             bytes_per_plane_out: n * pixel_size(self.output_format),
-        };
-        self.xform(input, output, n, 1, &stride);
+        });
+    }
+
+    /// `cmsDoTransformStride`-shaped: ppl x lines with caller strides.
+    pub fn apply_strided(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], ppl: u32, lines: u32, stride: &Stride) {
+        self.xform(scratch, input, output, ppl, lines, stride);
     }
 
     /// `cmsDoTransformStride` — n pixels, byte-stride
-    pub fn do_transform_stride(&mut self, input: &[u8], output: &mut [u8], n: u32, stride_b: u32) {
+    pub fn apply_stride(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], n: u32, stride_b: u32) {
         let stride = Stride {
             bytes_per_line_in: 0,
             bytes_per_line_out: 0,
             bytes_per_plane_in: stride_b,
             bytes_per_plane_out: stride_b,
         };
-        self.xform(input, output, n, 1, &stride);
+        self.xform(scratch, input, output, n, 1, &stride);
     }
 
     /// `cmsDoTransformLineStride` — ppl × lines with per-plane line strides
-    pub fn do_transform_line_stride(
-        &mut self,
+    pub fn apply_line_stride(
+        &self,
+        scratch: &mut TransformScratch,
         input: &[u8],
         output: &mut [u8],
         ppl: u32,
@@ -983,45 +1055,17 @@ impl Transform {
             bytes_per_plane_in: bpp_in,
             bytes_per_plane_out: bpp_out,
         };
-        self.xform(input, output, ppl, lines, &stride);
+        self.xform(scratch, input, output, ppl, lines, &stride);
     }
 
     /// Clone the eval state for a parallel worker — everything the eval
     /// loop reads (`lut`/`opt_data`/`fmt`/`worker`/colorants) minus the
     /// non-Cloneable `user_data` and a fresh per-thread pixel cache.
-    fn clone_for_parallel(&self) -> Transform {
-        Transform {
-            input_format: self.input_format,
-            output_format: self.output_format,
-            lut: self.lut.clone(),
-            gamut_check: self.gamut_check.clone(),
-            alarm_codes: self.alarm_codes,
-            ctx: self.ctx.clone(),
-            stride: self.stride,
-            fmt: self.fmt,
-            worker: self.worker,
-            cache_in: [0u16; MAX_CHANNELS],
-            cache_out: [0u16; MAX_CHANNELS],
-            entry_color_space: self.entry_color_space,
-            exit_color_space: self.exit_color_space,
-            rendering_intent: self.rendering_intent,
-            dw_flags: self.dw_flags,
-            entry_white_point: self.entry_white_point,
-            exit_white_point: self.exit_white_point,
-            user_data: None,
-            foreign: self.foreign,
-            input_colorants: self.input_colorants.clone(),
-            output_colorants: self.output_colorants.clone(),
-            _pad: (),
-        }
-    }
-
-    /// Multithreaded `cmsDoTransform` — splits the contiguous pixel range
-    /// into `threads` chunks, each processed on its own thread with a fresh
-    /// pixel cache. The eval state is `Sync` (read-only `lut`/`opt_data`/
-    /// `fmt`/`worker`), so this is safe and byte-exact vs `do_transform`.
+    /// Multithreaded apply — splits the contiguous pixel range into
+    /// `threads` chunks, each on its own thread with `self.scratch()`
+    /// (64B, not the old deep clone). `&self` is `Sync`.
     /// `threads <= 1` or `n < threads` falls back to the serial path.
-    pub fn do_transform_par(&mut self, input: &[u8], output: &mut [u8], n: u32, threads: usize) {
+    pub fn apply_par(&self, input: &[u8], output: &mut [u8], n: u32, threads: usize) {
         let px_in = (crate::pack::t_channels(self.input_format)
             + crate::pack::t_extra(self.input_format)) as usize
             * pixel_size(self.input_format) as usize;
@@ -1034,7 +1078,8 @@ impl Transform {
         let total = n as usize;
         let threads = threads.clamp(1, total.max(1));
         if threads <= 1 || total < 2 {
-            self.do_transform(input, output, n);
+            let mut scratch = self.scratch();
+            self.apply(&mut scratch, input, output, n);
             return;
         }
         let chunk = total.div_ceil(threads);
@@ -1049,15 +1094,16 @@ impl Transform {
                 rest_in = ri;
                 rest_out = ro;
                 let npix = (ic.len() / px_in).min(oc.len() / px_out) as u32;
-                let mut t = self.clone_for_parallel();
-                s.spawn(move || t.do_transform(ic, oc, npix));
+                let mut scratch = self.scratch();
+                s.spawn(move || self.apply(&mut scratch, ic, oc, npix));
                 off += take;
             }
         });
     }
 
-    /// `xform` dispatch — worker chosen at create time
-    fn xform(&mut self, input: &[u8], output: &mut [u8], ppl: u32, lines: u32, stride: &Stride) {
+        /// `xform` dispatch — worker chosen at create time.
+    /// All mutable state lives in `scratch`; `&self` is read-only.
+    fn xform(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], ppl: u32, lines: u32, stride: &Stride) {
         handle_extra_channels(
             input,
             output,
@@ -1072,18 +1118,18 @@ impl Transform {
         match self.worker {
             Worker::Null => self.null_xform(input, output, ppl, lines, stride),
             Worker::NullFloat => self.null_float_xform(input, output, ppl, lines, stride),
-            Worker::Precalculated => self.xform16(input, output, ppl, lines, stride, false, false),
+            Worker::Precalculated => self.xform16(scratch, input, output, ppl, lines, stride, false, false),
             Worker::PrecalculatedGamutCheck => {
-                self.xform16(input, output, ppl, lines, stride, true, false)
+                self.xform16(scratch, input, output, ppl, lines, stride, true, false)
             }
-            Worker::Cached => self.xform16(input, output, ppl, lines, stride, false, true),
-            Worker::CachedGamutCheck => self.xform16(input, output, ppl, lines, stride, true, true),
+            Worker::Cached => self.xform16(scratch, input, output, ppl, lines, stride, false, true),
+            Worker::CachedGamutCheck => self.xform16(scratch, input, output, ppl, lines, stride, true, true),
             Worker::Float => self.xform_f32(input, output, ppl, lines, stride, false),
             Worker::Noop => {}
             Worker::Foreign => {
                 if let Some(invoke) = *crate::context::XFORM_HOOKS.read().unwrap() {
                     invoke(
-                        self as *const Transform as usize,
+                        self as *const TransformPlan as usize,
                         input.as_ptr(),
                         output.as_mut_ptr(),
                         ppl,
@@ -1099,7 +1145,7 @@ impl Transform {
     }
 
     fn null_xform(
-        &mut self,
+        &self,
         input: &[u8],
         output: &mut [u8],
         ppl: u32,
@@ -1136,7 +1182,7 @@ impl Transform {
     }
 
     fn null_float_xform(
-        &mut self,
+        &self,
         input: &[u8],
         output: &mut [u8],
         ppl: u32,
@@ -1174,7 +1220,8 @@ impl Transform {
 
     /// `PrecalculatedXFORM`/`CachedXFORM` (+ gamut variants)
     fn xform16(
-        &mut self,
+        &self,
+        scratch: &mut TransformScratch,
         input: &[u8],
         output: &mut [u8],
         ppl: u32,
@@ -1195,7 +1242,7 @@ impl Transform {
                 && crate::pack::t_planar(self.input_format) == 0
                 && crate::pack::t_extra(self.input_format) == 0
             {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::Identity) = l.opt_data.as_ref() {
                         let pplb = ppl as usize
                             * (crate::pack::t_channels(self.input_format)
@@ -1215,7 +1262,7 @@ impl Transform {
                 }
             }
             if self.input_format == RGB8 && self.output_format == RGB8 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::MatShaper(p)) = l.opt_data.as_ref() {
                         let ppl3 = ppl as usize * 3;
                         let mut i_off = 0usize;
@@ -1279,7 +1326,7 @@ impl Transform {
             }
             const RGB16: u32 = 4 << 16 | 3 << 3 | 2;
             if self.input_format == RGB16 && self.output_format == RGB16 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::MatShaper(p)) = l.opt_data.as_ref() {
                         let ppl6 = ppl as usize * 6;
                         let mut i_off = 0usize;
@@ -1412,7 +1459,7 @@ impl Transform {
             }
             const CMYK8: u32 = 6 << 16 | 4 << 3 | 1;
             if self.input_format == CMYK8 && self.output_format == CMYK8 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         if c.params16.n_outputs == 4
                             && matches!(
@@ -1442,7 +1489,7 @@ impl Transform {
             }
             const CMYK16: u32 = 6 << 16 | 4 << 3 | 2;
             if self.input_format == CMYK16 && self.output_format == CMYK16 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         // `unroll4_words`→eval4→`pack4_words`
                         if c.params16.n_outputs == 4
@@ -1505,7 +1552,7 @@ impl Transform {
             }
             const RGBA16: u32 = 4 << 16 | 1 << 7 | 3 << 3 | 2;
             if self.input_format == RGBA16 && self.output_format == RGBA16 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         // `unroll3_words_skip1`→tetra3→`pack3_words_and_skip1`
                         if c.params16.n_outputs == 3
@@ -1579,7 +1626,7 @@ impl Transform {
                 }
             }
             if self.input_format == RGB8 && self.output_format == RGB8 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         // `unroll3_bytes`→tetra3→`pack3_bytes`
                         if c.params16.n_outputs == 3
@@ -1669,7 +1716,7 @@ impl Transform {
             // Fused `unroll1_byte`→eval→`pack1_byte`…N bytes — 8-bit
             // variants of the 1-input gray shapes.
             if self.input_format == GRAY8 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     let of = self.output_format;
                     let plain8 = crate::pack::t_bytes(of) == 1
                         && crate::pack::t_extra(of) == 0
@@ -1770,7 +1817,7 @@ impl Transform {
             // Fused `unroll1_word`→`eval1_input`→N-word pack — resampled
             // 1-input CLUTs (gray→gray, gray→Lab, gray→RGB).
             if self.input_format == GRAY16 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         let of = self.output_format;
                         let plain16 = crate::pack::t_bytes(of) == 2
@@ -1840,7 +1887,7 @@ impl Transform {
                 }
             }
             if self.input_format == GRAY16 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
                         // Fused `unroll1_word`→1-curve `Curves16`→`pack1_word`.
                         if c.curves.first().map(|t| t.len()) == Some(0x10000) {
@@ -1891,7 +1938,7 @@ impl Transform {
                 0
             };
             if ipx != 0 && opx != 0 {
-                if let Some(l) = self.lut.as_mut() {
+                if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
                         if c.curves.len() == 3
                             && c.curves.iter().all(|t| t.len() == 0x10000)
@@ -1904,12 +1951,12 @@ impl Transform {
                                 c.curves[2].as_slice().try_into().unwrap();
                             let ppli = ppl as usize * ipx;
                             let pplo = ppl as usize * opx;
-                            let mut cv = self.cache_in[0] as u64
-                                | (self.cache_in[1] as u64) << 16
-                                | (self.cache_in[2] as u64) << 32;
-                            let mut co = self.cache_out[0] as u64
-                                | (self.cache_out[1] as u64) << 16
-                                | (self.cache_out[2] as u64) << 32;
+                            let mut cv = scratch.cache_in[0] as u64
+                                | (scratch.cache_in[1] as u64) << 16
+                                | (scratch.cache_in[2] as u64) << 32;
+                            let mut co = scratch.cache_out[0] as u64
+                                | (scratch.cache_out[1] as u64) << 16
+                                | (scratch.cache_out[2] as u64) << 32;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
                             for _ in 0..lines {
@@ -1971,18 +2018,18 @@ impl Transform {
                                 return clut16_tetra_cached_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride, ipx, opx,
-                                    &self.cache_in, &self.cache_out,
+                                    &scratch.cache_in, &scratch.cache_out,
                                 );
                             }
                             let p = &c.params16;
                             let ppli = ppl as usize * ipx;
                             let pplo = ppl as usize * opx;
-                            let mut cv = self.cache_in[0] as u64
-                                | (self.cache_in[1] as u64) << 16
-                                | (self.cache_in[2] as u64) << 32;
-                            let mut co = self.cache_out[0] as u64
-                                | (self.cache_out[1] as u64) << 16
-                                | (self.cache_out[2] as u64) << 32;
+                            let mut cv = scratch.cache_in[0] as u64
+                                | (scratch.cache_in[1] as u64) << 16
+                                | (scratch.cache_in[2] as u64) << 32;
+                            let mut co = scratch.cache_out[0] as u64
+                                | (scratch.cache_out[1] as u64) << 16
+                                | (scratch.cache_out[2] as u64) << 32;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
                             for _ in 0..lines {
@@ -2044,10 +2091,10 @@ impl Transform {
             _ => return,
         };
         if !gamut {
-            if let Some(l) = self.lut.as_mut() {
+            if let Some(l) = self.lut.as_ref() {
                 if let Some(od) = l.opt_data.as_ref() {
-                    let ci = &mut self.cache_in;
-                    let co = &mut self.cache_out;
+                    let ci = &mut scratch.cache_in;
+                    let co = &mut scratch.cache_out;
                     match od {
                         crate::opt::OptData::ClutOnly(c) => {
                             use crate::intrp::{self as ip, InterpFn16};
@@ -2200,8 +2247,8 @@ impl Transform {
         }
         let mut w_in = [0u16; MAX_CHANNELS];
         let mut w_out = [0u16; MAX_CHANNELS];
-        let mut cache_in = self.cache_in;
-        let mut cache_out = self.cache_out;
+        let mut cache_in = scratch.cache_in;
+        let mut cache_out = scratch.cache_out;
         let mut i_off = 0usize;
         let mut o_off = 0usize;
         for _ in 0..lines {
@@ -2213,16 +2260,16 @@ impl Transform {
                     w_out[..MAX_CHANNELS].copy_from_slice(&cache_out[..MAX_CHANNELS]);
                 } else {
                     if gamut {
-                        if let Some(g) = &mut self.gamut_check {
+                        if let Some(g) = &self.gamut_check {
                             let mut g_out = [0u16; MAX_CHANNELS];
                             g.eval16(&w_in, &mut g_out);
                             if g_out[0] > 0 {
                                 w_out[..MAX_CHANNELS].copy_from_slice(&self.alarm_codes);
-                            } else if let Some(l) = &mut self.lut {
+                            } else if let Some(l) = &self.lut {
                                 l.eval16(&w_in, &mut w_out);
                             }
                         }
-                    } else if let Some(l) = &mut self.lut {
+                    } else if let Some(l) = &self.lut {
                         l.eval16(&w_in, &mut w_out);
                     }
                     if cache {
@@ -2244,7 +2291,7 @@ impl Transform {
 
     /// `FloatXFORM` — the 32-bit float eval loop (+ gamut)
     fn xform_f32(
-        &mut self,
+        &self,
         input: &[u8],
         output: &mut [u8],
         ppl: u32,
@@ -2544,18 +2591,18 @@ impl Transform {
             for _ in 0..ppl {
                 accum += unroll(&info, &mut f_in, &input[accum..], stride.bytes_per_plane_in);
                 if gamut {
-                    if let Some(g) = &mut self.gamut_check {
+                    if let Some(g) = &self.gamut_check {
                         let mut g_out = [0f32; 1];
                         g.eval_float(&f_in, &mut g_out);
                         if g_out[0] > 0.0 {
                             for c in 0..MAX_CHANNELS {
                                 f_out[c] = self.alarm_codes[c] as f32 / 65535.0;
                             }
-                        } else if let Some(l) = &mut self.lut {
+                        } else if let Some(l) = &self.lut {
                             l.eval_float(&f_in, &mut f_out);
                         }
                     }
-                } else if let Some(l) = &mut self.lut {
+                } else if let Some(l) = &self.lut {
                     l.eval_float(&f_in, &mut f_out);
                 }
                 out_pos += pack(
@@ -2730,6 +2777,7 @@ fn alloc_empty_transform(
         return None;
     }
     let mut t = Box::new(Transform {
+        plan: TransformPlan {
         input_format,
         output_format,
         lut,
@@ -2739,8 +2787,10 @@ fn alloc_empty_transform(
         stride: Stride::default(),
         fmt,
         worker,
-        cache_in: [0; MAX_CHANNELS],
-        cache_out: [0; MAX_CHANNELS],
+        scratch_seed: TransformScratch {
+            cache_in: [0; MAX_CHANNELS],
+            cache_out: [0; MAX_CHANNELS],
+        },
         entry_color_space: 0,
         exit_color_space: 0,
         rendering_intent: intent,
@@ -2760,28 +2810,33 @@ fn alloc_empty_transform(
         input_colorants: None,
         output_colorants: None,
         _pad: (),
+        },
+        scratch: TransformScratch {
+            cache_in: [0; MAX_CHANNELS],
+            cache_out: [0; MAX_CHANNELS],
+        },
     });
     // seed the 16-bit cache (transform of all-zeros)
     if flags & FLAGS_NOCACHE == 0 {
-        if let Some(l) = &mut t.lut {
-            if t.gamut_check.is_some() {
+        if let Some(l) = &mut t.plan.lut {
+            if t.plan.gamut_check.is_some() {
                 let mut g_out = [0u16; MAX_CHANNELS];
                 let z_in = [0u16; MAX_CHANNELS];
                 let mut z_out = [0u16; MAX_CHANNELS];
-                if let Some(g) = &mut t.gamut_check {
+                if let Some(g) = &mut t.plan.gamut_check {
                     g.eval16(&z_in, &mut g_out);
                     if g_out[0] > 0 {
-                        z_out.copy_from_slice(&t.alarm_codes);
+                        z_out.copy_from_slice(&t.plan.alarm_codes);
                     } else {
                         l.eval16(&z_in, &mut z_out);
                     }
                 }
-                t.cache_in = z_in;
-                t.cache_out = z_out;
+                t.scratch.cache_in = z_in;
+                t.scratch.cache_out = z_out;
             } else {
                 let mut z_out = [0u16; MAX_CHANNELS];
-                l.eval16(&t.cache_in, &mut z_out);
-                t.cache_out = z_out;
+                l.eval16(&t.scratch.cache_in, &mut z_out);
+                t.scratch.cache_out = z_out;
             }
         }
     }

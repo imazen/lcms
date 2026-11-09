@@ -719,3 +719,15 @@ fn manifest() {
         }
     }
 }
+
+/// The shared-plan model: `TransformPlan` is `Sync` + `Send` (Arc-able,
+/// evaluated from many threads); `Transform` is `Send`. Compile-time proof.
+#[test]
+fn plan_sync_send() {
+    fn assert_sync<T: Sync>() {}
+    fn assert_send<T: Send>() {}
+    assert_sync::<xform::TransformPlan>();
+    assert_send::<xform::TransformPlan>();
+    assert_send::<xform::Transform>();
+    assert_send::<xform::TransformScratch>();
+}
