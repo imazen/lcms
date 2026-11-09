@@ -120,6 +120,7 @@ pub(crate) fn foreign_hooks() -> Option<ForeignHooks> {
 /// once per process, so per-pixel kernel dispatch costs a load.
 #[inline]
 pub(crate) fn x64v3_cached() -> Option<archmage::X64V3Token> {
+    if std::env::var_os("LCMS_DISABLE_V3").is_some() { return None; }
     use archmage::SimdToken;
     static TOK: std::sync::OnceLock<Option<archmage::X64V3Token>> =
         std::sync::OnceLock::new();

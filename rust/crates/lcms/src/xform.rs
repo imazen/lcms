@@ -132,6 +132,7 @@ fn clut16_tetra_loop_v3(
     ipx: usize,
     opx: usize,
 ) {
+
     let ppli = ppl as usize * ipx;
     let pplo = ppl as usize * opx;
     let mut i_off = 0usize;
@@ -557,6 +558,7 @@ fn clut16_tetra_loop_scalar(
     ipx: usize,
     opx: usize,
 ) {
+
     let ppli = ppl as usize * ipx;
     let pplo = ppl as usize * opx;
     let mut i_off = 0usize;

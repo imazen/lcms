@@ -31,11 +31,31 @@ fn mask(b: &mut Vec<u8>) {
 fn emit(name: &str, r: &[u8], cb: &[u8]) {
     let (rh, ch) = (fnv(r), fnv(cb));
     let eq = r == cb;
-    let dmax = if eq { 0 } else {
-        r.iter().zip(cb.iter())
-            .map(|(a, b)| (*a as i32 - *b as i32).unsigned_abs())
-            .max().unwrap_or(0)
-    };
+    // element-wise diffs: f32-ulp for xfl cells, u16 otherwise
+    let mut dmax = 0u64;
+    if !eq {
+        if name.starts_with("xfl:") {
+            let rf: Vec<f32> = r.chunks_exact(4)
+                .map(|b| f32::from_le_bytes([b[0],b[1],b[2],b[3]])).collect();
+            let cf: Vec<f32> = cb.chunks_exact(4)
+                .map(|b| f32::from_le_bytes([b[0],b[1],b[2],b[3]])).collect();
+            let mut mx = 0u64;
+            for (a, b) in rf.iter().zip(cf.iter()) {
+                let da = (a.to_bits() as i64 - b.to_bits() as i64).unsigned_abs();
+                let rel = (a - b).abs();
+                mx = mx.max(da.min(1u64 << 62));
+                if rel > 1e-4 { mx = mx.max(1u64 << 62); }
+            }
+            dmax = mx; // f32 ulp diff, capped at huge when >1e-4 abs
+        } else if r.len() % 2 == 0 {
+            dmax = r.chunks_exact(2).zip(cb.chunks_exact(2))
+                .map(|(x, y)| {
+                    let a = u16::from_le_bytes([x[0], x[1]]) as i64;
+                    let b = u16::from_le_bytes([y[0], y[1]]) as i64;
+                    (a - b).unsigned_abs()
+                }).max().unwrap_or(0);
+        }
+    }
     println!("CELL {name}|{rh:016x}|{ch:016x}|{}|{dmax}", eq as u8);
 }
 
@@ -139,6 +159,30 @@ unsafe fn c_mpet_pipeline(in_ch: u32, out_ch: u32) -> *mut c_void {
     lut
 }
 
+/// mAB pipeline: cvst + clut16 + cvst (shape 3 — a lone matf/clutf
+/// is NOT a valid LutAToB shape, and float CLUTs are rejected by
+/// WriteCLUT: "CLUT are 8 or 16 bit only")
+unsafe fn c_mab_pipeline(in_ch: u32, out_ch: u32) -> *mut c_void {
+    let lut = c::cmsPipelineAlloc(std::ptr::null_mut(), in_ch, out_ch);
+    let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.7);
+    let b = c::cmsStageAllocToneCurves(std::ptr::null_mut(), in_ch,
+        vec![g; in_ch as usize].as_ptr());
+    c::cmsPipelineInsertStage(lut, 0, b);
+    let npts = 9u32;
+    let total = (npts as usize).pow(in_ch) * out_ch as usize;
+    let mut tab = vec![0u16; total];
+    for (i, x) in tab.iter_mut().enumerate() {
+        *x = ((i * 97) % 65536) as u16;
+    }
+    let cl = c::cmsStageAllocCLut16bit(std::ptr::null_mut(), npts,
+        in_ch, out_ch, tab.as_ptr());
+    c::cmsPipelineInsertStage(lut, 1, cl);
+    let a = c::cmsStageAllocToneCurves(std::ptr::null_mut(), out_ch,
+        vec![g; out_ch as usize].as_ptr());
+    c::cmsPipelineInsertStage(lut, 1, a);
+    lut
+}
+
 /// mft2 pipeline: cvst + clut16
 unsafe fn c_mft2_pipeline(in_ch: u32, out_ch: u32) -> *mut c_void {
     let lut = c::cmsPipelineAlloc(std::ptr::null_mut(), in_ch, out_ch);
@@ -156,6 +200,19 @@ unsafe fn c_mft2_pipeline(in_ch: u32, out_ch: u32) -> *mut c_void {
         in_ch, out_ch, tab.as_ptr());
     c::cmsPipelineInsertStage(lut, 1, cl);
     lut
+}
+
+
+unsafe fn c_mandatory_tags(p: *mut c_void) {
+    let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsWriteTag(p, 0x64657363, mlu); // 'desc'
+    let mlu2 = c::cmsMLUdup(mlu);
+    c::cmsWriteTag(p, 0x63707274, mlu2); // 'cprt'
+    let mlu3 = c::cmsMLUdup(mlu);
+    c::cmsWriteTag(p, 0x77747074, mlu3); // 'wtpt' as mluc? no — wtpt is XYZ
+    c::cmsMLUfree(mlu3); // don't leave wrong-type tag
+    c::cmsMLUfree(mlu);
 }
 
 unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
@@ -194,6 +251,13 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     c::cmsWriteTag(p, 0x42324130, c_mft2_pipeline(3, 4));
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+    let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsWriteTag(p, 0x64657363, mlu);
+    let mlu2 = c::cmsMLUdup(mlu);
+    c::cmsWriteTag(p, 0x63707274, mlu2);
+    let chad: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+    c::cmsWriteTag(p, 0x63686164, chad.as_ptr() as *const _);
     push("cmyk", p);
     // mAB: mntr RGB + A2B0 pipeline (cvst+clutf)
     let p = c::cmsCreateProfilePlaceholder(ctx);
@@ -201,9 +265,16 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     c::cmsSetColorSpace(p, 0x52474220);
     c::cmsSetPCS(p, 0x4C616220);
     c::cmsSetProfileVersion(p, 4.4);
-    c::cmsWriteTag(p, 0x41324230, c_mpet_pipeline(3, 3));
+    c::cmsWriteTag(p, 0x41324230, c_mab_pipeline(3, 3));
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+    let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsWriteTag(p, 0x64657363, mlu);
+    let mlu2 = c::cmsMLUdup(mlu);
+    c::cmsWriteTag(p, 0x63707274, mlu2);
+    let chad: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+    c::cmsWriteTag(p, 0x63686164, chad.as_ptr() as *const _);
     push("mab", p);
     // mpetin: 'mntr' cmyk + DToB0 mpet 4->3 (float input path)
     let p = c::cmsCreateProfilePlaceholder(ctx);
@@ -211,9 +282,16 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     c::cmsSetColorSpace(p, 0x434D594B);
     c::cmsSetPCS(p, 0x4C616220);
     c::cmsSetProfileVersion(p, 4.4);
-    c::cmsWriteTag(p, 0x44324230, c_mpet_pipeline(4, 3)); // DToB0
+    c::cmsWriteTag(p, 0x64326230, c_mpet_pipeline(4, 3)); // 'd2b0'
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+    let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsWriteTag(p, 0x64657363, mlu);
+    let mlu2 = c::cmsMLUdup(mlu);
+    c::cmsWriteTag(p, 0x63707274, mlu2);
+    let chad: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+    c::cmsWriteTag(p, 0x63686164, chad.as_ptr() as *const _);
     push("mpetin", p);
     // mpetout: 'mntr' cmyk + BToD0 mpet 3->4 (float output path)
     let p = c::cmsCreateProfilePlaceholder(ctx);
@@ -221,9 +299,16 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     c::cmsSetColorSpace(p, 0x434D594B);
     c::cmsSetPCS(p, 0x4C616220);
     c::cmsSetProfileVersion(p, 4.4);
-    c::cmsWriteTag(p, 0x42324430, c_mpet_pipeline(3, 4)); // BToD0
+    c::cmsWriteTag(p, 0x62326430, c_mpet_pipeline(3, 4)); // 'b2d0'
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+    let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsWriteTag(p, 0x64657363, mlu);
+    let mlu2 = c::cmsMLUdup(mlu);
+    c::cmsWriteTag(p, 0x63707274, mlu2);
+    let chad: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+    c::cmsWriteTag(p, 0x63686164, chad.as_ptr() as *const _);
     push("mpetout", p);
     // labdl: 'link' Lab->Lab A2B0 clut devicelink
     let p = c::cmsCreateProfilePlaceholder(ctx);
@@ -234,6 +319,13 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     c::cmsWriteTag(p, 0x41324230, c_mft2_pipeline(3, 3));
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+    let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsWriteTag(p, 0x64657363, mlu);
+    let mlu2 = c::cmsMLUdup(mlu);
+    c::cmsWriteTag(p, 0x63707274, mlu2);
+    let chad: [f64; 9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+    c::cmsWriteTag(p, 0x63686164, chad.as_ptr() as *const _);
     push("labdl", p);
     // cicp: rgb profile + 'cicp' 4-byte tag (H.273: BT709/sRGB/identity/FR)
     let p = c::cmsCreateRGBProfile(
@@ -590,5 +682,380 @@ fn dbg_xfl_lab() {
         let ro: &[f32] = std::slice::from_raw_parts(ob.as_ptr() as *const f32, 3);
         eprintln!("C: {:?}\nR: {:?}", oc, ro);
         c::cmsCloseProfile(p); c::cmsCloseProfile(l); c::cmsDeleteTransform(t);
+    }
+}
+
+/// bisect: srgb->XYZ float — does the divergence enter at input path or PCS?
+#[test]
+fn dbg_xfl_xyz() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        let l = c::cmsCreateXYZProfile();
+        let pb = save_c(p); let lb = save_c(l);
+        let p2 = c::cmsOpenProfileFromMem(pb.as_ptr() as *const _, pb.len() as u32);
+        let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
+        let t = c::cmsCreateTransform(p2, ff32(4,3), l2, ff32(9,3), 0, 0);
+        let inp: [f32;3] = [0.5, 0.5, 0.5];
+        let mut oc = [0.0f32;3];
+        c::cmsDoTransform(t, inp.as_ptr() as *const _, oc.as_mut_ptr() as *mut _, 1);
+        let mut rp = profile::open_profile_from_mem(None, &pb).unwrap();
+        let mut rl = profile::open_profile_from_mem(None, &lb).unwrap();
+        let mut profs: Vec<Box<IccProfile>> = vec![rp, rl];
+        let mut bpc = vec![false;2]; let ints = vec![0u32;2]; let ad = vec![1.0;2];
+        let mut rt = xform::create_extended_transform(None, &mut profs,
+            &mut bpc, &ints, &ad, None, 0, ff32(4,3), ff32(9,3), 0).unwrap();
+        let ib: &[u8] = std::slice::from_raw_parts(inp.as_ptr() as *const u8, 12);
+        let mut ob = [0u8;12];
+        rt.do_transform(ib, &mut ob, 1);
+        let ro: &[f32] = std::slice::from_raw_parts(ob.as_ptr() as *const f32, 3);
+        eprintln!("C XYZ: {:?}\nR XYZ: {:?}", oc, ro);
+        // also compare manual pipeline eval: read Rust profile's A2B0 chain
+        c::cmsCloseProfile(p); c::cmsCloseProfile(l); c::cmsDeleteTransform(t);
+    }
+}
+
+/// bisect2: does C's optimizer explain the Lab float gap?
+#[test]
+fn dbg_xfl_noopt() {
+    unsafe {
+        let p = c::cmsCreate_sRGBProfile();
+        let l = c::cmsCreateLab4Profile(std::ptr::null());
+        let pb = save_c(p); let lb = save_c(l);
+        let p2 = c::cmsOpenProfileFromMem(pb.as_ptr() as *const _, pb.len() as u32);
+        let l2 = c::cmsOpenProfileFromMem(lb.as_ptr() as *const _, lb.len() as u32);
+        for flags in [0u32, 0x0040 /*NOOPT*/, 0x4000000 /*COPY_ALPHA?*/] {
+            let t = c::cmsCreateTransform(p2, ff32(4,3), l2, ff32(10,3), 0, flags);
+            let inp: [f32;3] = [0.5, 0.5, 0.5];
+            let mut oc = [0.0f32;3];
+            c::cmsDoTransform(t, inp.as_ptr() as *const _, oc.as_mut_ptr() as *mut _, 1);
+            eprintln!("C flags={flags:#x}: {oc:?}");
+            if !t.is_null() { c::cmsDeleteTransform(t); }
+        }
+        let mut rp = profile::open_profile_from_mem(None, &pb).unwrap();
+        let mut rl = profile::open_profile_from_mem(None, &lb).unwrap();
+        let mut profs: Vec<Box<IccProfile>> = vec![rp, rl];
+        let mut bpc = vec![false;2]; let ints = vec![0u32;2]; let ad = vec![1.0;2];
+        let mut rt = xform::create_extended_transform(None, &mut profs,
+            &mut bpc, &ints, &ad, None, 0, ff32(4,3), ff32(10,3), 0).unwrap();
+        let inp: [f32;3] = [0.5, 0.5, 0.5];
+        let ib: &[u8] = std::slice::from_raw_parts(inp.as_ptr() as *const u8, 12);
+        let mut ob = [0u8;12];
+        rt.do_transform(ib, &mut ob, 1);
+        let ro: &[f32] = std::slice::from_raw_parts(ob.as_ptr() as *const f32, 3);
+        eprintln!("R           : {ro:?}");
+        c::cmsCloseProfile(p); c::cmsCloseProfile(l);
+        c::cmsCloseProfile(p2); c::cmsCloseProfile(l2);
+    }
+}
+
+/// bisect3: labdl float — measure actual per-pixel diff pattern
+#[test]
+fn dbg_xfl_labdl() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(p, 0x6C696E6B);
+        c::cmsSetColorSpace(p, 0x4C616220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 2.1);
+        c::cmsWriteTag(p, 0x41324230, c_mft2_pipeline(3, 3));
+        let wt2 = *c::cmsD50_XYZ();
+        c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+        let pb = save_c(p);
+        eprintln!("labdl size {}", pb.len());
+        let p2 = c::cmsOpenProfileFromMem(pb.as_ptr() as *const _, pb.len() as u32);
+        let mut arr = [p2];
+        let t = c::cmsCreateMultiprofileTransform(arr.as_mut_ptr(), 1, ff32(10,3), ff32(10,3), 0, 0);
+        for inp in [[50.0f32, 0.5, -0.3], [25.0, 10.0, -10.0], [80.0, -50.0, 50.0]] {
+            let mut oc = [0.0f32;3];
+            c::cmsDoTransform(t, inp.as_ptr() as *const _, oc.as_mut_ptr() as *mut _, 1);
+            let mut rp = profile::open_profile_from_mem(None, &pb).unwrap();
+            let mut profs: Vec<Box<IccProfile>> = vec![rp];
+            let mut bpc = vec![false]; let ints = vec![0u32]; let ad = vec![1.0];
+            let mut rt = xform::create_extended_transform(None, &mut profs,
+                &mut bpc, &ints, &ad, None, 0, ff32(10,3), ff32(10,3), 0).unwrap();
+            let ib: &[u8] = std::slice::from_raw_parts(inp.as_ptr() as *const u8, 12);
+            let mut ob = [0u8;12];
+            rt.do_transform(ib, &mut ob, 1);
+            let ro: &[f32] = std::slice::from_raw_parts(ob.as_ptr() as *const f32, 3);
+            eprintln!("in {inp:?}  C {oc:?}  R {ro:?}");
+        }
+        c::cmsCloseProfile(p); c::cmsCloseProfile(p2); c::cmsDeleteTransform(t);
+    }
+}
+
+/// bisect4: which call fails on the mab placeholder?
+#[test]
+fn dbg_mab_fail() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        eprintln!("ph {:p}", p);
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 4.4);
+        let lut = c_mpet_pipeline(3, 3);
+        eprintln!("lut {:p}", lut);
+        eprintln!("wtA2B0 {}", c::cmsWriteTag(p, 0x41324230, lut));
+        let wt2 = *c::cmsD50_XYZ();
+        eprintln!("wtwtpt {}", c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _));
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+        eprintln!("wtdesc {}", c::cmsWriteTag(p, 0x64657363, mlu));
+        let b = save_c(p);
+        eprintln!("saved {} bytes", b.len());
+        if !b.is_empty() {
+            let p2 = c::cmsOpenProfileFromMem(b.as_ptr() as *const _, b.len() as u32);
+            eprintln!("reopen {:p}", p2);
+        }
+        c::cmsCloseProfile(p);
+    }
+}
+
+/// bisect5: which pipeline element breaks mAB save?
+#[test]
+fn dbg_mab_elems() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        for name in ["cvst", "clutf", "matf"] {
+            let p = c::cmsCreateProfilePlaceholder(ctx);
+            c::cmsSetDeviceClass(p, 0x6D6E7472);
+            c::cmsSetColorSpace(p, 0x52474220);
+            c::cmsSetPCS(p, 0x4C616220);
+            c::cmsSetProfileVersion(p, 4.4);
+            let lut = c::cmsPipelineAlloc(ctx, 3, 3);
+            match name {
+                "cvst" => {
+                    let g = c::cmsBuildGamma(ctx, 1.8);
+                    let cv = c::cmsStageAllocToneCurves(ctx, 3, [g,g,g].as_ptr());
+                    c::cmsPipelineInsertStage(lut, 1, cv);
+                }
+                "clutf" => {
+                    let mut tab = vec![0.0f32; 216*3];
+                    for (i,x) in tab.iter_mut().enumerate() { *x = (i%64) as f32/64.0; }
+                    let cl = c::cmsStageAllocCLutFloat(ctx, 6, 3, 3, tab.as_ptr());
+                    c::cmsPipelineInsertStage(lut, 1, cl);
+                }
+                "matf" => {
+                    let m: [f64;9] = [1.,0.,0.,0.,1.,0.,0.,0.,1.];
+                    let o: [f64;3] = [0.;3];
+                    let mt = c::cmsStageAllocMatrix(ctx, 3, 3, m.as_ptr(), o.as_ptr());
+                    c::cmsPipelineInsertStage(lut, 1, mt);
+                }
+                _ => {}
+            }
+            eprintln!("{name} A2B0={} save={}", c::cmsWriteTag(p, 0x41324230, lut), save_c(p).len());
+            c::cmsCloseProfile(p);
+        }
+    }
+}
+
+/// bisect6: x16 mab — actual u16 pixel diffs
+#[test]
+fn dbg_x16_mab() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 4.4);
+        c::cmsWriteTag(p, 0x41324230, c_mab_pipeline(3, 3));
+        let wt2 = *c::cmsD50_XYZ();
+        c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+        c::cmsWriteTag(p, 0x64657363, mlu);
+        let mlu2 = c::cmsMLUdup(mlu);
+        c::cmsWriteTag(p, 0x63707274, mlu2);
+        let pb = save_c(p);
+        eprintln!("mab size {}", pb.len());
+        let sr = c::cmsCreate_sRGBProfile();
+        let sb = save_c(sr);
+        let p2 = c::cmsOpenProfileFromMem(pb.as_ptr() as *const _, pb.len() as u32);
+        let s2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sb.len() as u32);
+        let t = c::cmsCreateTransform(p2, f16(4,3), s2, f16(4,3), 0, 0);
+        for inp in [[0u16,0,0],[32768u16,32768,32768],[65535,32768,16384],[16384,49152,32768]] {
+            let mut oc = [0u16;3];
+            c::cmsDoTransform(t, inp.as_ptr() as *const _, oc.as_mut_ptr() as *mut _, 1);
+            let mut rp = profile::open_profile_from_mem(None, &pb).unwrap();
+            let mut rs = profile::open_profile_from_mem(None, &sb).unwrap();
+            let mut rp2 = profile::open_profile_from_mem(None, &pb).unwrap();
+            let mut rs2 = profile::open_profile_from_mem(None, &sb).unwrap();
+            let mut profs2: Vec<Box<IccProfile>> = vec![rp2, rs2];
+            let mut bpc2 = vec![false;2]; let ints2 = vec![0u32;2]; let ad2 = vec![1.0;2];
+            let mut profs: Vec<Box<IccProfile>> = vec![rp, rs];
+            let mut bpc = vec![false;2]; let ints = vec![0u32;2]; let ad = vec![1.0;2];
+            for flags in [0u32, 0x0040] {
+                let mut rt = xform::create_extended_transform(None, &mut profs2,
+                    &mut bpc2, &ints2, &ad2, None, 0, f16(4,3), f16(4,3), flags).unwrap();
+                let ib: &[u8] = std::slice::from_raw_parts(inp.as_ptr() as *const u8, 6);
+                let mut ob = [0u8;6];
+                rt.do_transform(ib, &mut ob, 1);
+                let ro: &[u16] = std::slice::from_raw_parts(ob.as_ptr() as *const u16, 3);
+                eprintln!("  R flags={flags:#x} {ro:?}");
+            }
+            let mut rt = xform::create_extended_transform(None, &mut profs,
+                &mut bpc, &ints, &ad, None, 0, f16(4,3), f16(4,3), 0).unwrap();
+            let ib: &[u8] = std::slice::from_raw_parts(inp.as_ptr() as *const u8, 6);
+            let mut ob = [0u8;6];
+            rt.do_transform(ib, &mut ob, 1);
+            let ro: &[u16] = std::slice::from_raw_parts(ob.as_ptr() as *const u16, 3);
+            eprintln!("in {inp:?}  C {oc:?}  R {ro:?}");
+        }
+        c::cmsCloseProfile(p); c::cmsCloseProfile(p2); c::cmsCloseProfile(s2); c::cmsDeleteTransform(t);
+    }
+}
+
+/// bisect7: find first diverging pixel in x16 mab sweep
+#[test]
+fn dbg_x16_mab_sweep() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 4.4);
+        c::cmsWriteTag(p, 0x41324230, c_mab_pipeline(3, 3));
+        let wt2 = *c::cmsD50_XYZ();
+        c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+        c::cmsWriteTag(p, 0x64657363, mlu);
+        let mlu2 = c::cmsMLUdup(mlu);
+        c::cmsWriteTag(p, 0x63707274, mlu2);
+        let chad: [f64;9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        c::cmsWriteTag(p, 0x63686164, chad.as_ptr() as *const _);
+        let pb = save_c(p);
+        let sr = c::cmsCreate_sRGBProfile();
+        let sb = save_c(sr);
+        let p2 = c::cmsOpenProfileFromMem(pb.as_ptr() as *const _, pb.len() as u32);
+        let s2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sb.len() as u32);
+        let t = c::cmsCreateTransform(p2, f16(4,3), s2, f16(4,3), 0, 0);
+        let sw = sweep16(3);
+        let np = sw.len() / 3;
+        let mut cb = vec![0u8; np * 6];
+        c::cmsDoTransform(t, sw.as_ptr() as *const _, cb.as_mut_ptr() as *mut _, np as u32);
+        let mut rp = profile::open_profile_from_mem(None, &pb).unwrap();
+        let mut rs = profile::open_profile_from_mem(None, &sb).unwrap();
+        let mut profs: Vec<Box<IccProfile>> = vec![rp, rs];
+        let mut bpc = vec![false;2]; let ints = vec![0u32;2]; let ad = vec![1.0;2];
+        let mut rt = xform::create_extended_transform(None, &mut profs,
+            &mut bpc, &ints, &ad, None, 0, f16(4,3), f16(4,3), 0).unwrap();
+        let mut rb = vec![0u8; np * 6];
+        rt.do_transform(byt2(&sw), &mut rb, np as u32);
+        let cf: &[u16] = std::slice::from_raw_parts(cb.as_ptr() as *const u16, np*3);
+        let rf: &[u16] = std::slice::from_raw_parts(rb.as_ptr() as *const u16, np*3);
+        let mut shown = 0;
+        for px in 0..np {
+            let d: Vec<i32> = (0..3).map(|k| rf[px*3+k] as i32 - cf[px*3+k] as i32).collect();
+            if d.iter().any(|&x| x != 0) && shown < 6 {
+                eprintln!("px{px} in={:?} C={:?} R={:?}",
+                    &sw[px*3..px*3+3], &cf[px*3..px*3+3], &rf[px*3..px*3+3]);
+                shown += 1;
+            }
+        }
+        eprintln!("total differing: {}", (0..np).filter(|&px| rf[px*3..px*3+3] != cf[px*3..px*3+3]).count());
+    }
+}
+
+/// bisect8: pipeline-level eval of the read mAB lut on black
+#[test]
+fn dbg_mab_pipeline() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 4.4);
+        c::cmsWriteTag(p, 0x41324230, c_mab_pipeline(3, 3));
+        let wt2 = *c::cmsD50_XYZ();
+        c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+        c::cmsWriteTag(p, 0x64657363, mlu);
+        let mlu2 = c::cmsMLUdup(mlu);
+        c::cmsWriteTag(p, 0x63707274, mlu2);
+        let chad: [f64;9] = [1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0];
+        c::cmsWriteTag(p, 0x63686164, chad.as_ptr() as *const _);
+        let pb = save_c(p);
+        let p2 = c::cmsOpenProfileFromMem(pb.as_ptr() as *const _, pb.len() as u32);
+        let lut = c::cmsReadTag(p2, 0x41324230);
+        eprintln!("clut {:p}", lut);
+        for inp in [[0u16,0,0],[32768,32768,32768],[65535,32768,16384]] {
+            let mut oc = [0u16;3];
+            c::cmsPipelineEval16(inp.as_ptr(), oc.as_mut_ptr(), lut);
+            let mut of = [0f32;3];
+            let inf = [inp[0] as f32/65535.0, inp[1] as f32/65535.0, inp[2] as f32/65535.0];
+            c::cmsPipelineEvalFloat(inf.as_ptr(), of.as_mut_ptr(), lut);
+            // rust side
+            let mut rp = profile::open_profile_from_mem(None, &pb).unwrap();
+            // read the a2b0 tag pipeline — same public API used by xform
+            let r16 = {
+                let mut o = [0u16;3];
+                if let Some(lcms::tagtypes::TagObject::LutA2B(lut)) =
+                    profile::cms_read_tag(&mut rp, 0x41324230) {
+                    lut.eval16(&inp, &mut o);
+                }
+                o
+            };
+            eprintln!("in {inp:?} C16={oc:?} Cf={of:?} R16={r16:?}");
+        }
+        c::cmsCloseProfile(p); c::cmsCloseProfile(p2);
+    }
+}
+
+/// bisect9: dump the resampled CLUT node(0,0,0) + first nodes
+#[test]
+fn dbg_resampled_clut() {
+    unsafe {
+        let ctx = std::ptr::null_mut();
+        let p = c::cmsCreateProfilePlaceholder(ctx);
+        c::cmsSetDeviceClass(p, 0x6D6E7472);
+        c::cmsSetColorSpace(p, 0x52474220);
+        c::cmsSetPCS(p, 0x4C616220);
+        c::cmsSetProfileVersion(p, 4.4);
+        c::cmsWriteTag(p, 0x41324230, c_mab_pipeline(3, 3));
+        let wt2 = *c::cmsD50_XYZ();
+        c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
+        let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+        c::cmsWriteTag(p, 0x64657363, mlu);
+        let mlu2 = c::cmsMLUdup(mlu);
+        c::cmsWriteTag(p, 0x63707274, mlu2);
+        let pb = save_c(p);
+        let sr = c::cmsCreate_sRGBProfile();
+        let sb = save_c(sr);
+        let mut rp = profile::open_profile_from_mem(None, &pb).unwrap();
+        let mut rs = profile::open_profile_from_mem(None, &sb).unwrap();
+        let mut profs: Vec<Box<IccProfile>> = vec![rp, rs];
+        let mut bpc = vec![false;2]; let ints = vec![0u32;2]; let ad = vec![1.0;2];
+        let mut rt = xform::create_extended_transform(None, &mut profs,
+            &mut bpc, &ints, &ad, None, 0, f16(4,3), f16(4,3), 0).unwrap();
+        // dump the optimized pipeline's stages + first clut entries
+        if let Some(lut) = &rt.lut {
+            let mut st = lut.elements.as_deref();
+            let mut i = 0;
+            while let Some(s) = st {
+                eprintln!("stage{i} {:?}", s.stage_type());
+                if let lcms::lut::StageData::CLut(d) = &s.data {
+                    eprintln!("  clut tab[0..12] = {:?}", &d.tab16.as_deref().unwrap_or(&[])[..12.min(d.tab16.as_deref().map(|x| x.len()).unwrap_or(0))]);
+                }
+                st = s.next.as_deref();
+                i += 1;
+            }
+            eprintln!("  opt_data = {:?}", lut.opt_data.as_ref().map(|d| std::mem::discriminant(d)));
+
+            // generic eval16 of the resampled pipeline at vertex 0
+            let mut o = [0u16;3];
+            lut.eval16(&[0u16,0,0], &mut o);
+            eprintln!("  generic eval16(0) = {o:?}");
+            let mut o2 = [0u16;3];
+            lut.eval16(&[65535u16,0,0], &mut o2);
+            eprintln!("  generic eval16(65535,0,0) = {o2:?}");
+        }
     }
 }
