@@ -694,61 +694,61 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     }
     macro_rules! with_pack {
         ($u:expr) => {{
-            if pack == pk::pack4_bytes as P16F {
+            if std::ptr::fn_addr_eq(pack, pk::pack4_bytes as P16F) {
                 go!($u, pk::pack4_bytes);
             }
-            if pack == pk::pack3_bytes as P16F {
+            if std::ptr::fn_addr_eq(pack, pk::pack3_bytes as P16F) {
                 go!($u, pk::pack3_bytes);
             }
-            if pack == pk::pack4_words as P16F {
+            if std::ptr::fn_addr_eq(pack, pk::pack4_words as P16F) {
                 go!($u, pk::pack4_words);
             }
-            if pack == pk::pack3_words as P16F {
+            if std::ptr::fn_addr_eq(pack, pk::pack3_words as P16F) {
                 go!($u, pk::pack3_words);
             }
-            if pack == pk::pack3_words_and_skip1 as P16F {
+            if std::ptr::fn_addr_eq(pack, pk::pack3_words_and_skip1 as P16F) {
                 go!($u, pk::pack3_words_and_skip1);
             }
-            if pack == pk::pack3_bytes_and_skip1 as P16F {
+            if std::ptr::fn_addr_eq(pack, pk::pack3_bytes_and_skip1 as P16F) {
                 go!($u, pk::pack3_bytes_and_skip1);
             }
-            if pack == pk::pack_chunky_words as P16F && is_ch_ex1(info.output_format, 4, 2) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F) && is_ch_ex1(info.output_format, 4, 2) {
                 go!($u, pk::pack4_words_skip1);
             }
-            if pack == pk::pack_chunky_words as P16F && is_ch_ex1(info.output_format, 3, 2) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F) && is_ch_ex1(info.output_format, 3, 2) {
                 go!($u, pk::pack3_words_and_skip1);
             }
-            if pack == pk::pack_chunky_bytes as P16F && is_ch_ex1(info.output_format, 4, 1) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F) && is_ch_ex1(info.output_format, 4, 1) {
                 go!($u, pk::pack4_bytes_skip1);
             }
-            if pack == pk::pack_chunky_bytes as P16F && is_ch_ex1(info.output_format, 3, 1) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F) && is_ch_ex1(info.output_format, 3, 1) {
                 go!($u, pk::pack3_bytes_and_skip1);
             }
             go!($u, pack);
         }};
     }
-    if unroll == pk::unroll4_bytes as U16F {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll4_bytes as U16F) {
         with_pack!(pk::unroll4_bytes);
     }
-    if unroll == pk::unroll3_bytes as U16F {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll3_bytes as U16F) {
         with_pack!(pk::unroll3_bytes);
     }
-    if unroll == pk::unroll4_words as U16F {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll4_words as U16F) {
         with_pack!(pk::unroll4_words);
     }
-    if unroll == pk::unroll3_words as U16F {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll3_words as U16F) {
         with_pack!(pk::unroll3_words);
     }
-    if unroll == pk::unroll_any_words as U16F && is_ch_ex1(info.input_format, 4, 2) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F) && is_ch_ex1(info.input_format, 4, 2) {
         with_pack!(pk::unroll4_words_skip1);
     }
-    if unroll == pk::unroll_any_words as U16F && is_ch_ex1(info.input_format, 3, 2) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F) && is_ch_ex1(info.input_format, 3, 2) {
         with_pack!(pk::unroll3_words_skip1);
     }
-    if unroll == pk::unroll_chunky_bytes as U16F && is_ch_ex1(info.input_format, 4, 1) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F) && is_ch_ex1(info.input_format, 4, 1) {
         with_pack!(pk::unroll4_bytes_skip1);
     }
-    if unroll == pk::unroll_chunky_bytes as U16F && is_ch_ex1(info.input_format, 3, 1) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F) && is_ch_ex1(info.input_format, 3, 1) {
         with_pack!(pk::unroll3_bytes_skip1);
     }
     with_pack!(unroll);
@@ -815,25 +815,25 @@ fn xform_f32_run<E: Fn(&[f32], &mut [f32])>(
     }
     macro_rules! with_pack {
         ($u:expr) => {{
-            if pack == pk::pack_floats_from_float as PF {
+            if std::ptr::fn_addr_eq(pack, pk::pack_floats_from_float as PF) {
                 go!($u, pk::pack_floats_from_float);
             }
-            if pack == pk::pack_words_from_float as PF {
+            if std::ptr::fn_addr_eq(pack, pk::pack_words_from_float as PF) {
                 go!($u, pk::pack_words_from_float);
             }
-            if pack == pk::pack_bytes_from_float as PF {
+            if std::ptr::fn_addr_eq(pack, pk::pack_bytes_from_float as PF) {
                 go!($u, pk::pack_bytes_from_float);
             }
             go!($u, pack);
         }};
     }
-    if unroll == pk::unroll_floats_to_float as UF {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_floats_to_float as UF) {
         with_pack!(pk::unroll_floats_to_float);
     }
-    if unroll == pk::unroll16_to_float as UF {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll16_to_float as UF) {
         with_pack!(pk::unroll16_to_float);
     }
-    if unroll == pk::unroll8_to_float as UF {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll8_to_float as UF) {
         with_pack!(pk::unroll8_to_float);
     }
     with_pack!(unroll);
