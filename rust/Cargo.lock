@@ -365,7 +365,7 @@ dependencies = [
  "archmage 0.9.31-beta.2",
  "bytemuck",
  "lcms-cref",
- "lcms-sys",
+ "lcms-math",
  "magetypes",
  "zenbench",
  "zenhash",
@@ -379,7 +379,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lcms-sys"
+name = "lcms-math"
 version = "0.1.0"
 dependencies = [
  "cc",

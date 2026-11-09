@@ -764,6 +764,16 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   unsafe lives ONLY in the `math-sys` C-shim block (22 sites, cfg-gated);
   `math-rust`/`math-libm` are 100% safe. `lcms-cref` (oracle FFI) is
   unsafe by design — it's the C reference, not the port.
+- **`lcms-sys` renamed `lcms-math`** — `-sys` canonically means FFI
+  bindings to the C lib (that's `lcms-cref`'s role — vendored lcms2 +
+  FFI); this crate is the math-provider shim, not bindings.
+- **Golden scope** — `triple` alone is NOT enough for `math-sys`:
+  the digest depends on the runtime libm (glibc 2.35 vs 2.39 differ)
+  AND on glibc's ifunc/multiarch dispatch (different `libmvec` impls
+  per CPU features — same glibc, different CPU => drift). Goldens are
+  named `sys.<triple>.<libm-tag>.cells` vs `libm.<triple>.cells`;
+  treat `sys.*` goldens as per-machine (the compare job diffs
+  `libm.*` for cross-platform determinism).
 - **Golden baseline** for canonical-math swaps:
   `LCMS_GOLDEN=<file>` — seeds/compares `name\trh\tch` per cell;
   `LCMS_GOLDEN_UPDATE=1` regenerates after a math-backend change.

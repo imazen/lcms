@@ -322,7 +322,7 @@ impl CieCam02 {
 
         // computeD
         if m.d == D_CALCULATE {
-            let temp = 1.0 - (1.0 / 3.6) * lcms_sys::exp((-m.la - 42.0) / 92.0);
+            let temp = 1.0 - (1.0 / 3.6) * lcms_math::exp((-m.la - 42.0) / 92.0);
             m.d = m.f * temp;
         }
 

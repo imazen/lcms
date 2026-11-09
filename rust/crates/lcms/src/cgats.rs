@@ -342,7 +342,7 @@ fn format_dbl(fmt: &str, val: f64) -> String {
         // %g = %e when exp < -4 or >= precision, else %f; strips trailing zeros
         b'g' | b'G' => {
             let p = prec.unwrap_or(6).max(1);
-            let exp = lcms_sys::log10(val.abs()).floor() as i32;
+            let exp = lcms_math::log10(val.abs()).floor() as i32;
             let s = if val != 0.0 && (exp < -4 || exp >= p as i32) {
                 format!("{val:.p$e}")
             } else {

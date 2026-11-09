@@ -183,6 +183,6 @@ mod imp {
     feature = "math-libm",
     feature = "math-zen"
 )))]
-compile_error!("lcms-sys: select a math provider: math-sys | math-rust | math-libm | math-zen");
+compile_error!("lcms-math: select a math provider: math-sys | math-rust | math-libm | math-zen");
 
 pub use imp::*;

@@ -23,6 +23,25 @@ TRANSCENDENTAL="pcs deltaE cam02 adapt estg1 estg2 estg3 estg4 estg5 estg6 estg7
 GOLDENS=""
 [ "${1:-}" = "--goldens" ] && GOLDENS="$2" && mkdir -p "$GOLDENS"
 
+# libm identity — math-sys digests depend on the RUNTIME libm, not just
+# the target triple (glibc 2.35 vs 2.39 differ; multiarch dispatch
+# varies by CPU features). Scope math-sys goldens by impl+version;
+# math-libm/math-zen are deterministic and need only the triple.
+libm_tag() {
+    # tag the libm the TEST BINARY will link, from the target triple —
+    # not what the host happens to have installed.
+    case "$TRIPLE" in
+        *-musl)      echo "musl";;
+        *-msvc)      echo "msvcrt";;
+        *-gnu|*-gnullvm)
+            local v; v=$(ldd --version 2>&1 | head -1)
+            case "$v" in *GNU*|*GLIBC*) echo "glibc-${v##* }";; *) echo "gnu-unknown";; esac;;
+        *-darwin*)   echo "apple-libm";;
+        *)           echo "unknown-libm";;
+    esac
+}
+TRIPLE=$(rustc -vV | awk '/host:/{print $2}')
+
 run_provider () {
     local name="$1"; shift
     cargo test -p lcms --test determinism "$@" -- --nocapture 2>&1 \
@@ -64,7 +83,10 @@ echo "$SYS"  | grep DIGEST | sed 's/^/sys  /'
 echo "$LIBM" | grep DIGEST | sed 's/^/libm /'
 
 if [ -n "$GOLDENS" ]; then
-    echo "$SYS"  | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' > "$GOLDENS/sys.cells"
-    echo "$LIBM" | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' > "$GOLDENS/libm.cells"
-    echo "wrote $GOLDENS/{sys,libm}.cells"
+    LTAG=$(libm_tag)
+    echo "$SYS"  | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' \
+        > "$GOLDENS/sys.$TRIPLE.$LTAG.cells"
+    echo "$LIBM" | awk -F'|' '/^CELL/{print substr($1,6)"\t"$2"\t"$3}' \
+        > "$GOLDENS/libm.$TRIPLE.cells"
+    echo "wrote $GOLDENS/sys.$TRIPLE.$LTAG.cells + libm.$TRIPLE.cells"
 fi

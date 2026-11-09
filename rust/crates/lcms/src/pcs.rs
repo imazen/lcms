@@ -249,7 +249,7 @@ pub fn lab2lch(lab: &CieLab) -> CieLCh {
 /// the same `sincos` libcall on glibc, keeping bit parity.
 pub fn lch2lab(lch: &CieLCh) -> CieLab {
     let h = (lch.h * PI) / 180.0;
-    let (sh, ch) = lcms_sys::sin_cos(h);
+    let (sh, ch) = lcms_math::sin_cos(h);
 
     CieLab {
         L: lch.L,
@@ -502,7 +502,7 @@ pub fn cie2000_delta_e(lab1: &CieLab, lab2: &CieLab, kl: f64, kc: f64, kh: f64) 
     let sc = 1.0 + 0.045 * (c_p + c_ps) / 2.0;
     let sh = 1.0 + 0.015 * ((c_ps + c_p) / 2.0) * t;
 
-    let delta_ro = 30.0 * lcms_sys::exp(-sqr((meanh_p - 275.0) / 25.0));
+    let delta_ro = 30.0 * lcms_math::exp(-sqr((meanh_p - 275.0) / 25.0));
 
     let rc = 2.0 * (mean_c_p.cpow(7.0) / (mean_c_p.cpow(7.0) + 25.0_f64.cpow(7.0))).sqrt();
 
