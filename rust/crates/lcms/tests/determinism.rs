@@ -14,12 +14,21 @@ use lcms_cref as c;
 use std::ffi::c_void;
 
 fn fnv(b: &[u8]) -> u64 {
-    let mut h = 0xcbf29ce484222325u64;
-    for &x in b {
-        h ^= x as u64;
-        h = h.wrapping_mul(0x100000001b3);
+    // zenhash::xxh3_64 — bit-identical on every target/SIMD tier, so the
+    // per-cell hashes are meaningful to compare across CI/platforms.
+    zenhash::xxh3_64(b)
+}
+
+/// manifest-level digest: xxh3 over every cell's bytes in order — one
+/// value CI can diff across platforms.
+fn digest(cells: &[(String, Vec<u8>, Vec<u8>)]) -> u64 {
+    let mut h = zenhash::Xxh3::new();
+    for (name, r, cb) in cells {
+        h.update(name.as_bytes());
+        h.update(r);
+        h.update(cb);
     }
-    h
+    h.digest()
 }
 
 /// zero the volatile header fields (creation datetime, profile ID)
@@ -615,6 +624,7 @@ unsafe fn scalars() {
 fn manifest() {
     unsafe {
         let profs = c_profiles();
+        let mut cells: Vec<(String, Vec<u8>, Vec<u8>)> = Vec::new();
         // ser cells: canonical bytes -> reopen+resave on each side
         for (name, bytes) in &profs {
             let cp = c::cmsOpenProfileFromMem(
@@ -629,6 +639,7 @@ fn manifest() {
             mask(&mut cbytes);
             mask(&mut rbytes);
             emit(&format!("ser:{name}"), &rbytes, &cbytes);
+            cells.push((format!("ser:{name}"), rbytes, cbytes));
         }
         // transform cells
         let get = |n: &str| -> &[u8] {

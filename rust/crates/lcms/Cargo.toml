@@ -33,6 +33,7 @@ archmage = { path = "/home/lilith/work/archmage", features = ["avx512"] }
 [dev-dependencies]
 lcms-cref = { path = "../lcms-cref" }
 zenbench = "0.1.10"
+zenhash = { path = "/home/lilith/work/zen/zenhash", features = ["xxh3"] }
 
 [[bench]]
 name = "perf_zenbench"
