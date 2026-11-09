@@ -748,6 +748,17 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   canonical-math trade-off); `adapt`/`estg*`/`param` + all transforms
   stay exact. DIGEST shifts to `2811a4fbdd8afff4` — `R:hash` on those
   3 cells is now the cross-CI fingerprint, C-compare expected XX.
+- **`forbid(unsafe_code)` (geiger trust)** — the shipped default is
+  now `math-libm`: `lcms` + `lcms-sys` both compile with
+  `forbid(unsafe_code)` ACTIVE under default features — zero unsafe
+  in the production dep tree, and the dep tree loses `cc` (no C
+  build). `math-sys` is demoted to the opt-in parity-harness provider
+  (`--features math-sys` on test runs) — it carries the only unsafe
+  (the 22-site C shim) and is never in the shipped default. Consumers
+  verify via: the `forbid` attrs (compile-error proof, not lint),
+  `cargo geiger` under default features, and the docs.rs unsafe badge.
+  `lcms-cref` (oracle FFI) is dev-dep only — its unsafe never reaches
+  the shipped tree.
 - **`forbid(unsafe_code)`** — `lcms` lib already had it; `lcms-sys`
   gets `#![cfg_attr(not(feature="math-sys"), forbid(unsafe_code))]` —
   unsafe lives ONLY in the `math-sys` C-shim block (22 sites, cfg-gated);

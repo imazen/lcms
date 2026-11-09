@@ -54,7 +54,7 @@ check () { # $1 provider $2 cells-output
     fi
 }
 
-SYS=$(run_provider math-sys)
+SYS=$(run_provider math-sys --no-default-features --features math-sys)
 LIBM=$(run_provider math-libm --no-default-features --features math-libm)
 
 check math-sys "$SYS"

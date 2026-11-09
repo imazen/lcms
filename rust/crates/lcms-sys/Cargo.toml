@@ -6,10 +6,13 @@ publish = false
 
 [features]
 # Math provider for transcendental fns — pick exactly one.
-# - math-sys (default): C shim -> local system libm; oracle-parity.
+# - math-sys: C shim -> local system libm; oracle-parity. UNSAFE —
+#   opt-in for the differential harness only, never the shipped default.
+# - math-libm (default): pure-Rust libm crate; deterministic, no unsafe,
+#   no cc build — the geiger-clean production provider.
 # - math-rust: pure f64 methods (compiler_builtins); host-deterministic.
 # - math-zen: reserved for a correctly-rounded zenmath impl.
-default = ["math-sys"]
+default = ["math-libm"]
 math-sys = ["dep:cc"]
 math-rust = []
 math-zen = []

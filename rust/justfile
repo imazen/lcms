@@ -10,11 +10,11 @@
 
 # Run all gates (unit + C-parity tests)
 test:
-    cargo test --workspace
+    cargo test --workspace --features lcms/math-sys
 
 # Run one module's parity gate: `just gate pcs`
 gate name:
-    cargo test -p lcms --test c_parity_{{name}}
+    cargo test -p lcms --features math-sys --test c_parity_{{name}}
 
 # Determinism gate: manifest under math-sys (C==R on shared system libm)
 # AND math-libm (XX confined to transcendental cells) — the transitive
