@@ -107,8 +107,11 @@ fn main() {
 fn emit_link(out_dir: &Path) {
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=lcms2cref");
-    // lcms2 calls into libm
-    if std::env::var("CARGO_CFG_TARGET_FAMILY").as_deref() == Ok("unix") {
+    // lcms2 calls into libm — except musl, where libm is inside libc
+    // and the system -lm search would pull glibc's static libm.
+    let fam = std::env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
+    let envv = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if fam == "unix" && envv != "musl" {
         println!("cargo:rustc-link-lib=m");
     }
 }

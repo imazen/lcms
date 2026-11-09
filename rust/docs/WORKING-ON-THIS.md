@@ -678,66 +678,103 @@ cmsnamed/cmsalpha/cmserr/cmssm mid-file tails.
 ## Cross-platform determinism (xplat manifest, 2025-11)
 
 `tests/determinism.rs` emits `CELL name|R:hash|C:hash|eq|dmax` per
-cell on every platform — 51 cells: profile resaves, u16/float
-transforms (matrix-shaper, mft2, mAB, mpet m×n, devicelink, cicp),
-and scalar f64 sweeps (Lab/XYZ/LCh, delta-E, CIECAM02, Bradford,
-parametric curves, estimates). Run:
+cell — 51 cells covering serialized profiles, u16 + float
+transforms, scalar PCS/math, mAB/mPET m×n, CICP, Lab devicelinks.
+Run: `cargo test -p lcms --test determinism -- --nocapture`.
 
-    cargo test -p lcms --test determinism -- --nocapture \
-        | grep -E '^CELL|^SUMMARY'
+### Findings (updated 2025-11-xx)
 
-### Measured (dev x86-64 glibc 2.35 / arm aarch64 glibc 2.39 / mac arm64 Apple libm)
+- **44/51 → 35+cells bit-identical** on all of x86-64 glibc 2.35,
+  aarch64 glibc 2.39 (zen-arm-xl), macOS arm64 (mac.local),
+  x86-64 musl.
+- **All u16 + float transform paths bit-exact everywhere** —
+  fixed-point evaluators, interpolation, table evals, and the f32
+  pipeline chain are deterministic across ISAs/OSes.
+- **Per-platform `Rust == C` holds on musl too** (35/51): musl's
+  fdlibm-derived libm drifts vs glibc on only `pcs`/`deltaE`/`cam02`
+  — and the C oracle drifts identically on that platform.
+- **f64-transcendental drift is confined to 3 scalar cells**
+  (`pcs`, `deltaE`, `cam02`): glibc-2.35 → glibc-2.39 CORE-MATH
+  swaps changed the C side; musl/Apple libm change both sides;
+  `adapt` is deterministic.
 
-- 44/51 cells bit-identical on ALL three platforms.
-- Bit-exact everywhere: all u16/fixed-point paths, all float
-  transform pipelines (f32 arithmetic — no libm), serialization.
-- Drifts on macOS only: `pcs`, `deltaE`, `cam02`, `adapt` — the f64
-  transcendental cells (lcms-sys shim binds local libm; Apple libm
-  implements them differently). C oracle drifts equally.
-- The C oracle drifts MORE than the port: GCC -O2 FMA-contracts the
-  oracle on aarch64 + glibc 2.35->2.39 swapped several functions to
-  correctly-rounded CORE-MATH versions. Rust float output is
-  bit-stable x86-64<->aarch64; the C side is not.
-- Rust==C parity holds per-platform on every cell EXCEPT:
-  * `xfl:srgb>lab4`, `xfl:cicp>lab4`, `xfl:labdl` — float-Lab
-    transform output diverges ~4e-4 (mid-gray a*/b*: C 7.6e-6 vs
-    R 2.9e-4/4.7e-4 — 40x off). Deterministic on all platforms —
-    a REAL port bug in the float Lab path, not libm drift.
-    OPEN.
-  * `ser:*` resave diffs — deterministic per-platform parity gap
-    in profile reserialization (same on all platforms).
-  * `mab`/`mpetin`/`mpetout` — placeholder profiles still lack
-    mandatory tags to serialize (both sides fail — harness gap).
+### Fixed
+
+- **`x16:mab>srgb` vertex-0 black** (was a REAL bug): the fused
+  cached u64 loops (`clut16_tetra_cached_v3`, scalar fallback,
+  Curves16 arm) used a LOCAL `cv`/`co` cache zero-initialized —
+  never seeded from `self.cache_in`/`cache_out`. First black
+  pixel `v64==cv` hit a stale cache -> `[0,0,0]` instead of
+  `[0,14607,49958]`. C's `CachedXFORM` cache is transform-level,
+  seeded by `Eval16Fn(zeros)` at creation. Fix: seed `cv`/`co`
+  from `self.cache_*`. Bit-exact now.
+- **The "40x float-Lab" scare was a TEST ARTIFACT**: the first
+  dbg compared an in-memory C profile (f64 matrix) vs a
+  serialized Rust profile (s15fixed16 matrix) — asymmetric
+  quantization. Same-bytes comparison: residual is ~6e-6 absolute
+  on near-zero a*/b* — Lab's `a* = 500*(f(x)-f(y))` cancellation
+  amplifying ~1e-9 XYZ noise. Deterministic, bounded.
+- **mAB/mPET manifest cells now live**: mAB pipeline must be
+  `cvst+clut16+cvst` (or one of 4 exact shapes — `WriteCLUT`
+  rejects float CLUTs in `mAB`/`mft`: "CLUT are 8 or 16 bit
+  only"); float devicelink tags are `'d2b0'`/`'b2d0'` lowercase;
+  `mpet` m×n now bit-exact `x16`+`xfl` both directions.
+
+### Open residuals
+
+- `xfl:srgb>lab4`, `xfl:cicp>lab4` — ~6e-6 Lab-cancellation
+  residual (few-ulp XYZ noise amplified; deterministic,
+  same on all platforms — likely a bounded f32/f64 ordering
+  difference in the PCS-insert stage chain).
+- `xfl:labdl` — 1 ulp.
+- `ser:*` resave diffs — deterministic per-platform resave
+  parity gap (same on all platforms; separate serialization
+  issue, not platform drift).
 
 ### libm surface (only drift-capable calls)
 
 Exact (never drifts): abs, floor, sqrt(correctly-rounded), ceil,
 round, powi, all u16/f32 arithmetic.
 
-libm-bound (drift-capable): cpow->powf, cln->ln, clog10->log10,
-cacos->acos, casin->asin, catanh->atanh, cacosh->acosh (CpowExt
-trait, types.rs); lcms-sys shim: sincos/g_cos/g_sin/g_atan/g_atan2
-/trig/hypot/fmod/cbrt/log2/exp2/expm1/log1p/tan/exp/log;
-direct .exp() x3 (cam02 surround, gamma sigmoid, cie2000 deltaRo).
-Concentrated: pcs.rs 19, gamma.rs ~15, cam02.rs 5, gbd.rs 5.
+Provider-bound (drift-capable): all transcendentals route through
+`lcms-sys` — 21 entry points: cos/sin/tan/atan2/atan/asin/acos/
+hypot/fmod/cbrt/log2/exp2/expm1/log1p/sincos + pow/exp/log/log10/
+atanh/acosh. Callers: `g_*` trait (gmath.rs), `lcms_sys::*`
+direct, `CpowExt` (cpow/cln/clog10/casin/cacos/catanh/cacosh —
+NaN-domain patches wrap the provider), `.exp()`->`lcms_sys::exp`
+(cam02/gamma/pcs), `.log10()`->`lcms_sys::log10` (cgats).
+
+### Math-provider abstraction (DONE)
+
+`lcms-sys` Cargo features — pick one at compile time:
+- `math-sys` (default): C shim -> local system libm. Oracle-parity
+  provider — binds to the same libm the C reference resolves on
+  the same box (glibc/Apple libm/musl/MSVCRT).
+- `math-rust`: pure `f64` methods (compiler_builtins/fdlibm).
+  Host-deterministic on a given toolchain; not oracle-exact.
+- `math-zen`: reserved for a correctly-rounded zenmath impl
+  (currently falls back to the pure-Rust surface).
+
+Feature forwards through `lcms/Cargo.toml`
+(`--no-default-features --features math-rust`). `build.rs` gates
+the `cc` shim + `-lm` to `math-sys` only. Verified: all three
+build; `math-sys` and `math-rust` produce identical manifest
+hashes on glibc-2.35 x86-64 (toolchain's f64 methods already
+libcall into glibc for most fns — drift shows only on inputs
+where compiler_builtins' trig differs).
 
 ### Portability state
 
 - lcms-sys shim: sincos=glibc/BSD/mingw, __sincos=Apple,
-  separate sin/cos=MSVC (no sincos in MSVCRT). -lm unix-only.
-- lcms-cref: -lm unix-only; flag_if_supported for -fno-strict-aliasing.
+  separate sin/cos=MSVC (no sincos in MSVCRT). -lm skipped
+  on musl (libm is inside libc; system -lm pulls glibc's
+  static libm and fails the link).
+- lcms-cref: same -lm musl gate; flag_if_supported for
+  -fno-strict-aliasing.
 - lcms lib: all x64v3 SIMD dispatch arms cfg-gated to x86_64
-  (aarch64 uses scalar fallbacks — compiles on arm/mac now).
-- Windows: not yet built — needs windows-gnu/mingw or xwin; the
-  shim MSVC branch exists but untested.
-- musl: build pending; musl libm is fdlibm-derived -> largest
-  expected drift vs glibc.
-
-### Requested abstraction (compile-time math provider)
-
-User asked for a compile-time switch between:
-  (a) system libm via the C shim (current — gcc codegen parity),
-  (b) pure-Rust f64 methods (fdlibm/portable),
-  (c) zenmath (correctly-rounded zen math impls — cross-platform
-      deterministic output, no libm dependency at all).
-To land as a cargo feature on lcms-sys + the CpowExt/g_* traits.
+  (aarch64/musl use scalar fallbacks). `LCMS_DISABLE_V3` env
+  forces scalar on x86_64 for testing.
+- Windows: not yet built — needs windows-gnu/mingw or cargo-xwin;
+  shim MSVC branch exists (separate sin/cos + no -lm).
+- musl: `CC=musl-gcc cargo test --target x86_64-unknown-linux-musl`
+  — 35/51 same as glibc.
