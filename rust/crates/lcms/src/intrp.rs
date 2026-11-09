@@ -2992,3 +2992,42 @@ mod tests {
         assert_eq!(diffs, 0);
     }
 }
+
+#[cfg(test)]
+mod vertex_probe {
+    use super::*;
+    #[test]
+    fn tetra3_vs_tetrahedral_vertex0() {
+        // 17^3 x 3 table; node(0,0,0) = [0,14607,49958]
+        let n = 17usize;
+        let mut tab = vec![0u16; n * n * n * 3];
+        for i in 0..tab.len() {
+            tab[i] = ((i * 97) % 65536) as u16;
+        }
+        tab[0] = 0; tab[1] = 14607; tab[2] = 49958;
+        let mut ns = [1u32; MAX_INPUT_DIMENSIONS];
+        let mut dom = [0u32; MAX_INPUT_DIMENSIONS];
+        let mut opta = [0u32; MAX_INPUT_DIMENSIONS];
+        ns[0] = n as u32; ns[1] = n as u32; ns[2] = n as u32;
+        dom[0] = (n - 1) as u32; dom[1] = (n - 1) as u32; dom[2] = (n - 1) as u32;
+        opta[0] = 3; opta[1] = (n * 3) as u32; opta[2] = (n * n * 3) as u32;
+        let p = InterpParams {
+            dw_flags: 0,
+            n_inputs: 3,
+            n_outputs: 3,
+            n_samples: ns,
+            domain: dom,
+            opta,
+            table: InterpTable::U16Rc(std::sync::Arc::from(tab)),
+            interpolation: Interpolation::Lerp16(tetrahedral_interp16),
+            kernel: kernel_kind(Interpolation::Lerp16(tetrahedral_interp16)),
+            foreign: None,
+        };
+        let mut o_gen = [0u16; 3];
+        tetrahedral_interp16(&[0, 0, 0], &mut o_gen, &p);
+        let o_t3 = tetra3_interp16([0, 0, 0], &p);
+        eprintln!("generic={o_gen:?} tetra3={o_t3:?}");
+        assert_eq!(o_gen, [0, 14607, 49958], "generic eval at vertex0");
+        assert_eq!(o_t3, o_gen, "tetra3 vs generic at vertex0");
+    }
+}

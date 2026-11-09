@@ -493,7 +493,9 @@ fn clut8_tetra_loop_v3(
 
 /// Cached variant of `clut16_tetra_loop_v3` — C's `CachedXFORM` u64
 /// compare (w_in[3..16] is always zero), misses eval tetra3_i32x4.
-/// Cache starts zeroed (`_cmsMallocZero`), `cv = co = 0` mirrors it.
+/// `cv`/`co` seed from `self.cache_in`/`cache_out` — C pre-fills
+/// CacheOut with `Eval16(zeros)` so a leading black pixel isn't a
+/// stale zero hit (was: zero-init — returned black for first-pixel-0).
 #[archmage::arcane]
 #[allow(clippy::too_many_arguments)]
 fn clut16_tetra_cached_v3(
@@ -506,11 +508,19 @@ fn clut16_tetra_cached_v3(
     stride: &Stride,
     ipx: usize,
     opx: usize,
+    cache_in: &[u16; MAX_CHANNELS],
+    cache_out: &[u16; MAX_CHANNELS],
 ) {
     let ppli = ppl as usize * ipx;
     let pplo = ppl as usize * opx;
-    let mut cv = 0u64;
-    let mut co = 0u64;
+    // Seed from the transform cache — C pre-fills CacheOut with
+    // Eval16(zeros) so a leading black pixel isn't a stale hit.
+    let mut cv = cache_in[0] as u64
+        | (cache_in[1] as u64) << 16
+        | (cache_in[2] as u64) << 32;
+    let mut co = cache_out[0] as u64
+        | (cache_out[1] as u64) << 16
+        | (cache_out[2] as u64) << 32;
     let mut i_off = 0usize;
     let mut o_off = 0usize;
     for _ in 0..lines {
@@ -1339,7 +1349,7 @@ impl Transform {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
+                            if let Some(token) = crate::intrp::x64v3_cached()
                             {
                                 #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_loop_v3(
@@ -1894,8 +1904,12 @@ impl Transform {
                                 c.curves[2].as_slice().try_into().unwrap();
                             let ppli = ppl as usize * ipx;
                             let pplo = ppl as usize * opx;
-                            let mut cv = 0u64;
-                            let mut co = 0u64;
+                            let mut cv = self.cache_in[0] as u64
+                                | (self.cache_in[1] as u64) << 16
+                                | (self.cache_in[2] as u64) << 32;
+                            let mut co = self.cache_out[0] as u64
+                                | (self.cache_out[1] as u64) << 16
+                                | (self.cache_out[2] as u64) << 32;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
                             for _ in 0..lines {
@@ -1957,13 +1971,18 @@ impl Transform {
                                 return clut16_tetra_cached_v3(
                                     token, &c.params16, input, output, ppl,
                                     lines, stride, ipx, opx,
+                                    &self.cache_in, &self.cache_out,
                                 );
                             }
                             let p = &c.params16;
                             let ppli = ppl as usize * ipx;
                             let pplo = ppl as usize * opx;
-                            let mut cv = 0u64;
-                            let mut co = 0u64;
+                            let mut cv = self.cache_in[0] as u64
+                                | (self.cache_in[1] as u64) << 16
+                                | (self.cache_in[2] as u64) << 32;
+                            let mut co = self.cache_out[0] as u64
+                                | (self.cache_out[1] as u64) << 16
+                                | (self.cache_out[2] as u64) << 32;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
                             for _ in 0..lines {
