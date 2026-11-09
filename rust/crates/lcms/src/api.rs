@@ -125,6 +125,31 @@ impl Format {
     }
 }
 
+// -- Tag ------------------------------------------------------------------
+
+/// A 4-byte ICC tag signature — `Display` prints the `'xxxx'` chars.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Tag(pub u32);
+impl fmt::Debug for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "Tag({self})") }
+}
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let b = self.0.to_be_bytes();
+        write!(f, "'")?;
+        for c in b {
+            write!(f, "{}", if c.is_ascii_graphic() { c as char } else { '.' })?;
+        }
+        write!(f, "'")
+    }
+}
+impl From<Tag> for u32 {
+    fn from(t: Tag) -> u32 { t.0 }
+}
+impl From<u32> for Tag {
+    fn from(u: u32) -> Tag { Tag(u) }
+}
+
 // -- Intent ---------------------------------------------------------------
 
 /// Rendering intent (`cmsIntents.h`).
@@ -203,6 +228,24 @@ impl Profile {
     /// Read a tag object (`None` if absent/not frozen).
     pub fn tag(&self, sig: u32) -> Option<&TagObject> {
         profile::read_tag_frozen(&self.icc, sig)
+    }
+    /// Iterate the tag signatures present in the profile.
+    pub fn tags(&self) -> impl Iterator<Item = Tag> + '_ {
+        self.icc.tag_names[..self.icc.tag_count as usize]
+            .iter()
+            .filter(|&&s| s != 0)
+            .map(|&s| Tag(s))
+    }
+    /// Read a tag by `Tag` — `prof.tag(Tag(0x72545243))` → `'rTRC'`.
+    pub fn get(&self, tag: Tag) -> Option<&TagObject> {
+        self.tag(tag.0)
+    }
+    /// The named-color list, if the profile carries one.
+    pub fn named_colors(&self) -> Option<&crate::named::NamedColorList> {
+        match self.tag(crate::signatures::tag::SigNamedColor2Tag) {
+            Some(TagObject::NamedColor(l)) | Some(TagObject::ColorantTable(l)) => Some(l),
+            _ => None,
+        }
     }
     /// Raw `&IccProfile` for the C-parity surface.
     pub fn icc(&self) -> &crate::profile::IccProfile {

@@ -1,2 +1,4 @@
 bench/out/
 rust/apidoc/target/
+default.profraw
+*.profraw
