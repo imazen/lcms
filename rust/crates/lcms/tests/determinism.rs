@@ -661,19 +661,24 @@ fn manifest() {
                 let (r, cb) = run_x16(get(inm), get(outm),
                     f16(*ipt, *ich), f16(*opt, *och), *ich as usize, i);
                 emit(&format!("x16:{inm}>{outm}:{i}"), &r, &cb);
+                cells.push((format!("x16:{inm}>{outm}:{i}"), r, cb));
                 let (r, cb) = run_xfl(get(inm), get(outm),
                     ff32(*ipt, *ich), ff32(*opt, *och), *ich as usize, i);
                 emit(&format!("xfl:{inm}>{outm}:{i}"), &r, &cb);
+                cells.push((format!("xfl:{inm}>{outm}:{i}"), r, cb));
             }
         }
         // labdl single-profile devicelink
         let (r, cb) = run_x16(get("labdl"), &[],
             f16(10, 3), f16(10, 3), 3, 0);
         emit("x16:labdl", &r, &cb);
+        cells.push(("x16:labdl".into(), r, cb));
         let (r, cb) = run_xfl(get("labdl"), &[],
             ff32(10, 3), ff32(10, 3), 3, 0);
         emit("xfl:labdl", &r, &cb);
+        cells.push(("xfl:labdl".into(), r, cb));
         scalars();
+        eprintln!("DIGEST {:016x} ({} cells)", digest(&cells), cells.len());
     }
 }
 
