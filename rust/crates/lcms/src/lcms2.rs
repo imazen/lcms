@@ -20,6 +20,37 @@
 //! `ColorSpaceSignatureExt`), `Flags`/`Intent`, the signature enums, and
 //! `GlobalContext`/`ThreadContext` markers.
 //!
+//! ## Threading / `Send` / `Sync`
+//!
+//! Every public type in this module is `Send` + `Sync` — see the
+//! `sync_audit` test in `tests/lcms2_compat.rs`. That is **stronger**
+//! than the `lcms2` crate's model: their `Transform` is `unsafe impl
+//! Send` over a C handle whose `_cmsCACHE` is mutable, so `&Transform`
+//! shared across threads would race. Ours wraps `Mutex<xform::Transform>`
+//! — `transform_pixels(&self)` locks the cache, so a shared `Transform`
+//! is genuinely safe.
+//!
+//! Where the Rust port can be *more* free than C's thread model:
+//!
+//! * **Frozen profiles need no locks.** `Profile::freeze()` (called
+//!   automatically at every constructor here) materializes all lazy tags
+//!   up front — a frozen `IccProfile` is fully immutable, so `&Profile`
+//!   reads (`read_tag`, `info`, `has_tag`) are `Sync`-safe with zero
+//!   synchronization. C's `cmsReadTag` lazily mutates the profile —
+//!   `&` reads are *not* thread-safe there.
+//! * **`api::Plan` is `Sync` + `Arc`-shareable.** The immutable
+//!   linked+optimized transform (CLUT tables, eval fns) — build once,
+//!   share across threads with no copy. C's transform has mutable cache
+//!   baked in; sharing requires a `cmsDoTransform` per-thread copy.
+//! * **`api::Scratch` is `Send` per-call.** ~64 B of warm-transform
+//!   cache — allocate per request (or `thread_local`), no lock, no
+//!   sharing. The `Mutex` in this shim exists only because the lcms2
+//!   API forces `&self` `transform_pixels`; `api::Plan::apply`
+//!   passes scratch explicitly and needs none.
+//! * **`apply_par` splits without pipeline clones.** Pixel-independent
+//!   rows apply in parallel with per-chunk scratch — the old C model
+//!   deep-cloned the whole transform per thread.
+//!
 //! Intentional omissions (documented, not gaps):
 //! * `transform_pixels_uninit` — `forbid(unsafe_code)` can't return
 //!   `&mut [O]` over `MaybeUninit`.
