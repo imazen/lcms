@@ -12,11 +12,11 @@ NOTE: excluded-feature surface (math-rust,math-zen) not buildable: rustdoc JSON 
 #
 #   pub consts/statics                          1
 #   free functions                              4
-#   inherent methods                           21
-#   trait roster entries (type × trait)        55
+#   inherent methods                           22
+#   trait roster entries (type × trait)        56
 #
 # per-module pub lines:
-#   api                               3
+#   api                               4
 #   cgats                             2
 #   cnvrt                             2
 #   context                           1
@@ -28,9 +28,10 @@ NOTE: excluded-feature surface (math-rust,math-zen) not buildable: rustdoc JSON 
 #   lut                               1
 #   xform                             1
 
-## items (26 lines)
+## items (27 lines)
 
 pub fn api::Format::assert_fields_are_eq(&self)
+pub fn api::InfoType::assert_fields_are_eq(&self)
 pub fn api::Intent::assert_fields_are_eq(&self)
 pub fn api::Tag::assert_fields_are_eq(&self)
 pub fn cgats::Symbol::assert_fields_are_eq(&self)
@@ -57,9 +58,10 @@ pub fn lut::StageLoc::assert_fields_are_eq(&self)
 pub fn xform::dbg_detect_rgb_profile_gamma(&mut profile::IccProfile, f64) -> f64
 pub static err::GLOBAL_LOG_HOOK: std::sync::poison::mutex::Mutex<core::option::Option<context::LogErrorHandler>>
 
-## trait impls (55 types)
+## trait impls (56 types)
 
 api::Format: TrivialClone
+api::InfoType: TrivialClone
 api::Intent: TrivialClone
 api::Tag: TrivialClone
 cgats::Keyword: TrivialClone

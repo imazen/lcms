@@ -6,62 +6,30 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1701 lines (supported surface) | lcms.features.txt 396 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 81 lines (81 hidden + 0 excluded-feature)
+# files: lcms.txt 595 lines (supported surface) | lcms.features.txt 1632 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 83 lines (83 hidden + 0 excluded-feature)
 
 ## summary
 #
-#   pub modules                                45
-#   pub types (struct/enum/trait/alias)       132
-#   pub consts/statics                        405
-#   free functions                            383
-#   inherent methods                          117
-#   struct fields                             379
-#   enum variants                             165
-#   trait roster entries (type × trait)       228
-#   auto-trait-complete types                  90
-#   auto-trait exceptions                       7
+#   pub modules                                16
+#   pub types (struct/enum/trait/alias)        37
+#   pub consts/statics                        351
+#   free functions                              1
+#   inherent methods                           59
+#   struct fields                              61
+#   enum variants                              42
+#   trait roster entries (type × trait)       103
+#   auto-trait-complete types                  25
+#   auto-trait exceptions                       2
 #
 # per-module pub lines:
-#   (root)                           46
-#   alpha                             3
-#   api                              53
-#   cam02                             4
-#   cgats                           111
-#   cnvrt                            13
-#   context                          82
-#   err                               3
-#   fixed                            14
-#   gamma                            46
-#   gbd                              19
-#   half                              2
-#   half_tables                       5
-#   intrp                            65
-#   io                               47
-#   io1                              10
-#   lut                             103
-#   md5                               6
-#   mtrx                             13
-#   named                            65
-#   opt                              34
-#   pack                            161
-#   pcs                              23
-#   profile                          54
-#   ps2                               5
+#   (root)                            4
+#   api                             153
 #   signatures                      249
-#   sm                                6
-#   tagtypes                        129
-#   types                           160
-#   virt                             14
-#   wtpnt                             7
-#   xform                            74
+#   types                           161
 
-## items (1602 lines)
+## items (567 lines)
 
 pub mod lcms
-pub mod alpha
-pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
-pub fn alpha::handle_extra_channels(core::option::Option<&context::Context>, &[u8], &mut [u8], u32, u32, &xform::Stride, u32, u32, u32)
-pub type alpha::FormatterAlphaFn = fn(&mut [u8], &[u8])
 pub mod api
 pub enum api::Format
 pub api::Format::CmykF32
@@ -83,954 +51,139 @@ pub api::Format::XyzF32
 pub api::Format::XyzU16
 pub fn api::Format::code(self) -> u32
 pub fn api::Format::pixel_size(self) -> usize
+pub enum api::InfoType
+pub api::InfoType::Copyright
+pub api::InfoType::Description
+pub api::InfoType::Manufacturer
+pub api::InfoType::Model
 pub enum api::Intent
 pub api::Intent::AbsoluteColorimetric
 pub api::Intent::Perceptual
 pub api::Intent::RelativeColorimetric
 pub api::Intent::Saturation
 pub fn api::Intent::code(self) -> u32
+pub fn api::Intent::from_u32(u32) -> api::Intent
+pub enum api::TagData
+pub api::TagData::Curve(api::ToneCurve)
+pub api::TagData::Mlu(named::Mlu)
+pub api::TagData::Text(&'static str)
+pub api::TagData::Xyz(types::CieXyz)
+#[non_exhaustive] pub enum api::TagValue<'a>
+pub api::TagValue::Chromaticity(&'a types::CiexyYTriple)
+pub api::TagValue::Curve(&'a api::ToneCurveRef)
+pub api::TagValue::Data(&'a [u8])
+pub api::TagValue::Mhc2(&'a tagtypes::Mhc2)
+pub api::TagValue::NamedColors(&'a api::NamedColorListRef)
+pub api::TagValue::Other
+pub api::TagValue::Pipeline(&'a api::PipelineRef)
+pub api::TagValue::Screening(&'a tagtypes::Screening)
+pub api::TagValue::Text(&'a api::MluView<'a>)
+pub api::TagValue::UcrBg(&'a tagtypes::UcrBg)
+pub api::TagValue::VcgtCurves([&'a api::ToneCurveRef; 3])
+pub api::TagValue::VideoSignal(&'a tagtypes::VideoSignal)
+pub api::TagValue::Xyz(&'a types::CieXyz)
 pub struct api::Error
 pub api::Error::id: i32
 pub api::Error::message: alloc::string::String
 pub fn api::Error::from_last(i32, &str) -> Self
+pub struct api::NamedColor
+pub api::NamedColor::colorant: alloc::vec::Vec<u16>
+pub api::NamedColor::name: alloc::string::String
+pub api::NamedColor::pcs: [u16; 3]
+pub struct api::NamedColors<'a>(_)
+pub fn api::NamedColors<'a>::count(&self) -> usize
+pub fn api::NamedColors<'a>::get(&self, usize) -> core::option::Option<api::NamedColor>
+pub fn api::NamedColors<'a>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = api::NamedColor> + '_
 pub struct api::Plan
 pub fn api::Plan::apply(&self, &mut api::Scratch, &[u8], &mut [u8])
 pub fn api::Plan::apply_n(&self, &mut api::Scratch, &[u8], &mut [u8], u32)
 pub fn api::Plan::apply_par(&self, &[u8], &mut [u8], u32, usize)
+pub fn api::Plan::apply_pixels<I: bytemuck::pod::Pod, O: bytemuck::pod::Pod>(&self, &mut api::Scratch, &[I], &mut [O])
 pub fn api::Plan::build(&mut api::Profile, &mut api::Profile, api::Format, api::Format, api::Intent, u32) -> core::result::Result<Self, api::Error>
 pub fn api::Plan::new(&mut api::Profile, &mut api::Profile, api::Format, api::Format) -> core::result::Result<Self, api::Error>
 pub fn api::Plan::scratch(&self) -> api::Scratch
+pub fn api::Plan::new_multiprofile(&mut [&mut api::Profile], api::Format, api::Format, api::Intent, u32) -> core::result::Result<Self, api::Error>
+pub fn api::Plan::to_device_link(self, f64) -> core::result::Result<api::Profile, api::Error>
 pub struct api::Profile
+pub fn api::Profile::color_space(&self) -> u32
+pub fn api::Profile::device_class(&self) -> u32
 pub fn api::Profile::freeze(&mut self)
-pub fn api::Profile::get(&self, api::Tag) -> core::option::Option<&tagtypes::TagObject>
+pub fn api::Profile::get(&self, api::Tag) -> core::option::Option<api::TagValue<'_>>
 pub fn api::Profile::gray() -> core::result::Result<Self, api::Error>
-pub fn api::Profile::icc(&self) -> &profile::IccProfile
-pub fn api::Profile::icc_mut(&mut self) -> &mut profile::IccProfile
+pub fn api::Profile::gray_curve(&types::CiexyY, &api::ToneCurve) -> core::result::Result<Self, api::Error>
+pub fn api::Profile::has_tag(&self, api::Tag) -> bool
+pub fn api::Profile::header_attributes(&self) -> u64
+pub fn api::Profile::header_creator(&self) -> u32
+pub fn api::Profile::header_flags(&self) -> u32
+pub fn api::Profile::header_intent(&self) -> api::Intent
+pub fn api::Profile::info(&self, api::InfoType) -> core::option::Option<alloc::string::String>
+pub fn api::Profile::lab2() -> core::result::Result<Self, api::Error>
 pub fn api::Profile::lab4() -> core::result::Result<Self, api::Error>
-pub fn api::Profile::named_colors(&self) -> core::option::Option<&named::NamedColorList>
+pub fn api::Profile::named_colors(&self) -> core::option::Option<api::NamedColors<'_>>
+pub fn api::Profile::null() -> core::result::Result<Self, api::Error>
 pub fn api::Profile::open(&[u8]) -> core::result::Result<Self, api::Error>
+pub fn api::Profile::open_file(&std::path::Path) -> core::result::Result<Self, api::Error>
+pub fn api::Profile::pcs(&self) -> u32
+pub fn api::Profile::remove_tag(&mut self, api::Tag)
+pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&api::ToneCurve; 3]) -> core::result::Result<Self, api::Error>
 pub fn api::Profile::save(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, api::Error>
+pub fn api::Profile::set_color_space(&mut self, u32)
+pub fn api::Profile::set_device_class(&mut self, u32)
+pub fn api::Profile::set_header_intent(&mut self, api::Intent)
 pub fn api::Profile::srgb() -> core::result::Result<Self, api::Error>
-pub fn api::Profile::tag(&self, u32) -> core::option::Option<&tagtypes::TagObject>
+pub fn api::Profile::tag(&self, u32) -> core::option::Option<api::TagValue<'_>>
 pub fn api::Profile::tags(&self) -> impl core::iter::traits::iterator::Iterator<Item = api::Tag> + '_
+pub fn api::Profile::version(&self) -> u32
+pub fn api::Profile::write_tag(&mut self, api::Tag, api::TagData) -> bool
 pub fn api::Profile::xyz() -> core::result::Result<Self, api::Error>
+pub struct api::Scratch(_)
 pub struct api::Tag(pub u32)
-pub type api::Scratch = xform::TransformScratch
-pub mod cam02
-pub struct cam02::CieCam02
-pub fn cam02::CieCam02::forward(&self, &types::CieXyz, &mut types::JCh)
-pub fn cam02::CieCam02::new(core::option::Option<&context::Context>, &types::ViewingConditions) -> alloc::boxed::Box<cam02::CieCam02>
-pub fn cam02::CieCam02::reverse(&self, &types::JCh, &mut types::CieXyz)
-pub mod cgats
-pub enum cgats::Symbol
-pub cgats::Symbol::BeginData
-pub cgats::Symbol::BeginDataFormat
-pub cgats::Symbol::Comment
-pub cgats::Symbol::DataFormatId
-pub cgats::Symbol::Dnum
-pub cgats::Symbol::DomainMax
-pub cgats::Symbol::DomainMin
-pub cgats::Symbol::EndData
-pub cgats::Symbol::EndDataFormat
-pub cgats::Symbol::Eof
-pub cgats::Symbol::Eoln
-pub cgats::Symbol::Ident
-pub cgats::Symbol::Include
-pub cgats::Symbol::Inum
-pub cgats::Symbol::Keyword
-pub cgats::Symbol::Lut1dInputRange
-pub cgats::Symbol::Lut1dSize
-pub cgats::Symbol::Lut3dInputRange
-pub cgats::Symbol::Lut3dSize
-pub cgats::Symbol::LutInVideoRange
-pub cgats::Symbol::LutOutVideoRange
-pub cgats::Symbol::Str
-pub cgats::Symbol::SynError
-pub cgats::Symbol::Title
-pub cgats::Symbol::Undefined
-pub enum cgats::WriteMode
-pub cgats::WriteMode::Binary
-pub cgats::WriteMode::Hexadecimal
-pub cgats::WriteMode::Pair
-pub cgats::WriteMode::Stringify
-pub cgats::WriteMode::Uncooked
-pub struct cgats::It8
-pub cgats::It8::ch: i32
-pub cgats::It8::ctx: core::option::Option<context::Context>
-pub cgats::It8::dnum: f64
-pub cgats::It8::double_formatter: alloc::string::String
-pub cgats::It8::id: alloc::string::String
-pub cgats::It8::inum: i32
-pub cgats::It8::is_cube: bool
-pub cgats::It8::lineno: usize
-pub cgats::It8::n_table: usize
-pub cgats::It8::source: alloc::vec::Vec<u8>
-pub cgats::It8::source_pos: usize
-pub cgats::It8::str_: alloc::string::String
-pub cgats::It8::sy: cgats::Symbol
-pub cgats::It8::tables: alloc::vec::Vec<cgats::Table>
-pub cgats::It8::tables_count: usize
-pub cgats::It8::valid_keywords: alloc::vec::Vec<(alloc::string::String, cgats::WriteMode)>
-pub cgats::It8::valid_sample_ids: alloc::vec::Vec<alloc::string::String>
-pub fn cgats::It8::alloc(core::option::Option<context::Context>) -> alloc::boxed::Box<cgats::It8>
-pub fn cgats::It8::create_device_link_from_cube_file(core::option::Option<context::Context>, &str) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn cgats::It8::define_dbl_format(&mut self, &str)
-pub fn cgats::It8::enum_data_format(&self) -> alloc::vec::Vec<&str>
-pub fn cgats::It8::enum_properties(&self) -> alloc::vec::Vec<&str>
-pub fn cgats::It8::enum_property_multi(&self, &str) -> alloc::vec::Vec<&str>
-pub fn cgats::It8::find_data_format(&self, &str) -> i32
-pub fn cgats::It8::get_data_by_name(&self, &str, &str) -> core::option::Option<alloc::string::String>
-pub fn cgats::It8::get_data_dbl(&self, &str, &str) -> f64
-pub fn cgats::It8::get_data_row_col(&self, usize, usize) -> core::option::Option<alloc::string::String>
-pub fn cgats::It8::get_data_row_col_dbl(&self, usize, usize) -> f64
-pub fn cgats::It8::get_patch_by_name(&self, &str) -> i32
-pub fn cgats::It8::get_patch_name(&self, usize) -> core::option::Option<alloc::string::String>
-pub fn cgats::It8::get_property(&self, &str) -> core::option::Option<alloc::string::String>
-pub fn cgats::It8::get_property_dbl(&self, &str) -> f64
-pub fn cgats::It8::get_property_multi(&self, &str, &str) -> core::option::Option<alloc::string::String>
-pub fn cgats::It8::get_sheet_type(&self) -> &str
-pub fn cgats::It8::get_table(&self) -> &cgats::Table
-pub fn cgats::It8::get_table_mut(&mut self) -> &mut cgats::Table
-pub fn cgats::It8::is_my_block(&[u8]) -> i32
-pub fn cgats::It8::load_from_file(core::option::Option<context::Context>, &str) -> core::option::Option<alloc::boxed::Box<cgats::It8>>
-pub fn cgats::It8::load_from_mem(core::option::Option<context::Context>, &[u8]) -> core::option::Option<alloc::boxed::Box<cgats::It8>>
-pub fn cgats::It8::save_to_file(&self, &str) -> bool
-pub fn cgats::It8::save_to_mem(&self) -> alloc::string::String
-pub fn cgats::It8::set_comment(&mut self, &str) -> bool
-pub fn cgats::It8::set_data_by_name(&mut self, &str, &str, &str) -> bool
-pub fn cgats::It8::set_data_dbl(&mut self, &str, &str, f64) -> bool
-pub fn cgats::It8::set_data_format_export(&mut self, usize, &str) -> bool
-pub fn cgats::It8::set_data_row_col(&mut self, usize, usize, &str) -> bool
-pub fn cgats::It8::set_data_row_col_dbl(&mut self, usize, usize, f64) -> bool
-pub fn cgats::It8::set_index_column(&mut self, &str) -> bool
-pub fn cgats::It8::set_property_dbl(&mut self, &str, f64) -> bool
-pub fn cgats::It8::set_property_hex(&mut self, &str, u32) -> bool
-pub fn cgats::It8::set_property_multi(&mut self, &str, &str, &str) -> bool
-pub fn cgats::It8::set_property_str(&mut self, &str, &str) -> bool
-pub fn cgats::It8::set_property_uncooked(&mut self, &str, &str) -> bool
-pub fn cgats::It8::set_sheet_type(&mut self, &str) -> bool
-pub fn cgats::It8::set_table(&mut self, usize) -> i32
-pub fn cgats::It8::set_table_by_label(&mut self, &str, &str, &str) -> i32
-pub fn cgats::It8::table_count(&self) -> u32
-pub struct cgats::KeyValue
-pub cgats::KeyValue::keyword: alloc::string::String
-pub cgats::KeyValue::subkey: core::option::Option<alloc::string::String>
-pub cgats::KeyValue::value: core::option::Option<alloc::string::String>
-pub cgats::KeyValue::write_as: cgats::WriteMode
-pub struct cgats::Keyword
-pub cgats::Keyword::id: &'static str
-pub cgats::Keyword::sy: cgats::Symbol
-pub struct cgats::Table
-pub cgats::Table::data: alloc::vec::Vec<core::option::Option<alloc::string::String>>
-pub cgats::Table::data_format: alloc::vec::Vec<core::option::Option<alloc::string::String>>
-pub cgats::Table::header_list: alloc::vec::Vec<cgats::KeyValue>
-pub cgats::Table::n_patches: usize
-pub cgats::Table::n_samples: usize
-pub cgats::Table::sample_id: usize
-pub cgats::Table::sheet_type: alloc::string::String
-pub const cgats::DEFAULT_DBL_FORMAT: &str
-pub const cgats::MAXID: usize
-pub const cgats::MAXSTR: usize
-pub const cgats::MAXTABLES: usize
-pub fn cgats::parse_float_number(&str) -> f64
-pub mod cnvrt
-pub const cnvrt::INTENT_ABSOLUTE_COLORIMETRIC: u32 [also: types]
-pub const cnvrt::INTENT_PRESERVE_K_ONLY_PERCEPTUAL: u32 [also: types]
-pub const cnvrt::INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC: u32 [also: types]
-pub const cnvrt::INTENT_PRESERVE_K_ONLY_SATURATION: u32 [also: types]
-pub const cnvrt::INTENT_PRESERVE_K_PLANE_PERCEPTUAL: u32 [also: types]
-pub const cnvrt::INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC: u32 [also: types]
-pub const cnvrt::INTENT_PRESERVE_K_PLANE_SATURATION: u32 [also: types]
-pub const cnvrt::INTENT_SATURATION: u32 [also: types]
-pub fn cnvrt::link_profiles(core::option::Option<context::Context>, &mut [alloc::boxed::Box<profile::IccProfile>], &[u32], &mut [bool], &[f64], u32) -> core::option::Option<lut::Pipeline>
-pub fn cnvrt::set_intent_link_hook(cnvrt::IntentLinkHook)
-pub type cnvrt::IntentLinkHook = fn(core::option::Option<&context::Context>, usize, &mut [alloc::boxed::Box<profile::IccProfile>], &[u32], &[bool], &[f64], u32) -> core::option::Option<alloc::boxed::Box<lut::Pipeline>>
-pub mod context
-pub enum context::Plugin
-pub context::Plugin::Interp(context::InterpFnFactory)
-pub context::Plugin::Mpe(tagtypes::MpeElemHandler)
-pub context::Plugin::Other
-pub context::Plugin::ParametricCurve(gamma::ParametricCurves)
-pub context::Plugin::Tag(u32, tagtypes::TagDescriptor)
-pub context::Plugin::TagType(tagtypes::TagTypeHandler)
-pub enum context::PluginType
-pub context::PluginType::Formatters
-pub context::PluginType::Header
-pub context::PluginType::Interpolation
-pub context::PluginType::MemHandler
-pub context::PluginType::MultiProcessElement
-pub context::PluginType::Mutex
-pub context::PluginType::Optimization
-pub context::PluginType::Paralellization
-pub context::PluginType::ParametricCurve
-pub context::PluginType::RenderingIntent
-pub context::PluginType::Tag
-pub context::PluginType::TagType
-pub context::PluginType::Transform
-pub struct context::CHeaderSet
-pub context::CHeaderSet::ctx_handle: usize
-pub context::CHeaderSet::icc_version: u32
-pub context::CHeaderSet::read_ptr: usize
-pub context::CHeaderSet::write_ptr: usize
-pub struct context::CIntentSet
-pub context::CIntentSet::intent: i32
-pub context::CIntentSet::link: usize
-pub struct context::CParametricSet
-pub context::CParametricSet::evaluator: usize
-pub context::CParametricSet::function_types: alloc::vec::Vec<i32>
-pub context::CParametricSet::parameter_count: alloc::vec::Vec<u32>
-pub context::Context::adaptation_state: core::sync::atomic::AtomicU64
-pub context::Context::alarm_codes: std::sync::poison::mutex::Mutex<[u16; 16]>
-pub context::Context::c_header: context::CHeaderSet
-pub context::Context::c_intents: alloc::vec::Vec<context::CIntentSet>
-pub context::Context::c_parametric_curves: alloc::vec::Vec<context::CParametricSet>
-pub context::Context::c_xform_factories: alloc::vec::Vec<(usize, usize)>
-pub context::Context::formatter_factories: alloc::vec::Vec<usize>
-pub context::Context::interp_factories: alloc::vec::Vec<usize>
-pub context::Context::interpolators: core::option::Option<context::InterpFnFactory>
-pub context::Context::log_error_handler: core::option::Option<context::LogErrorHandler>
-pub context::Context::mem_fns: [usize; 6]
-pub context::Context::mpe_handlers: alloc::vec::Vec<tagtypes::MpeElemHandler>
-pub context::Context::parametric_curves: alloc::vec::Vec<gamma::ParametricCurves>
-pub context::Context::tag_descriptors: alloc::vec::Vec<(u32, tagtypes::TagDescriptor)>
-pub context::Context::tag_type_handlers: alloc::vec::Vec<tagtypes::TagTypeHandler>
-pub context::Context::user_data: core::sync::atomic::AtomicUsize
-pub fn context::Context::plugin(&mut self, &[context::Plugin]) -> bool
-pub struct context::PluginBase
-pub context::PluginBase::expected_version: u32
-pub context::PluginBase::ty: context::PluginType
-pub struct context::StageHooks
-pub context::StageHooks::eval: fn(usize, *const f32, *mut f32)
-pub context::StageHooks::free: fn(usize)
-pub struct context::TagTypeHooks
-pub context::TagTypeHooks::dup: fn(usize, usize, usize) -> usize
-pub context::TagTypeHooks::free: fn(usize, usize)
-pub context::TagTypeHooks::read: fn(usize, u32, usize, usize, usize) -> usize
-pub context::TagTypeHooks::write: fn(usize, u32, usize, usize, usize) -> bool
-pub const context::DEFAULT_ALARM_CODES: [u16; 16]
-pub const context::PLUGIN_MAGIC: u32
-pub static context::HEADER_INVOKE: std::sync::poison::rwlock::RwLock<core::option::Option<context::HeaderInvokeFn>>
-pub static context::MPE_LOOKUP: std::sync::poison::rwlock::RwLock<core::option::Option<context::MpeLookupFn>>
-pub static context::STAGE_BOX: std::sync::poison::rwlock::RwLock<core::option::Option<context::StageBoxFn>>
-pub static context::STAGE_HOOKS: std::sync::poison::rwlock::RwLock<core::option::Option<context::StageHooks>>
-pub static context::TAGTYPE_HOOKS: std::sync::poison::rwlock::RwLock<core::option::Option<context::TagTypeHooks>>
-pub static context::XFORM_HOOKS: std::sync::poison::rwlock::RwLock<core::option::Option<context::XformInvokeFn>>
-pub fn context::create_context(core::option::Option<&[context::Plugin]>, usize) -> context::Context
-pub fn context::dup_context(&context::Context, core::option::Option<&[context::Plugin]>, usize) -> context::Context
-pub fn context::global() -> &'static context::Context
-pub fn context::or_global(core::option::Option<&context::Context>) -> &context::Context
-pub type context::HeaderInvokeFn = fn(usize, usize, usize, bool) -> bool
-pub type context::InterpFnFactory = fn(u32, u32, u32) -> core::option::Option<intrp::Interpolation>
-pub type context::LogErrorHandler = fn(&context::Context, i32, &str)
-pub type context::MpeLookupFn = fn(usize, u32) -> core::option::Option<tagtypes::MpeElemHandler>
-pub type context::ParametricCurveEvaluator = fn(i32, &[f64; 10], f64) -> f64
-pub type context::StageBoxFn = fn(usize) -> core::option::Option<alloc::boxed::Box<lut::Stage>>
-pub type context::XformInvokeFn = fn(usize, *const u8, *mut u8, u32, u32, u32, u32, u32, u32)
-pub mod err
-pub fn err::encoded_cmm_version() -> u32
-pub fn err::signal_error(core::option::Option<&context::Context>, i32, &str)
-pub fn err::take_last_error() -> core::option::Option<(i32, alloc::string::String)>
-pub mod fixed
-pub fn fixed::double_to_s15_fixed16(f64) -> i32
-pub fn fixed::double_to_u8_fixed8(f64) -> u16
-pub fn fixed::fixed_rest_to_int(i32) -> i32
-pub fn fixed::fixed_to_int(i32) -> i32
-pub fn fixed::from_fixed_domain(i32) -> i32
-pub fn fixed::quantize_val(f64, u32) -> u16
-pub fn fixed::quick_floor(f64) -> i32
-pub fn fixed::quick_floor_word(f64) -> u16
-pub fn fixed::quick_saturate_byte(f64) -> u8
-pub fn fixed::quick_saturate_word(f64) -> u16
-pub fn fixed::round_fixed_to_int(i32) -> i32
-pub fn fixed::s15_fixed16_to_double(i32) -> f64
-pub fn fixed::to_fixed_domain(i32) -> i32
-pub fn fixed::u8_fixed8_to_double(u16) -> f64
-pub mod gamma
-pub struct gamma::CurveSegment
-pub gamma::CurveSegment::n_grid_points: u32
-pub gamma::CurveSegment::params: [f64; 10]
-pub gamma::CurveSegment::sampled_points: core::option::Option<alloc::vec::Vec<f32>>
-pub gamma::CurveSegment::type: i32
-pub gamma::CurveSegment::x0: f32
-pub gamma::CurveSegment::x1: f32
-pub struct gamma::ParametricCurves
-pub gamma::ParametricCurves::evaluator: context::ParametricCurveEvaluator
-pub gamma::ParametricCurves::function_types: alloc::vec::Vec<i32>
-pub gamma::ParametricCurves::parameter_count: alloc::vec::Vec<u32>
-pub struct gamma::ToneCurve
-pub gamma::ToneCurve::evals: alloc::vec::Vec<core::option::Option<context::ParametricCurveEvaluator>>
-pub gamma::ToneCurve::n_entries: u32
-pub gamma::ToneCurve::segments: alloc::vec::Vec<gamma::CurveSegment>
-pub gamma::ToneCurve::table16: alloc::vec::Vec<u16>
-pub fn gamma::ToneCurve::estimated_table(&self) -> &[u16]
-pub fn gamma::ToneCurve::estimated_table_entries(&self) -> u32
-pub fn gamma::ToneCurve::eval16(&self, u16) -> u16
-pub fn gamma::ToneCurve::eval_float(&self, f32) -> f32
-pub fn gamma::ToneCurve::parametric_type(&self) -> i32
-pub fn gamma::ToneCurve::segment(&self, i32) -> core::option::Option<&gamma::CurveSegment>
-pub const gamma::MAX_NODES_IN_CURVE: usize
-pub const gamma::MAX_TYPES_IN_LCMS_PLUGIN: usize [also: profile]
-pub const gamma::MINUS_INF: f32
-pub const gamma::PLUS_INF: f32
-pub fn gamma::build_gamma(core::option::Option<&context::Context>, f64) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::build_parametric_tone_curve(core::option::Option<&context::Context>, i32, &[f64]) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::build_segmented_tone_curve(core::option::Option<&context::Context>, &[gamma::CurveSegment]) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::build_tabulated_tone_curve16(core::option::Option<&context::Context>, u32, core::option::Option<&[u16]>) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::build_tabulated_tone_curve_float(core::option::Option<&context::Context>, &[f32]) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::default_eval_parametric_fn(i32, &[f64; 10], f64) -> f64
-pub fn gamma::dup_tone_curve(&gamma::ToneCurve, core::option::Option<&context::Context>) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::estimate_gamma(&gamma::ToneCurve, f64) -> f64
-pub fn gamma::is_tone_curve_descending(&gamma::ToneCurve) -> bool
-pub fn gamma::is_tone_curve_linear(&gamma::ToneCurve) -> bool
-pub fn gamma::is_tone_curve_monotonic(&gamma::ToneCurve) -> bool
-pub fn gamma::is_tone_curve_multisegment(&gamma::ToneCurve) -> bool
-pub fn gamma::join_tone_curve(core::option::Option<&context::Context>, &gamma::ToneCurve, &gamma::ToneCurve, u32) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::register_parametric_curves(&mut context::Context, core::option::Option<gamma::ParametricCurves>) -> bool
-pub fn gamma::reverse_tone_curve(&gamma::ToneCurve) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::reverse_tone_curve_ex(u32, &gamma::ToneCurve) -> core::option::Option<gamma::ToneCurve>
-pub fn gamma::set_parametric_eval_hook(gamma::ForeignParametricEval)
-pub fn gamma::smooth_tone_curve(core::option::Option<&context::Context>, &mut gamma::ToneCurve, f64) -> bool
-pub type gamma::ForeignParametricEval = fn(usize, i32, &[f64; 10], f64) -> f64
-pub mod gbd
-pub enum gbd::GdbPointType
-pub gbd::GdbPointType::Empty
-pub gbd::GdbPointType::Modeled
-pub gbd::GdbPointType::Specified
-pub struct gbd::Gbd
-pub gbd::Gbd::ctx: core::option::Option<context::Context>
-pub gbd::Gbd::gamut: [[gbd::GdbPoint; 16]; 16]
-pub fn gbd::Gbd::add_point(&mut self, &types::CieLab) -> bool
-pub fn gbd::Gbd::alloc(core::option::Option<context::Context>) -> gbd::Gbd
-pub fn gbd::Gbd::check_point(&self, &types::CieLab) -> bool
-pub fn gbd::Gbd::compute(&mut self, u32) -> bool
-pub struct gbd::GdbPoint
-pub gbd::GdbPoint::p: gbd::Spherical
-pub gbd::GdbPoint::pt_type: gbd::GdbPointType
-pub struct gbd::Spherical
-pub gbd::Spherical::alpha: f64
-pub gbd::Spherical::r: f64
-pub gbd::Spherical::theta: f64
-pub const gbd::SECTORS: usize
-pub mod half
-pub fn half::float2half(f32) -> u16
-pub fn half::half2float(u16) -> f32
-pub mod half_tables
-pub const half_tables::BASE: [u16; 512]
-pub const half_tables::EXPONENT: [u32; 64]
-pub const half_tables::MANTISSA: [u32; 2048]
-pub const half_tables::OFFSET: [u16; 64]
-pub const half_tables::SHIFT: [u8; 512]
-pub mod intrp
-pub enum intrp::InterpTable<'a>
-pub intrp::InterpTable::F32(&'a [f32])
-pub intrp::InterpTable::F32Rc(alloc::sync::Arc<[f32]>)
-pub intrp::InterpTable::U16(&'a [u16])
-pub intrp::InterpTable::U16Rc(alloc::sync::Arc<[u16]>)
-pub enum intrp::Interpolation
-pub intrp::Interpolation::Lerp16(intrp::InterpFn16)
-pub intrp::Interpolation::LerpFloat(intrp::InterpFnFloat)
-pub enum intrp::KernelKind
-pub intrp::KernelKind::Bilinear
-pub intrp::KernelKind::BilinearF
-pub intrp::KernelKind::Eval1
-pub intrp::KernelKind::Eval1F
-pub intrp::KernelKind::Eval4
-pub intrp::KernelKind::Eval4F
-pub intrp::KernelKind::LinLerp1D
-pub intrp::KernelKind::LinLerp1DF
-pub intrp::KernelKind::Other16
-pub intrp::KernelKind::OtherF
-pub intrp::KernelKind::Tetra3
-pub intrp::KernelKind::Tetra3F
-pub intrp::KernelKind::Trilinear
-pub intrp::KernelKind::TrilinearF
-#[repr(C)] pub struct intrp::CmsInterpParams
-pub intrp::CmsInterpParams::context_id: usize
-pub intrp::CmsInterpParams::domain: [u32; 15]
-pub intrp::CmsInterpParams::dw_flags: u32
-pub intrp::CmsInterpParams::interpolation: usize
-pub intrp::CmsInterpParams::n_inputs: u32
-pub intrp::CmsInterpParams::n_outputs: u32
-pub intrp::CmsInterpParams::n_samples: [u32; 15]
-pub intrp::CmsInterpParams::opta: [u32; 15]
-pub intrp::CmsInterpParams::table: usize
-pub struct intrp::ForeignHooks
-pub intrp::ForeignHooks::factory: intrp::ForeignFactory
-pub intrp::ForeignHooks::kernel16: intrp::ForeignKernel16
-pub intrp::ForeignHooks::kernel_float: intrp::ForeignKernelFloat
-pub struct intrp::InterpParams<'a>
-pub intrp::InterpParams::domain: [u32; 15]
-pub intrp::InterpParams::dw_flags: u32
-pub intrp::InterpParams::foreign: core::option::Option<alloc::boxed::Box<intrp::CmsInterpParams>>
-pub intrp::InterpParams::interpolation: intrp::Interpolation
-pub intrp::InterpParams::kernel: intrp::KernelKind
-pub intrp::InterpParams::n_inputs: u32
-pub intrp::InterpParams::n_outputs: u32
-pub intrp::InterpParams::n_samples: [u32; 15]
-pub intrp::InterpParams::opta: [u32; 15]
-pub intrp::InterpParams::table: intrp::InterpTable<'a>
-pub fn intrp::InterpParams<'a>::eval16(&self, &[u16], &mut [u16])
-pub fn intrp::InterpParams<'a>::eval_float(&self, &[f32], &mut [f32])
-pub const intrp::LERP_FLAGS_16BITS: u32
-pub const intrp::LERP_FLAGS_FLOAT: u32
-pub const intrp::LERP_FLAGS_TRILINEAR: u32
-pub const intrp::MAX_INPUT_DIMENSIONS: usize
-pub const intrp::MAX_STAGE_CHANNELS: usize
-pub fn intrp::compute_interp_params<'a>(core::option::Option<&context::Context>, u32, u32, u32, intrp::InterpTable<'a>, u32) -> core::option::Option<intrp::InterpParams<'a>>
-pub fn intrp::compute_interp_params_ex<'a>(core::option::Option<&context::Context>, &[u32], u32, u32, intrp::InterpTable<'a>, u32) -> core::option::Option<intrp::InterpParams<'a>>
-pub fn intrp::default_interpolators_factory(u32, u32, u32) -> core::option::Option<intrp::Interpolation>
-pub fn intrp::install_foreign_hooks(intrp::ForeignHooks)
-pub fn intrp::set_interpolation_routine(core::option::Option<&context::Context>, &mut intrp::InterpParams<'_>) -> bool
-pub type intrp::ForeignFactory = fn(usize, u32, u32, u32) -> usize
-pub type intrp::ForeignKernel16 = fn(&[u16], &mut [u16], &intrp::CmsInterpParams)
-pub type intrp::ForeignKernelFloat = fn(&[f32], &mut [f32], &intrp::CmsInterpParams)
-pub type intrp::InterpFn16 = fn(&[u16], &mut [u16], &intrp::InterpParams<'_>)
-pub type intrp::InterpFnFloat = fn(&[f32], &mut [f32], &intrp::InterpParams<'_>)
-pub mod io
-pub enum io::IoStream
-pub io::IoStream::File(std::io::buffered::bufreader::BufReader<std::fs::File>)
-pub io::IoStream::Mem(io::FileMem)
-pub io::IoStream::Null
-pub io::IoStream::Null::pointer: u32
-pub struct io::FileMem
-pub io::FileMem::block: alloc::vec::Vec<u8>
-pub io::FileMem::free_block_on_close: bool
-pub io::FileMem::pointer: u32
-pub io::FileMem::size: u32
-pub struct io::IoHandler
-pub io::IoHandler::physical_file: [u8; 256]
-pub io::IoHandler::reported_size: u32
-pub io::IoHandler::stream: io::IoStream
-pub io::IoHandler::used_space: u32
-pub fn io::IoHandler::read(&mut self, &mut [u8], u32, u32) -> u32
-pub fn io::IoHandler::seek(&mut self, u32) -> bool
-pub fn io::IoHandler::tell(&mut self) -> u32
-pub fn io::IoHandler::write(&mut self, u32, &[u8]) -> bool
-pub const io::MAGIC_NUMBER: u32
-pub fn io::adjust_endian16(u16) -> u16
-pub fn io::adjust_endian32(u32) -> u32
-pub fn io::adjust_endian64(u64) -> u64
-pub fn io::align_long(u32) -> u32
-pub fn io::io_handler_from_file(core::option::Option<&context::Context>, &str, &str) -> core::option::Option<io::IoHandler>
-pub fn io::io_handler_from_mem(core::option::Option<&context::Context>, alloc::vec::Vec<u8>, &str) -> core::option::Option<io::IoHandler>
-pub fn io::io_handler_from_null(core::option::Option<&context::Context>) -> io::IoHandler
-pub fn io::read_15_fixed16(&mut io::IoHandler, &mut f64) -> bool
-pub fn io::read_alignment(&mut io::IoHandler) -> bool
-pub fn io::read_float32(&mut io::IoHandler, &mut f32) -> bool
-pub fn io::read_type_base(&mut io::IoHandler) -> u32
-pub fn io::read_u16(&mut io::IoHandler, &mut u16) -> bool
-pub fn io::read_u16_array(&mut io::IoHandler, u32, core::option::Option<&mut [u16]>) -> bool
-pub fn io::read_u32(&mut io::IoHandler, &mut u32) -> bool
-pub fn io::read_u64(&mut io::IoHandler, &mut u64) -> bool
-pub fn io::read_u8(&mut io::IoHandler, &mut u8) -> bool
-pub fn io::read_xyz(&mut io::IoHandler, &mut types::CieXyz) -> bool
-pub fn io::write_15_fixed16(&mut io::IoHandler, f64) -> bool
-pub fn io::write_alignment(&mut io::IoHandler) -> bool
-pub fn io::write_float32(&mut io::IoHandler, f32) -> bool
-pub fn io::write_type_base(&mut io::IoHandler, u32) -> bool
-pub fn io::write_u16(&mut io::IoHandler, u16) -> bool
-pub fn io::write_u16_array(&mut io::IoHandler, &[u16]) -> bool
-pub fn io::write_u32(&mut io::IoHandler, u32) -> bool
-pub fn io::write_u64(&mut io::IoHandler, u64) -> bool
-pub fn io::write_u8(&mut io::IoHandler, u8) -> bool
-pub fn io::write_xyz(&mut io::IoHandler, &types::CieXyz) -> bool
-pub mod io1
-pub const io1::LCMS_USED_AS_INPUT: i32
-pub const io1::LCMS_USED_AS_OUTPUT: i32
-pub const io1::LCMS_USED_AS_PROOF: i32
-pub fn io1::is_clut(&profile::IccProfile, u32, i32) -> bool
-pub fn io1::is_intent_supported(&profile::IccProfile, u32, i32) -> bool
-pub fn io1::read_chad(&mut profile::IccProfile) -> types::Mat3
-pub fn io1::read_devicelink_lut(&mut profile::IccProfile, u32) -> core::option::Option<lut::Pipeline>
-pub fn io1::read_input_lut(&mut profile::IccProfile, u32) -> core::option::Option<lut::Pipeline>
-pub fn io1::read_media_white_point(&mut profile::IccProfile) -> types::CieXyz
-pub fn io1::read_output_lut(&mut profile::IccProfile, u32) -> core::option::Option<lut::Pipeline>
-pub mod lut
-pub enum lut::StageData
-pub lut::StageData::CLut(alloc::boxed::Box<lut::CLutData>)
-pub lut::StageData::ForeignEval
-pub lut::StageData::ForeignEval::ctx: usize
-pub lut::StageData::ForeignEval::data: usize
-pub lut::StageData::ForeignEval::dup: usize
-pub lut::StageData::ForeignEval::eval: usize
-pub lut::StageData::ForeignEval::free: usize
-pub lut::StageData::Matrix
-pub lut::StageData::Matrix::double: alloc::vec::Vec<f64>
-pub lut::StageData::Matrix::offset: core::option::Option<alloc::vec::Vec<f64>>
-pub lut::StageData::NamedColor(named::NamedColorList)
-pub lut::StageData::None
-pub lut::StageData::ToneCurves(alloc::vec::Vec<gamma::ToneCurve>)
-pub enum lut::StageLoc
-pub lut::StageLoc::AtBegin
-pub lut::StageLoc::AtEnd
-pub struct lut::CLutData
-pub lut::CLutData::domain: [u32; 15]
-pub lut::CLutData::dw_flags: u32
-pub lut::CLutData::foreign: core::option::Option<alloc::boxed::Box<intrp::CmsInterpParams>>
-pub lut::CLutData::has_float_values: bool
-pub lut::CLutData::interpolation: intrp::Interpolation
-pub lut::CLutData::n_entries: u32
-pub lut::CLutData::n_inputs: u32
-pub lut::CLutData::n_outputs: u32
-pub lut::CLutData::n_samples: [u32; 15]
-pub lut::CLutData::opta: [u32; 15]
-pub lut::CLutData::params16: core::option::Option<alloc::boxed::Box<intrp::InterpParams<'static>>>
-pub lut::CLutData::params_f: core::option::Option<alloc::boxed::Box<intrp::InterpParams<'static>>>
-pub lut::CLutData::tab16: core::option::Option<alloc::sync::Arc<[u16]>>
-pub lut::CLutData::tab_float: core::option::Option<alloc::sync::Arc<[f32]>>
-pub struct lut::Pipeline
-pub lut::Pipeline::elements: core::option::Option<alloc::boxed::Box<lut::Stage>>
-pub lut::Pipeline::eval16_fn: lut::PipelineEval16Fn
-pub lut::Pipeline::eval_float_fn: lut::PipelineEvalFloatFn
-pub lut::Pipeline::input_channels: u32
-pub lut::Pipeline::opt_data: core::option::Option<opt::OptData>
-pub lut::Pipeline::output_channels: u32
-pub lut::Pipeline::save_as_8bits: bool
-pub fn lut::Pipeline::cat(&mut self, &lut::Pipeline) -> bool
-pub fn lut::Pipeline::dup(&self) -> core::option::Option<lut::Pipeline>
-pub fn lut::Pipeline::eval16(&self, &[u16], &mut [u16])
-pub fn lut::Pipeline::eval_float(&self, &[f32], &mut [f32])
-pub fn lut::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
-pub fn lut::Pipeline::first_stage(&self) -> core::option::Option<&lut::Stage>
-pub fn lut::Pipeline::input_channels(&self) -> u32
-pub fn lut::Pipeline::insert_stage(&mut self, lut::StageLoc, lut::Stage) -> bool
-pub fn lut::Pipeline::last_stage(&self) -> core::option::Option<&lut::Stage>
-pub fn lut::Pipeline::output_channels(&self) -> u32
-pub fn lut::Pipeline::set_save_as_8bits(&mut self, bool) -> bool
-pub fn lut::Pipeline::stage_count(&self) -> u32
-pub fn lut::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<lut::Stage>
-pub struct lut::Stage
-pub lut::Stage::data: lut::StageData
-pub lut::Stage::eval_ptr: lut::StageEvalFn
-pub lut::Stage::implements: u32
-pub lut::Stage::input_channels: u32
-pub lut::Stage::next: core::option::Option<alloc::boxed::Box<lut::Stage>>
-pub lut::Stage::output_channels: u32
-pub lut::Stage::type: u32
-pub fn lut::Stage::eval(&self, &[f32], &mut [f32])
-pub fn lut::Stage::foreign_stage_eval(&[f32], &mut [f32], &lut::Stage)
-pub fn lut::Stage::input_channels(&self) -> u32
-pub fn lut::Stage::next(&self) -> core::option::Option<&lut::Stage>
-pub fn lut::Stage::output_channels(&self) -> u32
-pub fn lut::Stage::stage_type(&self) -> u32
-pub const lut::MAX_CHANNELS: usize [also: xform]
-pub const lut::MAX_ENCODEABLE_XYZ: f64
-pub const lut::SAMPLER_INSPECT: u32
-pub fn lut::pipeline_alloc(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<lut::Pipeline>
-pub fn lut::pipeline_check_and_retrieve_stages<'a>(&'a lut::Pipeline, &[u32]) -> core::option::Option<alloc::vec::Vec<&'a lut::Stage>>
-pub fn lut::slice_space16(u32, &[u32], &mut lut::Sampler16<'_>) -> bool
-pub fn lut::slice_space_float(u32, &[u32], &mut lut::SamplerFloat<'_>) -> bool
-pub fn lut::stage_alloc_clut16bit(core::option::Option<&context::Context>, u32, u32, u32, core::option::Option<&[u16]>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_clut16bit_granular(core::option::Option<&context::Context>, &[u32], u32, u32, core::option::Option<&[u16]>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_clut_float(core::option::Option<&context::Context>, u32, u32, u32, core::option::Option<&[f32]>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_clut_float_granular(core::option::Option<&context::Context>, &[u32], u32, u32, core::option::Option<&[f32]>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_identity(core::option::Option<&context::Context>, u32) -> lut::Stage
-pub fn lut::stage_alloc_identity_clut(core::option::Option<&context::Context>, u32) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_identity_curves(core::option::Option<&context::Context>, u32) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_lab2xyz(core::option::Option<&context::Context>) -> lut::Stage
-pub fn lut::stage_alloc_lab_prelin(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_lab_v2_to_v4(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_lab_v2_to_v4_curves(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_lab_v4_to_v2(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_matrix(core::option::Option<&context::Context>, u32, u32, &[f64], core::option::Option<&[f64]>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_placeholder(core::option::Option<&context::Context>, u32, u32, u32, lut::StageEvalFn, lut::StageData) -> lut::Stage
-pub fn lut::stage_alloc_tone_curves(core::option::Option<&context::Context>, u32, core::option::Option<&[&gamma::ToneCurve]>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_alloc_xyz2lab(core::option::Option<&context::Context>) -> lut::Stage
-pub fn lut::stage_clip_negatives(core::option::Option<&context::Context>, u32) -> lut::Stage
-pub fn lut::stage_get_curve_set(&lut::Stage) -> core::option::Option<&alloc::vec::Vec<gamma::ToneCurve>>
-pub fn lut::stage_normalize_from_lab_float(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_normalize_from_xyz_float(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_normalize_to_lab_float(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_normalize_to_xyz_float(core::option::Option<&context::Context>) -> core::option::Option<lut::Stage>
-pub fn lut::stage_sample_clut16bit(&mut lut::Stage, &mut lut::Sampler16<'_>, u32) -> bool
-pub fn lut::stage_sample_clut_float(&mut lut::Stage, &mut lut::SamplerFloat<'_>, u32) -> bool
-pub type lut::PipelineEval16Fn = fn(&[u16], &mut [u16], &lut::Pipeline)
-pub type lut::PipelineEvalFloatFn = fn(&[f32], &mut [f32], &lut::Pipeline)
-pub type lut::Sampler16<'a> = (dyn core::ops::function::FnMut(&[u16], &mut [u16]) -> i32 + 'a)
-pub type lut::SamplerFloat<'a> = (dyn core::ops::function::FnMut(&[f32], &mut [f32]) -> i32 + 'a)
-pub type lut::StageEvalFn = fn(&[f32], &mut [f32], &lut::Stage)
-pub mod math
-pub mod md5
-pub struct md5::Md5
-pub fn md5::Md5::add(&mut self, &[u8])
-pub fn md5::Md5::finish(self) -> md5::ProfileId
-pub fn md5::Md5::new() -> Self
-pub fn md5::compute_id(&mut profile::IccProfile) -> bool
-pub type md5::ProfileId = [u8; 16]
-pub mod mtrx
-pub const mtrx::MATRIX_DET_TOLERANCE: f64 [also: gamma]
-pub fn mtrx::mat3_eval(&mut types::Vec3, &types::Mat3, &types::Vec3)
-pub fn mtrx::mat3_identity(&mut types::Mat3)
-pub fn mtrx::mat3_inverse(&types::Mat3, &mut types::Mat3) -> bool
-pub fn mtrx::mat3_is_identity(&types::Mat3) -> bool
-pub fn mtrx::mat3_per(&mut types::Mat3, &types::Mat3, &types::Mat3)
-pub fn mtrx::mat3_solve(&mut types::Vec3, &types::Mat3, &types::Vec3) -> bool
-pub fn mtrx::vec3_cross(&mut types::Vec3, &types::Vec3, &types::Vec3)
-pub fn mtrx::vec3_distance(&types::Vec3, &types::Vec3) -> f64
-pub fn mtrx::vec3_dot(&types::Vec3, &types::Vec3) -> f64
-pub fn mtrx::vec3_init(&mut types::Vec3, f64, f64, f64)
-pub fn mtrx::vec3_length(&types::Vec3) -> f64
-pub fn mtrx::vec3_minus(&mut types::Vec3, &types::Vec3, &types::Vec3)
-pub mod named
-pub struct named::Dict
-pub named::Dict::entries: alloc::vec::Vec<named::DictEntry>
-pub struct named::DictEntry
-pub named::DictEntry::display_name: core::option::Option<named::Mlu>
-pub named::DictEntry::display_value: core::option::Option<named::Mlu>
-pub named::DictEntry::name: alloc::vec::Vec<named::Wchar>
-pub named::DictEntry::value: core::option::Option<alloc::vec::Vec<named::Wchar>>
-pub struct named::Mlu
-pub named::Mlu::allocated_entries: u32
-pub named::Mlu::entries: alloc::vec::Vec<named::MluEntry>
-pub named::Mlu::pool: alloc::vec::Vec<u8>
-pub named::Mlu::pool_used: u32
-pub named::Mlu::used_entries: u32
-pub struct named::MluEntry
-pub named::MluEntry::country: u16
-pub named::MluEntry::language: u16
-pub named::MluEntry::len: u32
-pub named::MluEntry::str_w: u32
-pub struct named::NamedColor
-pub named::NamedColor::device_colorant: [u16; 16]
-pub named::NamedColor::name: [u8; 256]
-pub named::NamedColor::pcs: [u16; 3]
-pub struct named::NamedColorList
-pub named::NamedColorList::allocated: u32
-pub named::NamedColorList::colorant_count: u32
-pub named::NamedColorList::list: alloc::vec::Vec<named::NamedColor>
-pub named::NamedColorList::n_colors: u32
-pub named::NamedColorList::prefix: [u8; 33]
-pub named::NamedColorList::suffix: [u8; 33]
-pub struct named::PSeqDesc
-pub named::PSeqDesc::attributes: u64
-pub named::PSeqDesc::description: core::option::Option<named::Mlu>
-pub named::PSeqDesc::device_mfg: u32
-pub named::PSeqDesc::device_model: u32
-pub named::PSeqDesc::manufacturer: core::option::Option<named::Mlu>
-pub named::PSeqDesc::model: core::option::Option<named::Mlu>
-pub named::PSeqDesc::profile_id: types::ProfileId
-pub named::PSeqDesc::technology: u32
-pub struct named::ProfileSeqDesc
-pub named::ProfileSeqDesc::seq: alloc::vec::Vec<named::PSeqDesc>
-pub const named::CMS_MAX_PATH: usize
-pub fn named::alloc_named_color_list(core::option::Option<&context::Context>, u32, u32, &[u8], &[u8]) -> core::option::Option<named::NamedColorList>
-pub fn named::alloc_profile_seq_desc(core::option::Option<&context::Context>, u32) -> core::option::Option<named::ProfileSeqDesc>
-pub fn named::append_named_color(&mut named::NamedColorList, core::option::Option<&[u8]>, core::option::Option<&[u16; 3]>, core::option::Option<&[u16; 16]>) -> bool
-pub fn named::cms_strcasecmp(&[u8], &[u8]) -> i32
-pub fn named::dict_add_entry(&mut named::Dict, &[named::Wchar], core::option::Option<&[named::Wchar]>, core::option::Option<&named::Mlu>, core::option::Option<&named::Mlu>) -> bool
-pub fn named::dict_alloc(core::option::Option<&context::Context>) -> named::Dict
-pub fn named::dict_dup(&named::Dict) -> named::Dict
-pub fn named::dup_named_color_list(&named::NamedColorList) -> core::option::Option<named::NamedColorList>
-pub fn named::mlu_alloc(core::option::Option<&context::Context>, u32) -> core::option::Option<named::Mlu>
-pub fn named::mlu_dup(&named::Mlu) -> core::option::Option<named::Mlu>
-pub fn named::mlu_get_ascii(&named::Mlu, &[u8], &[u8], core::option::Option<u32>) -> (u32, alloc::vec::Vec<u8>)
-pub fn named::mlu_get_translation(&named::Mlu, &[u8], &[u8]) -> core::option::Option<([u8; 3], [u8; 3])>
-pub fn named::mlu_get_utf8(&named::Mlu, &[u8], &[u8], core::option::Option<u32>) -> (u32, alloc::vec::Vec<u8>)
-pub fn named::mlu_get_wide(&named::Mlu, &[u8], &[u8], core::option::Option<u32>) -> (u32, alloc::vec::Vec<named::Wchar>)
-pub fn named::mlu_set_ascii(&mut named::Mlu, &[u8], &[u8], &[u8]) -> bool
-pub fn named::mlu_set_utf8(&mut named::Mlu, &[u8], &[u8], &[u8]) -> bool
-pub fn named::mlu_set_wide(&mut named::Mlu, &[u8], &[u8], &[named::Wchar]) -> bool
-pub fn named::mlu_translations_codes(&named::Mlu, u32) -> core::option::Option<([u8; 3], [u8; 3])>
-pub fn named::mlu_translations_count(&named::Mlu) -> u32
-pub fn named::named_color_count(&named::NamedColorList) -> u32
-pub fn named::named_color_index(&named::NamedColorList, &[u8]) -> i32
-pub fn named::named_color_info(&named::NamedColorList, u32) -> core::option::Option<([u8; 256], [u8; 33], [u8; 33], [u16; 3], [u16; 16])>
-pub fn named::stage_alloc_named_color(&named::NamedColorList, bool) -> core::option::Option<lut::Stage>
-pub type named::Wchar = i32
-pub mod opt
-pub enum opt::OptData
-pub opt::OptData::ClutOnly(alloc::boxed::Box<opt::ClutOnly>)
-pub opt::OptData::Curves16(opt::Curves16Data)
-pub opt::OptData::Identity
-pub opt::OptData::MatShaper(alloc::boxed::Box<opt::MatShaper8Data>)
-pub opt::OptData::Prelin16(alloc::boxed::Box<opt::Prelin16Data>)
-pub opt::OptData::Prelin8(alloc::boxed::Box<opt::Prelin8Data>)
-pub struct opt::ClutOnly
-pub opt::ClutOnly::clut: lut::CLutData
-pub opt::ClutOnly::params16: intrp::InterpParams<'static>
-pub opt::ClutOnly::params_f: core::option::Option<intrp::InterpParams<'static>>
-pub struct opt::Curves16Data
-pub opt::Curves16Data::curves: alloc::vec::Vec<alloc::vec::Vec<u16>>
-pub struct opt::MatShaper8Data
-pub opt::MatShaper8Data::mat: [[i32; 3]; 3]
-pub opt::MatShaper8Data::off: [i32; 3]
-pub opt::MatShaper8Data::shaper1: [[i32; 256]; 3]
-pub opt::MatShaper8Data::shaper2: alloc::boxed::Box<[u16]>
-pub struct opt::Prelin16Data
-pub opt::Prelin16Data::clut: lut::CLutData
-pub opt::Prelin16Data::in_curves: alloc::vec::Vec<gamma::ToneCurve>
-pub opt::Prelin16Data::n_inputs: u32
-pub opt::Prelin16Data::n_outputs: u32
-pub opt::Prelin16Data::out_curves: alloc::vec::Vec<gamma::ToneCurve>
-pub opt::Prelin16Data::params16: intrp::InterpParams<'static>
-pub struct opt::Prelin8Data
-pub opt::Prelin8Data::clut: lut::CLutData
-pub opt::Prelin8Data::rx: [u16; 256]
-pub opt::Prelin8Data::ry: [u16; 256]
-pub opt::Prelin8Data::rz: [u16; 256]
-pub opt::Prelin8Data::x0: [u32; 256]
-pub opt::Prelin8Data::y0: [u32; 256]
-pub opt::Prelin8Data::z0: [u32; 256]
-pub fn opt::optimize_pipeline(core::option::Option<&context::Context>, &mut lut::Pipeline, u32, &mut u32, &mut u32, &mut u32) -> bool
-pub mod pack
-pub enum pack::Formatter
-pub pack::Formatter::None
-pub pack::Formatter::Pack16(pack::Pack16Fn)
-pub pack::Formatter::PackF32(pack::PackF32Fn)
-pub pack::Formatter::Unpack16(pack::Unpack16Fn)
-pub pack::Formatter::UnpackF32(pack::UnpackF32Fn)
-pub enum pack::FormatterDir
-pub pack::FormatterDir::Input
-pub pack::FormatterDir::Output
-pub struct pack::ForeignFmtHooks
-pub pack::ForeignFmtHooks::factory: fn(usize, u32, u32, u32) -> usize
-pub pack::ForeignFmtHooks::kernel16: fn(usize, &mut [u16], &[u8], u32) -> usize
-pub pack::ForeignFmtHooks::kernelf32: fn(usize, &mut [f32], &[u8], u32) -> usize
-pub struct pack::PackInfo
-pub pack::PackInfo::input_format: u32
-pub pack::PackInfo::output_format: u32
-pub pack::PackInfo::stride: u32
-pub const pack::CMS_PACK_FLAGS_16BITS: u32
-pub const pack::CMS_PACK_FLAGS_FLOAT: u32
-pub fn pack::foreign_formatter_fn(core::option::Option<&context::Context>, u32, u32, u32) -> core::option::Option<usize>
-pub fn pack::foreign_pack16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::foreign_pack_f32(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::foreign_unpack16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::foreign_unpack_f32(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::get_formatter(u32, pack::FormatterDir, u32) -> pack::Formatter
-pub fn pack::get_formatter_ctx(core::option::Option<&context::Context>, u32, pack::FormatterDir, u32) -> pack::Formatter
-pub fn pack::get_stock_input_formatter(u32, u32) -> pack::Formatter
-pub fn pack::get_stock_output_formatter(u32, u32) -> pack::Formatter
-pub fn pack::is_ink_space(u32) -> bool
-pub fn pack::pack1_byte(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_byte_reversed(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_byte_skip1(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_byte_skip1_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_word(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_word_big_endian(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_word_reversed(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_word_skip1(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack1_word_skip1_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_bytes(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_bytes_and_skip1(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_bytes_and_skip1_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_bytes_and_skip1_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_bytes_and_skip1_swap_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_bytes_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_words(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_words_and_skip1(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_words_and_skip1_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_words_and_skip1_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_words_and_skip1_swap_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_words_big_endian(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack3_words_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_bytes(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_bytes_reverse(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_bytes_skip1(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_bytes_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_bytes_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_bytes_swap_swap_first(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_words(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_words_big_endian(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_words_reverse(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_words_skip1(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack4_words_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack6_bytes(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack6_bytes_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack6_words(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack6_words_swap(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_alab_v2_8(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_bytes_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_chunky_bytes(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_chunky_words(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_double_from16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_doubles_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_encoded_bytes_lab_v2_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_encoded_words_lab_v2_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_factor(u32) -> u32
-pub fn pack::pack_float_from16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_floats_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_half_from16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_half_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_lab_double_from16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_lab_double_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_lab_float_from16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_lab_float_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_lab_v2_16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_lab_v2_8(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_planar_bytes(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_planar_words(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_words_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_xyz_double_from16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_xyz_double_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_xyz_float_from16(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub fn pack::pack_xyz_float_from_float(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub fn pack::register_foreign_format(u32, u32, usize)
-pub fn pack::set_foreign_fmt_hooks(pack::ForeignFmtHooks)
-pub const fn pack::t_bytes(u32) -> u32
-pub const fn pack::t_channels(u32) -> u32
-pub const fn pack::t_colorspace(u32) -> u32
-pub const fn pack::t_dither(u32) -> u32
-pub const fn pack::t_doswap(u32) -> u32
-pub const fn pack::t_endian16(u32) -> u32
-pub const fn pack::t_extra(u32) -> u32
-pub const fn pack::t_flavor(u32) -> u32
-pub const fn pack::t_float(u32) -> u32
-pub const fn pack::t_half(u32) -> u32
-pub const fn pack::t_planar(u32) -> u32
-pub const fn pack::t_premul(u32) -> u32
-pub const fn pack::t_swapfirst(u32) -> u32
-pub fn pack::unroll16_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll1_byte(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll1_byte_reversed(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll1_byte_skip1(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll1_byte_skip2(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll1_word(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll1_word_reversed(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll1_word_skip3(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll2_bytes(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll2_words(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_bytes(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_bytes_skip1(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_bytes_skip1_swap(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_bytes_skip1_swap_first(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_bytes_skip1_swap_swap_first(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_bytes_skip1_swap_swap_first_real(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_bytes_swap(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_words(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_words_skip1(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_words_skip1_swap(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_words_skip1_swap_first(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll3_words_swap(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_bytes(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_bytes_reverse(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_bytes_skip1(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_bytes_swap(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_bytes_swap_first(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_bytes_swap_swap_first(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_words(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_words_reverse(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_words_skip1(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_words_swap(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_words_swap_first(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll4_words_swap_swap_first(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll8_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_alab_v2_8(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_alab_v2_8_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_any_words(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_any_words_premul(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_chunky_bytes(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_double_1chan(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_double_to16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_doubles_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_float_to16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_floats_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_half_to16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_half_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_double_to16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_double_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_float_to16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_float_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_v2_16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_v2_16_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_v2_8(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_lab_v2_8_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_planar_bytes(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_planar_words(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_planar_words_premul(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_xyz_double_to16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_xyz_double_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub fn pack::unroll_xyz_float_to16(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub fn pack::unroll_xyz_float_to_float(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub type pack::Pack16Fn = fn(&pack::PackInfo, &[u16; 16], &mut [u8], u32) -> usize
-pub type pack::PackF32Fn = fn(&pack::PackInfo, &[f32; 16], &mut [u8], u32) -> usize
-pub type pack::Unpack16Fn = fn(&pack::PackInfo, &mut [u16; 16], &[u8], u32) -> usize
-pub type pack::UnpackDblFn = fn(&pack::PackInfo, &mut [f64], &[u8], u32) -> usize
-pub type pack::UnpackF32Fn = fn(&pack::PackInfo, &mut [f32; 16], &[u8], u32) -> usize
-pub mod pcs
-pub fn pcs::bfd_delta_e(&types::CieLab, &types::CieLab) -> f64
-pub fn pcs::channels_of(types::ColorSpaceSignature) -> u32
-pub fn pcs::channels_of_color_space(types::ColorSpaceSignature) -> i32
-pub fn pcs::cie2000_delta_e(&types::CieLab, &types::CieLab, f64, f64, f64) -> f64
-pub fn pcs::cie94_delta_e(&types::CieLab, &types::CieLab) -> f64
-pub fn pcs::cmc_delta_e(&types::CieLab, &types::CieLab, f64, f64) -> f64
-pub fn pcs::delta_e(&types::CieLab, &types::CieLab) -> f64
-pub fn pcs::end_points_by_space(types::ColorSpaceSignature) -> core::option::Option<(&'static [u16], &'static [u16], u32)>
-pub fn pcs::float2lab_encoded(&types::CieLab) -> [u16; 3]
-pub fn pcs::float2lab_encoded_v2(&types::CieLab) -> [u16; 3]
-pub fn pcs::float2xyz_encoded(&types::CieXyz) -> [u16; 3]
-pub fn pcs::icc_color_space(i32) -> types::ColorSpaceSignature
-pub fn pcs::lab2lch(&types::CieLab) -> types::CieLCh
-pub fn pcs::lab2xyz(core::option::Option<&types::CieXyz>, &types::CieLab) -> types::CieXyz
-pub fn pcs::lab_encoded2float([u16; 3]) -> types::CieLab
-pub fn pcs::lab_encoded2float_v2([u16; 3]) -> types::CieLab
-pub fn pcs::lch2lab(&types::CieLCh) -> types::CieLab
-pub fn pcs::lcms_color_space(types::ColorSpaceSignature) -> i32
-pub fn pcs::reasonable_gridpoints_by_colorspace(types::ColorSpaceSignature, u32) -> u32
-pub fn pcs::xyy2xyz(&types::CiexyY) -> types::CieXyz
-pub fn pcs::xyz2lab(core::option::Option<&types::CieXyz>, &types::CieXyz) -> types::CieLab
-pub fn pcs::xyz2xyy(&types::CieXyz) -> types::CiexyY
-pub fn pcs::xyz_encoded2float([u16; 3]) -> types::CieXyz
-pub mod profile
-pub struct profile::IccProfile
-pub profile::IccProfile::attributes: u64
-pub profile::IccProfile::cmm: u32
-pub profile::IccProfile::color_space: u32
-pub profile::IccProfile::created: types::DateTimeNumber
-pub profile::IccProfile::creator: u32
-pub profile::IccProfile::ctx: core::option::Option<context::Context>
-pub profile::IccProfile::device_class: u32
-pub profile::IccProfile::flags: u32
-pub profile::IccProfile::free_user_data_fn: usize
-pub profile::IccProfile::io: core::option::Option<io::IoHandler>
-pub profile::IccProfile::is_write: bool
-pub profile::IccProfile::manufacturer: u32
-pub profile::IccProfile::model: u32
-pub profile::IccProfile::pcs: u32
-pub profile::IccProfile::platform: u32
-pub profile::IccProfile::profile_id: types::ProfileId
-pub profile::IccProfile::rendering_intent: u32
-pub profile::IccProfile::tag_count: u32
-pub profile::IccProfile::tag_linked: [u32; 100]
-pub profile::IccProfile::tag_names: [u32; 100]
-pub profile::IccProfile::tag_offsets: [u32; 100]
-pub profile::IccProfile::tag_ptrs: alloc::vec::Vec<core::option::Option<tagtypes::TagObject>>
-pub profile::IccProfile::tag_raw: alloc::vec::Vec<core::option::Option<alloc::vec::Vec<u8>>>
-pub profile::IccProfile::tag_save_as_raw: [bool; 100]
-pub profile::IccProfile::tag_sizes: [u32; 100]
-pub profile::IccProfile::tag_type_sigs: [u32; 100]
-pub profile::IccProfile::user_data: usize
-pub profile::IccProfile::version: u32
-pub const profile::MAX_TABLE_TAG: usize
-pub fn profile::cms_is_tag(&profile::IccProfile, u32) -> bool
-pub fn profile::cms_is_tag_pub(&profile::IccProfile, u32) -> bool
-pub fn profile::cms_link_tag(&mut profile::IccProfile, u32, u32) -> bool
-pub fn profile::cms_read_raw_tag(&mut profile::IccProfile, u32, core::option::Option<&mut [u8]>) -> u32
-pub fn profile::cms_read_tag(&mut profile::IccProfile, u32) -> core::option::Option<&tagtypes::TagObject>
-pub fn profile::cms_tag_linked_to(&profile::IccProfile, u32) -> u32
-pub fn profile::cms_write_raw_tag(&mut profile::IccProfile, u32, &[u8]) -> bool
-pub fn profile::cms_write_tag(&mut profile::IccProfile, u32, core::option::Option<tagtypes::TagObject>) -> bool
-pub fn profile::create_profile_placeholder(core::option::Option<context::Context>) -> alloc::boxed::Box<profile::IccProfile>
-pub fn profile::freeze(&mut profile::IccProfile)
-pub fn profile::get_encoded_icc_version(&profile::IccProfile) -> u32
-pub fn profile::get_profile_version(&profile::IccProfile) -> f64
-pub fn profile::open_profile_from_file(core::option::Option<context::Context>, &str, &str) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn profile::open_profile_from_mem(core::option::Option<context::Context>, &[u8]) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn profile::read_header(&mut profile::IccProfile) -> bool
-pub fn profile::read_tag_frozen(&profile::IccProfile, u32) -> core::option::Option<&tagtypes::TagObject>
-pub fn profile::save_profile_to_file(&mut profile::IccProfile, &str) -> bool
-pub fn profile::save_profile_to_iohandler(&mut profile::IccProfile, core::option::Option<&mut io::IoHandler>) -> u32
-pub fn profile::save_profile_to_mem(&mut profile::IccProfile) -> core::option::Option<alloc::vec::Vec<u8>>
-pub fn profile::search_tag(&profile::IccProfile, u32, bool) -> i32
-pub fn profile::set_encoded_icc_version(&mut profile::IccProfile, u32)
-pub fn profile::set_profile_version(&mut profile::IccProfile, f64)
-pub fn profile::write_header(&profile::IccProfile, u32, &mut io::IoHandler) -> bool
-pub mod ps2
-pub const ps2::PS_RESOURCE_CRD: u32
-pub const ps2::PS_RESOURCE_CSA: u32
-pub fn ps2::get_post_script_color_resource(core::option::Option<&context::Context>, u32, &mut profile::IccProfile, u32, u32, &mut io::IoHandler) -> u32
-pub fn ps2::get_post_script_crd(core::option::Option<&context::Context>, &mut profile::IccProfile, u32, u32, &mut io::IoHandler) -> u32
-pub fn ps2::get_post_script_csa(core::option::Option<&context::Context>, &mut profile::IccProfile, u32, u32, &mut io::IoHandler) -> u32
+pub const api::Tag::A_TO_B0: api::Tag
+pub const api::Tag::A_TO_B1: api::Tag
+pub const api::Tag::A_TO_B2: api::Tag
+pub const api::Tag::BLUE_COLORANT: api::Tag
+pub const api::Tag::BLUE_TRC: api::Tag
+pub const api::Tag::B_TO_A0: api::Tag
+pub const api::Tag::B_TO_A1: api::Tag
+pub const api::Tag::B_TO_A2: api::Tag
+pub const api::Tag::CHARD: api::Tag
+pub const api::Tag::CHROMATIC_ADAPTATION: api::Tag
+pub const api::Tag::COPYRIGHT: api::Tag
+pub const api::Tag::GAMUT: api::Tag
+pub const api::Tag::GRAY_TRC: api::Tag
+pub const api::Tag::GREEN_COLORANT: api::Tag
+pub const api::Tag::GREEN_TRC: api::Tag
+pub const api::Tag::MEDIA_BLACK_POINT: api::Tag
+pub const api::Tag::MEDIA_WHITE_POINT: api::Tag
+pub const api::Tag::NAMED_COLOR2: api::Tag
+pub const api::Tag::PROFILE_DESCRIPTION: api::Tag
+pub const api::Tag::PS2_CRD0: api::Tag
+pub const api::Tag::PS2_CRD1: api::Tag
+pub const api::Tag::PS2_CRD2: api::Tag
+pub const api::Tag::PS2_CRD3: api::Tag
+pub const api::Tag::PS2_CSA: api::Tag
+pub const api::Tag::PS2_RENDERING_INTENT: api::Tag
+pub const api::Tag::RED_COLORANT: api::Tag
+pub const api::Tag::RED_TRC: api::Tag
+pub const api::Tag::SCREENING_DESC: api::Tag
+pub const api::Tag::UCRBG: api::Tag
+pub const api::Tag::VCGT: api::Tag
+pub struct api::ToneCurve(_)
+pub fn api::ToneCurve::estimated_gamma(&self) -> core::option::Option<f64>
+pub fn api::ToneCurve::eval16(&self, u16) -> u16
+pub fn api::ToneCurve::eval_f32(&self, f32) -> f32
+pub fn api::ToneCurve::gamma(f64) -> core::result::Result<Self, api::Error>
+pub fn api::ToneCurve::is_descending(&self) -> bool
+pub fn api::ToneCurve::is_monotonic(&self) -> bool
+pub fn api::ToneCurve::parametric(i16, &[f64]) -> core::result::Result<Self, api::Error>
+pub fn api::ToneCurve::reversed(&self) -> api::ToneCurve
+pub fn api::ToneCurve::tabulated16(&[u16]) -> core::result::Result<Self, api::Error>
+pub fn api::ToneCurve::tabulated_f32(&[f32]) -> core::result::Result<Self, api::Error>
+pub type api::MluView<'a> = named::Mlu
+pub type api::NamedColorListRef = named::NamedColorList
+pub type api::PipelineRef = lut::Pipeline
+pub type api::StageRef = lut::Stage
+pub type api::ToneCurveRef = gamma::ToneCurve
 pub mod signatures
 pub mod signatures::colorspace
 pub const signatures::colorspace::Sig10colorData: types::Signature
@@ -1281,143 +434,6 @@ pub const signatures::technology::SigSilkscreen: types::Signature
 pub const signatures::technology::SigThermalWaxPrinter: types::Signature
 pub const signatures::technology::SigVideoCamera: types::Signature
 pub const signatures::technology::SigVideoMonitor: types::Signature
-pub mod sm
-pub const sm::PERCEPTUAL_BLACK: types::CieXyz
-pub fn sm::create_gamut_check_pipeline(core::option::Option<&context::Context>, &mut [alloc::boxed::Box<profile::IccProfile>], &mut [bool], &[u32], &[f64], u32, &mut profile::IccProfile) -> core::option::Option<lut::Pipeline>
-pub fn sm::desaturate_lab(&mut types::CieLab, f64, f64, f64, f64) -> bool
-pub fn sm::detect_black_point(&mut profile::IccProfile, u32, u32) -> core::option::Option<types::CieXyz>
-pub fn sm::detect_destination_black_point(&mut profile::IccProfile, u32, u32) -> core::option::Option<types::CieXyz>
-pub fn sm::is_ink_colorspace(u32) -> bool
-pub mod tagtypes
-pub enum tagtypes::TagObject
-pub tagtypes::TagObject::Chromaticity(types::CiexyYTriple)
-pub tagtypes::TagObject::ColorantOrder([u8; 16])
-pub tagtypes::TagObject::ColorantTable(named::NamedColorList)
-pub tagtypes::TagObject::CrdInfo(named::Mlu)
-pub tagtypes::TagObject::Curve(gamma::ToneCurve)
-pub tagtypes::TagObject::Data(tagtypes::IccData)
-pub tagtypes::TagObject::DateTime(tagtypes::Tm)
-pub tagtypes::TagObject::Dictionary(named::Dict)
-pub tagtypes::TagObject::Foreign(tagtypes::ForeignTag)
-pub tagtypes::TagObject::Lut16(lut::Pipeline)
-pub tagtypes::TagObject::Lut8(lut::Pipeline)
-pub tagtypes::TagObject::LutA2B(lut::Pipeline)
-pub tagtypes::TagObject::LutB2A(lut::Pipeline)
-pub tagtypes::TagObject::Measurement(types::IccMeasurementConditions)
-pub tagtypes::TagObject::Mhc2(tagtypes::Mhc2)
-pub tagtypes::TagObject::Mlu(named::Mlu)
-pub tagtypes::TagObject::Mpe(lut::Pipeline)
-pub tagtypes::TagObject::MpeElem(lut::Stage)
-pub tagtypes::TagObject::NamedColor(named::NamedColorList)
-pub tagtypes::TagObject::ParametricCurve(gamma::ToneCurve)
-pub tagtypes::TagObject::ProfileSeqDesc(named::ProfileSeqDesc)
-pub tagtypes::TagObject::ProfileSeqId(named::ProfileSeqDesc)
-pub tagtypes::TagObject::Raw(alloc::vec::Vec<u8>)
-pub tagtypes::TagObject::S15Fixed16(alloc::vec::Vec<f64>)
-pub tagtypes::TagObject::Screening(tagtypes::Screening)
-pub tagtypes::TagObject::Signature(u32)
-pub tagtypes::TagObject::Text(named::Mlu)
-pub tagtypes::TagObject::TextDescription(named::Mlu)
-pub tagtypes::TagObject::U16Fixed16(alloc::vec::Vec<f64>)
-pub tagtypes::TagObject::UInt32(alloc::vec::Vec<u32>)
-pub tagtypes::TagObject::UInt64(alloc::vec::Vec<u64>)
-pub tagtypes::TagObject::UInt8(alloc::vec::Vec<u8>)
-pub tagtypes::TagObject::UcrBg(tagtypes::UcrBg)
-pub tagtypes::TagObject::Vcgt(tagtypes::VcgtData)
-pub tagtypes::TagObject::VideoSignal(tagtypes::VideoSignal)
-pub tagtypes::TagObject::ViewingConditions(tagtypes::IccViewingConditions)
-pub tagtypes::TagObject::Xyz(types::CieXyz)
-pub enum tagtypes::VcgtData
-pub tagtypes::VcgtData::Curves([gamma::ToneCurve; 3])
-pub tagtypes::VcgtData::Table
-pub tagtypes::VcgtData::Table::bytes: u16
-pub tagtypes::VcgtData::Table::channels: u16
-pub tagtypes::VcgtData::Table::data: alloc::vec::Vec<u8>
-pub tagtypes::VcgtData::Table::elems: u16
-pub struct tagtypes::CrdInfo
-pub tagtypes::CrdInfo::product_name: named::Mlu
-pub struct tagtypes::ForeignTag
-pub tagtypes::ForeignTag::cbox: usize
-pub tagtypes::ForeignTag::ptr: usize
-pub struct tagtypes::IccData
-pub tagtypes::IccData::data: alloc::vec::Vec<u8>
-pub tagtypes::IccData::flag: u32
-pub tagtypes::IccData::len: u32
-pub struct tagtypes::IccViewingConditions
-pub tagtypes::IccViewingConditions::illuminant_type: u32
-pub tagtypes::IccViewingConditions::illuminant_xyz: types::CieXyz
-pub tagtypes::IccViewingConditions::surround_xyz: types::CieXyz
-pub struct tagtypes::Mhc2
-pub tagtypes::Mhc2::blue_curve: alloc::vec::Vec<f64>
-pub tagtypes::Mhc2::curve_entries: u32
-pub tagtypes::Mhc2::green_curve: alloc::vec::Vec<f64>
-pub tagtypes::Mhc2::min_luminance: f64
-pub tagtypes::Mhc2::peak_luminance: f64
-pub tagtypes::Mhc2::red_curve: alloc::vec::Vec<f64>
-pub tagtypes::Mhc2::xyz2xyz_matrix: [[f64; 4]; 3]
-pub struct tagtypes::MpeElemHandler
-pub tagtypes::MpeElemHandler::foreign: usize
-pub tagtypes::MpeElemHandler::read: core::option::Option<fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &mut u32, u32) -> core::option::Option<tagtypes::TagObject>>
-pub tagtypes::MpeElemHandler::signature: u32
-pub tagtypes::MpeElemHandler::write: core::option::Option<fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &tagtypes::TagObject, u32) -> bool>
-pub struct tagtypes::Screening
-pub tagtypes::Screening::channels: [tagtypes::ScreeningChannel; 16]
-pub tagtypes::Screening::flag: u32
-pub tagtypes::Screening::n_channels: u32
-pub struct tagtypes::ScreeningChannel
-pub tagtypes::ScreeningChannel::angle: f64
-pub tagtypes::ScreeningChannel::frequency: f64
-pub tagtypes::ScreeningChannel::spot_shape: u32
-pub struct tagtypes::TagDescriptor
-pub tagtypes::TagDescriptor::decide_type: core::option::Option<fn(f64, &tagtypes::TagObject) -> u32>
-pub tagtypes::TagDescriptor::elem_count: u32
-pub tagtypes::TagDescriptor::supported_types: &'static [u32]
-pub struct tagtypes::TagTypeHandler
-pub tagtypes::TagTypeHandler::ctx: usize
-pub tagtypes::TagTypeHandler::foreign: usize
-pub tagtypes::TagTypeHandler::icc_version: u32
-pub tagtypes::TagTypeHandler::read: fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &mut u32, u32) -> core::option::Option<tagtypes::TagObject>
-pub tagtypes::TagTypeHandler::signature: u32
-pub tagtypes::TagTypeHandler::write: fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &tagtypes::TagObject, u32) -> bool
-pub struct tagtypes::Tm
-pub tagtypes::Tm::tm_hour: i32
-pub tagtypes::Tm::tm_isdst: i32
-pub tagtypes::Tm::tm_mday: i32
-pub tagtypes::Tm::tm_min: i32
-pub tagtypes::Tm::tm_mon: i32
-pub tagtypes::Tm::tm_sec: i32
-pub tagtypes::Tm::tm_wday: i32
-pub tagtypes::Tm::tm_yday: i32
-pub tagtypes::Tm::tm_year: i32
-pub struct tagtypes::UcrBg
-pub tagtypes::UcrBg::bg: gamma::ToneCurve
-pub tagtypes::UcrBg::desc: named::Mlu
-pub tagtypes::UcrBg::ucr: gamma::ToneCurve
-pub struct tagtypes::VideoSignal
-pub tagtypes::VideoSignal::colour_primaries: u8
-pub tagtypes::VideoSignal::matrix_coefficients: u8
-pub tagtypes::VideoSignal::transfer_characteristics: u8
-pub tagtypes::VideoSignal::video_full_range_flag: u8
-pub const tagtypes::NO_LANG: &[u8]
-pub const tagtypes::V2_UNICODE: &[u8]
-pub static tagtypes::SUPPORTED_MPE_TYPES: &[tagtypes::MpeElemHandler]
-pub static tagtypes::SUPPORTED_TAGS: &[(u32, tagtypes::TagDescriptor)]
-pub static tagtypes::SUPPORTED_TAG_TYPES: &[tagtypes::TagTypeHandler]
-pub fn tagtypes::avoid_type_check_on_tags(core::option::Option<&context::Context>) -> bool
-pub fn tagtypes::decide_curve_type(f64, &tagtypes::TagObject) -> u32
-pub fn tagtypes::decide_text_desc_type(f64, &tagtypes::TagObject) -> u32
-pub fn tagtypes::decide_text_type(f64, &tagtypes::TagObject) -> u32
-pub fn tagtypes::decide_xyz_type(f64, &tagtypes::TagObject) -> u32
-pub fn tagtypes::foreign_mpe_elem_handler(u32, usize) -> tagtypes::MpeElemHandler
-pub fn tagtypes::foreign_tag_type_handler(u32, usize) -> tagtypes::TagTypeHandler
-pub fn tagtypes::get_handler<'a>(u32, &'a [tagtypes::TagTypeHandler], &'a [tagtypes::TagTypeHandler]) -> core::option::Option<&'a tagtypes::TagTypeHandler>
-pub fn tagtypes::get_tag_descriptor(core::option::Option<&context::Context>, u32) -> core::option::Option<tagtypes::TagDescriptor>
-pub fn tagtypes::get_tag_type_handler(core::option::Option<&context::Context>, u32) -> core::option::Option<tagtypes::TagTypeHandler>
-pub fn tagtypes::read_position_table(&mut io::IoHandler, u32, u32, impl core::ops::function::FnMut(&mut io::IoHandler, usize, u32) -> bool) -> bool
-pub fn tagtypes::read_wchar_array(&mut io::IoHandler, u32, &mut alloc::vec::Vec<named::Wchar>) -> bool
-pub fn tagtypes::write_position_table(&mut io::IoHandler, u32, u32, u32, impl core::ops::function::FnMut(&mut io::IoHandler, usize, u32) -> bool) -> bool
-pub fn tagtypes::write_wchar_array(&mut io::IoHandler, &[named::Wchar]) -> bool
-pub type tagtypes::PositionTableEntryFn = fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, usize, u32) -> bool
 pub mod types
 #[repr(C)] pub struct types::CieLCh
 pub types::CieLCh::C: f64
@@ -1439,7 +455,7 @@ pub types::CiexyY::y: f64
 pub types::CiexyYTriple::Blue: types::CiexyY
 pub types::CiexyYTriple::Green: types::CiexyY
 pub types::CiexyYTriple::Red: types::CiexyY
-pub struct types::Context [also: context]
+pub struct types::Context
 pub types::Context::adaptation_state: core::sync::atomic::AtomicU64
 pub types::Context::alarm_codes: std::sync::poison::mutex::Mutex<[u16; 16]>
 pub types::Context::c_header: context::CHeaderSet
@@ -1448,15 +464,15 @@ pub types::Context::c_parametric_curves: alloc::vec::Vec<context::CParametricSet
 pub types::Context::c_xform_factories: alloc::vec::Vec<(usize, usize)>
 pub types::Context::formatter_factories: alloc::vec::Vec<usize>
 pub types::Context::interp_factories: alloc::vec::Vec<usize>
-pub types::Context::interpolators: core::option::Option<context::InterpFnFactory>
-pub types::Context::log_error_handler: core::option::Option<context::LogErrorHandler>
+pub types::Context::interpolators: core::option::Option<fn(u32, u32, u32) -> core::option::Option<intrp::Interpolation>>
+pub types::Context::log_error_handler: core::option::Option<fn(&types::Context, i32, &str)>
 pub types::Context::mem_fns: [usize; 6]
 pub types::Context::mpe_handlers: alloc::vec::Vec<tagtypes::MpeElemHandler>
 pub types::Context::parametric_curves: alloc::vec::Vec<gamma::ParametricCurves>
 pub types::Context::tag_descriptors: alloc::vec::Vec<(u32, tagtypes::TagDescriptor)>
 pub types::Context::tag_type_handlers: alloc::vec::Vec<tagtypes::TagTypeHandler>
 pub types::Context::user_data: core::sync::atomic::AtomicUsize
-pub fn context::Context::plugin(&mut self, &[context::Plugin]) -> bool
+pub fn types::Context::plugin(&mut self, &[context::Plugin]) -> bool
 #[repr(C)] pub struct types::DateTimeNumber
 pub types::DateTimeNumber::day: u16
 pub types::DateTimeNumber::hours: u16
@@ -1516,21 +532,31 @@ pub const types::FLAGS_8BITS_DEVICELINK: u32
 pub const types::FLAGS_BLACKPOINTCOMPENSATION: u32
 pub const types::FLAGS_CLUT_POST_LINEARIZATION: u32
 pub const types::FLAGS_CLUT_PRE_LINEARIZATION: u32
-pub const types::FLAGS_COPY_ALPHA: u32 [also: xform]
+pub const types::FLAGS_COPY_ALPHA: u32
 pub const types::FLAGS_FORCE_CLUT: u32
-pub const types::FLAGS_GAMUTCHECK: u32 [also: xform]
+pub const types::FLAGS_GAMUTCHECK: u32
 pub const types::FLAGS_GRIDPOINTS_MASK: u32
 pub const types::FLAGS_GUESSDEVICECLASS: u32
-pub const types::FLAGS_HIGHRESPRECALC: u32 [also: xform]
-pub const types::FLAGS_KEEP_SEQUENCE: u32 [also: xform]
-pub const types::FLAGS_LOWRESPRECALC: u32 [also: xform]
-pub const types::FLAGS_NOCACHE: u32 [also: xform]
+pub const types::FLAGS_HIGHRESPRECALC: u32
+pub const types::FLAGS_KEEP_SEQUENCE: u32
+pub const types::FLAGS_LOWRESPRECALC: u32
+pub const types::FLAGS_NOCACHE: u32
 pub const types::FLAGS_NODEFAULTRESOURCEDEF: u32
 pub const types::FLAGS_NONEGATIVES: u32
-pub const types::FLAGS_NOOPTIMIZE: u32 [also: xform]
+pub const types::FLAGS_NOOPTIMIZE: u32
 pub const types::FLAGS_NOWHITEONWHITEFIXUP: u32
-pub const types::FLAGS_NULLTRANSFORM: u32 [also: xform]
+pub const types::FLAGS_NULLTRANSFORM: u32
 pub const types::FLAGS_SOFTPROOFING: u32
+pub const types::INTENT_ABSOLUTE_COLORIMETRIC: u32
+pub const types::INTENT_PERCEPTUAL: u32
+pub const types::INTENT_PRESERVE_K_ONLY_PERCEPTUAL: u32
+pub const types::INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC: u32
+pub const types::INTENT_PRESERVE_K_ONLY_SATURATION: u32
+pub const types::INTENT_PRESERVE_K_PLANE_PERCEPTUAL: u32
+pub const types::INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC: u32
+pub const types::INTENT_PRESERVE_K_PLANE_SATURATION: u32
+pub const types::INTENT_RELATIVE_COLORIMETRIC: u32
+pub const types::INTENT_SATURATION: u32
 pub const types::LCMS_VERSION: u32
 pub const types::PERCEPTUAL_BLACK_X: f64
 pub const types::PERCEPTUAL_BLACK_Y: f64
@@ -1570,175 +596,25 @@ pub type types::S15Fixed16 = i32
 pub type types::Signature = u32
 pub type types::U16Fixed16 = u32
 pub type types::U8Fixed8 = u16
-pub mod virt
-pub const virt::INTENT_PERCEPTUAL: u32 [also: cnvrt, types]
-pub const virt::INTENT_RELATIVE_COLORIMETRIC: u32 [also: cnvrt, types]
-pub fn virt::create_bchsw_abstract_profile(core::option::Option<context::Context>, u32, f64, f64, f64, f64, u32, u32) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_gray_profile(core::option::Option<context::Context>, core::option::Option<&types::CiexyY>, core::option::Option<&gamma::ToneCurve>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_ink_limiting_device_link(core::option::Option<context::Context>, u32, f64) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_lab2_profile(core::option::Option<context::Context>, core::option::Option<&types::CiexyY>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_lab4_profile(core::option::Option<context::Context>, core::option::Option<&types::CiexyY>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_linearization_device_link(core::option::Option<context::Context>, u32, &[&gamma::ToneCurve]) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_null_profile(core::option::Option<context::Context>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_oklab_profile(core::option::Option<context::Context>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_rgb_profile(core::option::Option<context::Context>, core::option::Option<&types::CiexyY>, core::option::Option<&types::CiexyYTriple>, core::option::Option<[&gamma::ToneCurve; 3]>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_srgb_profile(core::option::Option<context::Context>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::create_xyz_profile(core::option::Option<context::Context>) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub fn virt::transform2_device_link(&mut xform::Transform, f64, u32) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
-pub mod wtpnt
-pub fn wtpnt::adapt_to_illuminant(&types::CieXyz, &types::CieXyz, &types::CieXyz) -> core::option::Option<types::CieXyz>
-pub fn wtpnt::adaptation_matrix(&mut types::Mat3, core::option::Option<&types::Mat3>, &types::CieXyz, &types::CieXyz) -> bool
-pub fn wtpnt::build_rgb2xyz_transfer_matrix(&mut types::Mat3, &types::CiexyY, &types::CiexyYTriple) -> bool
-pub fn wtpnt::d50_xyy() -> types::CiexyY
-pub fn wtpnt::d50_xyz() -> types::CieXyz
-pub fn wtpnt::temp_from_white_point(&types::CiexyY) -> core::option::Option<f64>
-pub fn wtpnt::white_point_from_temp(f64) -> core::option::Option<types::CiexyY>
-pub mod xform
-pub enum xform::Worker
-pub xform::Worker::Cached
-pub xform::Worker::CachedGamutCheck
-pub xform::Worker::Float
-pub xform::Worker::Foreign
-pub xform::Worker::Noop
-pub xform::Worker::Null
-pub xform::Worker::NullFloat
-pub xform::Worker::Precalculated
-pub xform::Worker::PrecalculatedGamutCheck
-pub struct xform::ForeignXform
-pub xform::ForeignXform::free_fn: usize
-pub xform::ForeignXform::old_xform: usize
-pub xform::ForeignXform::user_data: usize
-pub struct xform::Stride
-pub xform::Stride::bytes_per_line_in: u32
-pub xform::Stride::bytes_per_line_out: u32
-pub xform::Stride::bytes_per_plane_in: u32
-pub xform::Stride::bytes_per_plane_out: u32
-pub struct xform::Transform
-pub xform::Transform::plan: xform::TransformPlan
-pub xform::Transform::scratch: xform::TransformScratch
-pub fn xform::Transform::do_transform(&mut self, &[u8], &mut [u8], u32)
-pub fn xform::Transform::do_transform_line_stride(&mut self, &[u8], &mut [u8], u32, u32, u32, u32, u32, u32)
-pub fn xform::Transform::do_transform_par(&mut self, &[u8], &mut [u8], u32, usize)
-pub fn xform::Transform::do_transform_stride(&mut self, &[u8], &mut [u8], u32, u32)
-pub struct xform::TransformPlan
-pub xform::TransformPlan::alarm_codes: [u16; 16]
-pub xform::TransformPlan::ctx: core::option::Option<context::Context>
-pub xform::TransformPlan::dw_flags: u32
-pub xform::TransformPlan::entry_color_space: u32
-pub xform::TransformPlan::entry_white_point: types::CieXyz
-pub xform::TransformPlan::exit_color_space: u32
-pub xform::TransformPlan::exit_white_point: types::CieXyz
-pub xform::TransformPlan::foreign: core::option::Option<xform::ForeignXform>
-pub xform::TransformPlan::gamut_check: core::option::Option<lut::Pipeline>
-pub xform::TransformPlan::input_colorants: core::option::Option<named::NamedColorList>
-pub xform::TransformPlan::input_format: u32
-pub xform::TransformPlan::lut: core::option::Option<lut::Pipeline>
-pub xform::TransformPlan::output_colorants: core::option::Option<named::NamedColorList>
-pub xform::TransformPlan::output_format: u32
-pub xform::TransformPlan::rendering_intent: u32
-pub xform::TransformPlan::scratch_seed: xform::TransformScratch
-pub xform::TransformPlan::stride: xform::Stride
-pub xform::TransformPlan::user_data: core::option::Option<alloc::boxed::Box<(dyn core::any::Any + core::marker::Send + core::marker::Sync)>>
-pub xform::TransformPlan::worker: xform::Worker
-pub fn xform::TransformPlan::apply(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32)
-pub fn xform::TransformPlan::apply_line_stride(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32, u32, u32, u32, u32, u32)
-pub fn xform::TransformPlan::apply_par(&self, &[u8], &mut [u8], u32, usize)
-pub fn xform::TransformPlan::apply_stride(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32, u32)
-pub fn xform::TransformPlan::apply_strided(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32, u32, &xform::Stride)
-pub fn xform::TransformPlan::change_buffers_format(&mut self, u32, u32) -> bool
-pub fn xform::TransformPlan::scratch(&self) -> xform::TransformScratch
-pub struct xform::TransformScratch
-pub xform::TransformScratch::cache_in: [u16; 16]
-pub xform::TransformScratch::cache_out: [u16; 16]
-pub const xform::FLAGS_CAN_CHANGE_FORMATTER: u32
-pub fn xform::create_extended_transform(core::option::Option<context::Context>, &mut [alloc::boxed::Box<profile::IccProfile>], &mut [bool], &[u32], &[f64], core::option::Option<&mut profile::IccProfile>, u32, u32, u32, u32) -> core::option::Option<alloc::boxed::Box<xform::Transform>>
-pub fn xform::get_adaptation_state(core::option::Option<&context::Context>) -> f64
-pub fn xform::get_alarm_codes(core::option::Option<&context::Context>) -> [u16; 16]
-pub fn xform::get_named_color_list(&xform::Transform) -> core::option::Option<&named::NamedColorList>
-pub fn xform::get_transform_input_colorants(&xform::Transform) -> core::option::Option<&named::NamedColorList>
-pub fn xform::get_transform_output_colorants(&xform::Transform) -> core::option::Option<&named::NamedColorList>
-pub fn xform::set_adaptation_state(core::option::Option<&context::Context>, f64) -> f64
-pub fn xform::set_alarm_codes(core::option::Option<&context::Context>, &[u16; 16])
 
-## trait impls (91 types)
+## trait impls (25 types)
 
 api::Error: Debug, Display, Error
 api::Format: Clone, Copy, Debug, Eq, PartialEq
+api::InfoType: Clone, Copy, Debug, Eq, PartialEq
 api::Intent: Clone, Copy, Debug, Eq, PartialEq
+api::NamedColor: Clone, Debug, PartialEq
 api::Plan: Debug
 api::Profile: Debug
+api::Scratch: Debug
 api::Tag: Clone, Copy, Debug, Display, Eq, From<u32>, Ord, PartialEq, PartialOrd
-cgats::KeyValue: Clone
-cgats::Keyword: Clone, Copy
-cgats::Symbol: Clone, Copy, Debug, Eq, PartialEq
-cgats::Table: Clone
-cgats::WriteMode: Clone, Copy, Eq, PartialEq
-context::CHeaderSet: Clone, Copy, Default
-context::CIntentSet: Clone, Copy, Default
-context::CParametricSet: Clone
-context::Context: Clone, Default
-context::PluginBase: Clone
-context::PluginType: Clone, Copy, Eq, PartialEq
-context::StageHooks: Clone, Copy
-context::TagTypeHooks: Clone, Copy
-gamma::CurveSegment: Clone, Default
-gamma::ParametricCurves: Clone
-gamma::ToneCurve: Clone
-gbd::GdbPoint: Clone, Copy, Default
-gbd::GdbPointType: Clone, Copy, Default, Eq, PartialEq
-gbd::Spherical: Clone, Copy, Default
-intrp::CmsInterpParams: Clone
-intrp::ForeignHooks: Clone, Copy
-intrp::InterpParams<'a>: Clone
-intrp::InterpTable<'a>: Clone
-intrp::Interpolation: Clone, Copy
-intrp::KernelKind: Clone, Copy, Eq, PartialEq
-io::FileMem: Clone
-io::IoHandler: Clone
-io::IoStream: Clone
-lut::CLutData: Clone
-lut::Pipeline: Clone
-lut::Stage: Clone, Drop
-lut::StageData: Clone
-lut::StageLoc: Clone, Copy, Debug, Eq, PartialEq
-md5::Md5: Default
-named::Dict: Clone, Default
-named::DictEntry: Clone
-named::Mlu: Clone, Default
-named::MluEntry: Clone, Copy, Debug, Default
-named::NamedColor: Clone
-named::NamedColorList: Clone
-named::PSeqDesc: Clone
-named::ProfileSeqDesc: Clone
-opt::ClutOnly: Clone
-opt::Curves16Data: Clone
-opt::MatShaper8Data: Clone
-opt::OptData: Clone
-opt::Prelin16Data: Clone
-opt::Prelin8Data: Clone
-pack::Formatter: Clone, Copy
-pack::FormatterDir: Clone, Copy, PartialEq
-profile::IccProfile: Clone, Default
-tagtypes::CrdInfo: Clone
-tagtypes::ForeignTag: Clone, Drop
-tagtypes::IccData: Clone
-tagtypes::IccViewingConditions: Clone
-tagtypes::Mhc2: Clone
-tagtypes::MpeElemHandler: Clone, Copy
-tagtypes::Screening: Clone
-tagtypes::ScreeningChannel: Clone, Copy, Debug, Default
-tagtypes::TagDescriptor: Clone, Copy
-tagtypes::TagObject: Clone
-tagtypes::TagTypeHandler: Clone, Copy
-tagtypes::Tm: Clone, Copy, Debug, Default, PartialEq
-tagtypes::UcrBg: Clone
-tagtypes::VcgtData: Clone
-tagtypes::VideoSignal: Clone, Copy, Debug, Default, PartialEq
+api::ToneCurve: Clone, Debug
 types::CieLCh: Clone, Copy, Debug, Default, PartialEq
 types::CieLab: Clone, Copy, Debug, Default, PartialEq
 types::CieXyz: Clone, Copy, Debug, Default, PartialEq
 types::CiexyY: Clone, Copy, Debug, Default, PartialEq
 types::CiexyYTriple: Clone, Copy, Debug, Default, PartialEq
+types::Context: Clone, Default
 types::DateTimeNumber: Clone, Copy, Debug, Default, PartialEq
 types::EncodedXyzNumber: Clone, Copy, Debug, Default, PartialEq
 types::IccMeasurementConditions: Clone, Copy, Debug, Default, PartialEq
@@ -1748,19 +624,9 @@ types::ProfileId: Clone, Copy, Debug, Default, PartialEq
 types::Vec3: Clone, Copy, Debug, Default, PartialEq
 types::ViewingConditions: Clone, Copy, Debug, Default, PartialEq
 u32: From<api::Tag>
-xform::ForeignXform: Clone, Copy
-xform::Stride: Clone, Copy, Default
-xform::Transform: Deref, DerefMut
-xform::TransformScratch: Clone
-xform::Worker: Clone, Copy, PartialEq
 
 ## auto traits
 
-90 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+25 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
 api::Plan: !Freeze !RefUnwindSafe !UnwindSafe
-cgats::It8: !Freeze
-context::Context: !Freeze
-gbd::Gbd: !Freeze
-profile::IccProfile: !Freeze
-xform::Transform: !Freeze !RefUnwindSafe !UnwindSafe
-xform::TransformPlan: !Freeze !RefUnwindSafe !UnwindSafe
+types::Context: !Freeze
