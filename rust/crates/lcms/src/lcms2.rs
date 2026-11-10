@@ -1500,3 +1500,103 @@ impl Profile<GlobalContext> {
             .ok_or(Error::ObjectCreationError)
     }
 }
+
+// -- lcms2 crate compat: Pod/Zeroable/CacheFlag re-exports ----------------------
+
+/// `Pod`/`Zeroable` — the lcms2 crate re-exports these for pixel-type bounds.
+pub use bytemuck::{Pod, Zeroable};
+
+/// `CacheFlag` — the lcms2-crate marker trait on `AllowCache`/`DisallowCache`.
+/// `Transform`'s `F` param carries it so `Flags::NO_CACHE | Flags::X` keeps
+/// the `DisallowCache` marker at the type level.
+pub trait CacheFlag {}
+impl CacheFlag for AllowCache {}
+impl CacheFlag for DisallowCache {}
+
+// -- Stage::new_clut ------------------------------------------------------------
+
+impl Stage {
+    /// `cmsStageAllocCLut16bit` — a uniform-16bit CLUT stage.
+    /// `points` = per-dim grid points; `dim` = input dims; `in_chan`/`out_chan`.
+    pub fn new_clut(
+        points: usize, dim: usize, in_chan: usize, out_chan: usize,
+        table: Option<Vec<u16>>,
+    ) -> LCMSResult<Self> {
+        crate::lut::stage_alloc_clut16bit(
+            None, points as u32, in_chan as u32, out_chan as u32, table.as_deref(),
+        )
+        .map(Stage)
+        .ok_or(Error::ObjectCreationError)
+    }
+    /// `cmsStageAllocCLut16bitGranular` — per-dim grid points.
+    pub fn new_clut_granular(
+        points: &[usize], dim: usize, out_chan: usize, table: Option<Vec<u16>>,
+    ) -> LCMSResult<Self> {
+        crate::lut::stage_alloc_clut16bit_granular(
+            None,
+            &points.iter().map(|&p| p as u32).collect::<Vec<u32>>(),
+            dim as u32, out_chan as u32, table.as_deref(),
+        )
+        .map(Stage)
+        .ok_or(Error::ObjectCreationError)
+    }
+    /// `cmsStageAllocCLutFloat` — float CLUT stage.
+    pub fn new_clut_float(
+        points: usize, dim: usize, out_chan: usize, table: Option<Vec<f32>>,
+    ) -> LCMSResult<Self> {
+        crate::lut::stage_alloc_clut_float(
+            None, points as u32, dim as u32, out_chan as u32, table.as_deref(),
+        )
+        .map(Stage)
+        .ok_or(Error::ObjectCreationError)
+    }
+}
+
+// -- PipelineRef extras (on lut::Pipeline — the borrow target) ------------------
+
+impl crate::lut::Pipeline {
+    /// `cmsPipelineEval16` — the u16 eval (lcms2's `eval16`).
+    pub fn eval_u16(&self, input: &[u16], output: &mut [u16]) {
+        self.eval16(input, output);
+    }
+    /// `cmsPipelineEvalFloat` — the f32 eval (lcms2's `eval_float`).
+    pub fn eval_f32(&self, input: &[f32], output: &mut [f32]) {
+        self.eval_float(input, output);
+    }
+    /// `cmsPipelineSetSaveAs8bitsFlag` — flag the pipeline to save 8-bit.
+    pub fn set_8bit(&mut self, on: bool) -> bool {
+        self.save_as_8bits = on;
+        true
+    }
+    /// `to_owned` — a cloned `Pipeline` (lcms2's `PipelineRef::to_owned`).
+    pub fn to_owned(&self) -> Pipeline {
+        Pipeline(self.clone())
+    }
+}
+
+// -- ThreadContext accessors ----------------------------------------------------
+
+impl ThreadContext {
+    /// `cmsGetContextUserData` — the adaptation state (0..1) on this context.
+    pub fn adaptation_state(&self) -> f64 {
+        f64::from_bits(self.0.adaptation_state.load(core::sync::atomic::Ordering::Relaxed))
+    }
+    /// `cmsSetAdaptationState` — set the white-point adaptation state.
+    pub fn set_adaptation_state(&mut self, state: f64) {
+        self.0.adaptation_state.store(state.to_bits(), core::sync::atomic::Ordering::Relaxed);
+    }
+    /// `cmsGetAlarmCodes` — the out-of-gamut alarm codes.
+    pub fn alarm_codes(&self) -> [u16; 16] {
+        *self.0.alarm_codes.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    /// `cmsSetAlarmCodes` — set the alarm codes.
+    pub fn set_alarm_codes(&mut self, codes: [u16; 16]) {
+        *self.0.alarm_codes.lock().unwrap_or_else(|e| e.into_inner()) = codes;
+    }
+    /// `cmsPluginTHR` — install a plugin (context-scoped; a no-op registry
+    /// marker here — plugin registries live on the global context).
+    pub fn install_plugin(&mut self) {}
+    /// `cmsSetLogErrorHandlerTHR` — set the context's error handler
+    /// (no-op — errors surface via `signal_error`/`last_error`).
+    pub fn set_error_logging_function(&mut self) {}
+}

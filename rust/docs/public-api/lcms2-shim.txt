@@ -1,0 +1,338 @@
+pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
+pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
+pub use lcms2::Pod
+pub use lcms2::Zeroable
+pub use lcms2::c_char
+pub enum lcms2::ColorSpaceSignature
+pub lcms2::ColorSpaceSignature::CmyData
+pub lcms2::ColorSpaceSignature::CmykData
+pub lcms2::ColorSpaceSignature::GrayData
+pub lcms2::ColorSpaceSignature::HlsData
+pub lcms2::ColorSpaceSignature::HsvData
+pub lcms2::ColorSpaceSignature::LabData
+pub lcms2::ColorSpaceSignature::LuvData
+pub lcms2::ColorSpaceSignature::MCH1Data
+pub lcms2::ColorSpaceSignature::MCH2Data
+pub lcms2::ColorSpaceSignature::MCH3Data
+pub lcms2::ColorSpaceSignature::MCH4Data
+pub lcms2::ColorSpaceSignature::MCH5Data
+pub lcms2::ColorSpaceSignature::MCH6Data
+pub lcms2::ColorSpaceSignature::MCH7Data
+pub lcms2::ColorSpaceSignature::MCH8Data
+pub lcms2::ColorSpaceSignature::RgbData
+pub lcms2::ColorSpaceSignature::Sig1colorData
+pub lcms2::ColorSpaceSignature::XYZData
+pub lcms2::ColorSpaceSignature::YCbCrData
+pub fn lcms2::ColorSpaceSignature::from_u32(u32) -> core::option::Option<Self>
+pub fn lcms2::ColorSpaceSignature::to_u32(self) -> u32
+pub enum lcms2::ColorimetricIntentImageState
+pub lcms2::ColorimetricIntentImageState::Contrast
+pub lcms2::ColorimetricIntentImageState::NormalAppearance
+pub lcms2::ColorimetricIntentImageState::Simulation
+pub lcms2::ColorimetricIntentImageState::Unknown = 0
+pub lcms2::ColorimetricIntentImageState::Vivid
+pub enum lcms2::Error
+pub lcms2::Error::InvalidString
+pub lcms2::Error::MissingData
+pub lcms2::Error::ObjectCreationError
+pub enum lcms2::InfoType
+pub lcms2::InfoType::Copyright
+pub lcms2::InfoType::Description
+pub lcms2::InfoType::Manufacturer
+pub lcms2::InfoType::Model
+pub lcms2::Intent::AbsoluteColorimetric = 3
+pub lcms2::Intent::Perceptual = 0
+pub lcms2::Intent::RelativeColorimetric = 1
+pub lcms2::Intent::Saturation = 2
+pub enum lcms2::ProfileClassSignature
+pub lcms2::ProfileClassSignature::AbstractClass
+pub lcms2::ProfileClassSignature::ColorSpaceClass
+pub lcms2::ProfileClassSignature::DisplayClass
+pub lcms2::ProfileClassSignature::InputClass
+pub lcms2::ProfileClassSignature::LinkClass
+pub lcms2::ProfileClassSignature::NamedColorClass
+pub lcms2::ProfileClassSignature::OutputClass
+pub fn lcms2::ProfileClassSignature::from_u32(u32) -> core::option::Option<Self>
+pub fn lcms2::ProfileClassSignature::to_u32(self) -> u32
+pub lcms2::Tag::CIEXYZ(&'a lcms2::CIEXYZ)
+pub lcms2::Tag::CIExyYTRIPLE(&'a lcms2::CIEXYZTRIPLE)
+pub lcms2::Tag::ColorimetricIntentImageState(lcms2::ColorimetricIntentImageState)
+pub lcms2::Tag::ICCData(&'a lcms2::ICCData)
+pub lcms2::Tag::ICCMeasurementConditions(&'a lcms2::ICCMeasurementConditions)
+pub lcms2::Tag::ICCViewingConditions(&'a lcms2::ICCViewingConditions)
+pub lcms2::Tag::Intent(lcms2::Intent)
+pub lcms2::Tag::MHC2(&'a lcms2::MHC2Type)
+pub lcms2::Tag::MLU(&'a lcms2::MLURef)
+pub lcms2::Tag::NamedColorList(&'a lcms2::NamedColorListRef)
+pub lcms2::Tag::None
+pub lcms2::Tag::Pipeline(&'a lcms2::PipelineRef)
+pub lcms2::Tag::SEQ(&'a lcms2::SEQ)
+pub lcms2::Tag::Screening(&'a lcms2::Screening)
+pub lcms2::Tag::Technology(lcms2::TechnologySignature)
+pub lcms2::Tag::ToneCurve(&'a lcms2::ToneCurveRef)
+pub lcms2::Tag::UcrBg(&'a lcms2::UcrBg)
+pub lcms2::Tag::VcgtCurves([&'a lcms2::ToneCurveRef; 3])
+pub lcms2::Tag::VideoSignal(&'a lcms2::VideoSignalType)
+pub fn lcms2::Tag<'_>::is_none(&self) -> bool
+pub enum lcms2::TagSignature
+pub lcms2::TagSignature::ATToB1Tag
+pub lcms2::TagSignature::ATToB2Tag
+pub lcms2::TagSignature::AToB0Tag
+pub lcms2::TagSignature::BToA0Tag
+pub lcms2::TagSignature::BToA1Tag
+pub lcms2::TagSignature::BToA2Tag
+pub lcms2::TagSignature::BToD0Tag
+pub lcms2::TagSignature::BToD1Tag
+pub lcms2::TagSignature::BToD2Tag
+pub lcms2::TagSignature::BlueColorantTag
+pub lcms2::TagSignature::BlueTRCTag
+pub lcms2::TagSignature::CopyrightTag
+pub lcms2::TagSignature::GrayTRCTag
+pub lcms2::TagSignature::GreenColorantTag
+pub lcms2::TagSignature::GreenTRCTag
+pub lcms2::TagSignature::MediaWhitePointTag
+pub lcms2::TagSignature::NamedColor2Tag
+pub lcms2::TagSignature::ProfileDescriptionTag
+pub lcms2::TagSignature::RedColorantTag
+pub lcms2::TagSignature::RedTRCTag
+pub lcms2::TagSignature::VcgtTag
+pub fn lcms2::TagSignature::from_u32(u32) -> core::option::Option<Self>
+pub fn lcms2::TagSignature::to_u32(self) -> u32
+pub enum lcms2::TechnologySignature
+pub lcms2::TechnologySignature::DigitalCamera
+pub lcms2::TechnologySignature::DyeSublimationPrinter
+pub lcms2::TechnologySignature::ElectrophotographicPrinter
+pub lcms2::TechnologySignature::ElectrostaticPrinter
+pub lcms2::TechnologySignature::FilmScanner
+pub lcms2::TechnologySignature::FilmWriter
+pub lcms2::TechnologySignature::InkJetPrinter
+pub lcms2::TechnologySignature::MotionPictureFilmRecorder
+pub lcms2::TechnologySignature::MotionPictureFilmScanner
+pub lcms2::TechnologySignature::OffsetLithography
+pub lcms2::TechnologySignature::PhotographicPaperPrinter
+pub lcms2::TechnologySignature::ReflectiveScanner
+pub lcms2::TechnologySignature::Silkscreen
+pub lcms2::TechnologySignature::ThermalWaxPrinter
+pub lcms2::TechnologySignature::VideoCamera
+pub lcms2::TechnologySignature::VideoMonitor
+pub fn lcms2::TechnologySignature::from_u32(u32) -> core::option::Option<Self>
+pub fn lcms2::TechnologySignature::to_u32(self) -> u32
+pub struct lcms2::AllowCache
+pub struct lcms2::CIECAM02
+pub fn lcms2::CIECAM02::forward(&mut self, &lcms2::CIEXYZ) -> lcms2::JCh
+pub fn lcms2::CIECAM02::new(lcms2::ViewingConditions) -> lcms2::LCMSResult<Self>
+pub fn lcms2::CIECAM02::reverse(&mut self, &lcms2::JCh) -> lcms2::CIEXYZ
+pub struct lcms2::Dict(_)
+pub fn lcms2::Dict::add(&mut self, &str, &str) -> bool
+pub fn lcms2::Dict::dup(&self) -> Self
+pub fn lcms2::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
+pub fn lcms2::Dict::is_empty(&self) -> bool
+pub fn lcms2::Dict::len(&self) -> usize
+pub fn lcms2::Dict::new() -> Self
+pub struct lcms2::DisallowCache
+pub struct lcms2::Flags<F>(pub u32, pub F)
+pub const lcms2::Flags<lcms2::AllowCache>::BLACKPOINT_COMPENSATION: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::CLUT_POST_LINEARIZATION: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::CLUT_PRE_LINEARIZATION: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::COPY_ALPHA: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::DEVICELINK_8BITS: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::FORCE_CLUT: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::GAMUT_CHECK: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::GUESS_DEVICE_CLASS: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::HIGHRES_PRECALC: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::KEEP_SEQUENCE: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::LOWRES_PRECALC: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::NONE: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::NO_DEFAULT_RESOURCE_DEF: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::NO_NEGATIVES: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::NO_OPTIMIZE: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::NO_WHITE_ON_WHITE_FIXUP: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::NULL_TRANSFORM: lcms2::Flags
+pub const lcms2::Flags<lcms2::AllowCache>::SOFT_PROOFING: lcms2::Flags
+pub const lcms2::Flags<lcms2::DisallowCache>::NO_CACHE: lcms2::Flags<lcms2::DisallowCache>
+pub fn lcms2::Flags<F>::has(&self, lcms2::Flags<F>) -> bool
+pub struct lcms2::GlobalContext
+pub struct lcms2::LcmsError
+pub lcms2::LcmsError::id: i32
+pub lcms2::LcmsError::message: alloc::string::String
+pub struct lcms2::Locale
+pub lcms2::Locale::country: [core::ffi::primitives::c_char; 3]
+pub lcms2::Locale::language: [core::ffi::primitives::c_char; 3]
+pub fn lcms2::Locale::country_ptr(&self) -> *const core::ffi::primitives::c_char
+pub fn lcms2::Locale::language_ptr(&self) -> *const core::ffi::primitives::c_char
+pub fn lcms2::Locale::new(&str) -> Self
+pub fn lcms2::Locale::none() -> Self
+pub struct lcms2::MLU(pub lcms2::MLURef)
+pub fn lcms2::MLU::new(u32) -> Self
+pub struct lcms2::NamedColorInfo
+pub lcms2::NamedColorInfo::colorant: alloc::vec::Vec<u16>
+pub lcms2::NamedColorInfo::name: alloc::string::String
+pub lcms2::NamedColorInfo::pcs: [u16; 3]
+pub lcms2::NamedColorInfo::prefix: alloc::string::String
+pub lcms2::NamedColorInfo::suffix: alloc::string::String
+pub struct lcms2::NamedColorList(pub lcms2::NamedColorListRef)
+pub fn lcms2::NamedColorList::new(usize, usize, &str, &str) -> lcms2::LCMSResult<Self>
+pub struct lcms2::Pipeline(pub lcms2::PipelineRef)
+pub fn lcms2::Pipeline::cat(&mut self, &lcms2::PipelineRef) -> bool
+pub fn lcms2::Pipeline::eval<V: lcms2::FloatOrU16>(&self, &[V], &mut [V])
+pub fn lcms2::Pipeline::first_stage(&self) -> core::option::Option<&lcms2::StageRef>
+pub fn lcms2::Pipeline::input_channels(&self) -> usize
+pub fn lcms2::Pipeline::last_stage(&self) -> core::option::Option<&lcms2::StageRef>
+pub fn lcms2::Pipeline::output_channels(&self) -> usize
+pub fn lcms2::Pipeline::stage_count(&self) -> usize
+pub fn lcms2::Pipeline::new(usize, usize) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Pipeline::stages(&self) -> lcms2::StagesIter<'_>
+pub struct lcms2::PixelFormat(pub u32)
+pub const lcms2::PixelFormat::CMYK_16: lcms2::PixelFormat
+pub const lcms2::PixelFormat::CMYK_8: lcms2::PixelFormat
+pub const lcms2::PixelFormat::CMYK_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::GRAY_16: lcms2::PixelFormat
+pub const lcms2::PixelFormat::GRAY_8: lcms2::PixelFormat
+pub const lcms2::PixelFormat::GRAY_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::LAB_16: lcms2::PixelFormat
+pub const lcms2::PixelFormat::LAB_8: lcms2::PixelFormat
+pub const lcms2::PixelFormat::LAB_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGBA_16: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGBA_8: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGBA_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGB_16: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGB_8: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGB_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::XYZ_16: lcms2::PixelFormat
+pub const lcms2::PixelFormat::XYZ_DBL: lcms2::PixelFormat
+pub fn lcms2::PixelFormat::bytes(self) -> usize
+pub const fn lcms2::PixelFormat::raw(u32) -> lcms2::PixelFormat
+pub struct lcms2::Profile<C>
+pub fn lcms2::Profile<lcms2::GlobalContext>::ink_limiting(lcms2::ColorSpaceSignature, f64) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_device_link<I: core::marker::Copy + bytemuck::pod::Pod, O: core::marker::Copy + bytemuck::pod::Pod>(&lcms2::Transform<I, O>, f64, lcms2::Flags) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_file<P: core::convert::AsRef<std::path::Path>>(P) -> std::io::error::Result<Self>
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_gray(&lcms2::CIExyY, &lcms2::ToneCurveRef) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_icc(&[u8]) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_icc_context(&lcms2::ThreadContext, &[u8]) -> lcms2::LCMSResult<lcms2::Profile<lcms2::ThreadContext>>
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_lab2() -> Self
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_lab4() -> Self
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_null() -> Self
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_placeholder() -> Self
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_rgb(&lcms2::CIExyY, &lcms2::CIEXYZTRIPLE, &lcms2::ToneCurveRef, &lcms2::ToneCurveRef, &lcms2::ToneCurveRef) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_srgb() -> Self
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_xyz() -> Self
+pub fn lcms2::Profile<lcms2::GlobalContext>::new_file_context<P: core::convert::AsRef<std::path::Path>>(&lcms2::ThreadContext, P) -> std::io::error::Result<lcms2::Profile<lcms2::ThreadContext>>
+pub fn lcms2::Profile<lcms2::ThreadContext>::new_lab4_context(&lcms2::ThreadContext) -> Self
+pub fn lcms2::Profile<lcms2::ThreadContext>::new_srgb_context(&lcms2::ThreadContext) -> Self
+pub fn lcms2::Profile<C>::color_space(&self) -> lcms2::ColorSpaceSignature
+pub fn lcms2::Profile<C>::device_class(&self) -> lcms2::ProfileClassSignature
+pub fn lcms2::Profile<C>::encoded_icc_version(&self) -> u32
+pub fn lcms2::Profile<C>::has_tag(&self, lcms2::TagSignature) -> bool
+pub fn lcms2::Profile<C>::header_attributes(&self) -> u64
+pub fn lcms2::Profile<C>::header_creator(&self) -> u32
+pub fn lcms2::Profile<C>::header_flags(&self) -> u32
+pub fn lcms2::Profile<C>::header_profile_id(&self) -> types::ProfileId
+pub fn lcms2::Profile<C>::header_rendering_intent(&self) -> lcms2::Intent
+pub fn lcms2::Profile<C>::icc(&self) -> lcms2::LCMSResult<alloc::vec::Vec<u8>>
+pub fn lcms2::Profile<C>::info(&self, lcms2::InfoType, lcms2::Locale) -> core::option::Option<alloc::string::String>
+pub fn lcms2::Profile<C>::inner(&self) -> &profile::IccProfile
+pub fn lcms2::Profile<C>::inner_mut(&mut self) -> &mut profile::IccProfile
+pub fn lcms2::Profile<C>::is_tag(&self, lcms2::TagSignature) -> bool
+pub fn lcms2::Profile<C>::pcs(&self) -> u32
+pub fn lcms2::Profile<C>::read_tag<'a>(&'a self, lcms2::TagSignature) -> lcms2::Tag<'a>
+pub fn lcms2::Profile<C>::remove_tag(&mut self, lcms2::TagSignature)
+pub fn lcms2::Profile<C>::set_color_space(&mut self, lcms2::ColorSpaceSignature)
+pub fn lcms2::Profile<C>::set_device_class(&mut self, lcms2::ProfileClassSignature)
+pub fn lcms2::Profile<C>::tag_count(&self) -> u32
+pub fn lcms2::Profile<C>::tag_signature(&self, u32) -> lcms2::TagSignature
+pub fn lcms2::Profile<C>::write_tag(&mut self, lcms2::TagSignature, lcms2::Tag<'_>) -> bool
+pub struct lcms2::Stage(pub lcms2::StageRef)
+pub fn lcms2::Stage::input_channels(&self) -> usize
+pub fn lcms2::Stage::output_channels(&self) -> usize
+pub fn lcms2::Stage::stage_type(&self) -> u32
+pub fn lcms2::Stage::new_clut(usize, usize, usize, usize, core::option::Option<alloc::vec::Vec<u16>>) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Stage::new_clut_float(usize, usize, usize, core::option::Option<alloc::vec::Vec<f32>>) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Stage::new_clut_granular(&[usize], usize, usize, core::option::Option<alloc::vec::Vec<u16>>) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Stage::new_identity(u32) -> lcms2::Stage
+pub fn lcms2::Stage::new_matrix(&[f64], usize, usize, core::option::Option<&[f64]>) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Stage::new_tone_curves(&[&lcms2::ToneCurveRef]) -> lcms2::LCMSResult<Self>
+pub struct lcms2::StagesIter<'a>(_)
+pub struct lcms2::ThreadContext(pub context::Context)
+pub fn lcms2::ThreadContext::adaptation_state(&self) -> f64
+pub fn lcms2::ThreadContext::alarm_codes(&self) -> [u16; 16]
+pub fn lcms2::ThreadContext::install_plugin(&mut self)
+pub fn lcms2::ThreadContext::set_adaptation_state(&mut self, f64)
+pub fn lcms2::ThreadContext::set_alarm_codes(&mut self, [u16; 16])
+pub fn lcms2::ThreadContext::set_error_logging_function(&mut self)
+pub fn lcms2::ThreadContext::new() -> Self
+pub fn lcms2::ThreadContext::supported_intents(&self) -> std::collections::hash::map::HashMap<lcms2::Intent, u32>
+pub fn lcms2::ThreadContext::unregister_plugins(&mut self)
+pub fn lcms2::ThreadContext::user_data(&self) -> *const core::ffi::c_void
+pub struct lcms2::ToneCurve(pub lcms2::ToneCurveRef)
+pub fn lcms2::ToneCurve::new(f64) -> Self
+pub fn lcms2::ToneCurve::new_parametric(i16, &[f64]) -> lcms2::LCMSResult<Self>
+pub fn lcms2::ToneCurve::new_tabulated(&[u16]) -> Self
+pub fn lcms2::ToneCurve::new_tabulated_float(&[f32]) -> Self
+pub struct lcms2::Transform<I, O, C, F>
+pub fn lcms2::Transform<I, O, C, F>::transform_in_place(&self, &mut [I])
+pub fn lcms2::Transform<I, O, C, F>::transform_pixels(&self, &[I], &mut [O])
+pub fn lcms2::Transform<I, O, lcms2::GlobalContext, lcms2::AllowCache>::new(&lcms2::Profile, lcms2::PixelFormat, &lcms2::Profile, lcms2::PixelFormat, lcms2::Intent) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Transform<I, O, lcms2::GlobalContext, lcms2::AllowCache>::with_flags(&lcms2::Profile, lcms2::PixelFormat, &lcms2::Profile, lcms2::PixelFormat, lcms2::Intent, lcms2::Flags) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Transform<I, O, lcms2::GlobalContext, lcms2::AllowCache>::new_multiprofile(&[&lcms2::Profile], lcms2::PixelFormat, lcms2::PixelFormat, lcms2::Intent, lcms2::Flags) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Transform<I, O, lcms2::GlobalContext, lcms2::AllowCache>::new_proofing(&lcms2::Profile, lcms2::PixelFormat, &lcms2::Profile, lcms2::PixelFormat, &lcms2::Profile, lcms2::Intent, lcms2::Intent, lcms2::Flags) -> lcms2::LCMSResult<Self>
+pub fn lcms2::Transform<I, O, lcms2::GlobalContext, lcms2::AllowCache>::new_proofing_flags(&lcms2::Profile, lcms2::PixelFormat, &lcms2::Profile, lcms2::PixelFormat, &lcms2::Profile, lcms2::Intent, lcms2::Intent, lcms2::Flags) -> lcms2::LCMSResult<Self>
+pub trait lcms2::CIELabExt: core::marker::Sized
+pub fn lcms2::CIELabExt::bfd_delta_e(&self, &lcms2::CIELAB) -> f64
+pub fn lcms2::CIELabExt::cie2000_delta_e(&self, &lcms2::CIELAB, f64, f64, f64) -> f64
+pub fn lcms2::CIELabExt::cie94_delta_e(&self, &lcms2::CIELAB) -> f64
+pub fn lcms2::CIELabExt::cmc_delta_e(&self, &lcms2::CIELAB, f64, f64) -> f64
+pub fn lcms2::CIELabExt::delta_e(&self, &lcms2::CIELAB) -> f64
+pub fn lcms2::CIELabExt::desaturate(&mut self, f64, f64, f64, f64) -> bool
+pub fn lcms2::CIELabExt::encoded(&self) -> [u16; 3]
+pub fn lcms2::CIELabExt::encoded_v2(&self) -> [u16; 3]
+pub fn lcms2::CIELabExt::from_encoded(&[u16; 3]) -> Self
+pub fn lcms2::CIELabExt::from_encoded_v2(&[u16; 3]) -> Self
+pub fn lcms2::CIELabExt::to_xyz(&self, &lcms2::CIEXYZ) -> lcms2::CIEXYZ
+pub trait lcms2::CIEXYZExt: core::marker::Sized
+pub fn lcms2::CIEXYZExt::adapt_to_illuminant(&self, &lcms2::CIEXYZ, &lcms2::CIEXYZ) -> core::option::Option<lcms2::CIEXYZ>
+pub fn lcms2::CIEXYZExt::from_encoded(&[u16; 3]) -> Self
+pub fn lcms2::CIEXYZExt::to_lab(&self, &lcms2::CIEXYZ) -> lcms2::CIELAB
+pub trait lcms2::CIExzYExt: core::marker::Sized
+pub fn lcms2::CIExzYExt::temp(&self) -> core::option::Option<f64>
+pub trait lcms2::CacheFlag
+pub trait lcms2::ColorSpaceSignatureExt: core::marker::Sized + core::marker::Copy
+pub fn lcms2::ColorSpaceSignatureExt::channels(self) -> u32
+pub fn lcms2::ColorSpaceSignatureExt::pixel_type(self) -> u32
+pub trait lcms2::FloatOrU16: core::marker::Copy
+pub fn lcms2::FloatOrU16::eval_curve(&self, &lcms2::ToneCurveRef) -> Self
+pub fn lcms2::FloatOrU16::eval_pipeline(&lcms2::PipelineRef, &[Self], &mut [Self])
+pub fn lcms2::XYZ2xyY(&lcms2::CIEXYZ) -> lcms2::CIExyY
+pub fn lcms2::version() -> u32
+pub fn lcms2::white_point_from_temp(f64) -> core::option::Option<lcms2::CIExyY>
+pub fn lcms2::xyY2XYZ(&lcms2::CIExyY) -> lcms2::CIEXYZ
+pub type lcms2::CIELAB = types::CieLab
+pub type lcms2::CIELCh = types::CieLCh
+pub type lcms2::CIEXYZ = types::CieXyz
+pub type lcms2::CIEXYZTRIPLE = types::CiexyYTriple
+pub type lcms2::CIExyY = types::CiexyY
+pub type lcms2::ICCData = tagtypes::IccData
+pub type lcms2::ICCMeasurementConditions = types::IccMeasurementConditions
+pub type lcms2::ICCViewingConditions = tagtypes::IccViewingConditions
+pub type lcms2::JCh = types::JCh
+pub type lcms2::LCMSResult<T> = core::result::Result<T, lcms2::Error>
+pub type lcms2::MHC2Type = tagtypes::Mhc2
+pub type lcms2::MLURef = named::Mlu
+pub type lcms2::NamedColorListRef = named::NamedColorList
+pub type lcms2::PipelineRef = lut::Pipeline
+pub type lcms2::SEQ = named::ProfileSeqDesc
+pub type lcms2::Screening = tagtypes::Screening
+pub type lcms2::StageRef = lut::Stage
+pub type lcms2::ToneCurveRef = gamma::ToneCurve
+pub type lcms2::UcrBg = tagtypes::UcrBg
+pub type lcms2::VideoSignalType = tagtypes::VideoSignal
+pub type lcms2::ViewingConditions = types::ViewingConditions
+pub fn lut::Pipeline::to_owned(&self) -> lcms2::Pipeline
+pub fn named::Mlu::set_text(&mut self, &str, lcms2::Locale) -> bool
+pub fn named::Mlu::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
+pub fn named::Mlu::text(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
+pub fn named::Mlu::text_ascii(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
+pub fn named::NamedColorList::colors(&self) -> alloc::vec::Vec<lcms2::NamedColorInfo>
+pub fn named::NamedColorList::get(&self, usize) -> core::option::Option<lcms2::NamedColorInfo>

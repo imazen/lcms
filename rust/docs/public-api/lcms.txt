@@ -6,29 +6,30 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1621 lines (supported surface) | lcms.features.txt 0 added (features: none) | lcms.internal.txt 51 lines (51 hidden + 0 excluded-feature)
+# files: lcms.txt 1701 lines (supported surface) | lcms.features.txt 396 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 81 lines (81 hidden + 0 excluded-feature)
 
 ## summary
 #
-#   pub modules                                43
-#   pub types (struct/enum/trait/alias)       123
+#   pub modules                                45
+#   pub types (struct/enum/trait/alias)       132
 #   pub consts/statics                        405
-#   free functions                            380
-#   inherent methods                           88
-#   struct fields                             374
-#   enum variants                             144
-#   trait roster entries (type × trait)       201
-#   auto-trait-complete types                  84
-#   auto-trait exceptions                       5
+#   free functions                            383
+#   inherent methods                          117
+#   struct fields                             379
+#   enum variants                             165
+#   trait roster entries (type × trait)       228
+#   auto-trait-complete types                  90
+#   auto-trait exceptions                       7
 #
 # per-module pub lines:
-#   (root)                           44
+#   (root)                           46
 #   alpha                             3
+#   api                              53
 #   cam02                             4
 #   cgats                           111
 #   cnvrt                            13
 #   context                          82
-#   err                               2
+#   err                               3
 #   fixed                            14
 #   gamma                            46
 #   gbd                              19
@@ -44,7 +45,7 @@
 #   opt                              34
 #   pack                            161
 #   pcs                              23
-#   profile                          52
+#   profile                          54
 #   ps2                               5
 #   signatures                      249
 #   sm                                6
@@ -52,15 +53,69 @@
 #   types                           160
 #   virt                             14
 #   wtpnt                             7
-#   xform                            63
+#   xform                            74
 
-## items (1533 lines)
+## items (1602 lines)
 
 pub mod lcms
 pub mod alpha
 pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
 pub fn alpha::handle_extra_channels(core::option::Option<&context::Context>, &[u8], &mut [u8], u32, u32, &xform::Stride, u32, u32, u32)
 pub type alpha::FormatterAlphaFn = fn(&mut [u8], &[u8])
+pub mod api
+pub enum api::Format
+pub api::Format::CmykF32
+pub api::Format::CmykU16
+pub api::Format::CmykU8
+pub api::Format::GrayF32
+pub api::Format::GrayU16
+pub api::Format::GrayU8
+pub api::Format::LabF32
+pub api::Format::LabU16
+pub api::Format::LabU8
+pub api::Format::Raw(u32)
+pub api::Format::RgbF32
+pub api::Format::RgbU16
+pub api::Format::RgbU8
+pub api::Format::RgbaF32
+pub api::Format::RgbaU8
+pub api::Format::XyzF32
+pub api::Format::XyzU16
+pub fn api::Format::code(self) -> u32
+pub fn api::Format::pixel_size(self) -> usize
+pub enum api::Intent
+pub api::Intent::AbsoluteColorimetric
+pub api::Intent::Perceptual
+pub api::Intent::RelativeColorimetric
+pub api::Intent::Saturation
+pub fn api::Intent::code(self) -> u32
+pub struct api::Error
+pub api::Error::id: i32
+pub api::Error::message: alloc::string::String
+pub fn api::Error::from_last(i32, &str) -> Self
+pub struct api::Plan
+pub fn api::Plan::apply(&self, &mut api::Scratch, &[u8], &mut [u8])
+pub fn api::Plan::apply_n(&self, &mut api::Scratch, &[u8], &mut [u8], u32)
+pub fn api::Plan::apply_par(&self, &[u8], &mut [u8], u32, usize)
+pub fn api::Plan::build(&mut api::Profile, &mut api::Profile, api::Format, api::Format, api::Intent, u32) -> core::result::Result<Self, api::Error>
+pub fn api::Plan::new(&mut api::Profile, &mut api::Profile, api::Format, api::Format) -> core::result::Result<Self, api::Error>
+pub fn api::Plan::scratch(&self) -> api::Scratch
+pub struct api::Profile
+pub fn api::Profile::freeze(&mut self)
+pub fn api::Profile::get(&self, api::Tag) -> core::option::Option<&tagtypes::TagObject>
+pub fn api::Profile::gray() -> core::result::Result<Self, api::Error>
+pub fn api::Profile::icc(&self) -> &profile::IccProfile
+pub fn api::Profile::icc_mut(&mut self) -> &mut profile::IccProfile
+pub fn api::Profile::lab4() -> core::result::Result<Self, api::Error>
+pub fn api::Profile::named_colors(&self) -> core::option::Option<&named::NamedColorList>
+pub fn api::Profile::open(&[u8]) -> core::result::Result<Self, api::Error>
+pub fn api::Profile::save(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, api::Error>
+pub fn api::Profile::srgb() -> core::result::Result<Self, api::Error>
+pub fn api::Profile::tag(&self, u32) -> core::option::Option<&tagtypes::TagObject>
+pub fn api::Profile::tags(&self) -> impl core::iter::traits::iterator::Iterator<Item = api::Tag> + '_
+pub fn api::Profile::xyz() -> core::result::Result<Self, api::Error>
+pub struct api::Tag(pub u32)
+pub type api::Scratch = xform::TransformScratch
 pub mod cam02
 pub struct cam02::CieCam02
 pub fn cam02::CieCam02::forward(&self, &types::CieXyz, &mut types::JCh)
@@ -263,7 +318,7 @@ pub static context::XFORM_HOOKS: std::sync::poison::rwlock::RwLock<core::option:
 pub fn context::create_context(core::option::Option<&[context::Plugin]>, usize) -> context::Context
 pub fn context::dup_context(&context::Context, core::option::Option<&[context::Plugin]>, usize) -> context::Context
 pub fn context::global() -> &'static context::Context
-pub fn context::or_global<'a>(core::option::Option<&'a context::Context>) -> &'a context::Context
+pub fn context::or_global(core::option::Option<&context::Context>) -> &context::Context
 pub type context::HeaderInvokeFn = fn(usize, usize, usize, bool) -> bool
 pub type context::InterpFnFactory = fn(u32, u32, u32) -> core::option::Option<intrp::Interpolation>
 pub type context::LogErrorHandler = fn(&context::Context, i32, &str)
@@ -274,6 +329,7 @@ pub type context::XformInvokeFn = fn(usize, *const u8, *mut u8, u32, u32, u32, u
 pub mod err
 pub fn err::encoded_cmm_version() -> u32
 pub fn err::signal_error(core::option::Option<&context::Context>, i32, &str)
+pub fn err::take_last_error() -> core::option::Option<(i32, alloc::string::String)>
 pub mod fixed
 pub fn fixed::double_to_s15_fixed16(f64) -> i32
 pub fn fixed::double_to_u8_fixed8(f64) -> u16
@@ -593,6 +649,7 @@ pub type lut::PipelineEvalFloatFn = fn(&[f32], &mut [f32], &lut::Pipeline)
 pub type lut::Sampler16<'a> = (dyn core::ops::function::FnMut(&[u16], &mut [u16]) -> i32 + 'a)
 pub type lut::SamplerFloat<'a> = (dyn core::ops::function::FnMut(&[f32], &mut [f32]) -> i32 + 'a)
 pub type lut::StageEvalFn = fn(&[f32], &mut [f32], &lut::Stage)
+pub mod math
 pub mod md5
 pub struct md5::Md5
 pub fn md5::Md5::add(&mut self, &[u8])
@@ -954,11 +1011,13 @@ pub fn profile::cms_tag_linked_to(&profile::IccProfile, u32) -> u32
 pub fn profile::cms_write_raw_tag(&mut profile::IccProfile, u32, &[u8]) -> bool
 pub fn profile::cms_write_tag(&mut profile::IccProfile, u32, core::option::Option<tagtypes::TagObject>) -> bool
 pub fn profile::create_profile_placeholder(core::option::Option<context::Context>) -> alloc::boxed::Box<profile::IccProfile>
+pub fn profile::freeze(&mut profile::IccProfile)
 pub fn profile::get_encoded_icc_version(&profile::IccProfile) -> u32
 pub fn profile::get_profile_version(&profile::IccProfile) -> f64
 pub fn profile::open_profile_from_file(core::option::Option<context::Context>, &str, &str) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
 pub fn profile::open_profile_from_mem(core::option::Option<context::Context>, &[u8]) -> core::option::Option<alloc::boxed::Box<profile::IccProfile>>
 pub fn profile::read_header(&mut profile::IccProfile) -> bool
+pub fn profile::read_tag_frozen(&profile::IccProfile, u32) -> core::option::Option<&tagtypes::TagObject>
 pub fn profile::save_profile_to_file(&mut profile::IccProfile, &str) -> bool
 pub fn profile::save_profile_to_iohandler(&mut profile::IccProfile, core::option::Option<&mut io::IoHandler>) -> u32
 pub fn profile::save_profile_to_mem(&mut profile::IccProfile) -> core::option::Option<alloc::vec::Vec<u8>>
@@ -1555,31 +1614,42 @@ pub xform::Stride::bytes_per_line_out: u32
 pub xform::Stride::bytes_per_plane_in: u32
 pub xform::Stride::bytes_per_plane_out: u32
 pub struct xform::Transform
-pub xform::Transform::alarm_codes: [u16; 16]
-pub xform::Transform::cache_in: [u16; 16]
-pub xform::Transform::cache_out: [u16; 16]
-pub xform::Transform::ctx: core::option::Option<context::Context>
-pub xform::Transform::dw_flags: u32
-pub xform::Transform::entry_color_space: u32
-pub xform::Transform::entry_white_point: types::CieXyz
-pub xform::Transform::exit_color_space: u32
-pub xform::Transform::exit_white_point: types::CieXyz
-pub xform::Transform::foreign: core::option::Option<xform::ForeignXform>
-pub xform::Transform::gamut_check: core::option::Option<lut::Pipeline>
-pub xform::Transform::input_colorants: core::option::Option<named::NamedColorList>
-pub xform::Transform::input_format: u32
-pub xform::Transform::lut: core::option::Option<lut::Pipeline>
-pub xform::Transform::output_colorants: core::option::Option<named::NamedColorList>
-pub xform::Transform::output_format: u32
-pub xform::Transform::rendering_intent: u32
-pub xform::Transform::stride: xform::Stride
-pub xform::Transform::user_data: core::option::Option<alloc::boxed::Box<(dyn core::any::Any + core::marker::Send + core::marker::Sync)>>
-pub xform::Transform::worker: xform::Worker
-pub fn xform::Transform::change_buffers_format(&mut self, u32, u32) -> bool
+pub xform::Transform::plan: xform::TransformPlan
+pub xform::Transform::scratch: xform::TransformScratch
 pub fn xform::Transform::do_transform(&mut self, &[u8], &mut [u8], u32)
 pub fn xform::Transform::do_transform_line_stride(&mut self, &[u8], &mut [u8], u32, u32, u32, u32, u32, u32)
 pub fn xform::Transform::do_transform_par(&mut self, &[u8], &mut [u8], u32, usize)
 pub fn xform::Transform::do_transform_stride(&mut self, &[u8], &mut [u8], u32, u32)
+pub struct xform::TransformPlan
+pub xform::TransformPlan::alarm_codes: [u16; 16]
+pub xform::TransformPlan::ctx: core::option::Option<context::Context>
+pub xform::TransformPlan::dw_flags: u32
+pub xform::TransformPlan::entry_color_space: u32
+pub xform::TransformPlan::entry_white_point: types::CieXyz
+pub xform::TransformPlan::exit_color_space: u32
+pub xform::TransformPlan::exit_white_point: types::CieXyz
+pub xform::TransformPlan::foreign: core::option::Option<xform::ForeignXform>
+pub xform::TransformPlan::gamut_check: core::option::Option<lut::Pipeline>
+pub xform::TransformPlan::input_colorants: core::option::Option<named::NamedColorList>
+pub xform::TransformPlan::input_format: u32
+pub xform::TransformPlan::lut: core::option::Option<lut::Pipeline>
+pub xform::TransformPlan::output_colorants: core::option::Option<named::NamedColorList>
+pub xform::TransformPlan::output_format: u32
+pub xform::TransformPlan::rendering_intent: u32
+pub xform::TransformPlan::scratch_seed: xform::TransformScratch
+pub xform::TransformPlan::stride: xform::Stride
+pub xform::TransformPlan::user_data: core::option::Option<alloc::boxed::Box<(dyn core::any::Any + core::marker::Send + core::marker::Sync)>>
+pub xform::TransformPlan::worker: xform::Worker
+pub fn xform::TransformPlan::apply(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32)
+pub fn xform::TransformPlan::apply_line_stride(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32, u32, u32, u32, u32, u32)
+pub fn xform::TransformPlan::apply_par(&self, &[u8], &mut [u8], u32, usize)
+pub fn xform::TransformPlan::apply_stride(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32, u32)
+pub fn xform::TransformPlan::apply_strided(&self, &mut xform::TransformScratch, &[u8], &mut [u8], u32, u32, &xform::Stride)
+pub fn xform::TransformPlan::change_buffers_format(&mut self, u32, u32) -> bool
+pub fn xform::TransformPlan::scratch(&self) -> xform::TransformScratch
+pub struct xform::TransformScratch
+pub xform::TransformScratch::cache_in: [u16; 16]
+pub xform::TransformScratch::cache_out: [u16; 16]
 pub const xform::FLAGS_CAN_CHANGE_FORMATTER: u32
 pub fn xform::create_extended_transform(core::option::Option<context::Context>, &mut [alloc::boxed::Box<profile::IccProfile>], &mut [bool], &[u32], &[f64], core::option::Option<&mut profile::IccProfile>, u32, u32, u32, u32) -> core::option::Option<alloc::boxed::Box<xform::Transform>>
 pub fn xform::get_adaptation_state(core::option::Option<&context::Context>) -> f64
@@ -1590,8 +1660,14 @@ pub fn xform::get_transform_output_colorants(&xform::Transform) -> core::option:
 pub fn xform::set_adaptation_state(core::option::Option<&context::Context>, f64) -> f64
 pub fn xform::set_alarm_codes(core::option::Option<&context::Context>, &[u16; 16])
 
-## trait impls (82 types)
+## trait impls (91 types)
 
+api::Error: Debug, Display, Error
+api::Format: Clone, Copy, Debug, Eq, PartialEq
+api::Intent: Clone, Copy, Debug, Eq, PartialEq
+api::Plan: Debug
+api::Profile: Debug
+api::Tag: Clone, Copy, Debug, Display, Eq, From<u32>, Ord, PartialEq, PartialOrd
 cgats::KeyValue: Clone
 cgats::Keyword: Clone, Copy
 cgats::Symbol: Clone, Copy, Debug, Eq, PartialEq
@@ -1640,7 +1716,7 @@ opt::MatShaper8Data: Clone
 opt::OptData: Clone
 opt::Prelin16Data: Clone
 opt::Prelin8Data: Clone
-pack::Formatter: Clone, Copy, PartialEq
+pack::Formatter: Clone, Copy
 pack::FormatterDir: Clone, Copy, PartialEq
 profile::IccProfile: Clone, Default
 tagtypes::CrdInfo: Clone
@@ -1671,15 +1747,20 @@ types::Mat3: Clone, Copy, Debug, Default, PartialEq
 types::ProfileId: Clone, Copy, Debug, Default, PartialEq
 types::Vec3: Clone, Copy, Debug, Default, PartialEq
 types::ViewingConditions: Clone, Copy, Debug, Default, PartialEq
+u32: From<api::Tag>
 xform::ForeignXform: Clone, Copy
 xform::Stride: Clone, Copy, Default
+xform::Transform: Deref, DerefMut
+xform::TransformScratch: Clone
 xform::Worker: Clone, Copy, PartialEq
 
 ## auto traits
 
-84 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+90 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+api::Plan: !Freeze !RefUnwindSafe !UnwindSafe
 cgats::It8: !Freeze
 context::Context: !Freeze
 gbd::Gbd: !Freeze
 profile::IccProfile: !Freeze
 xform::Transform: !Freeze !RefUnwindSafe !UnwindSafe
+xform::TransformPlan: !Freeze !RefUnwindSafe !UnwindSafe

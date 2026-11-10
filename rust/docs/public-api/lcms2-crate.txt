@@ -1,0 +1,460 @@
+const lcms2::Flags::BLACKPOINT_COMPENSATION: lcms2::Flags
+const lcms2::Flags::CLUT_POST_LINEARIZATION: lcms2::Flags
+const lcms2::Flags::CLUT_PRE_LINEARIZATION: lcms2::Flags
+const lcms2::Flags::COPY_ALPHA: lcms2::Flags
+const lcms2::Flags::DEVICELINK_8BITS: lcms2::Flags
+const lcms2::Flags::FORCE_CLUT: lcms2::Flags
+const lcms2::Flags::GAMUT_CHECK: lcms2::Flags
+const lcms2::Flags::GUESS_DEVICE_CLASS: lcms2::Flags
+const lcms2::Flags::HIGHRES_PRECALC: lcms2::Flags
+const lcms2::Flags::KEEP_SEQUENCE: lcms2::Flags
+const lcms2::Flags::LOWRES_PRECALC: lcms2::Flags
+const lcms2::Flags::NO_CACHE: lcms2::Flags<DisallowCache>
+const lcms2::Flags::NO_DEFAULT_RESOURCE_DEF: lcms2::Flags
+const lcms2::Flags::NO_NEGATIVES: lcms2::Flags
+const lcms2::Flags::NO_OPTIMIZE: lcms2::Flags
+const lcms2::Flags::NO_WHITE_ON_WHITE_FIXUP: lcms2::Flags
+const lcms2::Flags::NULL_TRANSFORM: lcms2::Flags
+const lcms2::Flags::SOFT_PROOFING: lcms2::Flags
+enum lcms2::Error
+fn lcms2::CIECAM02::drop(&mut self)
+fn lcms2::CIECAM02::forward(&mut self, &lcms2_sys::ffi::CIEXYZ) -> lcms2_sys::ffi::JCh
+fn lcms2::CIECAM02::new(lcms2_sys::ffi::ViewingConditions) -> lcms2::LCMSResult<Self>
+fn lcms2::CIECAM02::reverse(&mut self, &lcms2_sys::ffi::JCh) -> lcms2_sys::ffi::CIEXYZ
+fn lcms2::CIELabExt::bfd_delta_e(&self, &lcms2_sys::ffi::CIELab) -> f64
+fn lcms2::CIELabExt::cie2000_delta_e(&self, &lcms2_sys::ffi::CIELab, f64, f64, f64) -> f64
+fn lcms2::CIELabExt::cie94_delta_e(&self, &lcms2_sys::ffi::CIELab) -> f64
+fn lcms2::CIELabExt::cmc_delta_e(&self, &lcms2_sys::ffi::CIELab, f64, f64) -> f64
+fn lcms2::CIELabExt::delta_e(&self, &lcms2_sys::ffi::CIELab) -> f64
+fn lcms2::CIELabExt::desaturate(&mut self, f64, f64, f64, f64) -> bool
+fn lcms2::CIELabExt::encoded(&self) -> [u16; 3]
+fn lcms2::CIELabExt::encoded_v2(&self) -> [u16; 3]
+fn lcms2::CIELabExt::from_encoded(&[u16; 3]) -> Self
+fn lcms2::CIELabExt::from_encoded_v2(&[u16; 3]) -> Self
+fn lcms2::CIELabExt::to_xyz(&self, &lcms2_sys::ffi::CIEXYZ) -> lcms2_sys::ffi::CIEXYZ
+fn lcms2::CIEXYZExt::adapt_to_illuminant(&self, &lcms2_sys::ffi::CIEXYZ, &lcms2_sys::ffi::CIEXYZ) -> core::option::Option<lcms2_sys::ffi::CIEXYZ>
+fn lcms2::CIEXYZExt::from_encoded(&[u16; 3]) -> Self
+fn lcms2::CIEXYZExt::to_lab(&self, &lcms2_sys::ffi::CIEXYZ) -> lcms2_sys::ffi::CIELab
+fn lcms2::CIExzYExt::temp(&self) -> core::option::Option<f64>
+fn lcms2::ColorSpaceSignatureExt::channels(self) -> u32
+fn lcms2::ColorSpaceSignatureExt::pixel_type(self) -> lcms2_sys::ffi::PixelType
+fn lcms2::Error::clone(&self) -> lcms2::Error
+fn lcms2::Error::eq(&self, &lcms2::Error) -> bool
+fn lcms2::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::Flags::default() -> Self
+fn lcms2::Flags<T>::clone(&self) -> lcms2::Flags<T>
+fn lcms2::Flags<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::Flags<T>::has<F: lcms2::CacheFlag>(&self, lcms2::Flags<F>) -> bool
+fn lcms2::Locale::clone(&self) -> lcms2::Locale
+fn lcms2::Locale::cmp(&self, &lcms2::Locale) -> core::cmp::Ordering
+fn lcms2::Locale::default() -> Self
+fn lcms2::Locale::eq(&self, &lcms2::Locale) -> bool
+fn lcms2::Locale::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::Locale::from(&'a str) -> Self
+fn lcms2::Locale::new(&str) -> Self
+fn lcms2::Locale::none() -> Self
+fn lcms2::Locale::partial_cmp(&self, &lcms2::Locale) -> core::option::Option<core::cmp::Ordering>
+fn lcms2::MLU::as_mut(&mut self) -> &mut lcms2::MLURef
+fn lcms2::MLU::as_ptr(&self) -> *mut lcms2_sys::ffi::MLU
+fn lcms2::MLU::as_ref(&self) -> &lcms2::MLURef
+fn lcms2::MLU::borrow_mut(&mut self) -> &mut lcms2::MLURef
+fn lcms2::MLU::borrow(&self) -> &lcms2::MLURef
+fn lcms2::MLU::deref_mut(&mut self) -> &mut lcms2::MLURef
+fn lcms2::MLU::deref(&self) -> &lcms2::MLURef
+fn lcms2::MLU::drop(&mut self)
+fn lcms2::MLU::new(usize) -> Self
+fn lcms2::MLURef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::MLURef::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
+fn lcms2::MLURef::set_text(&mut self, &str, lcms2::Locale) -> bool
+fn lcms2::MLURef::tanslation(&self, lcms2::Locale) -> lcms2::LCMSResult<lcms2::Locale>
+fn lcms2::MLURef::tanslations(&self) -> alloc::vec::Vec<lcms2::Locale>
+fn lcms2::MLURef::text_ascii(&self, lcms2::Locale) -> lcms2::LCMSResult<alloc::string::String>
+fn lcms2::MLURef::text(&self, lcms2::Locale) -> lcms2::LCMSResult<alloc::string::String>
+fn lcms2::NamedColorInfo::clone(&self) -> lcms2::NamedColorInfo
+fn lcms2::NamedColorInfo::eq(&self, &lcms2::NamedColorInfo) -> bool
+fn lcms2::NamedColorInfo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::NamedColorList::as_mut(&mut self) -> &mut lcms2::NamedColorListRef
+fn lcms2::NamedColorList::as_ptr(&self) -> *mut lcms2_sys::ffi::NAMEDCOLORLIST
+fn lcms2::NamedColorList::as_ref(&self) -> &lcms2::NamedColorListRef
+fn lcms2::NamedColorList::borrow_mut(&mut self) -> &mut lcms2::NamedColorListRef
+fn lcms2::NamedColorList::borrow(&self) -> &lcms2::NamedColorListRef
+fn lcms2::NamedColorList::deref_mut(&mut self) -> &mut lcms2::NamedColorListRef
+fn lcms2::NamedColorList::deref(&self) -> &lcms2::NamedColorListRef
+fn lcms2::NamedColorList::drop(&mut self)
+fn lcms2::NamedColorList::new(usize, usize, &str, &str) -> lcms2::LCMSResult<Self>
+fn lcms2::NamedColorListRef::append(&mut self, &str, [u16; 3], [u16; 16]) -> bool
+fn lcms2::NamedColorListRef::colors(&self) -> alloc::vec::Vec<lcms2::NamedColorInfo>
+fn lcms2::NamedColorListRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::NamedColorListRef::get(&self, usize) -> core::option::Option<lcms2::NamedColorInfo>
+fn lcms2::NamedColorListRef::index_of(&self, &str) -> usize
+fn lcms2::PipelineRef::cat(&mut self, &lcms2::PipelineRef) -> bool
+fn lcms2::PipelineRef::eval<Value: lcms2::eval::FloatOrU16>(&self, &[Value], &mut [Value])
+fn lcms2::PipelineRef::first_stage(&self) -> core::option::Option<&lcms2::StageRef>
+fn lcms2::PipelineRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::PipelineRef::input_channels(&self) -> usize
+fn lcms2::PipelineRef::last_stage(&self) -> core::option::Option<&lcms2::StageRef>
+fn lcms2::PipelineRef::output_channels(&self) -> usize
+fn lcms2::PipelineRef::set_8bit(&mut self, bool) -> bool
+fn lcms2::PipelineRef::stage_count(&self) -> usize
+fn lcms2::PipelineRef::stages(&self) -> lcms2::StagesIter<'_>
+fn lcms2::PipelineRef::to_owned(&self) -> Pipeline
+fn lcms2::Profile<Context>::drop(&mut self)
+fn lcms2::Profile<Ctx>::color_space(&self) -> lcms2_sys::ffi::ColorSpaceSignature
+fn lcms2::Profile<Ctx>::detect_black_point(&self, lcms2_sys::ffi::Intent) -> core::option::Option<lcms2_sys::ffi::CIEXYZ>
+fn lcms2::Profile<Ctx>::detect_destination_black_point(&self, lcms2_sys::ffi::Intent) -> core::option::Option<lcms2_sys::ffi::CIEXYZ>
+fn lcms2::Profile<Ctx>::detect_tac(&self) -> f64
+fn lcms2::Profile<Ctx>::device_class(&self) -> lcms2_sys::ffi::ProfileClassSignature
+fn lcms2::Profile<Ctx>::encoded_icc_version(&self) -> u32
+fn lcms2::Profile<Ctx>::has_tag(&self, lcms2_sys::ffi::TagSignature) -> bool
+fn lcms2::Profile<Ctx>::header_attributes(&self) -> u64
+fn lcms2::Profile<Ctx>::header_creator(&self) -> u32
+fn lcms2::Profile<Ctx>::header_flags(&self) -> u32
+fn lcms2::Profile<Ctx>::header_manufacturer(&self) -> u32
+fn lcms2::Profile<Ctx>::header_model(&self) -> u32
+fn lcms2::Profile<Ctx>::header_rendering_intent(&self) -> lcms2_sys::ffi::Intent
+fn lcms2::Profile<Ctx>::icc(&self) -> lcms2::LCMSResult<alloc::vec::Vec<u8>>
+fn lcms2::Profile<Ctx>::info(&self, lcms2_sys::ffi::InfoType, lcms2::Locale) -> core::option::Option<alloc::string::String>
+fn lcms2::Profile<Ctx>::ink_limiting_context(impl core::convert::AsRef<Ctx>, lcms2_sys::ffi::ColorSpaceSignature, f64) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::is_clut(&self, lcms2_sys::ffi::Intent, u32) -> bool
+fn lcms2::Profile<Ctx>::is_intent_supported(&self, lcms2_sys::ffi::Intent, u32) -> bool
+fn lcms2::Profile<Ctx>::is_matrix_shaper(&self) -> bool
+fn lcms2::Profile<Ctx>::link_tag(&mut self, lcms2_sys::ffi::TagSignature, lcms2_sys::ffi::TagSignature) -> bool
+fn lcms2::Profile<Ctx>::new_bchsw_abstract_context(impl core::convert::AsRef<Ctx>, usize, f64, f64, f64, f64, core::option::Option<(u32, u32)>) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::new_file_context<P: core::convert::AsRef<std::path::Path>>(impl core::convert::AsRef<Ctx>, P) -> std::io::error::Result<Self>
+fn lcms2::Profile<Ctx>::new_gray_context(impl core::convert::AsRef<Ctx>, &lcms2_sys::ffi::CIExyY, &lcms2::ToneCurve) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::new_icc_context(impl core::convert::AsRef<Ctx>, &[u8]) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::new_lab2_context(impl core::convert::AsRef<Ctx>, &lcms2_sys::ffi::CIExyY) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::new_lab4_context(impl core::convert::AsRef<Ctx>, &lcms2_sys::ffi::CIExyY) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::new_null_context(impl core::convert::AsRef<Ctx>) -> Self
+fn lcms2::Profile<Ctx>::new_oklab_context(impl core::convert::AsRef<Ctx>) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::new_rgb_context(impl core::convert::AsRef<Ctx>, &lcms2_sys::ffi::CIExyY, &lcms2_sys::ffi::CIExyYTRIPLE, &[&lcms2::ToneCurve]) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<Ctx>::new_srgb_context(impl core::convert::AsRef<Ctx>) -> Self
+fn lcms2::Profile<Ctx>::new_xyz_context(impl core::convert::AsRef<Ctx>) -> Self
+fn lcms2::Profile<Ctx>::pcs(&self) -> lcms2_sys::ffi::ColorSpaceSignature
+fn lcms2::Profile<Ctx>::profile_id(&self) -> lcms2_sys::ffi::ProfileID
+fn lcms2::Profile<Ctx>::read_tag(&self, lcms2_sys::ffi::TagSignature) -> lcms2::Tag<'_>
+fn lcms2::Profile<Ctx>::remove_tag(&mut self, lcms2_sys::ffi::TagSignature) -> bool
+fn lcms2::Profile<Ctx>::save_profile_to_file(&mut self, &std::path::Path) -> std::io::error::Result<()>
+fn lcms2::Profile<Ctx>::set_color_space(&mut self, lcms2_sys::ffi::ColorSpaceSignature)
+fn lcms2::Profile<Ctx>::set_default_profile_id(&mut self)
+fn lcms2::Profile<Ctx>::set_device_class(&mut self, lcms2_sys::ffi::ProfileClassSignature)
+fn lcms2::Profile<Ctx>::set_encoded_icc_version(&self, u32)
+fn lcms2::Profile<Ctx>::set_header_attributes(&mut self, u64)
+fn lcms2::Profile<Ctx>::set_header_flags(&mut self, u32)
+fn lcms2::Profile<Ctx>::set_header_manufacturer(&mut self, u32)
+fn lcms2::Profile<Ctx>::set_header_model(&mut self, u32)
+fn lcms2::Profile<Ctx>::set_header_rendering_intent(&mut self, lcms2_sys::ffi::Intent)
+fn lcms2::Profile<Ctx>::set_pcs(&mut self, lcms2_sys::ffi::ColorSpaceSignature)
+fn lcms2::Profile<Ctx>::set_profile_id(&mut self, lcms2_sys::ffi::ProfileID)
+fn lcms2::Profile<Ctx>::set_version(&mut self, f64)
+fn lcms2::Profile<Ctx>::tag_signatures(&self) -> alloc::vec::Vec<lcms2_sys::ffi::TagSignature>
+fn lcms2::Profile<Ctx>::version(&self) -> f64
+fn lcms2::Profile<Ctx>::write_tag(&mut self, lcms2_sys::ffi::TagSignature, lcms2::Tag<'_>) -> bool
+fn lcms2::Profile::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::Profile<GlobalContext>::ink_limiting(lcms2_sys::ffi::ColorSpaceSignature, f64) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<GlobalContext>::new_device_link<F, T>(&lcms2::Transform<F, T>, f64, lcms2::Flags) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<GlobalContext>::new_file<P: core::convert::AsRef<std::path::Path>>(P) -> std::io::error::Result<Self>
+fn lcms2::Profile<GlobalContext>::new_gray(&lcms2_sys::ffi::CIExyY, &lcms2::ToneCurve) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<GlobalContext>::new_icc(&[u8]) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<GlobalContext>::new_null() -> Self
+fn lcms2::Profile<GlobalContext>::new_placeholder() -> Self
+fn lcms2::Profile<GlobalContext>::new_rgb(&lcms2_sys::ffi::CIExyY, &lcms2_sys::ffi::CIExyYTRIPLE, &[&lcms2::ToneCurve]) -> lcms2::LCMSResult<Self>
+fn lcms2::Profile<GlobalContext>::new_srgb() -> Self
+fn lcms2::Profile<GlobalContext>::new_xyz() -> Self
+fn lcms2::Stage::as_mut(&mut self) -> &mut lcms2::StageRef
+fn lcms2::Stage::as_ptr(&self) -> *mut lcms2_sys::ffi::Stage
+fn lcms2::Stage::as_ref(&self) -> &lcms2::StageRef
+fn lcms2::Stage::borrow_mut(&mut self) -> &mut lcms2::StageRef
+fn lcms2::Stage::borrow(&self) -> &lcms2::StageRef
+fn lcms2::Stage::deref_mut(&mut self) -> &mut lcms2::StageRef
+fn lcms2::Stage::deref(&self) -> &lcms2::StageRef
+fn lcms2::Stage::drop(&mut self)
+fn lcms2::Stage::new_clut<Value: lcms2::eval::FloatOrU16>(usize, u32, u32, core::option::Option<&[Value]>) -> lcms2::LCMSResult<Self>
+fn lcms2::Stage::new_identity(u32) -> lcms2::Stage
+fn lcms2::Stage::new_matrix(&[f64], usize, usize, core::option::Option<&[f64]>) -> lcms2::LCMSResult<Self>
+fn lcms2::Stage::new_tone_curves(&[&lcms2::ToneCurveRef]) -> lcms2::LCMSResult<lcms2::Stage>
+fn lcms2::StageRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::StageRef::input_channels(&self) -> usize
+fn lcms2::StageRef::output_channels(&self) -> usize
+fn lcms2::StageRef::stage_type(&self) -> lcms2_sys::ffi::StageSignature
+fn lcms2::StagesIter<'a>::next(&mut self) -> core::option::Option<Self::Item>
+fn lcms2::Tag<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::Tag<'_>::is_none(&self) -> bool
+fn lcms2::ThreadContext::adaptation_state(&self) -> f64
+fn lcms2::ThreadContext::alarm_codes(&self) -> [u16; 16]
+fn lcms2::ThreadContext::as_ref(&self) -> &Self
+fn lcms2::ThreadContext::clone(&self) -> Self
+fn lcms2::ThreadContext::default() -> Self
+fn lcms2::ThreadContext::drop(&mut self)
+fn lcms2::ThreadContext::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::ThreadContext::new() -> Self
+fn lcms2::ThreadContext::set_adaptation_state(&mut self, f64)
+fn lcms2::ThreadContext::set_alarm_codes(&mut self, [u16; 16])
+fn lcms2::ThreadContext::set_error_logging_function(&mut self, lcms2_sys::ffi::LogErrorHandlerFunction)
+fn lcms2::ThreadContext::supported_intents(&self) -> std::collections::hash::map::HashMap<lcms2_sys::ffi::Intent, &'static core::ffi::c_str::CStr>
+fn lcms2::ThreadContext::unregister_plugins(&mut self)
+fn lcms2::ThreadContext::user_data(&self) -> *mut std::os::raw::c_void
+fn lcms2::ToneCurve::as_mut(&mut self) -> &mut lcms2::ToneCurveRef
+fn lcms2::ToneCurve::as_ptr(&self) -> *mut lcms2_sys::ffi::ToneCurve
+fn lcms2::ToneCurve::as_ref(&self) -> &lcms2::ToneCurveRef
+fn lcms2::ToneCurve::borrow_mut(&mut self) -> &mut lcms2::ToneCurveRef
+fn lcms2::ToneCurve::borrow(&self) -> &lcms2::ToneCurveRef
+fn lcms2::ToneCurve::clone(&self) -> lcms2::ToneCurve
+fn lcms2::ToneCurve::deref_mut(&mut self) -> &mut lcms2::ToneCurveRef
+fn lcms2::ToneCurve::deref(&self) -> &lcms2::ToneCurveRef
+fn lcms2::ToneCurve::drop(&mut self)
+fn lcms2::ToneCurve::new(f64) -> Self
+fn lcms2::ToneCurve::new_parametric(i16, &[f64]) -> lcms2::LCMSResult<Self>
+fn lcms2::ToneCurve::new_tabulated_float(&[f32]) -> Self
+fn lcms2::ToneCurve::new_tabulated(&[u16]) -> Self
+fn lcms2::ToneCurveRef::estimated_entries(&self) -> &[u16]
+fn lcms2::ToneCurveRef::estimated_gamma(&self, f64) -> core::option::Option<f64>
+fn lcms2::ToneCurveRef::eval<ToneCurveValue: lcms2::eval::FloatOrU16>(&self, ToneCurveValue) -> ToneCurveValue
+fn lcms2::ToneCurveRef::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::ToneCurveRef::is_descending(&self) -> bool
+fn lcms2::ToneCurveRef::is_linear(&self) -> bool
+fn lcms2::ToneCurveRef::is_monotonic(&self) -> bool
+fn lcms2::ToneCurveRef::is_multisegment(&self) -> bool
+fn lcms2::ToneCurveRef::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
+fn lcms2::ToneCurveRef::parametric_type(&self) -> i32
+fn lcms2::ToneCurveRef::reversed_samples(&self, usize) -> lcms2::ToneCurve
+fn lcms2::ToneCurveRef::reversed(&self) -> lcms2::ToneCurve
+fn lcms2::ToneCurveRef::smooth(&mut self, f64) -> bool
+fn lcms2::ToneCurveRef::to_owned(&self) -> lcms2::ToneCurve
+fn lcms2::Transform<F, T, C, L>::drop(&mut self)
+fn lcms2::Transform<F, T, C, L>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+fn lcms2::Transform<F, T, C, L>::input_format(&self) -> lcms2_sys::ffi::PixelFormat
+fn lcms2::Transform<F, T, C, L>::output_format(&self) -> lcms2_sys::ffi::PixelFormat
+fn lcms2::Transform<F, T, GlobalContext, L>::global_adaptation_state() -> f64
+fn lcms2::Transform<F, T, GlobalContext, L>::global_alarm_codes() -> [u16; 16]
+fn lcms2::Transform<F, T, GlobalContext, L>::set_global_adaptation_state(f64)
+fn lcms2::Transform<F, T, GlobalContext, L>::set_global_alarm_codes([u16; 16])
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, AllowCache>::new_context(impl core::convert::AsRef<Ctx>, &lcms2::Profile<Ctx>, lcms2_sys::ffi::PixelFormat, &lcms2::Profile<Ctx>, lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::Intent) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>::input_pixel_format(&self) -> lcms2_sys::ffi::PixelFormat
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>::new_flags_context(impl core::convert::AsRef<Ctx>, &lcms2::Profile<Ctx>, lcms2_sys::ffi::PixelFormat, &lcms2::Profile<Ctx>, lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::Intent, lcms2::Flags<Fl>) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>::new_multiprofile_context(impl core::convert::AsRef<Ctx>, &[&lcms2::Profile<Ctx>], lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::Intent, lcms2::Flags<Fl>) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>::new_proofing_context(impl core::convert::AsRef<Ctx>, &lcms2::Profile<Ctx>, lcms2_sys::ffi::PixelFormat, &lcms2::Profile<Ctx>, lcms2_sys::ffi::PixelFormat, &lcms2::Profile<Ctx>, lcms2_sys::ffi::Intent, lcms2_sys::ffi::Intent, lcms2::Flags<Fl>) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>::output_pixel_format(&self) -> lcms2_sys::ffi::PixelFormat
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>::transform_pixels(&self, &[InputPixelFormat], &mut [OutputPixelFormat])
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>::transform_pixels_uninit<'dst>(&self, &[InputPixelFormat], &'dst mut [core::mem::maybe_uninit::MaybeUninit<OutputPixelFormat>]) -> &'dst mut [OutputPixelFormat]
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, GlobalContext, AllowCache>::new_flags<Fl: lcms2::CacheFlag>(&lcms2::Profile, lcms2_sys::ffi::PixelFormat, &lcms2::Profile, lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::Intent, lcms2::Flags<Fl>) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, GlobalContext, AllowCache>::new(&lcms2::Profile, lcms2_sys::ffi::PixelFormat, &lcms2::Profile, lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::Intent) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, GlobalContext, AllowCache>::new_multiprofile(&[&lcms2::Profile], lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::PixelFormat, lcms2_sys::ffi::Intent, lcms2::Flags) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<InputPixelFormat, OutputPixelFormat, GlobalContext, AllowCache>::new_proofing(&lcms2::Profile, lcms2_sys::ffi::PixelFormat, &lcms2::Profile, lcms2_sys::ffi::PixelFormat, &lcms2::Profile, lcms2_sys::ffi::Intent, lcms2_sys::ffi::Intent, lcms2::Flags) -> lcms2::LCMSResult<Self>
+fn lcms2::Transform<PixelFormat, PixelFormat, Ctx, Fl>::transform_in_place(&self, &mut [PixelFormat])
+fn lcms2::version() -> u32
+fn lcms2::white_point_from_temp(f64) -> core::option::Option<lcms2_sys::ffi::CIExyY>
+fn lcms2::xyY2XYZ(&lcms2_sys::ffi::CIExyY) -> lcms2_sys::ffi::CIEXYZ
+fn lcms2::XYZ2xyY(&lcms2_sys::ffi::CIEXYZ) -> lcms2_sys::ffi::CIExyY
+impl<'a> core::convert::From<&'a str> for lcms2::Locale
+impl<'a> core::fmt::Debug for lcms2::Tag<'a>
+impl<'a> core::iter::traits::iterator::Iterator for lcms2::StagesIter<'a>
+impl alloc::borrow::ToOwned for lcms2::PipelineRef
+impl alloc::borrow::ToOwned for lcms2::ToneCurveRef
+impl<C: core::marker::Send> core::marker::Send for lcms2::Profile<C>
+impl<Context> core::ops::drop::Drop for lcms2::Profile<Context>
+impl core::borrow::Borrow<lcms2::MLURef> for lcms2::MLU
+impl core::borrow::Borrow<lcms2::NamedColorListRef> for lcms2::NamedColorList
+impl core::borrow::Borrow<lcms2::StageRef> for lcms2::Stage
+impl core::borrow::Borrow<lcms2::ToneCurveRef> for lcms2::ToneCurve
+impl core::borrow::BorrowMut<lcms2::MLURef> for lcms2::MLU
+impl core::borrow::BorrowMut<lcms2::NamedColorListRef> for lcms2::NamedColorList
+impl core::borrow::BorrowMut<lcms2::StageRef> for lcms2::Stage
+impl core::borrow::BorrowMut<lcms2::ToneCurveRef> for lcms2::ToneCurve
+impl core::clone::Clone for lcms2::Error
+impl core::clone::Clone for lcms2::Locale
+impl core::clone::Clone for lcms2::NamedColorInfo
+impl core::clone::Clone for lcms2::ThreadContext
+impl core::clone::Clone for lcms2::ToneCurve
+impl core::cmp::Eq for lcms2::Error
+impl core::cmp::Eq for lcms2::Locale
+impl core::cmp::Eq for lcms2::NamedColorInfo
+impl core::cmp::Ord for lcms2::Locale
+impl core::cmp::PartialEq for lcms2::Error
+impl core::cmp::PartialEq for lcms2::Locale
+impl core::cmp::PartialEq for lcms2::NamedColorInfo
+impl core::cmp::PartialOrd for lcms2::Locale
+impl core::convert::AsMut<lcms2::MLURef> for lcms2::MLU
+impl core::convert::AsMut<lcms2::NamedColorListRef> for lcms2::NamedColorList
+impl core::convert::AsMut<lcms2::StageRef> for lcms2::Stage
+impl core::convert::AsMut<lcms2::ToneCurveRef> for lcms2::ToneCurve
+impl core::convert::AsRef<lcms2::MLURef> for lcms2::MLU
+impl core::convert::AsRef<lcms2::NamedColorListRef> for lcms2::NamedColorList
+impl core::convert::AsRef<lcms2::StageRef> for lcms2::Stage
+impl core::convert::AsRef<lcms2::ThreadContext> for lcms2::ThreadContext
+impl core::convert::AsRef<lcms2::ToneCurveRef> for lcms2::ToneCurve
+impl core::default::Default for lcms2::Flags
+impl core::default::Default for lcms2::Locale
+impl core::default::Default for lcms2::ThreadContext
+impl core::error::Error for lcms2::Error
+impl core::fmt::Debug for lcms2::Error
+impl core::fmt::Debug for lcms2::Locale
+impl core::fmt::Debug for lcms2::MLURef
+impl core::fmt::Debug for lcms2::NamedColorInfo
+impl core::fmt::Debug for lcms2::NamedColorListRef
+impl core::fmt::Debug for lcms2::PipelineRef
+impl core::fmt::Debug for lcms2::Profile
+impl core::fmt::Debug for lcms2::StageRef
+impl core::fmt::Debug for lcms2::ThreadContext
+impl core::fmt::Debug for lcms2::ToneCurveRef
+impl core::fmt::Display for lcms2::Error
+impl core::fmt::Display for lcms2::Locale
+impl core::marker::Copy for lcms2::Error
+impl core::marker::Copy for lcms2::Locale
+impl core::marker::Send for lcms2::ThreadContext
+impl core::marker::StructuralPartialEq for lcms2::Error
+impl core::marker::StructuralPartialEq for lcms2::Locale
+impl core::marker::StructuralPartialEq for lcms2::NamedColorInfo
+impl core::ops::deref::Deref for lcms2::MLU
+impl core::ops::deref::Deref for lcms2::NamedColorList
+impl core::ops::deref::Deref for lcms2::Stage
+impl core::ops::deref::Deref for lcms2::ToneCurve
+impl core::ops::deref::DerefMut for lcms2::MLU
+impl core::ops::deref::DerefMut for lcms2::NamedColorList
+impl core::ops::deref::DerefMut for lcms2::Stage
+impl core::ops::deref::DerefMut for lcms2::ToneCurve
+impl core::ops::drop::Drop for lcms2::CIECAM02
+impl core::ops::drop::Drop for lcms2::MLU
+impl core::ops::drop::Drop for lcms2::NamedColorList
+impl core::ops::drop::Drop for lcms2::Stage
+impl core::ops::drop::Drop for lcms2::ThreadContext
+impl core::ops::drop::Drop for lcms2::ToneCurve
+impl core::panic::unwind_safe::RefUnwindSafe for lcms2::ThreadContext
+impl core::panic::unwind_safe::UnwindSafe for lcms2::ThreadContext
+impl<Ctx: Context> lcms2::Profile<Ctx>
+impl foreign_types_shared::ForeignType for lcms2::MLU
+impl foreign_types_shared::ForeignType for lcms2::NamedColorList
+impl foreign_types_shared::ForeignType for lcms2::Stage
+impl foreign_types_shared::ForeignType for lcms2::ToneCurve
+impl foreign_types_shared::ForeignTypeRef for lcms2::MLURef
+impl foreign_types_shared::ForeignTypeRef for lcms2::NamedColorListRef
+impl foreign_types_shared::ForeignTypeRef for lcms2::PipelineRef
+impl foreign_types_shared::ForeignTypeRef for lcms2::StageRef
+impl foreign_types_shared::ForeignTypeRef for lcms2::ToneCurveRef
+impl<F, T, C: core::marker::Send, Z> core::marker::Send for lcms2::Transform<F, T, C, Z>
+impl<F, T, C, L> core::fmt::Debug for lcms2::Transform<F, T, C, L>
+impl<F, T, C, L> core::ops::drop::Drop for lcms2::Transform<F, T, C, L>
+impl<F, T, C, L> lcms2::Transform<F, T, C, L>
+impl<F, T, L> lcms2::Transform<F, T, GlobalContext, L>
+impl<InputPixelFormat: core::marker::Copy + bytemuck::pod::Pod, OutputPixelFormat: core::marker::Copy + bytemuck::pod::Pod, Ctx: Context, Fl: lcms2::CacheFlag> lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, Fl>
+impl<InputPixelFormat: core::marker::Copy + bytemuck::pod::Pod, OutputPixelFormat: core::marker::Copy + bytemuck::pod::Pod, Ctx: Context> lcms2::Transform<InputPixelFormat, OutputPixelFormat, Ctx, AllowCache>
+impl<InputPixelFormat: core::marker::Copy + bytemuck::pod::Pod, OutputPixelFormat: core::marker::Copy + bytemuck::pod::Pod> lcms2::Transform<InputPixelFormat, OutputPixelFormat, GlobalContext, AllowCache>
+impl lcms2::CIECAM02
+impl lcms2::CIELabExt for lcms2_sys::ffi::CIELab
+impl lcms2::CIEXYZExt for lcms2_sys::ffi::CIEXYZ
+impl lcms2::CIExzYExt for lcms2_sys::ffi::CIExyY
+impl lcms2::ColorSpaceSignatureExt for lcms2_sys::ffi::ColorSpaceSignature
+impl lcms2::Flags
+impl lcms2::Locale
+impl lcms2::MLU
+impl lcms2::MLURef
+impl lcms2::NamedColorList
+impl lcms2::NamedColorListRef
+impl lcms2::PipelineRef
+impl lcms2::Profile<GlobalContext>
+impl lcms2::Stage
+impl lcms2::StageRef
+impl lcms2::Tag<'_>
+impl lcms2::ThreadContext
+impl lcms2::ToneCurve
+impl lcms2::ToneCurveRef
+impl<PixelFormat: core::marker::Copy + bytemuck::pod::Pod, Ctx: Context, Fl: lcms2::CacheFlag> lcms2::Transform<PixelFormat, PixelFormat, Ctx, Fl>
+impl<T: core::clone::Clone + lcms2::CacheFlag> core::clone::Clone for lcms2::Flags<T>
+impl<T: core::fmt::Debug + lcms2::CacheFlag> core::fmt::Debug for lcms2::Flags<T>
+impl<T: core::marker::Copy + lcms2::CacheFlag> core::marker::Copy for lcms2::Flags<T>
+impl<T: lcms2::CacheFlag> lcms2::Flags<T>
+lcms2::Error::InvalidString
+lcms2::Error::MissingData
+lcms2::Error::ObjectCreationError
+lcms2::NamedColorInfo::colorant: [u16; 16]
+lcms2::NamedColorInfo::name: alloc::string::String
+lcms2::NamedColorInfo::pcs: [u16; 3]
+lcms2::NamedColorInfo::prefix: alloc::string::String
+lcms2::NamedColorInfo::suffix: alloc::string::String
+lcms2::Tag::CIExyYTRIPLE(&'a lcms2_sys::ffi::CIExyYTRIPLE)
+lcms2::Tag::CIEXYZ(&'a lcms2_sys::ffi::CIEXYZ)
+lcms2::Tag::ColorimetricIntentImageState(lcms2_sys::ffi::ColorimetricIntentImageState)
+lcms2::Tag::ICCData(&'a lcms2_sys::ffi::ICCData)
+lcms2::Tag::ICCMeasurementConditions(&'a lcms2_sys::ffi::ICCMeasurementConditions)
+lcms2::Tag::ICCViewingConditions(&'a lcms2_sys::ffi::ICCViewingConditions)
+lcms2::Tag::Intent(lcms2_sys::ffi::Intent)
+lcms2::Tag::MHC2(&'a lcms2_sys::ffi::MHC2Type)
+lcms2::Tag::MLU(&'a lcms2::MLURef)
+lcms2::Tag::NamedColorList(&'a lcms2::NamedColorListRef)
+lcms2::Tag::None
+lcms2::Tag::Pipeline(&'a lcms2::PipelineRef)
+lcms2::Tag::Screening(&'a lcms2_sys::ffi::Screening)
+lcms2::Tag::SEQ(&'a lcms2_sys::ffi::SEQ)
+lcms2::Tag::Technology(lcms2_sys::ffi::TechnologySignature)
+lcms2::Tag::ToneCurve(&'a lcms2::ToneCurveRef)
+lcms2::Tag::UcrBg(&'a lcms2_sys::ffi::UcrBg)
+lcms2::Tag::VcgtCurves([&'a lcms2::ToneCurveRef; 3])
+lcms2::Tag::VideoSignal(&'a lcms2_sys::ffi::VideoSignalType)
+#[non_exhaustive] pub enum lcms2::Tag<'a>
+#[repr(transparent)] pub struct lcms2::CIECAM02
+#[repr(transparent)] pub struct lcms2::MLU(_)
+#[repr(transparent)] pub struct lcms2::NamedColorList(_)
+#[repr(transparent)] pub struct lcms2::Profile<Context>
+#[repr(transparent)] pub struct lcms2::Stage(_)
+#[repr(transparent)] pub struct lcms2::ThreadContext
+#[repr(transparent)] pub struct lcms2::ToneCurve(_)
+#[repr(transparent)] pub struct lcms2::Transform<InputPixelFormat, OutputPixelFormat, Context, Flags>
+struct lcms2::Flags<T: lcms2::CacheFlag>(pub u32, _)
+struct lcms2::Locale
+struct lcms2::MLURef(_)
+struct lcms2::NamedColorInfo
+struct lcms2::NamedColorListRef(_)
+struct lcms2::PipelineRef(_)
+struct lcms2::StageRef(_)
+struct lcms2::StagesIter<'a>(pub core::option::Option<&'a lcms2::StageRef>)
+struct lcms2::ToneCurveRef(_)
+trait lcms2::CacheFlag: core::marker::Sized
+trait lcms2::CIELabExt: core::marker::Sized
+trait lcms2::CIEXYZExt: core::marker::Sized
+trait lcms2::CIExzYExt: core::marker::Sized
+trait lcms2::ColorSpaceSignatureExt: core::marker::Sized + core::marker::Copy
+type lcms2::LCMSResult<T> = core::result::Result<T, lcms2::Error>
+type lcms2::MLU::CType = lcms2_sys::ffi::MLU
+type lcms2::MLURef::CType = lcms2_sys::ffi::MLU
+type lcms2::MLU::Ref = lcms2::MLURef
+type lcms2::MLU::Target = lcms2::MLURef
+type lcms2::NamedColorList::CType = lcms2_sys::ffi::NAMEDCOLORLIST
+type lcms2::NamedColorListRef::CType = lcms2_sys::ffi::NAMEDCOLORLIST
+type lcms2::NamedColorList::Ref = lcms2::NamedColorListRef
+type lcms2::NamedColorList::Target = lcms2::NamedColorListRef
+type lcms2::PipelineRef::CType = lcms2_sys::ffi::Pipeline
+type lcms2::PipelineRef::Owned = Pipeline
+type lcms2::Stage::CType = lcms2_sys::ffi::Stage
+type lcms2::StageRef::CType = lcms2_sys::ffi::Stage
+type lcms2::Stage::Ref = lcms2::StageRef
+type lcms2::StagesIter<'a>::Item = &'a lcms2::StageRef
+type lcms2::Stage::Target = lcms2::StageRef
+type lcms2::ToneCurve::CType = lcms2_sys::ffi::ToneCurve
+type lcms2::ToneCurveRef::CType = lcms2_sys::ffi::ToneCurve
+type lcms2::ToneCurve::Ref = lcms2::ToneCurveRef
+type lcms2::ToneCurveRef::Owned = lcms2::ToneCurve
+type lcms2::ToneCurve::Target = lcms2::ToneCurveRef
+unsafe fn lcms2::MLU::from_ptr(*mut lcms2_sys::ffi::MLU) -> lcms2::MLU
+unsafe fn lcms2::NamedColorList::from_ptr(*mut lcms2_sys::ffi::NAMEDCOLORLIST) -> lcms2::NamedColorList
+unsafe fn lcms2::PipelineRef::eval_unchecked<Value: lcms2::eval::FloatOrU16>(&self, &[Value], &mut [Value])
+unsafe fn lcms2::Profile<Ctx>::new_linearization_device_link_context(impl core::convert::AsRef<Ctx>, lcms2_sys::ffi::ColorSpaceSignature, &[lcms2::ToneCurveRef]) -> lcms2::LCMSResult<Self>
+unsafe fn lcms2::Stage::from_ptr(*mut lcms2_sys::ffi::Stage) -> lcms2::Stage
+unsafe fn lcms2::Tag<'_>::data_for_signature_opt(&self, lcms2_sys::ffi::TagSignature) -> core::option::Option<*const u8>
+unsafe fn lcms2::Tag<'_>::data_for_signature(&self, lcms2_sys::ffi::TagSignature) -> *const u8
+unsafe fn lcms2::Tag<'_>::new(lcms2_sys::ffi::TagSignature, *const u8) -> Self
+unsafe fn lcms2::ThreadContext::install_plugin(&mut self, *mut std::os::raw::c_void) -> bool
+unsafe fn lcms2::ToneCurve::from_ptr(*mut lcms2_sys::ffi::ToneCurve) -> lcms2::ToneCurve
+use lcms2::CIELab
+use lcms2::CIExyY
+use lcms2::CIExyYTRIPLE
+use lcms2::CIEXYZ
+use lcms2::ColorSpaceSignature
+use lcms2::InfoType
+use lcms2::Intent
+use lcms2::PixelFormat
+use lcms2::Pod
+use lcms2::ProfileClassSignature
+use lcms2::TagSignature
+use lcms2::VideoSignalType
+use lcms2::ViewingConditions
+use lcms2::Zeroable

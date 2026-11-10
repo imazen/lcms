@@ -5,5 +5,7 @@ fn public_api_surface_docs_are_current() {
     zenutils_apidoc::ApiDoc::new()
         .workspace_dir("..")
         .crates(["lcms"])
+        // the math providers are mutually exclusive — pin one.
+        .exclude_features("lcms", ["math-rust", "math-zen"])
         .run();
 }

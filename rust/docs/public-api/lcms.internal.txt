@@ -1,5 +1,5 @@
 # lcms public API — doc(hidden) items and excluded-feature surface
-# excluded features: (none)
+# excluded features: math-rust,math-zen
 # (regenerated on every `cargo test` by zenutils-apidoc; ZEN_API_DOC=check verifies, =off skips).
 # Encodings: crate-name prefix stripped; auto traits collapse to a
 # count + exceptions; trait impls collapse to one roster line per
@@ -7,14 +7,16 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 
+NOTE: excluded-feature surface (math-rust,math-zen) not buildable: rustdoc JSON build failed: error[E0432]: unresolved import `imp`
 ## summary
 #
 #   pub consts/statics                          1
 #   free functions                              4
-#   inherent methods                            6
-#   trait roster entries (type × trait)        40
+#   inherent methods                           21
+#   trait roster entries (type × trait)        55
 #
 # per-module pub lines:
+#   api                               3
 #   cgats                             2
 #   cnvrt                             2
 #   context                           1
@@ -22,11 +24,15 @@
 #   gamma                             1
 #   gbd                               1
 #   intrp                             1
+#   lcms2                            12
 #   lut                               1
 #   xform                             1
 
-## items (11 lines)
+## items (26 lines)
 
+pub fn api::Format::assert_fields_are_eq(&self)
+pub fn api::Intent::assert_fields_are_eq(&self)
+pub fn api::Tag::assert_fields_are_eq(&self)
 pub fn cgats::Symbol::assert_fields_are_eq(&self)
 pub fn cgats::WriteMode::assert_fields_are_eq(&self)
 pub fn cnvrt::dbg_default_icc_intents(core::option::Option<&context::Context>, &mut [alloc::boxed::Box<profile::IccProfile>], &[u32], &mut [bool], &[f64], u32) -> core::option::Option<lut::Pipeline>
@@ -35,12 +41,27 @@ pub fn context::PluginType::assert_fields_are_eq(&self)
 pub fn gamma::dbg_allocate_tone_curve_struct(core::option::Option<&context::Context>, u32, u32, core::option::Option<&[gamma::CurveSegment]>, core::option::Option<&[u16]>) -> core::option::Option<gamma::ToneCurve>
 pub fn gbd::GdbPointType::assert_fields_are_eq(&self)
 pub fn intrp::KernelKind::assert_fields_are_eq(&self)
+pub fn lcms2::AllowCache::assert_fields_are_eq(&self)
+pub fn lcms2::ColorSpaceSignature::assert_fields_are_eq(&self)
+pub fn lcms2::DisallowCache::assert_fields_are_eq(&self)
+pub fn lcms2::Error::assert_fields_are_eq(&self)
+pub fn lcms2::Flags<F>::assert_fields_are_eq(&self)
+pub fn lcms2::InfoType::assert_fields_are_eq(&self)
+pub fn lcms2::Intent::assert_fields_are_eq(&self)
+pub fn lcms2::Locale::assert_fields_are_eq(&self)
+pub fn lcms2::PixelFormat::assert_fields_are_eq(&self)
+pub fn lcms2::ProfileClassSignature::assert_fields_are_eq(&self)
+pub fn lcms2::TagSignature::assert_fields_are_eq(&self)
+pub fn lcms2::TechnologySignature::assert_fields_are_eq(&self)
 pub fn lut::StageLoc::assert_fields_are_eq(&self)
 pub fn xform::dbg_detect_rgb_profile_gamma(&mut profile::IccProfile, f64) -> f64
 pub static err::GLOBAL_LOG_HOOK: std::sync::poison::mutex::Mutex<core::option::Option<context::LogErrorHandler>>
 
-## trait impls (40 types)
+## trait impls (55 types)
 
+api::Format: TrivialClone
+api::Intent: TrivialClone
+api::Tag: TrivialClone
 cgats::Keyword: TrivialClone
 cgats::Symbol: TrivialClone
 cgats::WriteMode: TrivialClone
@@ -55,6 +76,18 @@ gbd::Spherical: TrivialClone
 intrp::ForeignHooks: TrivialClone
 intrp::Interpolation: TrivialClone
 intrp::KernelKind: TrivialClone
+lcms2::AllowCache: TrivialClone
+lcms2::ColorSpaceSignature: TrivialClone
+lcms2::DisallowCache: TrivialClone
+lcms2::Error: TrivialClone
+lcms2::GlobalContext: TrivialClone
+lcms2::InfoType: TrivialClone
+lcms2::Intent: TrivialClone
+lcms2::Locale: TrivialClone
+lcms2::PixelFormat: TrivialClone
+lcms2::ProfileClassSignature: TrivialClone
+lcms2::TagSignature: TrivialClone
+lcms2::TechnologySignature: TrivialClone
 lut::StageLoc: TrivialClone
 named::MluEntry: TrivialClone
 pack::Formatter: TrivialClone
