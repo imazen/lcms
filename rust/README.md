@@ -9,40 +9,99 @@ all driven through `cargo test` against the real compiled C library.
 `#![forbid(unsafe_code)]` — the shipped dependency tree is 100% safe Rust.
 The C oracle (`lcms-cref`, dev-only) never reaches the production deps.
 
-## Two API surfaces
+## Quickstart
+
+Pick the layer that matches what you're doing:
+
+| You want… | Use | Feature |
+|---|---|---|
+| a Rust-native API | `lcms::api` | *(always on)* |
+| to migrate from the **`lcms2` crate** | `lcms::lcms2` | `lcms2-api` |
+| C-shaped calls (`cms*`, 1:1 parity) | `lcms::*` | `little-cms-api` *(default)* |
+
+### `lcms::api` — the idiomatic face (recommended)
+
+```rust
+use lcms::api::*;
+
+// Open or build profiles.
+let mut srgb = Profile::srgb()?;
+let mut p3 = Profile::open(&std::fs::read("Display-P3.icc")?)?;
+
+// Link once — the expensive part (pipeline + optimizer + CLUT
+// flattening). Plan is Sync: Arc-share it across workers.
+let plan = Plan::new(&mut p3, &mut srgb, Format::RgbU8, Format::RgbU8)?;
+
+// Per-request scratch — ~64 B, or pooled thread_local.
+let mut sc = plan.scratch();
+plan.apply(&mut sc, &[255u8, 0, 0], &mut [0u8; 3]);
+
+// Large images: pixel-independent parallel split, scratch-per-chunk.
+// plan.apply_par(&pixels_in, &mut pixels_out, n_pixels, n_threads);
+```
+
+Read/write tags, named colors, header fields:
+
+```rust
+srgb.freeze();                       // materialize lazy tags → &Profile is Sync
+for tag in srgb.tags() { println!("{tag}"); }
+let wp = srgb.get(Tag(0x77747074));  // 'wtpt' → Option<&TagObject>
+if let Some(ncl) = srgb.named_colors() { /* iterate the palette */ }
+```
+
+### `lcms::lcms2` — drop-in migration from the `lcms2` crate
+
+```toml
+[dependencies]
+lcms = { path = "lcms", features = ["lcms2-api"] }
+```
+
+Change one line — `use lcms2::*` → `use lcms::lcms2::*` — and the same code
+compiles:
+
+```rust
+use lcms::lcms2::*;
+
+let srgb = Profile::new_srgb();
+let t: Transform<[u8; 3], [u8; 3]> =
+    Transform::new(&srgb, PixelFormat::RGB_8, &srgb, PixelFormat::RGB_8,
+                   Intent::Perceptual)?;
+let mut dst = [[0u8; 3]];
+t.transform_pixels(&[[255, 0, 0]], &mut dst);
+
+let mut mlu = MLU::new(1);
+mlu.set_text("My profile", Locale::none());
+```
+
+The official `lcms2` crate's own test suite runs verbatim against this
+shim (`tests/lcms2_crate/` — 15/15, MIT-credited extraction). Every public
+type is `Send` + `Sync`.
+
+**Differences to know when migrating:**
+
+- `transform_pixels_uninit` doesn't exist — `forbid(unsafe_code)` can't
+  return `&mut [O]` over `MaybeUninit`. Use `transform_pixels` or
+  `transform_in_place`.
+- FFI-shaped methods (`as_ptr`/`from_ptr`/`CType`/`Owned`/`Target`) don't
+  exist — there's no raw-handle layer. `Deref` gives the same `Ref` model.
+- `Transform` is `Sync` *stronger* than the C crate — `transform_pixels
+  (&self)` locks the per-transform pixel cache (`Mutex` inside), so a
+  shared `Arc<Transform>` is safe. For lock-free parallelism use
+  `lcms::api`'s `Plan` + per-call `Scratch` instead.
+- `read_tag` returns `Tag<'a>` borrowed from a frozen profile — `&self`,
+  zero-cost, `Tag::None` for missing tags (same shape as the crate).
+
+See `docs/public-api/lcms2-comparison.md` for the full surface diff vs
+`lcms2` 6.2.0.
 
 ### `lcms::*` — the C-parity layer
 
 `cmsCreateTransform`, `cmsDoTransform`, `IccProfile`, `Pipeline`, the
 `cmsPACK`/`fmt` machinery — 1:1 with the C source, same operation order.
-This is what the ~30 `c_parity_*` differential suites gate against the
-oracle. Use it when you need C-shaped behavior or are porting C callers.
-
-### `lcms::api` — the idiomatic layer
-
-Owned, `Result`-returning, `Send`/`Sync`-friendly wrappers — what a real
-Rust app uses:
-
-```rust
-use lcms::api::*;
-
-// Load / build profiles
-let mut srgb = Profile::srgb()?;
-let mut p3 = Profile::open(&std::fs::read("Display-P3.icc")?)?;
-
-// Link once — this is the expensive part (pipeline + optimizer +
-// CLUT flattening). The plan is Sync: Arc-share it across workers.
-let plan = Plan::new(&mut p3, &mut srgb, Format::RgbU8, Format::RgbU8)?;
-
-// Per-request scratch — ~64 B, or pooled thread_local.
-let mut sc = plan.scratch();
-let src = [255u8, 0, 0];
-let mut dst = [0u8; 3];
-plan.apply(&mut sc, &src, &mut dst);
-
-// Large images: pixel-independent split, scratch-per-chunk.
-// plan.apply_par(&pixels_in, &mut pixels_out, n_pixels, n_threads);
-```
+Gated by the `little-cms-api` feature (default on; without it the modules
+are crate-private and consumers see only `lcms::api`). This is what the
+~30 `c_parity_*` differential suites gate against the oracle — use it when
+you need C-shaped behavior or are porting C callers.
 
 ## The shared-plan model (for servers)
 
@@ -54,16 +113,17 @@ The object model is split deliberately for concurrent services:
 | **plan** | `Plan` / `TransformPlan` | **immutable after link** | `Sync` — `Arc` shared, cache by `(src, dst, fmt_in, fmt_out, intent, flags)` |
 | **scratch** | `Scratch` / `TransformScratch` | the only per-run state (~64 B pixel cache) | per-call / `thread_local` |
 
-So a proxy server does: profile cache (`Arc` by content-hash) → plan cache
+A proxy server does: profile cache (`Arc` by content-hash) → plan cache
 (`Arc<Plan>` by config key) → per-request `plan.scratch()` → `apply`. The
-whole pixel path is `&self` on shared state; nothing blocks on a lock.
+whole pixel path is `&self` on shared state — no locks anywhere.
 
 ## The math provider
 
-`lcms::math` selects the transcendental backend at compile time
-(default `math-libm` — the `libm` crate, deterministic on every platform).
+`lcms::math` selects the transcendental backend at compile time (default
+`math-libm` — the `libm` crate, deterministic on every platform).
 `math-rust` uses `f64` intrinsics; `math-zen` is a reserved slot for a
-future correctly-rounded implementation.
+future correctly-rounded implementation. The providers are mutually
+exclusive.
 
 ## Parity & determinism (development)
 
@@ -83,7 +143,8 @@ future correctly-rounded implementation.
 
 ## Layout
 
-- `crates/lcms` — the port (`api` for apps, `pub mod cms*` for parity)
+- `crates/lcms` — the port (`api` for apps, `lcms2` for migration,
+  `little-cms-api` for C parity)
 - `crates/lcms-cref` — the unmodified-lcms2 oracle FFI (dev-dep only)
 - `crates/lcms2-ffi` — C-ABI wrapper (upstream testbed driver)
 - `docs/` — `WORKING-ON-THIS` (port loop + traps), `COVERAGE`, `C-BUGS`
