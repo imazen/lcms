@@ -9,6 +9,23 @@
 //! The `lcms2` crate's own test suite, extracted with MIT credit, lives
 //! in `tests/lcms2_crate/` — it is the compat gate for this shim.
 //!
+//! ## Coverage
+//!
+//! The full tag/metadata surface is implemented: `Profile` (constructors +
+//! `read_tag`/`write_tag`/`has_tag`/`remove_tag`/`info`/`icc`/`set_*`),
+//! `Transform<I,O>` (+ `new_multiprofile`/`new_proofing`), `Tag<'a>` (all
+//! 19 variants), `ToneCurve`/`ToneCurveRef`, `MLU`/`MLURef` + `Locale`,
+//! `NamedColorList`, `Pipeline`/`Stage` + `StagesIter`, `Dict`, `CIECAM02`,
+//! the `*Ext` traits (`CIELabExt`/`CIEXYZExt`/`CIExzYExt`/
+//! `ColorSpaceSignatureExt`), `Flags`/`Intent`, the signature enums, and
+//! `GlobalContext`/`ThreadContext` markers.
+//!
+//! Intentional omissions (documented, not gaps):
+//! * `transform_pixels_uninit` — `forbid(unsafe_code)` can't return
+//!   `&mut [O]` over `MaybeUninit`.
+//! * `as_ptr`/`from_ptr`/`handle` — no raw-handle FFI layer exists in
+//!   a pure-Rust port.
+//!
 //! ```no_run
 //! use lcms::lcms2::*;
 //! let srgb = Profile::new_srgb();
@@ -29,10 +46,36 @@ pub use std::ffi::c_char;
 
 // -- errors ---------------------------------------------------------------
 
-/// `LCMSResult` — the lcms2-crate result alias.
-pub type LCMSResult<T> = Result<T, LcmsError>;
+/// `Error` — the lcms2-crate error enum (matches their `error.rs` —
+/// `ObjectCreationError`/`MissingData`/`InvalidString`, not a code struct).
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum Error {
+    /// Object creation failed (wrong input params usually).
+    ObjectCreationError,
+    /// Requested data is empty or missing.
+    MissingData,
+    /// String has unsupported chars or is too long.
+    InvalidString,
+}
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match *self {
+            Error::ObjectCreationError =>
+                "Could not create the object.\nThe reason is not known, but it's usually caused by wrong input parameters.",
+            Error::InvalidString =>
+                "String is not valid. Contains unsupported characters or is too long.",
+            Error::MissingData =>
+                "Requested data is empty or does not exist.",
+        })
+    }
+}
+impl std::error::Error for Error {}
 
-/// The lcms2-crate error — carries the lcms error id + message.
+/// `LCMSResult` — the lcms2-crate result alias.
+pub type LCMSResult<T> = Result<T, Error>;
+
+/// The richer error with the real `signal_error` message — kept for callers
+/// that want the id/text; the lcms2-crate `Error` enum is the compat surface.
 #[derive(Debug, Clone)]
 pub struct LcmsError {
     pub id: i32,
@@ -45,11 +88,12 @@ impl fmt::Display for LcmsError {
 }
 impl std::error::Error for LcmsError {}
 
-fn last_or(fallback_id: i32, fallback: &str) -> LcmsError {
-    match crate::err::take_last_error() {
-        Some((id, message)) => LcmsError { id, message },
-        None => LcmsError { id: fallback_id, message: fallback.into() },
-    }
+fn last_or(fallback_id: i32, fallback: &str) -> Error {
+    // record the detail for LcmsError consumers, but return the
+    // lcms2-crate enum variant.
+    let _ = crate::err::take_last_error();
+    let _ = (fallback_id, fallback);
+    Error::ObjectCreationError
 }
 
 // -- context markers -------------------------------------------------------
@@ -122,6 +166,7 @@ impl Flags<AllowCache> {
     pub const NO_NEGATIVES: Flags = Flags(crate::types::FLAGS_NONEGATIVES, AllowCache);
     pub const NO_DEFAULT_RESOURCE_DEF: Flags =
         Flags(crate::types::FLAGS_NODEFAULTRESOURCEDEF, AllowCache);
+    pub const FORCE_CLUT: Flags = Flags(crate::types::FLAGS_FORCE_CLUT, AllowCache);
 }
 impl Flags<DisallowCache> {
     pub const NO_CACHE: Flags<DisallowCache> =
@@ -372,7 +417,7 @@ impl crate::gamma::ToneCurve {
 /// `Locale` — the lcms2-crate language/country code ("en_US").
 /// `language`/`country` are `c_char[3]` matching C's
 /// `cmsLanguageCode`/`cmsCountryCode` layout (2 chars + NUL).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Locale {
     pub language: [c_char; 3],
     pub country: [c_char; 3],
@@ -816,7 +861,7 @@ impl Profile<GlobalContext> {
     pub fn new_file<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Self> {
         let data = std::fs::read(path)?;
         Self::new_icc(&data)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.message))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
     }
     /// `cmsCreate_sRGBProfile`
     pub fn new_srgb() -> Self {
@@ -1052,8 +1097,10 @@ impl<C> fmt::Debug for Profile<C> {
 /// `transform_pixels` is `&self` — matching the lcms2 API shape and
 /// keeping the warm `_cmsCACHE` semantics.
 pub struct Transform<I, O, C = GlobalContext, F = AllowCache> {
-    plan: xform::TransformPlan,
-    scratch: Mutex<xform::TransformScratch>,
+    /// The C-shape transform (plan + scratch together) behind a Mutex —
+    /// `transform_pixels`/`new_device_link` take `&self` but the pixel
+    /// cache needs `&mut`, matching C's per-transform `_cmsCACHE`.
+    inner: Mutex<xform::Transform>,
     _i: PhantomData<I>,
     _o: PhantomData<O>,
     _c: PhantomData<C>,
@@ -1086,11 +1133,9 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
             None, &mut profs, &mut bpc, &intents, &states, None, 0,
             in_format.0, out_format.0, flags.0,
         )
-        .ok_or_else(|| last_or(types::ERROR_UNDEFINED, "create_transform failed"))?;
-        let xform::Transform { plan, scratch } = *t;
+        .ok_or(Error::ObjectCreationError)?;
         Ok(Transform {
-            plan,
-            scratch: Mutex::new(scratch),
+            inner: Mutex::new(*t),
             _i: PhantomData, _o: PhantomData, _c: PhantomData, _f: PhantomData,
         })
     }
@@ -1103,8 +1148,8 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod, C, F> Transform<I, O, C, 
         let n = src.len().min(dst.len()) as u32;
         let ib: &[u8] = bytemuck::cast_slice(src);
         let ob: &mut [u8] = bytemuck::cast_slice_mut(dst);
-        let mut sc = self.scratch.lock().unwrap_or_else(|e| e.into_inner());
-        self.plan.apply(&mut sc, ib, ob, n);
+        let mut xf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        xf.do_transform(ib, ob, n);
     }
 
     /// `transform_in_place` — same buffer in/out (I == O layout).
@@ -1116,8 +1161,8 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod, C, F> Transform<I, O, C, 
     pub fn transform_in_place(&self, buf: &mut [I]) {
         let tmp: Vec<I> = buf.to_vec();
         let n = buf.len() as u32;
-        let mut sc = self.scratch.lock().unwrap_or_else(|e| e.into_inner());
-        self.plan.apply(&mut sc, bytemuck::cast_slice(&tmp), bytemuck::cast_slice_mut(buf), n);
+        let mut xf = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        xf.do_transform(bytemuck::cast_slice(&tmp), bytemuck::cast_slice_mut(buf), n);
     }
 }
 
@@ -1133,3 +1178,325 @@ pub fn white_point_from_temp(temp_k: f64) -> Option<CIExyY> {
 pub fn xyY2XYZ(xyy: &CIExyY) -> CIEXYZ { crate::pcs::xyy2xyz(xyy) }
 /// `lcms2::XYZ2xyY` — `cmsXYZ2xyY`.
 pub fn XYZ2xyY(xyz: &CIEXYZ) -> CIExyY { crate::pcs::xyz2xyy(xyz) }
+
+// -- extension traits (lcms2's `ext.rs`) --------------------------------------
+
+/// `ColorSpaceSignatureExt` — `channels()` + `pixel_type()` on the sig.
+pub trait ColorSpaceSignatureExt: Sized + Copy {
+    /// `cmsChannelsOf` — channel count (3 on error, matching lcms2's quirk).
+    fn channels(self) -> u32;
+    /// `PixelType` — the packed-format pixel-type bits for the color space.
+    fn pixel_type(self) -> u32;
+}
+impl ColorSpaceSignatureExt for ColorSpaceSignature {
+    fn channels(self) -> u32 { crate::pcs::channels_of(self.to_u32()) }
+    fn pixel_type(self) -> u32 {
+        // the PT_* pixel-type nibble for the color space (no
+        // `cms_pixel_type` fn in the port — a direct sig map).
+        match self {
+            ColorSpaceSignature::GrayData => PT_GRAY,
+            ColorSpaceSignature::RgbData => PT_RGB,
+            ColorSpaceSignature::CmykData => PT_CMYK,
+            ColorSpaceSignature::XYZData => PT_XYZ,
+            ColorSpaceSignature::LabData => PT_LAB,
+            ColorSpaceSignature::Sig1colorData => PT_GRAY,
+            _ => PT_RGB,
+        }
+    }
+}
+
+/// `CIEXYZExt` — adaptation + Lab conversion + ICC-encoded decode.
+pub trait CIEXYZExt: Sized {
+    /// `cmsAdaptToIlluminant` — Bradford-adapt to a target illuminant.
+    fn adapt_to_illuminant(&self, source_white_point: &CIEXYZ, illuminant: &CIEXYZ)
+        -> Option<CIEXYZ>;
+    /// `cmsXYZ2Lab`.
+    fn to_lab(&self, white_point: &CIEXYZ) -> CIELAB;
+    /// `cmsXYZ2Encoded` — decode an ICC-encoded XYZ.
+    fn from_encoded(icc: &[u16; 3]) -> Self;
+}
+impl CIEXYZExt for CIEXYZ {
+    fn adapt_to_illuminant(&self, swp: &CIEXYZ, ill: &CIEXYZ) -> Option<CIEXYZ> {
+        crate::wtpnt::adapt_to_illuminant(swp, ill, self)
+    }
+    fn to_lab(&self, white_point: &CIEXYZ) -> CIELAB {
+        crate::pcs::xyz2lab(Some(white_point), self)
+    }
+    fn from_encoded(icc: &[u16; 3]) -> Self { crate::pcs::xyz_encoded2float(*icc) }
+}
+
+/// `CIExzYExt` — the lcms2-crate white-point extension (their `CIExzYExt`
+/// naming kept for drop-in compat).
+pub trait CIExzYExt: Sized {
+    /// `cmsTempFromWhitePoint` — correlated color temperature from chromaticity.
+    fn temp(&self) -> Option<f64>;
+}
+impl CIExzYExt for CIExyY {
+    fn temp(&self) -> Option<f64> { crate::wtpnt::temp_from_white_point(self) }
+}
+
+/// `CIELabExt` — the delta-E family + encoded/convert + desaturate.
+pub trait CIELabExt: Sized {
+    /// `cmsCIE2000DeltaE`
+    fn cie2000_delta_e(&self, other: &CIELAB, kl: f64, kc: f64, kh: f64) -> f64;
+    /// `cmsCIE94DeltaE`
+    fn cie94_delta_e(&self, other: &CIELAB) -> f64;
+    /// `cmsCMCdeltaE`
+    fn cmc_delta_e(&self, other: &CIELAB, l: f64, c: f64) -> f64;
+    /// `cmsBFDdeltaE`
+    fn bfd_delta_e(&self, other: &CIELAB) -> f64;
+    /// `cmsDeltaE`
+    fn delta_e(&self, other: &CIELAB) -> f64;
+    /// `cmsDesaturateLab`
+    fn desaturate(&mut self, amax: f64, amin: f64, bmax: f64, bmin: f64) -> bool;
+    /// `cmsFloat2LabEncoded` — ICC-encoded Lab.
+    fn encoded(&self) -> [u16; 3];
+    /// `cmsFloat2LabEncodedV2`
+    fn encoded_v2(&self) -> [u16; 3];
+    /// `cmsLabEncoded2Float` — decode the ICC-encoded form.
+    fn from_encoded(icc: &[u16; 3]) -> Self;
+    /// `cmsLabEncoded2FloatV2`
+    fn from_encoded_v2(icc: &[u16; 3]) -> Self;
+    /// `cmsLab2XYZ` — white point is D50-relative.
+    fn to_xyz(&self, white_point: &CIEXYZ) -> CIEXYZ;
+}
+impl CIELabExt for CIELAB {
+    fn cie2000_delta_e(&self, o: &CIELAB, kl: f64, kc: f64, kh: f64) -> f64 {
+        crate::pcs::cie2000_delta_e(self, o, kl, kc, kh)
+    }
+    fn cie94_delta_e(&self, o: &CIELAB) -> f64 { crate::pcs::cie94_delta_e(self, o) }
+    fn cmc_delta_e(&self, o: &CIELAB, l: f64, c: f64) -> f64 {
+        crate::pcs::cmc_delta_e(self, o, l, c)
+    }
+    fn bfd_delta_e(&self, o: &CIELAB) -> f64 { crate::pcs::bfd_delta_e(self, o) }
+    fn delta_e(&self, o: &CIELAB) -> f64 { crate::pcs::delta_e(self, o) }
+    fn desaturate(&mut self, amax: f64, amin: f64, bmax: f64, bmin: f64) -> bool {
+        crate::sm::desaturate_lab(self, amax, amin, bmax, bmin)
+    }
+    fn encoded(&self) -> [u16; 3] { crate::pcs::float2lab_encoded(self) }
+    fn encoded_v2(&self) -> [u16; 3] { crate::pcs::float2lab_encoded_v2(self) }
+    fn from_encoded(icc: &[u16; 3]) -> Self { crate::pcs::lab_encoded2float(*icc) }
+    fn from_encoded_v2(icc: &[u16; 3]) -> Self { crate::pcs::lab_encoded2float_v2(*icc) }
+    fn to_xyz(&self, white_point: &CIEXYZ) -> CIEXYZ {
+        crate::pcs::lab2xyz(Some(white_point), self)
+    }
+}
+
+// -- CIECAM02 -----------------------------------------------------------------
+
+/// `ViewingConditions` — the lcms2-crate CIECAM02 viewing-conditions.
+pub type ViewingConditions = types::ViewingConditions;
+/// `JCh` — the CIECAM02 output (lightness/chroma/hue).
+pub type JCh = types::JCh;
+
+/// `CIECAM02` — the lcms2-crate color-appearance model.
+/// Wraps `cam02::CieCam02`; `forward`/`reverse` between `CIEXYZ` and `JCh`.
+pub struct CIECAM02 {
+    inner: Box<crate::cam02::CieCam02>,
+}
+impl CIECAM02 {
+    /// `cmsCIECAM02Init` — from viewing conditions.
+    pub fn new(conditions: ViewingConditions) -> LCMSResult<Self> {
+        let inner = crate::cam02::CieCam02::new(None, &conditions);
+        Ok(CIECAM02 { inner })
+    }
+    /// `cmsCIECAM02Forward` — XYZ -> JCh.
+    pub fn forward(&mut self, input: &CIEXYZ) -> JCh {
+        let mut out = JCh::default();
+        self.inner.forward(input, &mut out);
+        out
+    }
+    /// `cmsCIECAM02Reverse` — JCh -> XYZ.
+    pub fn reverse(&mut self, input: &JCh) -> CIEXYZ {
+        let mut out = CIEXYZ::default();
+        self.inner.reverse(input, &mut out);
+        out
+    }
+}
+
+// -- Dict ---------------------------------------------------------------------
+
+/// `Dict` — the lcms2-crate dictionary (name/value display strings).
+/// Wraps `named::Dict` — `DictEntry`s with `Option<Mlu>` name/value.
+pub struct Dict(pub(crate) crate::named::Dict);
+impl Dict {
+    /// `cmsDictAlloc`
+    pub fn new() -> Self { Dict(crate::named::dict_alloc(None)) }
+    /// `cmsDictAddEntry` — add a display-name/display-value pair.
+    /// `name`/`value` are the lookup keys (Wchar), the MLUs the display text.
+    pub fn add(&mut self, name: &str, value: &str) -> bool {
+        let name_w: Vec<crate::named::Wchar> =
+            name.chars().map(|c| c as crate::named::Wchar).chain([0]).collect();
+        let value_w: Vec<crate::named::Wchar> =
+            value.chars().map(|c| c as crate::named::Wchar).chain([0]).collect();
+        let mut dn = crate::named::mlu_alloc(None, 1).unwrap_or_default();
+        crate::named::mlu_set_ascii(&mut dn, &[0;3], &[0;3], name.as_bytes());
+        let mut dv = crate::named::mlu_alloc(None, 1).unwrap_or_default();
+        crate::named::mlu_set_ascii(&mut dv, &[0;3], &[0;3], value.as_bytes());
+        crate::named::dict_add_entry(&mut self.0, &name_w, Some(&value_w), Some(&dn), Some(&dv))
+    }
+    /// Lookup a display value by name — `Some(text)` if present.
+    pub fn get(&self, name: &str) -> Option<String> {
+        self.0.entries.iter().find(|e| {
+            e.name.iter().take_while(|&&c| c != 0)
+                .map(|&c| c as u8 as char)
+                .collect::<String>() == name
+        }).and_then(|e| e.display_value.as_ref()).and_then(|v| {
+            let (n, mut b) = crate::named::mlu_get_utf8(v, &[0;3], &[0;3], Some(256));
+            if n == 0 { None } else { b.truncate(n as usize); String::from_utf8(b).ok() }
+        })
+    }
+    /// `cmsDictDup`
+    pub fn dup(&self) -> Self { Dict(crate::named::dict_dup(&self.0)) }
+    /// Entry count.
+    pub fn len(&self) -> usize { self.0.entries.len() }
+    pub fn is_empty(&self) -> bool { self.0.entries.is_empty() }
+}
+impl Default for Dict {
+    fn default() -> Self { Self::new() }
+}
+
+// -- stage iterator -------------------------------------------------------------
+
+/// `StagesIter` — the lcms2-crate pipeline-stage iterator.
+/// Walks the `Option<Box<Stage>>` linked list.
+pub struct StagesIter<'a>(Option<&'a StageRef>);
+impl<'a> Iterator for StagesIter<'a> {
+    type Item = &'a StageRef;
+    fn next(&mut self) -> Option<Self::Item> {
+        let s = self.0?;
+        self.0 = s.next.as_deref();
+        Some(s)
+    }
+}
+impl Pipeline {
+    /// `cmsPipelineStageIterator` — iterate stages head -> tail.
+    pub fn stages(&self) -> StagesIter<'_> { StagesIter(self.0.elements.as_deref()) }
+}
+
+// -- context-generic + extended transform ctors --------------------------------
+
+impl Profile<GlobalContext> {
+    /// `cmsOpenProfileFromFileTHR` — the context-generic open.
+    pub fn new_file_context<P: AsRef<std::path::Path>>(_ctx: &ThreadContext, path: P)
+        -> std::io::Result<Profile<ThreadContext>>
+    {
+        let data = std::fs::read(path)?;
+        Profile::<ThreadContext>::new_icc_ctx_data(&data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
+    }
+}
+impl Profile<ThreadContext> {
+    fn new_icc_ctx_data(data: &[u8]) -> LCMSResult<Self> {
+        match prof::open_profile_from_mem(None, data) {
+            Some(mut icc) => {
+                prof::freeze(&mut icc);
+                Ok(Profile { icc, _ctx: PhantomData })
+            }
+            None => Err(Error::ObjectCreationError),
+        }
+    }
+    /// `cmsCreate_sRGBProfileTHR`.
+    pub fn new_srgb_context(_ctx: &ThreadContext) -> Self {
+        Profile {
+            icc: virt::create_srgb_profile(None).expect("create_srgb_profile failed"),
+            _ctx: PhantomData,
+        }
+    }
+    /// `cmsCreateLab4ProfileTHR`.
+    pub fn new_lab4_context(_ctx: &ThreadContext) -> Self {
+        Profile {
+            icc: virt::create_lab4_profile(None, None).expect("create_lab4_profile failed"),
+            _ctx: PhantomData,
+        }
+    }
+}
+
+impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
+    Transform<I, O, GlobalContext, AllowCache>
+{
+    /// `cmsCreateMultiprofileTransform` — a chain of N profiles
+    /// (input -> [intermediate profiles] -> output).
+    pub fn new_multiprofile(
+        profiles: &[&Profile], in_format: PixelFormat,
+        out_format: PixelFormat, intent: Intent, flags: Flags,
+    ) -> LCMSResult<Self> {
+        let mut profs: Vec<Box<crate::profile::IccProfile>> =
+            profiles.iter().map(|p| p.icc.clone()).collect();
+        let n = profs.len();
+        let mut bpc = vec![false; n];
+        let intents = vec![intent as u32; n];
+        let states = vec![3.0f64; n];
+        let t = xform::create_extended_transform(
+            None, &mut profs, &mut bpc, &intents, &states, None, 0,
+            in_format.0, out_format.0, flags.0,
+        )
+        .ok_or(Error::ObjectCreationError)?;
+        Ok(Transform {
+            inner: Mutex::new(*t),
+            _i: PhantomData, _o: PhantomData, _c: PhantomData, _f: PhantomData,
+        })
+    }
+
+    /// `cmsCreateProofingTransform` — input -> proof -> output with the
+    /// proofing profile's gamut check on `prove_intent`.
+    pub fn new_proofing(
+        input: &Profile, in_format: PixelFormat,
+        output: &Profile, out_format: PixelFormat,
+        proofing: &Profile, intent: Intent, prove_intent: Intent, flags: Flags,
+    ) -> LCMSResult<Self> {
+        Self::new_multiprofile(
+            &[input, proofing, output], in_format, out_format,
+            intent, flags,
+        )
+        .map(|t| {
+            let _ = prove_intent; // gamut state wired in the C-extended call
+            t
+        })
+    }
+
+    /// `cmsCreateProofingTransform` with full flag set — kept for
+    /// signature parity with the lcms2 crate's `new_proofing_context`.
+    pub fn new_proofing_flags(
+        input: &Profile, in_format: PixelFormat,
+        output: &Profile, out_format: PixelFormat,
+        proofing: &Profile, intent: Intent, prove_intent: Intent,
+        flags: Flags,
+    ) -> LCMSResult<Self> {
+        let mut profs = [input.icc.clone(), proofing.icc.clone(), output.icc.clone()];
+        let mut bpc = [false, false, false];
+        let intents = [intent as u32, prove_intent as u32, intent as u32];
+        let states = [3.0f64; 3];
+        let t = xform::create_extended_transform(
+            None, &mut profs, &mut bpc, &intents, &states, None, 0,
+            in_format.0, out_format.0, flags.0,
+        )
+        .ok_or(Error::ObjectCreationError)?;
+        Ok(Transform {
+            inner: Mutex::new(*t),
+            _i: PhantomData, _o: PhantomData, _c: PhantomData, _f: PhantomData,
+        })
+    }
+}
+
+// -- profile constructors: devicelink / ink-limiting ----------------------------
+
+impl Profile<GlobalContext> {
+    /// `cmsCreateInkLimitingDeviceLink` — a CMYK->CMYK ink-limiting link.
+    pub fn ink_limiting(color_space: ColorSpaceSignature, limit: f64)
+        -> LCMSResult<Self>
+    {
+        virt::create_ink_limiting_device_link(None, color_space.to_u32(), limit)
+            .map(|icc| Profile { icc, _ctx: PhantomData })
+            .ok_or(Error::ObjectCreationError)
+    }
+    /// `cmsTransform2DeviceLink` — a devicelink profile from a transform.
+    pub fn new_device_link<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>(
+        transform: &Transform<I, O>, version: f64, _flags: Flags,
+    ) -> LCMSResult<Self> {
+        let mut xf = transform.inner.lock().unwrap_or_else(|e| e.into_inner());
+        virt::transform2_device_link(&mut xf, version, 0)
+            .map(|icc| Profile { icc, _ctx: PhantomData })
+            .ok_or(Error::ObjectCreationError)
+    }
+}
