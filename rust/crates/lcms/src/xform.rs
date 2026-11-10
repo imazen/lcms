@@ -21,7 +21,6 @@ pub const FLAGS_LOWRESPRECALC: u32 = 0x0800;
 pub const FLAGS_NULLTRANSFORM: u32 = 0x0200;
 pub const FLAGS_GAMUTCHECK: u32 = 0x1000;
 pub const FLAGS_COPY_ALPHA: u32 = 0x04000000;
-pub const FLAGS_KEEP_SEQUENCE: u32 = 0x10000000;
 pub const FLAGS_CAN_CHANGE_FORMATTER: u32 = 0x02000000;
 
 pub const MAX_CHANNELS: usize = 16;
@@ -117,6 +116,9 @@ pub struct TransformPlan {
     pub input_colorants: Option<crate::named::NamedColorList>,
     /// `_cmsTRANSFORM::OutputColorant` — dup of the output profile's colorant table
     pub output_colorants: Option<crate::named::NamedColorList>,
+    /// `Sequence` — the linked profiles' descriptions, kept under
+    /// `cmsFLAGS_KEEP_SEQUENCE` for `cmsTransform2DeviceLink`.
+    pub sequence: Option<crate::named::ProfileSeqDesc>,
     _pad: (),
 }
 
@@ -2809,6 +2811,7 @@ fn alloc_empty_transform(
         foreign: None,
         input_colorants: None,
         output_colorants: None,
+        sequence: None,
         _pad: (),
         },
         scratch: TransformScratch {
@@ -3026,11 +3029,20 @@ pub fn create_extended_transform(
             }
         }
     }
-    // white points — media-white tag else D50
-    let wp_in = crate::io1::read_media_white_point(&mut profiles[0]);
-    let wp_out = crate::io1::read_media_white_point(&mut profiles[n - 1]);
-    t.entry_white_point = set_white_point(Some(&wp_in));
-    t.exit_white_point = set_white_point(Some(&wp_out));
+    // white points (cmsxform.c:1220) — the raw `'wtpt'` tag via
+    // `cmsReadTag`, NOT `_cmsReadMediaWhitePoint` (which swaps in D50 for
+    // v2 display profiles); absent → D50. Only device links read these.
+    let mut raw_wtpt = |icc: &mut IccProfile| match crate::profile::cms_read_tag(
+        icc,
+        crate::signatures::tag::SigMediaWhitePointTag,
+    ) {
+        Some(crate::tagtypes::TagObject::Xyz(x)) => Some(*x),
+        _ => None,
+    };
+    let wp_in = raw_wtpt(&mut profiles[0]);
+    let wp_out = raw_wtpt(&mut profiles[n - 1]);
+    t.entry_white_point = set_white_point(wp_in.as_ref());
+    t.exit_white_point = set_white_point(wp_out.as_ref());
     // Try to read input and output colorant table (cmsxform.c:1241-1264)
     if crate::profile::cms_is_tag(&profiles[0], crate::signatures::tag::SigColorantTableTag) {
         if let Some(crate::tagtypes::TagObject::ColorantTable(list)) = crate::profile::cms_read_tag(
@@ -3067,6 +3079,12 @@ pub fn create_extended_transform(
             t.output_colorants = crate::named::dup_named_color_list(list);
         }
     }
+    // Store the sequence of profiles (cmsxform.c:1267)
+    t.sequence = if flags & crate::types::FLAGS_KEEP_SEQUENCE != 0 {
+        crate::io1::compile_profile_sequence(profiles)
+    } else {
+        None
+    };
     Some(t)
 }
 

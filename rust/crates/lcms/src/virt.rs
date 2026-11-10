@@ -1093,9 +1093,13 @@ pub fn transform2_device_link(
         }
     }
 
-    // `_cmsWriteProfileSequence` for link class — our Transform does not
-    // retain the profile-sequence data (C's `xform->Sequence`), so there is
-    // nothing to write; equivalent to Sequence == NULL.
+    if device_class == pc::SigLinkClass {
+        if let Some(seq) = &xform.sequence {
+            if !crate::io1::write_profile_sequence(&mut icc, seq) {
+                return None;
+            }
+        }
+    }
 
     let wp = if device_class == pc::SigInputClass {
         xform.entry_white_point

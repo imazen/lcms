@@ -622,3 +622,43 @@ pub fn is_clut(icc: &IccProfile, intent: u32, used_direction: i32) -> bool {
 pub fn is_intent_supported(icc: &IccProfile, intent: u32, used_direction: i32) -> bool {
     is_clut(icc, intent, used_direction) || crate::sm::is_matrix_shaper(icc)
 }
+
+/// `_cmsWriteProfileSequence` — `'pseq'` always, plus `'psid'` on v4+.
+pub fn write_profile_sequence(icc: &mut IccProfile, seq: &crate::named::ProfileSeqDesc) -> bool {
+    if !profile::cms_write_tag(icc, tags::SigProfileSequenceDescTag, Some(TagObject::ProfileSeqDesc(seq.clone()))) {
+        return false;
+    }
+    if profile::get_encoded_icc_version(icc) >= 0x4000000
+        && !profile::cms_write_tag(icc, tags::SigProfileSequenceIdTag, Some(TagObject::ProfileSeqId(seq.clone())))
+    {
+        return false;
+    }
+    true
+}
+
+/// `GetMLUFromProfile` — read and duplicate an MLU tag if present.
+fn get_mlu_from_profile(icc: &mut IccProfile, sig: u32) -> Option<crate::named::Mlu> {
+    match profile::cms_read_tag(icc, sig)? {
+        TagObject::Mlu(m) | TagObject::Text(m) | TagObject::TextDescription(m) => Some(m.clone()),
+        _ => None,
+    }
+}
+
+/// `_cmsCompileProfileSequence` — a sequence description of `profiles`.
+pub fn compile_profile_sequence(profiles: &mut [Box<IccProfile>]) -> Option<crate::named::ProfileSeqDesc> {
+    let mut seq = crate::named::alloc_profile_seq_desc(None, profiles.len() as u32)?;
+    for (ps, h) in seq.seq.iter_mut().zip(profiles.iter_mut()) {
+        ps.attributes = h.attributes;
+        ps.profile_id = h.profile_id;
+        ps.device_mfg = h.manufacturer;
+        ps.device_model = h.model;
+        ps.technology = match profile::cms_read_tag(h, tags::SigTechnologyTag) {
+            Some(TagObject::Signature(t)) => *t,
+            _ => 0,
+        };
+        ps.manufacturer = get_mlu_from_profile(h, tags::SigDeviceMfgDescTag);
+        ps.model = get_mlu_from_profile(h, tags::SigDeviceModelDescTag);
+        ps.description = get_mlu_from_profile(h, tags::SigProfileDescriptionTag);
+    }
+    Some(seq)
+}

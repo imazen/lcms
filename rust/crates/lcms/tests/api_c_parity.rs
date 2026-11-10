@@ -274,3 +274,52 @@ fn adaptation_state_matches_c() {
         assert_eq!(got, want, "adaptation state {state}");
     }
 }
+
+/// `Plan::to_device_link` vs `cmsTransform2DeviceLink`: the saved bytes
+/// match (creation date and profile ID masked), with and without
+/// `KEEP_SEQUENCE`, on v4 (`'pseq'` + `'psid'`) and v2 (`'pseq'` only).
+#[test]
+fn device_link_bytes_match_c() {
+    fn c_save(h: *mut c_void) -> Vec<u8> {
+        assert!(!h.is_null(), "C device link failed");
+        let mut n = 0u32;
+        unsafe {
+            c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut n);
+            let mut v = vec![0u8; n as usize];
+            assert!(c::cmsSaveProfileToMem(h, v.as_mut_ptr() as *mut c_void, &mut n) != 0);
+            c::cmsCloseProfile(h);
+            v
+        }
+    }
+    fn mask(mut v: Vec<u8>) -> Vec<u8> {
+        v[24..36].fill(0); // creation date
+        v[84..100].fill(0); // profile ID (MD5 over the dated header)
+        v
+    }
+    let pairs = [
+        (Src::Srgb, Format::RGB_8, Src::Lab4, Format::LAB_16),
+        (Src::File("test1.icc"), Format::CMYK_8, Src::File("test5.icc"), Format::RGB_8),
+        (Src::File("test5.icc"), Format::RGB_16, Src::File("test2.icc"), Format::CMYK_16),
+    ];
+    for (src, fi, dst, fo) in pairs {
+        for fl in [0, flags::KEEP_SEQUENCE] {
+            for version in [4.3, 2.1] {
+                let what = format!("{} -> {} flags {fl:#x} v{version}", src.name(), dst.name());
+                let plan = Plan::build(&src.rust(), &dst.rust(), fi, fo, Intent::Perceptual, fl).unwrap();
+                let got = mask(plan.to_device_link(version).unwrap().save().unwrap());
+                let (cs, cd) = (src.c(), dst.c());
+                let want = unsafe {
+                    let t = c::cmsCreateTransform(cs.0, fi.code(), cd.0, fo.code(), 0, fl);
+                    assert!(!t.is_null());
+                    let link = c::cmsTransform2DeviceLink(t, version, 0);
+                    c::cmsDeleteTransform(t);
+                    mask(c_save(link))
+                };
+                assert_eq!(got.len(), want.len(), "{what}: size");
+                if let Some(i) = got.iter().zip(&want).position(|(a, b)| a != b) {
+                    panic!("{what}: first difference at byte {i}: rust {} vs C {}", got[i], want[i]);
+                }
+            }
+        }
+    }
+}
