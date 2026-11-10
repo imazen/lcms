@@ -1,6 +1,8 @@
 //! cmsPluginTHR validation arms — magic/version/type checks,
 //! Next chains, per-sig register paths.
 #![allow(clippy::missing_safety_doc)]
+#[path = "support/solo.rs"]
+mod solo;
 use lcms_cref as c;
 use std::ffi::c_void;
 
@@ -32,6 +34,7 @@ const SIGS: &[(u32, &str)] = &[
 
 #[test]
 fn plugin_validation_arms() {
+    if solo::delegated("plugin_validation_arms") { return; }
     // Registered plugins persist in the global context —
     // fork-isolate so handlers can't poison later tests
     unsafe extern "C" { fn fork() -> i32;

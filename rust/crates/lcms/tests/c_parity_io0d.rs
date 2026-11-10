@@ -2,6 +2,9 @@
 //! OpenProfileFromIOhandler via FILE handlers — the dispatch
 //! machinery beyond SaveProfileToMem/File.
 
+#[path = "support/solo.rs"]
+mod solo;
+
 use lcms::profile;
 use lcms_cref as c;
 
@@ -11388,6 +11391,7 @@ unsafe fn open_gated(data: &[u8], limit: u32)
 
 #[test]
 fn read_fail_arms() {
+    if solo::delegated("read_fail_arms") { return; }
     unsafe {
         // a fat saved profile with every readable tag type
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
@@ -12056,6 +12060,7 @@ fn vcgt_read_arms2() {
 /// matrix>3ch, mismatched nSamples, leftover stages, NULL clut.
 #[test]
 fn lut8_write_arms2() {
+    if solo::delegated("lut8_write_arms2") { return; }
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.6);
         let g3: *const *mut c::ToneCurve =
@@ -14750,6 +14755,7 @@ fn api_misc_arms() {
 /// Fork-isolated: registered plugins persist globally.
 #[test]
 fn ctx_dup_plugin_arms() {
+    if solo::delegated("ctx_dup_plugin_arms") { return; }
     unsafe extern "C" { fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
@@ -25148,6 +25154,7 @@ fn internal_final78_arms() {
 ///   pool path in a forked child.
 #[test]
 fn internal_final79_arms() {
+    if solo::delegated("internal_final79_arms") { return; }
     unsafe {
         #[repr(C)]
         struct PluginBase {

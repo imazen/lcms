@@ -88,6 +88,16 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
 - **Gates that feed 85 identical zero pixels, or never set BPC, can't see
   any of the above.** Sweep varied inputs, every intent, BPC on/off, and
   read-before-link (frozen) profiles.
+- **A test that calls `fork()` must start with `if solo::delegated("<name>")
+  { return; }`** (`tests/support/solo.rs`). libtest runs tests on parallel
+  threads; a child forked while another thread holds `_cmsContextPoolHeadMutex`
+  (or the stderr lock) blocks forever and its parent's `waitpid` with it.
+  `solo` re-runs the test alone in a fresh copy of the binary. Unguarded,
+  `alloc_fail_arms` left orphaned children hung for days.
+- **C oracle calls must pass the object type the tag holds.** Text tags hold a
+  `cmsMLU*`; a bare `char*` is read as an MLU struct and crashes on save, but
+  only for some rodata layouts, so it looks like a flake
+  (`c_parity_types4::write_text_like`).
 
 ## Evidence tiers — say which one you have in the commit message
 

@@ -2,6 +2,9 @@
 //! cmsChangeBuffersFormat, stride/linestride do_transform variants, alarm
 //! codes and adaptation state. All byte-exact C-vs-Rust on sRGB/Lab chains.
 
+#[path = "support/solo.rs"]
+mod solo;
+
 use lcms::virt;
 use lcms::xform;
 use lcms_cref as c;
@@ -4073,6 +4076,7 @@ fn precalc_arms() {
 /// (non-null) handlers where the registry requires them.
 #[test]
 fn plugin_valid_arms() {
+    if solo::delegated("plugin_valid_arms") { return; }
     unsafe extern "C" { fn memset(p: *mut std::ffi::c_void,
         v: i32, n: usize) -> *mut std::ffi::c_void; }
     // minimal valid plugin base: magic + version + type + sig
@@ -4127,6 +4131,7 @@ fn plugin_valid_arms() {
 /// type (register-internal validation + list-append arms).
 #[test]
 fn plugin_real_arms() {
+    if solo::delegated("plugin_real_arms") { return; }
     unsafe extern "C" fn m_malloc(_c: *mut std::ffi::c_void,
         n: usize) -> *mut std::ffi::c_void {
         unsafe {

@@ -2,6 +2,9 @@
 //! tabulated16/float, segmented, eval16/eval_float, predicates, params,
 //! estimate_gamma, reverse, join, smooth — per ICC.1:2022-05 §10.15.
 
+#[path = "support/solo.rs"]
+mod solo;
+
 use lcms::gamma;
 use lcms_cref as c;
 
@@ -924,6 +927,7 @@ fn reverse_seg_arms() {
 /// DupPluginCurvesList via context-dup with cnvP plugins.
 #[test]
 fn seg_validation_arms() {
+    if solo::delegated("seg_validation_arms") { return; }
     fn body(crash: bool) {
         unsafe {
             fn seg(x0: f32, x1: f32, ty: i32, p0: f64, p1: f64)
@@ -1017,6 +1021,7 @@ fn seg_validation_arms() {
 /// plugin registered.
 #[test]
 fn dup_curves_plugin_arms() {
+    if solo::delegated("dup_curves_plugin_arms") { return; }
     unsafe extern "C" { fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
