@@ -96,10 +96,12 @@ fn create_roundtrip_xform(icc: &mut IccProfile, intent: u32) -> Option<crate::xf
     // TYPE_Lab_DBL = float|colorspace(Lab)|3chan|bytes0
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
     let hlab2 = virt::create_lab4_profile(None, None)?;
-    // the round-trip uses the same profile twice — duplicate via serialize+reopen
-    let bytes = crate::profile::save_profile_to_mem(icc)?;
-    let prof1 = crate::profile::open_profile_from_mem(None, &bytes)?;
-    let prof2 = crate::profile::open_profile_from_mem(None, &bytes)?;
+    // C passes the same handle twice. Clone it (tags already decoded stay
+    // decoded, undecoded ones stay raw) — a serialize+reopen copy would
+    // re-encode decoded tags and make the black point depend on which
+    // tags the caller had read before (e.g. a frozen profile).
+    let prof1 = Box::new(icc.clone());
+    let prof2 = Box::new(icc.clone());
     let mut profs: Vec<Box<IccProfile>> = Vec::new();
     profs.push(hlab);
     profs.push(prof1);
@@ -176,8 +178,8 @@ fn black_point_as_darker_colorant(icc: &mut IccProfile, intent: u32) -> Option<C
     }
     let hlab = virt::create_lab2_profile(None, None)?;
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
-    let bytes = crate::profile::save_profile_to_mem(icc)?;
-    let prof = crate::profile::open_profile_from_mem(None, &bytes)?;
+    // same handle in C — clone, not serialize+reopen (see create_roundtrip_xform)
+    let prof = Box::new(icc.clone());
     let mut profs = vec![prof, hlab];
     let mut bpc = [false; 2];
     let intents = [intent, INTENT_RELATIVE_COLORIMETRIC];
@@ -449,6 +451,8 @@ pub fn desaturate_lab(lab: &mut CieLab, amax: f64, amin: f64, bmax: f64, bmin: f
 
 /// `GAMUTCHAIN` — the three gamut-check transforms + threshold
 struct GamutChain {
+    /// input channels of the chain's first profile (`nInputChannels`)
+    n_in: usize,
     h_input: crate::xform::Transform,
     h_forward: crate::xform::Transform,
     h_reverse: crate::xform::Transform,
@@ -463,11 +467,11 @@ fn gamut_sampler(inp: &[u16], out: &mut [u16], chain: &mut GamutChain) -> i32 {
     let mut lab_out1 = [0u8; 24];
     let mut proof2 = [0u8; 32];
     let mut lab_out2 = [0u8; 24];
-    let err_threshold = 5.0;
-    let _ = err_threshold;
+    // C hands the sampler's `In[]` (one value per gamut-profile channel)
+    // to `hInput`, whose format reads `nInputChannels` words.
     let mut buf = Vec::new();
-    for &b in inp.iter().take(3) {
-        buf.extend_from_slice(&b.to_le_bytes());
+    for i in 0..chain.n_in {
+        buf.extend_from_slice(&inp.get(i).copied().unwrap_or(0).to_ne_bytes());
     }
     chain.h_input.do_transform(&buf, &mut lab_in1, 1);
     chain.h_forward.do_transform(&lab_in1, &mut proof, 1);
@@ -492,21 +496,19 @@ fn gamut_sampler(inp: &[u16], out: &mut [u16], chain: &mut GamutChain) -> i32 {
     let d_e1 = d(&lab_in1, &lab_out1);
     let d_e2 = d(&lab_in2, &lab_out2);
     let t = chain.threshold;
-    let mut error_ratio = 1.0f64;
+    // `(cmsUInt16Number) _cmsQuickFloor(x)` — magic-number floor, then a
+    // wrapping int → u16 cast.
+    let qf = |x: f64| crate::fixed::quick_floor(x) as u16;
     if d_e1 < t && d_e2 < t {
         out[0] = 0;
     } else if d_e1 < t && d_e2 > t {
         out[0] = 0;
     } else if d_e1 > t && d_e2 < t {
-        out[0] = (d_e1 - t + 0.5).floor() as u16;
+        out[0] = qf((d_e1 - t) + 0.5);
     } else {
-        if d_e2 == 0.0 {
-            error_ratio = d_e1;
-        } else {
-            error_ratio = d_e1 / d_e2;
-        }
+        let error_ratio = if d_e2 == 0.0 { d_e1 } else { d_e1 / d_e2 };
         if error_ratio > t {
-            out[0] = (error_ratio - t + 0.5).floor() as u16;
+            out[0] = qf((error_ratio - t) + 0.5);
         } else {
             out[0] = 0;
         }
@@ -514,7 +516,8 @@ fn gamut_sampler(inp: &[u16], out: &mut [u16], chain: &mut GamutChain) -> i32 {
     1
 }
 
-/// serialize+reopen a profile (for `create_extended_transform`'s owned vec)
+/// duplicate a profile for `create_extended_transform`'s owned vec — C
+/// reuses the same handle
 fn dup_profile(icc: &mut IccProfile) -> Option<IccProfile> {
     Some(icc.clone())
 }
@@ -529,7 +532,6 @@ pub fn create_gamut_check_pipeline(
     n_gamut_pcs_position: u32,
     h_gamut: &mut IccProfile,
 ) -> Option<crate::lut::Pipeline> {
-    use crate::pack;
     
     let n = profiles.len();
     if n_gamut_pcs_position == 0 || n_gamut_pcs_position > 255 {
@@ -551,8 +553,8 @@ pub fn create_gamut_check_pipeline(
     intents_l.push(INTENT_RELATIVE_COLORIMETRIC);
     let mut states_l = adaptation_states[..pos].to_vec();
     states_l.push(1.0);
-    let _input_cs = chain[0].color_space;
-    let n_in = pack::t_channels(formatter_for_colorspace(&chain[0], 2, false)) as usize;
+    // C: nInputChannels = cmsChannelsOfColorSpace(cmsGetColorSpace(ProfileList[0]))
+    let n_in = crate::pcs::channels_of_color_space(chain[0].color_space).max(0) as usize;
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
     let dw_fmt = ((n_in as u32) << 3) | 2;
     let h_input = crate::xform::create_extended_transform(
@@ -573,9 +575,11 @@ pub fn create_gamut_check_pipeline(
     let dw_fmt2 = ((n_ch as u32) << 3) | 2;
     let hlab2 = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
     let mut pf = vec![hlab2, Box::new(dup_profile(h_gamut)?)];
+    // C builds these with cmsCreateTransformTHR(.., cmsFLAGS_NOCACHE): no BPC,
+    // the context's adaptation state.
     let mut bpc2 = [false; 2];
     let intents2 = [INTENT_RELATIVE_COLORIMETRIC; 2];
-    let states2 = [1.0f64; 2];
+    let states2 = [crate::xform::get_adaptation_state(ctx); 2];
     let h_forward = crate::xform::create_extended_transform(
         ctx.cloned(),
         &mut pf,
@@ -604,6 +608,7 @@ pub fn create_gamut_check_pipeline(
         crate::xform::FLAGS_NOCACHE,
     )?;
     let mut chain_obj = GamutChain {
+        n_in,
         h_input: *h_input,
         h_forward: *h_forward,
         h_reverse: *h_reverse,
@@ -614,33 +619,15 @@ pub fn create_gamut_check_pipeline(
         gamut_cs,
         crate::xform::FLAGS_HIGHRESPRECALC,
     );
-    let clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, n_ch as u32, 1, None)?;
-    if !gamut.insert_stage(crate::lut::StageLoc::AtBegin, clut) {
-        return None;
-    }
-    let grid = vec![n_grid; n_ch];
-    let ok = crate::lut::slice_space16(n_ch as u32, &grid, &mut |inp: &[u16], _o: &mut [u16]| {
-        let mut out = [0u16; 1];
-        gamut_sampler(inp, &mut out, &mut chain_obj);
-        let mut node = 0usize;
-        for t in 0..n_ch {
-            node = node * n_grid as usize + (inp[t] as u32 * (n_grid - 1) / 0xffff) as usize;
-        }
-        if let Some(s) = gamut.elements.as_deref_mut() {
-            if let crate::lut::StageData::CLut(d) = &mut s.data {
-                if let Some(tab) = d.tab16.as_mut().map(std::sync::Arc::make_mut) {
-                    tab[node] = out[0];
-                }
-                if let Some(p) = &mut d.params16 {
-                    p.table = crate::intrp::InterpTable::U16Rc(
-                        d.tab16.clone().unwrap_or_default(),
-                    );
-                }
-            }
-        }
-        1
-    });
-    if !ok {
+    // C: CLUT with nChannels inputs in a 3→1 pipeline, inserted, then
+    // filled by cmsStageSampleCLut16bit(CLUT, GamutSampler, &Chain, 0).
+    let mut clut = crate::lut::stage_alloc_clut16bit(ctx, n_grid, n_ch as u32, 1, None)?;
+    let ok = crate::lut::stage_sample_clut16bit(
+        &mut clut,
+        &mut |inp: &[u16], out: &mut [u16]| gamut_sampler(inp, out, &mut chain_obj),
+        0,
+    );
+    if !gamut.insert_stage(crate::lut::StageLoc::AtBegin, clut) || !ok {
         return None;
     }
     Some(gamut)

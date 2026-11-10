@@ -34,3 +34,26 @@ mod sync_audit {
         assert_sync::<ThreadContext>();
     }
 }
+
+// -- shim-specific regressions (not part of the extracted suite) ---------------
+
+/// `PixelFormat::*_DBL` are C's `TYPE_*_DBL` (8-byte doubles), `*_FLT` are
+/// `f32` — the shim once encoded `_DBL` as 4-byte floats.
+#[test]
+fn dbl_and_flt_formats_carry_f64_and_f32() {
+    let srgb = Profile::new_srgb();
+    let lab = Profile::new_lab4();
+    let t: Transform<[u8; 3], [f64; 3]> =
+        Transform::new(&srgb, PixelFormat::RGB_8, &lab, PixelFormat::LAB_DBL, Intent::Perceptual).unwrap();
+    let mut out = [[0f64; 3]; 1];
+    t.transform_pixels(&[[255, 255, 255]], &mut out);
+    assert!((out[0][0] - 100.0).abs() < 0.01, "white L* = 100: {out:?}");
+
+    let t: Transform<[f32; 3], [f64; 3]> =
+        Transform::new(&srgb, PixelFormat::RGB_FLT, &srgb, PixelFormat::RGB_DBL, Intent::Perceptual).unwrap();
+    let mut out = [[0f64; 3]; 1];
+    t.transform_pixels(&[[0.25f32, 0.5, 0.75]], &mut out);
+    for (o, i) in out[0].iter().zip([0.25, 0.5, 0.75]) {
+        assert!((o - i).abs() < 1e-3, "{out:?}");
+    }
+}

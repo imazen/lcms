@@ -906,9 +906,10 @@ fn chain2lab(
     let lab = crate::virt::create_lab4_profile(ctx.cloned(), None)?;
     // clone the slice of profiles + append Lab
     let mut plist: Vec<Box<IccProfile>> = Vec::new();
-    for i in 0..n_profiles {
-        let bytes = crate::profile::save_profile_to_mem(&mut profiles[i])?;
-        plist.push(crate::profile::open_profile_from_mem(None, &bytes)?);
+    // C reuses the caller's handles; clone them (a serialize+reopen copy
+    // would re-encode already-decoded tags).
+    for p in profiles.iter().take(n_profiles) {
+        plist.push(p.clone());
     }
     plist.push(Box::new(*lab));
     let mut bpc_list = vec![false; n_profiles + 1];
@@ -1137,7 +1138,8 @@ fn detect_tac(p: &mut IccProfile) -> f64 {
     max_tac.get() as f64
 }
 
+/// Duplicate a profile handle — C reuses the same handle; a clone keeps
+/// decoded tags decoded (serialize+reopen would re-encode them).
 fn dup_box(p: &mut IccProfile) -> Option<Box<IccProfile>> {
-    let bytes = crate::profile::save_profile_to_mem(p)?;
-    crate::profile::open_profile_from_mem(None, &bytes)
+    Some(Box::new(p.clone()))
 }

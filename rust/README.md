@@ -17,37 +17,50 @@ Pick the layer that matches what you're doing:
 |---|---|---|
 | a Rust-native API | `lcms::api` | *(always on)* |
 | to migrate from the **`lcms2` crate** | `lcms::lcms2` | `lcms2-api` |
-| C-shaped calls (`cms*`, 1:1 parity) | `lcms::*` | `little-cms-api` *(default)* |
+| C-shaped calls (`cms*`, 1:1 parity) | `lcms::*` | `little-cms-api` *(opt-in)* |
 
 ### `lcms::api` — the idiomatic face (recommended)
 
 ```rust
 use lcms::api::*;
 
-// Open or build profiles — always ready to read (`&Profile` is Sync).
-let srgb = Profile::srgb()?;
+// Profiles decode every tag at construction: `&Profile` reads are Sync.
+let srgb = Profile::srgb();
 let p3 = Profile::open_file("Display-P3.icc")?;
 
-// Link once — the expensive part (pipeline + optimizer + CLUT
-// flattening). Plan is Sync: Arc-share it across workers.
-let plan = Plan::new(&p3, &srgb, Format::RgbU8, Format::RgbU8)?;
+// Link once — the expensive part. Plan is Sync: Arc-share it.
+let plan = Plan::new(&p3, &srgb, Format::RGB_8, Format::RGB_8)?;
 
-// Per-request scratch — ~64 B, or pooled thread_local.
+// One-off: the plan makes its own scratch.
+let mut out = [[0u8; 3]; 1];
+plan.transform_pixels(&[[255u8, 0, 0]], &mut out);
+
+// Hot loop: one ~64 B Scratch per thread.
 let mut sc = plan.scratch();
-plan.apply(&mut sc, &[255u8, 0, 0], &mut [0u8; 3]);
-plan.apply_pixels(&mut sc, &[[255u8; 3]], &mut [[0u8; 3]]); // typed pixels
+plan.apply(&mut sc, &rgb_bytes, &mut out_bytes);             // packed
+plan.apply_strided(&mut sc, &src, src_stride, &mut dst, dst_stride, width, height);
+plan.apply_par(&rgb_bytes, &mut out_bytes, 8);               // scoped threads
 
-// Large images: pixel-independent parallel split, scratch-per-chunk.
-// plan.apply_par(&pixels_in, &mut pixels_out, n_pixels, n_threads);
+// Intent, black-point compensation, adaptation:
+let opts = PlanOptions::new().intent(Intent::RelativeColorimetric).black_point_compensation(true);
+let plan = Plan::with_options(&p3, &srgb, Format::RGBA_8, Format::RGBA_8, &opts)?;
 ```
+
+Plans link exactly as C's `cmsCreateTransform` / multiprofile / proofing
+transforms do; `tests/api_c_parity.rs` checks the facade's output byte for
+byte against the C library across intents, BPC, formats and real profiles.
+Buffer sizes that don't match a plan's formats panic; anything that depends
+on input data returns `Result`.
 
 Read/write tags, named colors, header fields:
 
 ```rust
-for tag in srgb.tags() { println!("{tag}"); }
-let wp = srgb.get(Tag::MEDIA_WHITE_POINT);   // Option<TagValue<'_>>
-if let Some(ncl) = srgb.named_colors() { /* iterate the palette */ }
-let desc = srgb.info(InfoType::Description); // localized text
+for tag in srgb.tags() { println!("{tag}: {:?}", srgb.get(tag)); }
+let wp = srgb.white_point();                         // Option<&CieXyz>
+let desc = srgb.info(InfoType::Description);         // localized text
+let mut p = Profile::rgb(&D65, &REC709_PRIMARIES, [&trc, &trc, &trc])?;
+p.write_tag(Tag::COPYRIGHT, "No rights reserved")?;  // &str, CieXyz, ToneCurve, ...
+let bytes = p.save()?;
 ```
 
 ### `lcms::lcms2` — drop-in migration from the `lcms2` crate

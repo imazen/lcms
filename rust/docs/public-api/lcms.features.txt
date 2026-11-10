@@ -11,20 +11,20 @@
 #
 #   pub modules                                30
 #   pub types (struct/enum/trait/alias)       163
-#   pub consts/statics                        125
+#   pub consts/statics                        127
 #   free functions                            386
-#   inherent methods                          362
+#   inherent methods                          361
 #   struct fields                             342
 #   enum variants                             269
 #   re-exports                                  3
-#   trait roster entries (type × trait)       257
+#   trait roster entries (type × trait)       260
 #   auto-trait-complete types                  96
 #   auto-trait exceptions                      10
 #
 # per-module pub lines:
-#   (root)                           48
+#   (root)                           44
 #   alpha                             3
-#   api                              48
+#   api                              47
 #   cam02                             4
 #   cgats                           111
 #   cnvrt                            13
@@ -38,7 +38,7 @@
 #   intrp                            65
 #   io                               47
 #   io1                              10
-#   lcms2                           327
+#   lcms2                           333
 #   lut                             150
 #   md5                               6
 #   mtrx                             13
@@ -55,7 +55,7 @@
 #   wtpnt                             7
 #   xform                            74
 
-## items (1673 lines)
+## items (1676 lines)
 
 pub mod alpha
 pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
@@ -120,7 +120,7 @@ pub fn named::NamedColorList::is_empty(&self) -> bool
 pub fn named::NamedColorList::len(&self) -> usize
 pub fn named::NamedColorList::new(u32, u32, &str, &str) -> api::Result<named::NamedColorList>
 pub fn named::NamedColorList::position(&self, &str) -> core::option::Option<usize>
-pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16; 16]) -> bool
+pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16]) -> api::Result<()>
 pub api::Pipeline::elements: core::option::Option<alloc::boxed::Box<lut::Stage>>
 pub api::Pipeline::eval16_fn: lut::PipelineEval16Fn
 pub api::Pipeline::eval_float_fn: lut::PipelineEvalFloatFn
@@ -145,7 +145,6 @@ pub fn lut::Pipeline::new(u32, u32) -> api::Result<lut::Pipeline>
 pub fn lut::Pipeline::push(&mut self, lut::Stage) -> bool
 pub fn lut::Pipeline::push_front(&mut self, lut::Stage) -> bool
 pub fn lut::Pipeline::stages(&self) -> api::StagesIter<'_>
-pub fn api::Plan::apply_strided(&self, &mut api::Scratch, &[u8], &mut [u8], u32, u32, &xform::Stride)
 pub fn api::Profile::icc(&self) -> &profile::IccProfile
 pub fn api::Profile::icc_mut(&mut self) -> &mut profile::IccProfile
 pub api::Screening::channels: [tagtypes::ScreeningChannel; 16]
@@ -165,8 +164,6 @@ pub fn lut::Stage::output_channels(&self) -> u32
 pub fn lut::Stage::stage_type(&self) -> u32
 pub type api::StagesIter<'a>::Item = &'a lut::Stage
 pub fn api::StagesIter<'a>::next(&mut self) -> core::option::Option<&'a lut::Stage>
-pub const fn xform::Stride::chunky(u32) -> xform::Stride [also: (root)]
-pub const fn xform::Stride::new(u32, u32, u32, u32) -> xform::Stride [also: (root)]
 pub type api::ToneCurve::Target = gamma::ToneCurve
 pub fn api::ToneCurve::deref(&self) -> &gamma::ToneCurve
 pub api::ToneCurveRef::evals: alloc::vec::Vec<core::option::Option<context::ParametricCurveEvaluator>>
@@ -824,20 +821,26 @@ pub struct lcms2::PixelFormat(pub u32)
 pub const lcms2::PixelFormat::CMYK_16: lcms2::PixelFormat
 pub const lcms2::PixelFormat::CMYK_8: lcms2::PixelFormat
 pub const lcms2::PixelFormat::CMYK_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::CMYK_FLT: lcms2::PixelFormat
 pub const lcms2::PixelFormat::GRAY_16: lcms2::PixelFormat
 pub const lcms2::PixelFormat::GRAY_8: lcms2::PixelFormat
 pub const lcms2::PixelFormat::GRAY_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::GRAY_FLT: lcms2::PixelFormat
 pub const lcms2::PixelFormat::LAB_16: lcms2::PixelFormat
 pub const lcms2::PixelFormat::LAB_8: lcms2::PixelFormat
 pub const lcms2::PixelFormat::LAB_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::LAB_FLT: lcms2::PixelFormat
 pub const lcms2::PixelFormat::RGBA_16: lcms2::PixelFormat
 pub const lcms2::PixelFormat::RGBA_8: lcms2::PixelFormat
 pub const lcms2::PixelFormat::RGBA_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGBA_FLT: lcms2::PixelFormat
 pub const lcms2::PixelFormat::RGB_16: lcms2::PixelFormat
 pub const lcms2::PixelFormat::RGB_8: lcms2::PixelFormat
 pub const lcms2::PixelFormat::RGB_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::RGB_FLT: lcms2::PixelFormat
 pub const lcms2::PixelFormat::XYZ_16: lcms2::PixelFormat
 pub const lcms2::PixelFormat::XYZ_DBL: lcms2::PixelFormat
+pub const lcms2::PixelFormat::XYZ_FLT: lcms2::PixelFormat
 pub fn lcms2::PixelFormat::bytes(self) -> usize
 pub const fn lcms2::PixelFormat::raw(u32) -> lcms2::PixelFormat
 pub struct lcms2::Profile<C>
@@ -1160,7 +1163,7 @@ pub fn named::NamedColorList::is_empty(&self) -> bool
 pub fn named::NamedColorList::len(&self) -> usize
 pub fn named::NamedColorList::new(u32, u32, &str, &str) -> api::Result<named::NamedColorList>
 pub fn named::NamedColorList::position(&self, &str) -> core::option::Option<usize>
-pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16; 16]) -> bool
+pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16]) -> api::Result<()>
 pub struct named::PSeqDesc
 pub named::PSeqDesc::attributes: u64
 pub named::PSeqDesc::description: core::option::Option<named::Mlu>
@@ -1731,8 +1734,9 @@ pub fn xform::get_transform_output_colorants(&xform::Transform) -> core::option:
 pub fn xform::set_adaptation_state(core::option::Option<&context::Context>, f64) -> f64
 pub fn xform::set_alarm_codes(core::option::Option<&context::Context>, &[u16; 16])
 
-## trait impls (104 types)
+## trait impls (105 types)
 
+api::TagData<'_>: From<named::Mlu>, From<named::NamedColorList>, From<tagtypes::VideoSignal>
 cgats::KeyValue: Clone
 cgats::Keyword: Clone, Copy
 cgats::Symbol: Clone, Copy, Debug, Eq, PartialEq
@@ -1852,7 +1856,7 @@ profile::IccProfile: !Freeze
 xform::Transform: !Freeze !RefUnwindSafe !UnwindSafe
 xform::TransformPlan: !Freeze !RefUnwindSafe !UnwindSafe
 
-## removed by features (307 lines)
+## removed by features (303 lines)
 
 pub api::TagData::Data(api::IccData)
 pub api::TagData::DateTime(api::Tm)
@@ -1866,6 +1870,12 @@ pub api::TagData::Seq(api::ProfileSeqDesc)
 pub api::TagData::UcrBg(api::UcrBg)
 pub api::TagData::VideoSignal(api::VideoSignal)
 pub api::TagData::ViewingConditions(api::IccViewingConditions)
+impl core::convert::From<api::Mlu> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::Mlu) -> Self
+impl core::convert::From<api::NamedColorList> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::NamedColorList) -> Self
+impl core::convert::From<api::VideoSignal> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::VideoSignal) -> Self
 pub api::TagValue::Curve(&'a api::ToneCurveRef)
 pub api::TagValue::DateTime(&'a api::Tm)
 pub api::TagValue::Dict(&'a api::Dict)
@@ -1948,6 +1958,8 @@ pub fn api::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Loca
 pub fn api::Mlu::translations(&self) -> u32
 impl core::clone::Clone for api::Mlu
 pub fn api::Mlu::clone(&self) -> api::Mlu
+impl core::convert::From<api::Mlu> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::Mlu) -> Self
 impl core::default::Default for api::Mlu
 pub fn api::Mlu::default() -> api::Mlu
 impl core::marker::Freeze for api::Mlu
@@ -1962,9 +1974,11 @@ pub fn api::NamedColorList::is_empty(&self) -> bool
 pub fn api::NamedColorList::len(&self) -> usize
 pub fn api::NamedColorList::new(u32, u32, &str, &str) -> api::Result<api::NamedColorList>
 pub fn api::NamedColorList::position(&self, &str) -> core::option::Option<usize>
-pub fn api::NamedColorList::push(&mut self, &str, [u16; 3], &[u16; 16]) -> bool
+pub fn api::NamedColorList::push(&mut self, &str, [u16; 3], &[u16]) -> api::Result<()>
 impl core::clone::Clone for api::NamedColorList
 pub fn api::NamedColorList::clone(&self) -> api::NamedColorList
+impl core::convert::From<api::NamedColorList> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::NamedColorList) -> Self
 impl core::marker::Freeze for api::NamedColorList
 impl core::marker::Send for api::NamedColorList
 impl core::marker::Sync for api::NamedColorList
@@ -2003,7 +2017,6 @@ impl core::marker::Unpin for api::Pipeline
 impl core::marker::UnsafeUnpin for api::Pipeline
 impl core::panic::unwind_safe::RefUnwindSafe for api::Pipeline
 impl core::panic::unwind_safe::UnwindSafe for api::Pipeline
-pub fn api::Plan::apply_strided(&self, &mut api::Scratch, &[u8], &mut [u8], u32, u32, &api::Stride)
 impl core::clone::Clone for api::ProfileSeqDesc
 pub fn api::ProfileSeqDesc::clone(&self) -> api::ProfileSeqDesc
 impl core::marker::Freeze for api::ProfileSeqDesc
@@ -2066,21 +2079,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for api::Stage
 impl core::panic::unwind_safe::UnwindSafe for api::Stage
 pub type api::StagesIter<'a>::Item = &'a api::Stage
 pub fn api::StagesIter<'a>::next(&mut self) -> core::option::Option<&'a api::Stage>
-impl api::Stride
-pub const fn api::Stride::chunky(u32) -> api::Stride
-pub const fn api::Stride::new(u32, u32, u32, u32) -> api::Stride
-impl core::clone::Clone for api::Stride
-pub fn api::Stride::clone(&self) -> api::Stride
-impl core::default::Default for api::Stride
-pub fn api::Stride::default() -> api::Stride
-impl core::marker::Copy for api::Stride
-impl core::marker::Freeze for api::Stride
-impl core::marker::Send for api::Stride
-impl core::marker::Sync for api::Stride
-impl core::marker::Unpin for api::Stride
-impl core::marker::UnsafeUnpin for api::Stride
-impl core::panic::unwind_safe::RefUnwindSafe for api::Stride
-impl core::panic::unwind_safe::UnwindSafe for api::Stride
 impl core::clone::Clone for api::Tm
 pub fn api::Tm::clone(&self) -> api::Tm
 impl core::cmp::PartialEq for api::Tm
@@ -2133,6 +2131,8 @@ impl core::clone::Clone for api::VideoSignal
 pub fn api::VideoSignal::clone(&self) -> api::VideoSignal
 impl core::cmp::PartialEq for api::VideoSignal
 pub fn api::VideoSignal::eq(&self, &api::VideoSignal) -> bool
+impl core::convert::From<api::VideoSignal> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::VideoSignal) -> Self
 impl core::default::Default for api::VideoSignal
 pub fn api::VideoSignal::default() -> api::VideoSignal
 impl core::fmt::Debug for api::VideoSignal

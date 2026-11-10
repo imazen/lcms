@@ -747,11 +747,11 @@ fn profile_freeze_sync() {
 #[test]
 fn api_smoke() {
     use lcms::api::*;
-    let mut srgb = Profile::srgb().unwrap();
-    let mut lab4 = Profile::lab4().unwrap();
+    let mut srgb = Profile::srgb();
+    let mut lab4 = Profile::lab4();
     srgb.freeze();
     lab4.freeze();
-    let plan = Plan::new(&mut srgb, &mut lab4, Format::RgbU8, Format::LabU8).unwrap();
+    let plan = Plan::new(&mut srgb, &mut lab4, Format::RGB_8, Format::LAB_8).unwrap();
     let mut sc = plan.scratch();
     let src = [255u8, 0, 0]; // pure red
     let mut dst = [0u8; 3];

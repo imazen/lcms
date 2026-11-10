@@ -70,6 +70,25 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
   the gate, not the compiler.
 - NaN/Inf propagate differently through `as`-casts vs C casts.
 
+## Structural traps (each cost a bug — found 2026-11-10 by `tests/api_c_parity.rs`)
+
+- **Duplicating a profile = `clone()`, never save+reopen.** Where C passes the
+  same handle twice (black-point round trips, K-preserving chains), the port
+  must clone. A serialize+reopen copy re-encodes tags that were already
+  decoded, so results depended on read history: BPC on a frozen `test1.icc`
+  differed from C on 572/1000 pixels.
+- **Per-run state must start where C's transform starts.** The zero-input
+  cache seed has to land in `TransformPlan::scratch_seed` too, or every
+  fresh scratch (`apply_par`, `api::Plan`) returns 0 for a leading black
+  pixel. C seeds *last* in `cmsCreateExtendedTransform` — after the gamut
+  check exists (`seed_cache`).
+- **Fill CLUTs with `stage_sample_clut16bit`, not `slice_space16` + a
+  reconstructed node index.** `inp*(n-1)/0xffff` is off by one wherever the
+  quantized grid value rounded down (gamut-check CLUT, 205/2000 px off).
+- **Gates that feed 85 identical zero pixels, or never set BPC, can't see
+  any of the above.** Sweep varied inputs, every intent, BPC on/off, and
+  read-before-link (frozen) profiles.
+
 ## Evidence tiers — say which one you have in the commit message
 
 1. differential vs the exported C symbol (standard), 2. byte-identity of

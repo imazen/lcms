@@ -1,68 +1,72 @@
 //! `lcms::api` — the idiomatic facade.
 //!
-//! The `cms*`/`pub mod` surface below (`little-cms-api` feature) stays 1:1
-//! with the C source for conformance; this module wraps it in owned,
+//! The `cms*`/`pub mod` surface (`little-cms-api` feature) stays 1:1 with
+//! the C source for conformance; this module wraps it in owned,
 //! `Result`-returning, `Send`/`Sync`-friendly types for real applications.
-//! It is always compiled — no feature required.
+//! It is always compiled — no feature required. Plans built here link
+//! exactly as C's `cmsCreateTransform` / `cmsCreateMultiprofileTransform` /
+//! `cmsCreateProofingTransform` do, and produce the same pixels
+//! (gated by `tests/api_c_parity.rs` against the C library).
 //!
 //! ## The shared-plan model (for services)
 //!
-//! The object model is split deliberately for concurrent workloads
-//! (image proxies, render pipelines):
+//! - **[`Profile`]** — an owned ICC profile. Every constructor decodes all
+//!   tags up front, so a `Profile` is fully readable through `&self` and is
+//!   `Send` + `Sync`: `Arc`-share it. [`Profile::get`], [`Profile::info`],
+//!   [`Profile::named_colors`] are lock-free reads.
+//! - **[`Plan`]** — the immutable linked, optimized transform. `Sync`:
+//!   build once, `Arc`-share across workers, cache by
+//!   `(src, dst, formats, PlanOptions)`.
+//! - **[`Scratch`]** — the only per-run state (~64 B pixel cache): one per
+//!   thread, or let [`Plan::transform`] make a fresh one per call.
 //!
-//! - **[`Profile`]** — an owned ICC profile. All constructors materialize
-//!   every tag up front (`cmsReadTag` on each), so a `Profile` is always
-//!   fully readable through `&self` and is `Send` + `Sync`. `Arc`-share
-//!   it; [`Profile::tag`], [`Profile::info`], [`Profile::named_colors`]
-//!   are lock-free reads.
-//! - **[`Plan`]** — the immutable linked transform (`cmsCreateTransform`
-//!   plus pipeline optimization + CLUT flattening). `Sync`: build once,
-//!   `Arc`-share across workers, cache by
-//!   `(src, dst, fmt_in, fmt_out, intent, flags)`.
-//! - **[`Scratch`]** — the only per-run state (~64 B pixel cache). Fresh
-//!   per call via [`Plan::scratch`], or pooled `thread_local`.
+//! A proxy server keeps a profile cache (`Arc<Profile>` by content hash)
+//! and a plan cache (`Arc<Plan>` by config key); each worker calls
+//! [`Plan::apply`] with its own scratch. Nothing on the pixel path locks.
 //!
-//! A proxy server does: profile cache (`Arc` by content hash) → plan
-//! cache (`Arc<Plan>` by config key) → per-request `plan.scratch()` →
-//! [`Plan::apply`]. The whole pixel path is `&self` on shared state — no
-//! locks anywhere.
-//!
-//! ```no_run
+//! ```
 //! use lcms::api::*;
 //!
-//! // Open or build profiles — always ready to read (`&self` is Sync).
-//! let srgb = Profile::srgb()?;
-//! let p3 = Profile::open_file("Display-P3.icc")?;
+//! // An embedded profile would be `Profile::open(&icc_bytes)?`.
+//! let src = Profile::srgb();
+//! let dst = Profile::lab4();
 //!
-//! // Link once — the expensive part. `&Profile` borrows are enough;
-//! // the plan clones what it needs.
-//! let plan = Plan::new(&p3, &srgb, Format::RgbU8, Format::RgbU8)?;
+//! // Link once — the expensive part. `&Profile` borrows are enough.
+//! let plan = Plan::new(&src, &dst, Format::RGB_8, Format::LAB_DBL)?;
 //!
-//! // Per-request scratch — ~64 B, or pooled `thread_local`.
+//! // One-off call: the plan makes its own scratch.
+//! let mut lab = [[0f64; 3]; 2];
+//! plan.transform_pixels(&[[255u8, 0, 0], [0, 0, 255]], &mut lab);
+//! assert!(lab[0][1] > 60.0);  // red: strongly positive a*
+//! assert!(lab[1][2] < -90.0); // blue: strongly negative b*
+//!
+//! // Hot loop: keep a scratch per thread.
 //! let mut sc = plan.scratch();
-//! let src = [255u8, 0, 0]; let mut dst = [0u8; 3];
-//! plan.apply(&mut sc, &src, &mut dst);
-//!
-//! // Typed pixels work too:
-//! plan.apply_pixels(&mut sc, &[[255u8; 3]], &mut [[0u8; 3]]);
-//!
-//! // Large images: pixel-independent parallel split, scratch-per-chunk.
-//! // plan.apply_par(&pixels_in, &mut pixels_out, n_pixels, n_threads);
+//! let mut out = [0u8; 2 * 24];
+//! plan.apply(&mut sc, &[255, 255, 255, 0, 0, 0], &mut out);
 //! # Ok::<(), lcms::api::Error>(())
 //! ```
+//!
+//! Intent, black-point compensation and flags go through [`PlanOptions`];
+//! rows with padding through [`Plan::apply_strided`]; big images through
+//! [`Plan::apply_par`].
 //!
 //! Tags, info text, named colors, header fields:
 //!
 //! ```
 //! use lcms::api::*;
 //!
-//! let srgb = Profile::srgb()?;
-//! for tag in srgb.tags() { println!("{tag}"); }
-//! if let Some(TagValue::Xyz(wp)) = srgb.get(Tag::MEDIA_WHITE_POINT) {
-//!     println!("white point: {wp:?}");
-//! }
+//! let mut p = Profile::srgb();
+//! for tag in p.tags() { println!("{tag}: {:?}", p.get(tag)); }
+//! assert_eq!(p.white_point().map(|wp| wp.Y), Some(1.0));
+//! p.write_tag(Tag::COPYRIGHT, "No rights reserved")?;
+//! assert_eq!(p.info(InfoType::Copyright).as_deref(), Some("No rights reserved"));
 //! # Ok::<(), lcms::api::Error>(())
 //! ```
+//!
+//! Buffer sizes that don't match a plan's formats are programming errors
+//! and panic (like slice indexing); everything that depends on input data
+//! (profile bytes, tag types, link feasibility) returns [`Result`].
 
 use crate::tagtypes::TagObject;
 use crate::{named, profile, types, virt, xform};
@@ -113,8 +117,6 @@ pub use crate::tagtypes::{Screening, ScreeningChannel};
 pub use crate::types::{CieLCh, CieLab, CieXyz, CiexyY, CiexyYTriple};
 /// ICC header types — `'dtim'` header date, `cmsProfileID`, `'meas'` conditions.
 pub use crate::types::{DateTimeNumber, IccMeasurementConditions, ProfileId};
-/// Transform row/plane strides — `cmsStride` ([`Plan::apply_strided`]).
-pub use crate::xform::Stride;
 
 // -- Error -----------------------------------------------------------------
 
@@ -210,6 +212,27 @@ impl Error {
     }
 }
 
+/// Run a port call that reports failure as `None`, mapping it to an
+/// [`Error`] carrying the message *that call* signalled. Any stale
+/// message an earlier call left on this thread is discarded first, so a
+/// failure is never blamed on someone else's error; messages a
+/// successful call signalled (warnings) are discarded after it.
+fn attempt<T>(fallback_id: i32, what: &str, f: impl FnOnce() -> Option<T>) -> Result<T> {
+    let _ = crate::err::take_last_error();
+    match f() {
+        Some(v) => {
+            let _ = crate::err::take_last_error();
+            Ok(v)
+        }
+        None => Err(Error::from_last(fallback_id, &format!("{what} failed"))),
+    }
+}
+
+/// `bool`-returning variant of [`attempt`].
+fn attempt_bool(fallback_id: i32, what: &str, f: impl FnOnce() -> bool) -> Result<()> {
+    attempt(fallback_id, what, || f().then_some(()))
+}
+
 // -- Format ---------------------------------------------------------------
 
 // pixel-type codes (COLORSPACE_SH payload in the format u32)
@@ -227,163 +250,189 @@ const PT_HLS: u32 = 13;
 const PT_YXY: u32 = 14;
 const PT_LABV2: u32 = 30;
 
-const fn f16(pt: u32, ch: u32) -> u32 {
-    pt << 16 | ch << 3 | 2
+// `cmsFORMAT` field shifts (lcms2.h `*_SH` macros)
+const fn colorspace_sh(pt: u32) -> u32 {
+    pt << 16
 }
-const fn f8(pt: u32, ch: u32) -> u32 {
-    pt << 16 | ch << 3 | 1
+const fn channels_sh(c: u32) -> u32 {
+    c << 3
 }
-const fn f8e(pt: u32, ch: u32, ex: u32) -> u32 {
-    pt << 16 | ex << 7 | ch << 3 | 1
+const fn extra_sh(e: u32) -> u32 {
+    e << 7
 }
-const fn f16e(pt: u32, ch: u32, ex: u32) -> u32 {
-    pt << 16 | ex << 7 | ch << 3 | 2
-}
-const fn ff32(pt: u32, ch: u32) -> u32 {
-    1 << 22 | pt << 16 | ch << 3 | 4
-}
-const fn ff32e(pt: u32, ch: u32, ex: u32) -> u32 {
-    1 << 22 | pt << 16 | ex << 7 | ch << 3 | 4
-}
+const DOSWAP_SH: u32 = 1 << 10;
+const PLANAR_SH: u32 = 1 << 12;
+const SWAPFIRST_SH: u32 = 1 << 14;
+const FLOAT_SH: u32 = 1 << 22;
 
-/// Pixel format — the packed `cmsFORMAT` u32 made readable.
+/// Pixel format — the packed `cmsFORMAT` code, with constants for the
+/// common `TYPE_*` layouts.
 ///
-/// The variants cover the common packed formats; [`Format::Raw`] is the
-/// escape hatch for the full `cmsPACK` matrix (planar, swapped,
-/// alpha/extra channels, 1-channel Lab, ...) — construct it from any
-/// `cmsTYPE_*` code and [`Format::from_u32`] round-trips it.
+/// Any lcms format is representable ([`Format::from_u32`]); two `Format`s
+/// are equal exactly when their codes are. Sample sizes: `_8` = `u8`,
+/// `_16` = native-endian `u16`, `_HALF` = IEEE half floats in a `u16`,
+/// `_FLT` = `f32`, `_DBL` = `f64`. Float formats use lcms's ranges: RGB and
+/// gray `0.0..=1.0`, ink spaces such as CMYK in percent (`0.0..=100.0`),
+/// Lab/XYZ in natural units (L* 0–100, Y = 1.0 for white).
 ///
 /// ```
 /// use lcms::api::Format;
-/// let f = Format::RgbU8;
-/// assert_eq!(f.channels(), 3);
-/// assert_eq!(f.pixel_size(), 3);
+/// let f = Format::RGBA_8;
+/// assert_eq!((f.channels(), f.extra_channels(), f.pixel_size()), (3, 1, 4));
 /// assert_eq!(Format::from_u32(f.code()), f);
+/// assert_eq!(Format::CMYK_DBL.bytes_per_channel(), 8);
+/// assert!(Format::RGB_8.planar().is_planar());
+/// assert_eq!(format!("{:?}", Format::BGRA_8), "Format::BGRA_8");
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum Format {
-    /// `cmsTYPE_RGB_8` — 3 × u8.
-    RgbU8,
-    /// `cmsTYPE_RGB_16` — 3 × u16.
-    RgbU16,
-    /// `cmsTYPE_RGB_DBL` — 3 × f32.
-    RgbF32,
-    /// `cmsTYPE_RGBA_8` — 4 × u8 (alpha passthrough on `flags::COPY_ALPHA`).
-    RgbaU8,
-    /// `cmsTYPE_RGBA_16` — 4 × u16.
-    RgbaU16,
-    /// `cmsTYPE_RGBA_DBL` — 4 × f32.
-    RgbaF32,
-    /// `cmsTYPE_Lab_8` — 3 × u8 (v4-encoded Lab).
-    LabU8,
-    /// `cmsTYPE_Lab_16` — 3 × u16.
-    LabU16,
-    /// `cmsTYPE_Lab_DBL` — 3 × f32.
-    LabF32,
-    /// `cmsTYPE_XYZ_16` — 3 × u16.
-    XyzU16,
-    /// `cmsTYPE_XYZ_DBL` — 3 × f32.
-    XyzF32,
-    /// `cmsTYPE_GRAY_8` — 1 × u8.
-    GrayU8,
-    /// `cmsTYPE_GRAY_16` — 1 × u16.
-    GrayU16,
-    /// `cmsTYPE_GRAY_DBL` — 1 × f32.
-    GrayF32,
-    /// `cmsTYPE_CMYK_8` — 4 × u8.
-    CmykU8,
-    /// `cmsTYPE_CMYK_16` — 4 × u16.
-    CmykU16,
-    /// `cmsTYPE_CMYK_DBL` — 4 × f32.
-    CmykF32,
-    /// Any other packed format code — the full `cmsPACK` matrix.
-    Raw(u32),
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct Format(u32);
+
+macro_rules! format_consts {
+    ($( $(#[$m:meta])* $name:ident = $v:expr, )*) => {
+        impl Format {
+            $( $(#[$m])* pub const $name: Format = Format($v); )*
+            /// The constant's name, for `Debug`.
+            fn name(self) -> Option<&'static str> {
+                $( if self.0 == $v { return Some(stringify!($name)); } )*
+                None
+            }
+        }
+    };
+}
+
+format_consts! {
+    /// `TYPE_GRAY_8`
+    GRAY_8 = colorspace_sh(PT_GRAY) | channels_sh(1) | 1,
+    /// `TYPE_GRAY_16`
+    GRAY_16 = colorspace_sh(PT_GRAY) | channels_sh(1) | 2,
+    /// `TYPE_GRAY_HALF_FLT`
+    GRAY_HALF = FLOAT_SH | colorspace_sh(PT_GRAY) | channels_sh(1) | 2,
+    /// `TYPE_GRAY_FLT`
+    GRAY_FLT = FLOAT_SH | colorspace_sh(PT_GRAY) | channels_sh(1) | 4,
+    /// `TYPE_GRAY_DBL`
+    GRAY_DBL = FLOAT_SH | colorspace_sh(PT_GRAY) | channels_sh(1),
+    /// `TYPE_RGB_8`
+    RGB_8 = colorspace_sh(PT_RGB) | channels_sh(3) | 1,
+    /// `TYPE_RGB_16`
+    RGB_16 = colorspace_sh(PT_RGB) | channels_sh(3) | 2,
+    /// `TYPE_RGB_HALF_FLT`
+    RGB_HALF = FLOAT_SH | colorspace_sh(PT_RGB) | channels_sh(3) | 2,
+    /// `TYPE_RGB_FLT`
+    RGB_FLT = FLOAT_SH | colorspace_sh(PT_RGB) | channels_sh(3) | 4,
+    /// `TYPE_RGB_DBL`
+    RGB_DBL = FLOAT_SH | colorspace_sh(PT_RGB) | channels_sh(3),
+    /// `TYPE_BGR_8`
+    BGR_8 = colorspace_sh(PT_RGB) | channels_sh(3) | 1 | DOSWAP_SH,
+    /// `TYPE_BGR_16`
+    BGR_16 = colorspace_sh(PT_RGB) | channels_sh(3) | 2 | DOSWAP_SH,
+    /// `TYPE_BGR_FLT`
+    BGR_FLT = FLOAT_SH | colorspace_sh(PT_RGB) | channels_sh(3) | 4 | DOSWAP_SH,
+    /// `TYPE_RGBA_8` — alpha is an extra channel; add
+    /// [`flags::COPY_ALPHA`] to carry it through.
+    RGBA_8 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 1,
+    /// `TYPE_RGBA_16`
+    RGBA_16 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 2,
+    /// `TYPE_RGBA_HALF_FLT`
+    RGBA_HALF = FLOAT_SH | colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 2,
+    /// `TYPE_RGBA_FLT`
+    RGBA_FLT = FLOAT_SH | colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 4,
+    /// `TYPE_BGRA_8`
+    BGRA_8 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 1 | DOSWAP_SH | SWAPFIRST_SH,
+    /// `TYPE_BGRA_16`
+    BGRA_16 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 2 | DOSWAP_SH | SWAPFIRST_SH,
+    /// `TYPE_BGRA_FLT`
+    BGRA_FLT = FLOAT_SH | colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 4 | DOSWAP_SH | SWAPFIRST_SH,
+    /// `TYPE_ARGB_8`
+    ARGB_8 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 1 | SWAPFIRST_SH,
+    /// `TYPE_ARGB_16`
+    ARGB_16 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 2 | SWAPFIRST_SH,
+    /// `TYPE_ARGB_FLT`
+    ARGB_FLT = FLOAT_SH | colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 4 | SWAPFIRST_SH,
+    /// `TYPE_ABGR_8`
+    ABGR_8 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 1 | DOSWAP_SH,
+    /// `TYPE_ABGR_16`
+    ABGR_16 = colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 2 | DOSWAP_SH,
+    /// `TYPE_ABGR_FLT`
+    ABGR_FLT = FLOAT_SH | colorspace_sh(PT_RGB) | extra_sh(1) | channels_sh(3) | 4 | DOSWAP_SH,
+    /// `TYPE_CMYK_8`
+    CMYK_8 = colorspace_sh(PT_CMYK) | channels_sh(4) | 1,
+    /// `TYPE_CMYK_16`
+    CMYK_16 = colorspace_sh(PT_CMYK) | channels_sh(4) | 2,
+    /// `TYPE_CMYK_HALF_FLT`
+    CMYK_HALF = FLOAT_SH | colorspace_sh(PT_CMYK) | channels_sh(4) | 2,
+    /// `TYPE_CMYK_FLT`
+    CMYK_FLT = FLOAT_SH | colorspace_sh(PT_CMYK) | channels_sh(4) | 4,
+    /// `TYPE_CMYK_DBL`
+    CMYK_DBL = FLOAT_SH | colorspace_sh(PT_CMYK) | channels_sh(4),
+    /// `TYPE_Lab_8`
+    LAB_8 = colorspace_sh(PT_LAB) | channels_sh(3) | 1,
+    /// `TYPE_Lab_16` — ICC v4 16-bit Lab encoding.
+    LAB_16 = colorspace_sh(PT_LAB) | channels_sh(3) | 2,
+    /// `TYPE_LabV2_8`
+    LAB_V2_8 = colorspace_sh(PT_LABV2) | channels_sh(3) | 1,
+    /// `TYPE_LabV2_16` — ICC v2 16-bit Lab encoding.
+    LAB_V2_16 = colorspace_sh(PT_LABV2) | channels_sh(3) | 2,
+    /// `TYPE_Lab_FLT`
+    LAB_FLT = FLOAT_SH | colorspace_sh(PT_LAB) | channels_sh(3) | 4,
+    /// `TYPE_Lab_DBL` — the layout of [`CieLab`].
+    LAB_DBL = FLOAT_SH | colorspace_sh(PT_LAB) | channels_sh(3),
+    /// `TYPE_XYZ_16`
+    XYZ_16 = colorspace_sh(PT_XYZ) | channels_sh(3) | 2,
+    /// `TYPE_XYZ_FLT`
+    XYZ_FLT = FLOAT_SH | colorspace_sh(PT_XYZ) | channels_sh(3) | 4,
+    /// `TYPE_XYZ_DBL` — the layout of [`CieXyz`].
+    XYZ_DBL = FLOAT_SH | colorspace_sh(PT_XYZ) | channels_sh(3),
+    /// `TYPE_NAMED_COLOR_INDEX` — one `u16` index into a named-color list.
+    NAMED_COLOR_INDEX = channels_sh(1) | 2,
 }
 
 impl Format {
-    /// The packed `cmsFORMAT` code (`cmsTYPE_*`).
-    pub fn code(self) -> u32 {
-        match self {
-            Format::RgbU8 => f8(PT_RGB, 3),
-            Format::RgbU16 => f16(PT_RGB, 3),
-            Format::RgbF32 => ff32(PT_RGB, 3),
-            Format::RgbaU8 => f8e(PT_RGB, 3, 1),
-            Format::RgbaU16 => f16e(PT_RGB, 3, 1),
-            Format::RgbaF32 => ff32e(PT_RGB, 3, 1),
-            Format::LabU8 => f8(PT_LAB, 3),
-            Format::LabU16 => f16(PT_LAB, 3),
-            Format::LabF32 => ff32(PT_LAB, 3),
-            Format::XyzU16 => f16(PT_XYZ, 3),
-            Format::XyzF32 => ff32(PT_XYZ, 3),
-            Format::GrayU8 => f8(PT_GRAY, 1),
-            Format::GrayU16 => f16(PT_GRAY, 1),
-            Format::GrayF32 => ff32(PT_GRAY, 1),
-            Format::CmykU8 => f8(PT_CMYK, 4),
-            Format::CmykU16 => f16(PT_CMYK, 4),
-            Format::CmykF32 => ff32(PT_CMYK, 4),
-            Format::Raw(c) => c,
+    /// Wrap any packed `cmsFORMAT` code (`TYPE_*`).
+    pub const fn from_u32(code: u32) -> Format {
+        Format(code)
+    }
+    /// The packed `cmsFORMAT` code (`TYPE_*`).
+    pub const fn code(self) -> u32 {
+        self.0
+    }
+    /// Bytes per pixel, counting color and extra channels:
+    /// `total_channels × bytes_per_channel`. For a planar format, the
+    /// summed size of one pixel across its planes.
+    pub const fn pixel_size(self) -> usize {
+        self.total_channels() * self.bytes_per_channel()
+    }
+    /// Bytes per sample: 1, 2, 4 or 8 (`T_BYTES`; lcms's `0` means 8-byte
+    /// doubles).
+    pub const fn bytes_per_channel(self) -> usize {
+        match crate::pack::t_bytes(self.0) {
+            0 => 8,
+            b => b as usize,
         }
     }
-    /// Map a packed `cmsFORMAT` code back to a [`Format`] — named variant
-    /// if it matches one, `Raw` otherwise.
-    pub fn from_u32(code: u32) -> Format {
-        const ALL: &[Format] = &[
-            Format::RgbU8,
-            Format::RgbU16,
-            Format::RgbF32,
-            Format::RgbaU8,
-            Format::RgbaU16,
-            Format::RgbaF32,
-            Format::LabU8,
-            Format::LabU16,
-            Format::LabF32,
-            Format::XyzU16,
-            Format::XyzF32,
-            Format::GrayU8,
-            Format::GrayU16,
-            Format::GrayF32,
-            Format::CmykU8,
-            Format::CmykU16,
-            Format::CmykF32,
-        ];
-        ALL.iter()
-            .copied()
-            .find(|f| f.code() == code)
-            .unwrap_or(Format::Raw(code))
-    }
-    /// Bytes per pixel (packed, no stride) — `(channels + extra) ×
-    /// bytes-per-channel`. 0-byte formats (e.g. floating "any") count
-    /// as 8/channel like lcms does.
-    pub fn pixel_size(self) -> usize {
-        let c = self.code();
-        let b = crate::pack::t_bytes(c);
-        let b = if b == 0 { 8 } else { b };
-        (crate::pack::t_channels(c) + crate::pack::t_extra(c)) as usize * b as usize
-    }
-    /// Bytes per channel — 1, 2 or 4 (0 for exotic "any" formats).
-    pub fn bytes_per_channel(self) -> usize {
-        crate::pack::t_bytes(self.code()) as usize
-    }
     /// Color channels — not counting alpha/extra.
-    pub fn channels(self) -> usize {
-        crate::pack::t_channels(self.code()) as usize
+    pub const fn channels(self) -> usize {
+        crate::pack::t_channels(self.0) as usize
     }
     /// Extra (alpha / spot) channels.
-    pub fn extra_channels(self) -> usize {
-        crate::pack::t_extra(self.code()) as usize
+    pub const fn extra_channels(self) -> usize {
+        crate::pack::t_extra(self.0) as usize
     }
     /// `channels + extra_channels` — total components per pixel.
-    pub fn total_channels(self) -> usize {
+    pub const fn total_channels(self) -> usize {
         self.channels() + self.extra_channels()
     }
-    /// Floating-point format (`T_FLOAT`).
-    pub fn is_float(self) -> bool {
-        crate::pack::t_float(self.code()) != 0
+    /// Floating-point samples (`T_FLOAT`), half floats included.
+    pub const fn is_float(self) -> bool {
+        crate::pack::t_float(self.0) != 0
     }
-    /// Planar (separate-per-channel planes) format.
-    pub fn is_planar(self) -> bool {
-        crate::pack::t_planar(self.code()) != 0
+    /// One plane per channel (`T_PLANAR`) instead of interleaved pixels.
+    pub const fn is_planar(self) -> bool {
+        crate::pack::t_planar(self.0) != 0
+    }
+    /// The same layout, planar.
+    pub const fn planar(self) -> Format {
+        Format(self.0 | PLANAR_SH)
     }
     /// The [`ColorSpace`] this format's pixel-type encodes — `None` for
     /// pixel types without a named color space (YUV, exotic).
@@ -415,12 +464,22 @@ impl From<Format> for u32 {
         f.code()
     }
 }
+impl fmt::Debug for Format {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(n) = self.name() {
+            return write!(f, "Format::{n}");
+        }
+        if self.is_planar() {
+            if let Some(n) = Format(self.0 & !PLANAR_SH).name() {
+                return write!(f, "Format::{n}.planar()");
+            }
+        }
+        write!(f, "Format(0x{:x})", self.0)
+    }
+}
 impl fmt::Display for Format {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Format::Raw(c) => write!(f, "Raw(0x{c:x})"),
-            other => fmt::Debug::fmt(other, f),
-        }
+        fmt::Debug::fmt(self, f)
     }
 }
 
@@ -594,34 +653,63 @@ impl From<u32> for Tag {
 
 // -- Intent / InfoType / Locale -----------------------------------------------
 
-/// Rendering intent (`cmsIntents.h` — `cmsINTENT_*`).
+/// Rendering intent — the four ICC intents plus lcms's black-preserving
+/// intents for CMYK → CMYK links (`INTENT_PRESERVE_K_*`).
+///
+/// ```
+/// use lcms::api::Intent;
+/// assert_eq!(Intent::default(), Intent::Perceptual);
+/// assert_eq!(Intent::try_from(13).unwrap(), Intent::PreserveKPlanePerceptual);
+/// assert!(Intent::try_from(9).is_err());
+/// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[repr(u32)]
+#[non_exhaustive]
 pub enum Intent {
-    /// `cmsINTENT_PERCEPTUAL` — gamut compressed smoothly (the default).
+    /// `INTENT_PERCEPTUAL` (0) — gamut compressed smoothly (the default).
     #[default]
-    Perceptual,
-    /// `cmsINTENT_RELATIVE_COLORIMETRIC` — clip out-of-gamut, adapt white.
-    RelativeColorimetric,
-    /// `cmsINTENT_SATURATION` — preserve saturation.
-    Saturation,
-    /// `cmsINTENT_ABSOLUTE_COLORIMETRIC` — clip, keep paper white.
-    AbsoluteColorimetric,
+    Perceptual = 0,
+    /// `INTENT_RELATIVE_COLORIMETRIC` (1) — clip out-of-gamut, adapt white.
+    RelativeColorimetric = 1,
+    /// `INTENT_SATURATION` (2) — preserve saturation.
+    Saturation = 2,
+    /// `INTENT_ABSOLUTE_COLORIMETRIC` (3) — clip, keep paper white.
+    AbsoluteColorimetric = 3,
+    /// `INTENT_PRESERVE_K_ONLY_PERCEPTUAL` (10).
+    PreserveKOnlyPerceptual = 10,
+    /// `INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC` (11).
+    PreserveKOnlyRelativeColorimetric = 11,
+    /// `INTENT_PRESERVE_K_ONLY_SATURATION` (12).
+    PreserveKOnlySaturation = 12,
+    /// `INTENT_PRESERVE_K_PLANE_PERCEPTUAL` (13).
+    PreserveKPlanePerceptual = 13,
+    /// `INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC` (14).
+    PreserveKPlaneRelativeColorimetric = 14,
+    /// `INTENT_PRESERVE_K_PLANE_SATURATION` (15).
+    PreserveKPlaneSaturation = 15,
 }
 impl Intent {
-    /// The `cmsINTENT_*` code (0–3).
-    pub fn code(self) -> u32 {
+    /// The numeric intent code.
+    pub const fn code(self) -> u32 {
         self as u32
     }
-    /// `u32` -> `Intent` — clamps out-of-range values like C does.
-    pub fn from_u32(v: u32) -> Intent {
-        match v {
+    /// `u32` -> `Intent`, `None` for a code that isn't an lcms intent.
+    pub const fn from_u32(v: u32) -> Option<Intent> {
+        Some(match v {
             0 => Intent::Perceptual,
             1 => Intent::RelativeColorimetric,
             2 => Intent::Saturation,
-            _ => Intent::AbsoluteColorimetric,
-        }
+            3 => Intent::AbsoluteColorimetric,
+            10 => Intent::PreserveKOnlyPerceptual,
+            11 => Intent::PreserveKOnlyRelativeColorimetric,
+            12 => Intent::PreserveKOnlySaturation,
+            13 => Intent::PreserveKPlanePerceptual,
+            14 => Intent::PreserveKPlaneRelativeColorimetric,
+            15 => Intent::PreserveKPlaneSaturation,
+            _ => return None,
+        })
     }
-    /// All four intents, in code order.
+    /// The four ICC intents, in code order.
     pub const ALL: [Intent; 4] = [
         Intent::Perceptual,
         Intent::RelativeColorimetric,
@@ -634,9 +722,13 @@ impl From<Intent> for u32 {
         i.code()
     }
 }
-impl From<u32> for Intent {
-    fn from(v: u32) -> Intent {
-        Intent::from_u32(v)
+impl TryFrom<u32> for Intent {
+    type Error = Error;
+    fn try_from(v: u32) -> Result<Intent> {
+        Intent::from_u32(v).ok_or_else(|| Error {
+            id: types::ERROR_RANGE,
+            message: format!("unknown rendering intent {v}"),
+        })
     }
 }
 
@@ -952,10 +1044,10 @@ impl fmt::Display for ProfileClass {
 ///
 /// ```
 /// use lcms::api::{flags, Plan, Profile, Format, Intent};
-/// # let srgb = Profile::srgb()?;
-/// # let lab = Profile::lab4()?;
+/// # let srgb = Profile::srgb();
+/// # let lab = Profile::lab4();
 /// let plan = Plan::build(
-///     &srgb, &lab, Format::RgbU8, Format::LabU8,
+///     &srgb, &lab, Format::RGB_8, Format::LAB_8,
 ///     Intent::Perceptual, flags::NO_OPTIMIZE | flags::BLACK_POINT_COMPENSATION,
 /// )?;
 /// # Ok::<(), lcms::api::Error>(())
@@ -1026,7 +1118,7 @@ pub mod flags {
 ///
 /// ```
 /// use lcms::api::*;
-/// let p = Profile::srgb()?;
+/// let p = Profile::srgb();
 /// assert_eq!(p.device_class(), ProfileClass::Display);
 /// assert_eq!(p.color_space(), ColorSpace::Rgb);
 /// assert!(p.get(Tag::RED_TRC).is_some());
@@ -1057,78 +1149,93 @@ impl fmt::Debug for Profile {
 }
 
 impl Profile {
-    fn wrap(icc: Option<Box<crate::profile::IccProfile>>, what: &str) -> Result<Self> {
-        let mut icc =
-            icc.ok_or_else(|| Error::from_last(types::ERROR_READ, &format!("{what} failed")))?;
-        // Eager materialization — `&Profile` reads are always valid.
+    /// Freeze a freshly built/parsed profile — `&Profile` reads are then
+    /// always valid.
+    fn frozen(mut icc: Box<crate::profile::IccProfile>) -> Profile {
         profile::freeze(&mut icc);
-        Ok(Profile { icc })
+        // a tag that fails to decode stays unmaterialized (reads `None`);
+        // its signalled error isn't the constructor's failure.
+        let _ = crate::err::take_last_error();
+        Profile { icc }
+    }
+    fn wrap(
+        what: &str,
+        f: impl FnOnce() -> Option<Box<crate::profile::IccProfile>>,
+    ) -> Result<Self> {
+        attempt(types::ERROR_READ, what, f).map(Profile::frozen)
+    }
+    /// A built-in profile — its construction has no failure path for these
+    /// fixed inputs, so a failure is a bug in the port.
+    fn builtin(what: &str, f: impl FnOnce() -> Option<Box<crate::profile::IccProfile>>) -> Self {
+        Self::wrap(what, f).unwrap_or_else(|e| panic!("built-in profile {what}: {e}"))
     }
 
     // -- constructors -----------------------------------------------------
 
-    /// `cmsCreate_sRGBProfile` — the standard sRGB (D65, Rec.709 primaries).
-    pub fn srgb() -> Result<Self> {
-        Self::wrap(virt::create_srgb_profile(None), "create_srgb_profile")
+    /// `cmsCreate_sRGBProfile` — IEC 61966-2.1 sRGB ([`D65`] white,
+    /// [`REC709_PRIMARIES`], the sRGB curve), ICC v4.4.
+    pub fn srgb() -> Self {
+        Self::builtin("create_srgb_profile", || virt::create_srgb_profile(None))
     }
-    /// `cmsCreateLab4Profile` — Lab PCS profile (ICC v4 encoding).
-    pub fn lab4() -> Result<Self> {
-        Self::wrap(virt::create_lab4_profile(None, None), "create_lab4_profile")
+    /// `cmsCreateLab4Profile(NULL)` — Lab (D50) identity, ICC v4 encoding.
+    pub fn lab4() -> Self {
+        Self::builtin("create_lab4_profile", || virt::create_lab4_profile(None, None))
     }
-    /// `cmsCreateLab2Profile` — Lab PCS profile (ICC v2 encoding).
-    pub fn lab2() -> Result<Self> {
-        Self::wrap(virt::create_lab2_profile(None, None), "create_lab2_profile")
+    /// `cmsCreateLab2Profile(NULL)` — Lab (D50) identity, ICC v2 encoding.
+    pub fn lab2() -> Self {
+        Self::builtin("create_lab2_profile", || virt::create_lab2_profile(None, None))
     }
-    /// `cmsCreateGrayProfile` with D50 white and a 2.2-gamma TRC —
+    /// `cmsCreateLab4Profile` with a custom white point.
+    pub fn lab4_with_white_point(white_point: &CiexyY) -> Result<Self> {
+        Self::wrap("create_lab4_profile", || {
+            virt::create_lab4_profile(None, Some(white_point))
+        })
+    }
+    /// `cmsCreateGrayProfile` with the [`D50`] white and a 2.2-gamma TRC —
     /// see [`Profile::gray_curve`] for a custom curve.
-    pub fn gray() -> Result<Self> {
-        let wp = CiexyY {
-            x: 0.3457,
-            y: 0.3585,
-            Y: 1.0,
-        }; // D50
-        let g = crate::gamma::build_gamma(None, 2.2);
-        Self::wrap(
-            virt::create_gray_profile(None, Some(&wp), g.as_ref()),
-            "create_gray_profile",
-        )
+    pub fn gray() -> Self {
+        let g = ToneCurve::gamma(2.2).expect("gamma 2.2 is valid");
+        Self::builtin("create_gray_profile", || {
+            virt::create_gray_profile(None, Some(&D50), Some(&g.0))
+        })
     }
-    /// `cmsCreateXYZProfile` — XYZ PCS profile.
-    pub fn xyz() -> Result<Self> {
-        Self::wrap(virt::create_xyz_profile(None), "create_xyz_profile")
+    /// `cmsCreateXYZProfile` — XYZ identity.
+    pub fn xyz() -> Self {
+        Self::builtin("create_xyz_profile", || virt::create_xyz_profile(None))
     }
-    /// `cmsCreateNULLProfile` — the identity passthrough.
-    pub fn null() -> Result<Self> {
-        Self::wrap(virt::create_null_profile(None), "create_null_profile")
+    /// `cmsCreateNULLProfile` — an output profile mapping every color to
+    /// gray 0 (black); useful as a gamut-check sink.
+    pub fn null() -> Self {
+        Self::builtin("create_null_profile", || virt::create_null_profile(None))
     }
     /// `cmsCreate_OkLabProfile` — OkLab color-space profile (MPE pipeline;
     /// cannot be saved to an ICC file, like C).
-    pub fn oklab() -> Result<Self> {
-        Self::wrap(virt::create_oklab_profile(None), "create_oklab_profile")
+    pub fn oklab() -> Self {
+        Self::builtin("create_oklab_profile", || virt::create_oklab_profile(None))
     }
     /// `cmsCreateProfilePlaceholder` — a bare profile shell for authoring
-    /// (`'1CLR'` color space, `'XYZ '` PCS; set them with
-    /// [`Profile::set_color_space`]/[`Profile::set_device_class`]).
+    /// (display class, `'XYZ '` PCS, no color space or tags yet; set them
+    /// with [`Profile::set_color_space`], [`Profile::write_tag`], ...).
     pub fn placeholder() -> Self {
-        let mut icc = crate::profile::IccProfile::default();
-        icc.color_space = crate::signatures::colorspace::Sig1colorData;
-        icc.pcs = crate::signatures::colorspace::SigXYZData;
-        Profile { icc: Box::new(icc) }
+        Profile::frozen(crate::profile::create_profile_placeholder(None))
     }
     /// `cmsCreateRGBProfile` — white point, primaries, transfer curves.
     ///
     /// ```
     /// use lcms::api::*;
-    /// let c = ToneCurve::gamma(2.2)?;
-    /// let p = Profile::rgb(
-    ///     &CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 },           // D65
-    ///     &CiexyYTriple {
-    ///         Red:   CiexyY { x: 0.6400, y: 0.3300, Y: 1.0 },
-    ///         Green: CiexyY { x: 0.3000, y: 0.6000, Y: 1.0 },
-    ///         Blue:  CiexyY { x: 0.1500, y: 0.0600, Y: 1.0 },
-    ///     },
-    ///     [&c, &c, &c],
-    /// )?;
+    /// // sRGB rebuilt from its parts matches the built-in profile exactly
+    /// let trc = ToneCurve::srgb();
+    /// let p = Profile::rgb(&D65, &REC709_PRIMARIES, [&trc, &trc, &trc])?;
+    /// assert_eq!(p.get(Tag::RED_COLORANT).and_then(|v| v.as_xyz()),
+    ///            Profile::srgb().get(Tag::RED_COLORANT).and_then(|v| v.as_xyz()));
+    ///
+    /// // Display P3: P3 primaries, D65 white, sRGB curve
+    /// let p3 = CiexyYTriple {
+    ///     Red:   CiexyY { x: 0.680, y: 0.320, Y: 1.0 },
+    ///     Green: CiexyY { x: 0.265, y: 0.690, Y: 1.0 },
+    ///     Blue:  CiexyY { x: 0.150, y: 0.060, Y: 1.0 },
+    /// };
+    /// let display_p3 = Profile::rgb(&D65, &p3, [&trc, &trc, &trc])?;
     /// # Ok::<(), lcms::api::Error>(())
     /// ```
     pub fn rgb(
@@ -1136,22 +1243,20 @@ impl Profile {
         primaries: &CiexyYTriple,
         curves: [&ToneCurve; 3],
     ) -> Result<Self> {
-        Self::wrap(
+        Self::wrap("create_rgb_profile", || {
             virt::create_rgb_profile(
                 None,
                 Some(white_point),
                 Some(primaries),
                 Some([&curves[0].0, &curves[1].0, &curves[2].0]),
-            ),
-            "create_rgb_profile",
-        )
+            )
+        })
     }
     /// `cmsCreateGrayProfile` — white point + a custom tone curve.
     pub fn gray_curve(white_point: &CiexyY, curve: &ToneCurve) -> Result<Self> {
-        Self::wrap(
-            virt::create_gray_profile(None, Some(white_point), Some(&curve.0)),
-            "create_gray_profile",
-        )
+        Self::wrap("create_gray_profile", || {
+            virt::create_gray_profile(None, Some(white_point), Some(&curve.0))
+        })
     }
     /// `cmsCreateLinearizationDeviceLink` — a device-link profile whose
     /// `A2B0` pipeline is one tone-curve stage per channel.
@@ -1160,18 +1265,16 @@ impl Profile {
         curves: &[ToneCurve],
     ) -> Result<Self> {
         let refs: Vec<&ToneCurveRef> = curves.iter().map(|c| &c.0).collect();
-        Self::wrap(
-            virt::create_linearization_device_link(None, color_space.code(), &refs),
-            "create_linearization_device_link",
-        )
+        Self::wrap("create_linearization_device_link", || {
+            virt::create_linearization_device_link(None, color_space.code(), &refs)
+        })
     }
     /// `cmsCreateInkLimitingDeviceLink` — a CMYK→CMYK device link that
     /// caps total ink coverage (`limit` %, e.g. `250.0`).
     pub fn ink_limiting_device_link(color_space: ColorSpace, limit: f64) -> Result<Self> {
-        Self::wrap(
-            virt::create_ink_limiting_device_link(None, color_space.code(), limit),
-            "create_ink_limiting_device_link",
-        )
+        Self::wrap("create_ink_limiting_device_link", || {
+            virt::create_ink_limiting_device_link(None, color_space.code(), limit)
+        })
     }
     /// `cmsCreateBCHSWabstractProfile` — a Lab→Lab abstract profile applying
     /// brightness/contrast/hue/saturation/temperature adjustments.
@@ -1188,20 +1291,18 @@ impl Profile {
         temp_src: u32,
         temp_dest: u32,
     ) -> Result<Self> {
-        Self::wrap(
+        Self::wrap("create_bchsw_abstract_profile", || {
             virt::create_bchsw_abstract_profile(
                 None, lut_points, brightness, contrast, hue, saturation, temp_src, temp_dest,
-            ),
-            "create_bchsw_abstract_profile",
-        )
+            )
+        })
     }
     /// `cmsOpenProfileFromMem` — parse an ICC profile from bytes.
     /// Materializes every tag eagerly (see the type docs).
     pub fn open(data: &[u8]) -> Result<Self> {
-        Self::wrap(
-            profile::open_profile_from_mem(None, data),
-            "open_profile_from_mem",
-        )
+        Self::wrap("open_profile_from_mem", || {
+            profile::open_profile_from_mem(None, data)
+        })
     }
     /// `cmsOpenProfileFromFile` — read an ICC file off disk.
     pub fn open_file(path: impl AsRef<std::path::Path>) -> Result<Self> {
@@ -1218,8 +1319,9 @@ impl Profile {
     /// profile is saved unchanged (the encoder works on a clone).
     pub fn save(&self) -> Result<Vec<u8>> {
         let mut icc = self.icc.clone();
-        profile::save_profile_to_mem(&mut icc)
-            .ok_or_else(|| Error::from_last(types::ERROR_WRITE, "save_profile_to_mem failed"))
+        attempt(types::ERROR_WRITE, "save_profile_to_mem", || {
+            profile::save_profile_to_mem(&mut icc)
+        })
     }
     /// `cmsSaveProfileToFile` — write the serialized ICC bytes to disk.
     pub fn save_file(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
@@ -1265,19 +1367,23 @@ impl Profile {
     pub fn tag_count(&self) -> usize {
         self.icc.tag_count as usize
     }
-    /// Write a tag — stores the [`TagData`] (converted to the cooked
-    /// `TagObject`). `false` if the tag can't be written (e.g. the
-    /// descriptor table rejects the pairing).
-    pub fn write_tag(&mut self, tag: impl Into<Tag>, value: TagData<'_>) -> bool {
-        let obj = match value {
+    /// `cmsWriteTag` — store `value` under `tag`, replacing any previous
+    /// value. Takes a [`TagData`] or anything convertible into one
+    /// (`&str`, [`ToneCurve`], [`CieXyz`], ...). Fails with
+    /// [`ErrorKind::UnknownExtension`] when the tag doesn't accept that
+    /// type (e.g. text for `'rTRC'`). As with C's `cmsWriteTag`, a failed
+    /// write has already released any previous value: the tag is then
+    /// absent.
+    pub fn write_tag<'a>(&mut self, tag: impl Into<Tag>, value: impl Into<TagData<'a>>) -> Result<()> {
+        let obj = match value.into() {
             TagData::Xyz(x) => TagObject::Xyz(x),
             TagData::Chromaticity(c) => TagObject::Chromaticity(c),
             TagData::ColorantOrder(o) => TagObject::ColorantOrder(o),
             TagData::Curve(c) => TagObject::Curve(c.0),
             TagData::ParametricCurve(c) => TagObject::ParametricCurve(c.0),
             TagData::Text(s) => {
-                let mut m = named::mlu_alloc(None, 1).unwrap_or_default();
-                named::mlu_set_utf8(&mut m, &[0; 3], &[0; 3], s.as_bytes());
+                let mut m = Mlu::new(1);
+                attempt_bool(types::ERROR_WRITE, "mlu_set_utf8", || m.set(Locale::NONE, s))?;
                 TagObject::Mlu(m)
             }
             TagData::Mlu(m) => TagObject::Mlu(m),
@@ -1312,11 +1418,20 @@ impl Profile {
             TagData::S15Fixed16(v) => TagObject::S15Fixed16(v),
             TagData::U16Fixed16(v) => TagObject::U16Fixed16(v),
         };
-        crate::profile::cms_write_tag(&mut self.icc, tag.into().0, Some(obj))
+        let sig = tag.into().0;
+        let r = attempt_bool(types::ERROR_UNKNOWN_EXTENSION, "write_tag", || {
+            crate::profile::cms_write_tag(&mut self.icc, sig, Some(obj))
+        });
+        if r.is_err() {
+            // C leaves the directory slot named but empty; drop it so
+            // `has_tag` and `get` agree.
+            crate::profile::cms_write_tag(&mut self.icc, sig, None);
+        }
+        r
     }
-    /// Remove a tag from the directory.
-    pub fn remove_tag(&mut self, tag: impl Into<Tag>) {
-        crate::profile::cms_write_tag(&mut self.icc, tag.into().0, None);
+    /// Remove a tag from the directory. Returns whether it was present.
+    pub fn remove_tag(&mut self, tag: impl Into<Tag>) -> bool {
+        crate::profile::cms_write_tag(&mut self.icc, tag.into().0, None)
     }
     /// `cmsIsTag` — a directory entry exists (whether or not it decoded).
     pub fn has_tag(&self, tag: impl Into<Tag>) -> bool {
@@ -1346,7 +1461,7 @@ impl Profile {
     ///
     /// ```
     /// use lcms::api::*;
-    /// let p = Profile::srgb()?;
+    /// let p = Profile::srgb();
     /// assert_eq!(p.info(InfoType::Description).as_deref(), Some("sRGB built-in"));
     /// # Ok::<(), lcms::api::Error>(())
     /// ```
@@ -1366,7 +1481,7 @@ impl Profile {
         }
     }
     /// Write an info-text tag (`TagData::Text` under the default locale).
-    pub fn set_info(&mut self, kind: InfoType, text: &str) -> bool {
+    pub fn set_info(&mut self, kind: InfoType, text: &str) -> Result<()> {
         self.write_tag(kind.sig(), TagData::Text(text))
     }
 
@@ -1408,8 +1523,9 @@ impl Profile {
     pub fn header_model(&self) -> u32 {
         self.icc.model
     }
-    /// `cmsGetHeaderRenderingIntent`.
-    pub fn header_intent(&self) -> Intent {
+    /// `cmsGetHeaderRenderingIntent` — `None` when the header holds a
+    /// code that isn't an lcms intent.
+    pub fn header_intent(&self) -> Option<Intent> {
         Intent::from_u32(self.icc.rendering_intent)
     }
     /// `cmsGetHeaderProfileID` — the 16-byte MD5 profile id.
@@ -1490,9 +1606,9 @@ impl Profile {
 ///
 /// ```
 /// use lcms::api::*;
-/// let srgb = Profile::srgb()?;
-/// let lab = Profile::lab4()?;
-/// let plan = Plan::new(&srgb, &lab, Format::RgbU8, Format::LabU8)?;
+/// let srgb = Profile::srgb();
+/// let lab = Profile::lab4();
+/// let plan = Plan::new(&srgb, &lab, Format::RGB_8, Format::LAB_8)?;
 /// let mut sc = plan.scratch();
 /// let mut out = [0u8; 3];
 /// plan.apply(&mut sc, &[255, 0, 0], &mut out);
@@ -1528,14 +1644,92 @@ impl fmt::Debug for Scratch {
     }
 }
 
+/// How [`Plan::with_options`] links profiles: rendering intent, `cmsFLAGS_*`
+/// (black-point compensation is [`flags::BLACK_POINT_COMPENSATION`]) and
+/// the chromatic adaptation state. The default is
+/// `cmsCreateTransform(.., INTENT_PERCEPTUAL, 0)`.
+///
+/// ```
+/// use lcms::api::*;
+/// let opts = PlanOptions::new()
+///     .intent(Intent::RelativeColorimetric)
+///     .black_point_compensation(true);
+/// let plan = Plan::with_options(
+///     &Profile::srgb(), &Profile::lab4(), Format::RGB_8, Format::LAB_DBL, &opts,
+/// )?;
+/// assert_eq!(plan.intent(), Some(Intent::RelativeColorimetric));
+/// assert_ne!(plan.flags() & flags::BLACK_POINT_COMPENSATION, 0);
+/// # Ok::<(), lcms::api::Error>(())
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PlanOptions {
+    intent: Intent,
+    flags: u32,
+    adaptation_state: Option<f64>,
+}
+
+impl PlanOptions {
+    /// Perceptual intent, no flags, the global adaptation state.
+    pub const fn new() -> PlanOptions {
+        PlanOptions { intent: Intent::Perceptual, flags: 0, adaptation_state: None }
+    }
+    /// Set the rendering intent.
+    pub const fn intent(mut self, intent: Intent) -> PlanOptions {
+        self.intent = intent;
+        self
+    }
+    /// Replace the `cmsFLAGS_*` bits ([`flags`]).
+    pub const fn flags(mut self, flags: u32) -> PlanOptions {
+        self.flags = flags;
+        self
+    }
+    /// Set or clear [`flags::BLACK_POINT_COMPENSATION`].
+    pub const fn black_point_compensation(mut self, on: bool) -> PlanOptions {
+        let bit = flags::BLACK_POINT_COMPENSATION;
+        self.flags = if on { self.flags | bit } else { self.flags & !bit };
+        self
+    }
+    /// Chromatic adaptation for absolute colorimetric: `1.0` = full
+    /// adaptation, `0.0` = none. Unset (the default) uses the global
+    /// [`adaptation_state`] (`1.0` unless changed), as C's
+    /// `cmsCreateTransform` does.
+    pub const fn adaptation_state(mut self, state: f64) -> PlanOptions {
+        self.adaptation_state = Some(state);
+        self
+    }
+    /// The rendering intent.
+    pub const fn get_intent(&self) -> Intent {
+        self.intent
+    }
+    /// The `cmsFLAGS_*` bits.
+    pub const fn get_flags(&self) -> u32 {
+        self.flags
+    }
+    fn bpc(&self) -> bool {
+        self.flags & flags::BLACK_POINT_COMPENSATION != 0
+    }
+    fn adaptation(&self) -> f64 {
+        self.adaptation_state.unwrap_or_else(adaptation_state)
+    }
+}
+
+impl From<Intent> for PlanOptions {
+    fn from(intent: Intent) -> PlanOptions {
+        PlanOptions::new().intent(intent)
+    }
+}
+
 impl Plan {
     /// `cmsCreateTransform` — link `src -> dst`, perceptual intent, no
-    /// flags. For intent/flags see [`Plan::build`].
+    /// flags. For intent/flags see [`Plan::build`] or [`Plan::with_options`].
+    ///
+    /// Fails with [`ErrorKind::ColorSpaceCheck`] if a format doesn't match
+    /// its profile's color space.
     pub fn new(src: &Profile, dst: &Profile, fmt_in: Format, fmt_out: Format) -> Result<Self> {
-        Self::build(src, dst, fmt_in, fmt_out, Intent::Perceptual, 0)
+        Self::with_options(src, dst, fmt_in, fmt_out, &PlanOptions::new())
     }
 
-    /// `cmsCreateExtendedTransform` — link `src -> dst` with intent + flags.
+    /// `cmsCreateTransform` with an intent and `cmsFLAGS_*` ([`flags`]).
     pub fn build(
         src: &Profile,
         dst: &Profile,
@@ -1544,36 +1738,66 @@ impl Plan {
         intent: Intent,
         flags: u32,
     ) -> Result<Self> {
-        // create_extended_transform takes &mut [Box<IccProfile>] — work on
-        // clones so `&Profile` suffices (lazy tag reads materialize on the
-        // clone; the caller's profile is never touched).
-        let mut profs = [src.icc.clone(), dst.icc.clone()];
-        let mut bpc = [false, false];
-        let intents = [intent.code(); 2];
-        let states = [3.0f64; 2];
-        let t = xform::create_extended_transform(
-            None,
-            &mut profs,
-            &mut bpc,
-            &intents,
-            &states,
-            None,
-            0,
-            fmt_in.code(),
-            fmt_out.code(),
-            flags,
-        );
-        let t =
-            t.ok_or_else(|| Error::from_last(types::ERROR_UNDEFINED, "create_transform failed"))?;
-        let xform::Transform { plan, .. } = *t;
-        Ok(Plan { inner: plan })
+        Self::with_options(src, dst, fmt_in, fmt_out, &PlanOptions::new().intent(intent).flags(flags))
     }
 
-    /// `cmsCreateProofingTransform` — `input -> proofing -> output`.
+    /// `cmsCreateTransform` with [`PlanOptions`] — the same link C builds:
+    /// black-point compensation from the flags, the adaptation state from
+    /// the options or the global setting.
     ///
-    /// `proofing_intent` drives the middle hop; `flags::GAMUT_CHECK`
-    /// additionally enables the gamut-alarm pipeline (out-of-gamut pixels
-    /// come out as the alarm codes — see [`set_alarm_codes`]).
+    /// The profiles are borrowed: linking works on copies, so a shared
+    /// `Arc<Profile>` can build any number of plans.
+    pub fn with_options(
+        src: &Profile,
+        dst: &Profile,
+        fmt_in: Format,
+        fmt_out: Format,
+        options: &PlanOptions,
+    ) -> Result<Self> {
+        Self::link(&[src, dst], None, fmt_in, fmt_out, options, None)
+    }
+
+    /// `cmsCreateMultiprofileTransform` — a chain of profiles (`input ->
+    /// [abstract/intermediate] -> output`); a single device link or
+    /// abstract profile is a valid one-element chain.
+    pub fn new_multiprofile(
+        profiles: &[&Profile],
+        fmt_in: Format,
+        fmt_out: Format,
+        intent: Intent,
+        flags: u32,
+    ) -> Result<Self> {
+        Self::multiprofile_with_options(
+            profiles,
+            fmt_in,
+            fmt_out,
+            &PlanOptions::new().intent(intent).flags(flags),
+        )
+    }
+
+    /// [`Plan::new_multiprofile`] with [`PlanOptions`].
+    pub fn multiprofile_with_options(
+        profiles: &[&Profile],
+        fmt_in: Format,
+        fmt_out: Format,
+        options: &PlanOptions,
+    ) -> Result<Self> {
+        if profiles.is_empty() || profiles.len() > 255 {
+            return Err(Error {
+                id: types::ERROR_RANGE,
+                message: format!("a profile chain needs 1..=255 profiles, got {}", profiles.len()),
+            });
+        }
+        Self::link(profiles, None, fmt_in, fmt_out, options, None)
+    }
+
+    /// `cmsCreateProofingTransform` — `input -> output` while simulating
+    /// the `proofing` device. With [`flags::SOFT_PROOFING`] the output
+    /// shows what `proofing` would reproduce (via `proofing_intent`); with
+    /// [`flags::GAMUT_CHECK`] colors it can't reproduce come out as the
+    /// alarm codes ([`set_alarm_codes`]). Without either flag this is a
+    /// plain [`Plan::build`], exactly as in C.
+    #[allow(clippy::too_many_arguments)]
     pub fn new_proofing(
         input: &Profile,
         output: &Profile,
@@ -1584,61 +1808,66 @@ impl Plan {
         proofing_intent: Intent,
         flags: u32,
     ) -> Result<Self> {
-        let mut gamut = proofing.icc.clone();
-        let mut profs = [input.icc.clone(), proofing.icc.clone(), output.icc.clone()];
-        let mut bpc = [false; 3];
-        let intents = [intent.code(), proofing_intent.code(), intent.code()];
-        let states = [3.0f64; 3];
-        let t = xform::create_extended_transform(
-            None,
-            &mut profs,
-            &mut bpc,
-            &intents,
-            &states,
-            Some(&mut gamut),
-            1, // the proofing profile's position in the chain
-            fmt_in.code(),
-            fmt_out.code(),
-            flags,
+        if flags & (flags::SOFT_PROOFING | flags::GAMUT_CHECK) == 0 {
+            return Self::build(input, output, fmt_in, fmt_out, intent, flags);
+        }
+        let opts = PlanOptions::new().intent(intent).flags(flags);
+        // C: {Input, Proofing, Proofing, Output}, intents {nIntent, nIntent,
+        // RELATIVE_COLORIMETRIC, ProofingIntent}, BPC {DoBPC, DoBPC, 0, 0},
+        // gamut-check profile = Proofing at chain position 1.
+        let bpc = opts.bpc();
+        let per_profile = (
+            vec![
+                intent.code(),
+                intent.code(),
+                Intent::RelativeColorimetric.code(),
+                proofing_intent.code(),
+            ],
+            vec![bpc, bpc, false, false],
         );
-        let t = t.ok_or_else(|| {
-            Error::from_last(types::ERROR_UNDEFINED, "create_proofing_transform failed")
-        })?;
-        let xform::Transform { plan, .. } = *t;
-        Ok(Plan { inner: plan })
+        Self::link(
+            &[input, proofing, proofing, output],
+            Some(proofing),
+            fmt_in,
+            fmt_out,
+            &opts,
+            Some(per_profile),
+        )
     }
 
-    /// `cmsCreateMultiprofileTransform` — a chain of N profiles
-    /// (`input -> [intermediates] -> output`). At least two profiles.
-    pub fn new_multiprofile(
+    /// The single linking path (`cmsCreateExtendedTransform`). Without
+    /// `per_profile`, every profile gets the options' intent and BPC —
+    /// `cmsCreateMultiprofileTransform`'s layout.
+    fn link(
         profiles: &[&Profile],
+        gamut: Option<&Profile>,
         fmt_in: Format,
         fmt_out: Format,
-        intent: Intent,
-        flags: u32,
+        options: &PlanOptions,
+        per_profile: Option<(Vec<u32>, Vec<bool>)>,
     ) -> Result<Self> {
+        // create_extended_transform takes &mut [Box<IccProfile>] — work on
+        // clones so `&Profile` suffices.
         let mut profs: Vec<Box<crate::profile::IccProfile>> =
             profiles.iter().map(|p| p.icc.clone()).collect();
+        let mut gamut = gamut.map(|g| g.icc.clone());
         let n = profs.len();
-        let mut bpc = vec![false; n];
-        let intents = vec![intent.code(); n];
-        let states = vec![3.0f64; n];
-        let t = xform::create_extended_transform(
-            None,
-            &mut profs,
-            &mut bpc,
-            &intents,
-            &states,
-            None,
-            0,
-            fmt_in.code(),
-            fmt_out.code(),
-            flags,
-        );
-        let t = t.ok_or_else(|| {
-            Error::from_last(
-                types::ERROR_UNDEFINED,
-                "create_multiprofile_transform failed",
+        let (intents, mut bpc) = per_profile
+            .unwrap_or_else(|| (vec![options.intent.code(); n], vec![options.bpc(); n]));
+        let states = vec![options.adaptation(); n];
+        let gamut_pcs_position = if gamut.is_some() { 1 } else { 0 };
+        let t = attempt(types::ERROR_NOT_SUITABLE, "create_transform", || {
+            xform::create_extended_transform(
+                None,
+                &mut profs,
+                &mut bpc,
+                &intents,
+                &states,
+                gamut.as_deref_mut(),
+                gamut_pcs_position,
+                fmt_in.code(),
+                fmt_out.code(),
+                options.flags,
             )
         })?;
         let xform::Transform { plan, .. } = *t;
@@ -1659,16 +1888,15 @@ impl Plan {
             plan: self.inner,
             scratch,
         };
-        let mut icc = virt::transform2_device_link(&mut xf, version, flags)
-            .ok_or_else(|| Error::from_last(types::ERROR_WRITE, "transform2_device_link failed"))?;
-        profile::freeze(&mut icc);
-        Ok(Profile { icc })
+        attempt(types::ERROR_WRITE, "transform2_device_link", || {
+            virt::transform2_device_link(&mut xf, version, flags)
+        })
+        .map(Profile::frozen)
     }
 
     // -- accessors --------------------------------------------------------------
 
-    /// The input pixel format (as linked — the optimizer may have
-    /// rewritten it; see `Raw` for exotic codes).
+    /// The input pixel format.
     pub fn input_format(&self) -> Format {
         Format::from_u32(self.inner.input_format)
     }
@@ -1676,11 +1904,13 @@ impl Plan {
     pub fn output_format(&self) -> Format {
         Format::from_u32(self.inner.output_format)
     }
-    /// The rendering intent the plan was linked with.
-    pub fn intent(&self) -> Intent {
+    /// The rendering intent the plan was linked with (`None` for a
+    /// plugin-defined intent code).
+    pub fn intent(&self) -> Option<Intent> {
         Intent::from_u32(self.inner.rendering_intent)
     }
-    /// The `flags` the plan was built with.
+    /// The `cmsFLAGS_*` the plan was built with (including any lcms
+    /// added, e.g. `NO_CACHE` for float formats).
     pub fn flags(&self) -> u32 {
         self.inner.dw_flags
     }
@@ -1709,134 +1939,217 @@ impl Plan {
         Scratch(self.inner.scratch())
     }
 
-    /// Evaluate the whole `input` -> `output` as pixels — `cmsDoTransform`.
-    /// Pixel count is derived: `min(input.len() / in_px, output.len() /
-    /// out_px)`. `&self` — share one `Plan` across threads, with a
-    /// [`Scratch`] per call.
-    pub fn apply(&self, scratch: &mut Scratch, input: &[u8], output: &mut [u8]) {
-        let pi = Format::from_u32(self.inner.input_format)
-            .pixel_size()
-            .max(1);
-        let po = Format::from_u32(self.inner.output_format)
-            .pixel_size()
-            .max(1);
-        let n = (input.len() / pi).min(output.len() / po) as u32;
-        self.inner.apply(&mut scratch.0, input, output, n);
+    /// Pixel count for packed buffers — panics on a size mismatch.
+    fn pixel_count(&self, in_len: usize, out_len: usize) -> u32 {
+        let (fi, fo) = (self.input_format(), self.output_format());
+        let (pi, po) = (fi.pixel_size(), fo.pixel_size());
+        assert!(pi > 0 && po > 0, "plan formats {fi:?} -> {fo:?} have zero-size pixels");
+        assert!(
+            in_len % pi == 0,
+            "input is {in_len} bytes, not a whole number of {pi}-byte {fi:?} pixels"
+        );
+        let n = in_len / pi;
+        assert!(
+            out_len >= n * po,
+            "output holds {out_len} bytes; {n} {fo:?} pixels need {}",
+            n * po
+        );
+        u32::try_from(n).expect("more than u32::MAX pixels in one call")
     }
-    /// Evaluate exactly `n` pixels — the caller guarantees both buffers
-    /// hold `n × pixel_size` bytes.
-    pub fn apply_n(&self, scratch: &mut Scratch, input: &[u8], output: &mut [u8], n: u32) {
-        self.inner.apply(&mut scratch.0, input, output, n);
-    }
-    /// Typed-pixel apply — `&[I]` -> `&mut [O]` via `bytemuck` casts.
-    /// `I`/`O` are any `Pod` pixel types (`[u8; 3]`, `[u16; 4]`, `f32`,
-    /// `RGB<u8>`, ...); each element is one pixel. Applies
-    /// `min(input.len(), output.len())` pixels.
+
+    /// `cmsDoTransform` on packed pixels: `input.len() / pixel_size` pixels
+    /// from `input` into the front of `output`. `&self` — share one `Plan`
+    /// across threads, with a [`Scratch`] per thread.
     ///
-    /// ```text
-    /// plan.apply_pixels(&mut sc, &[[255u8; 3]; N], &mut [[0u8; 3]; N]);
+    /// Planar formats use C's layout: each plane `n` samples long, planes
+    /// back to back.
+    ///
+    /// # Panics
+    /// If `input` isn't a whole number of input pixels, or `output` is
+    /// smaller than that many output pixels.
+    pub fn apply(&self, scratch: &mut Scratch, input: &[u8], output: &mut [u8]) {
+        let n = self.pixel_count(input.len(), output.len());
+        if n > 0 {
+            self.inner.apply(&mut scratch.0, input, output, n);
+        }
+    }
+    /// Evaluate exactly `n` pixels (`cmsDoTransform`'s explicit count).
+    ///
+    /// # Panics
+    /// If either buffer holds fewer than `n` pixels.
+    pub fn apply_n(&self, scratch: &mut Scratch, input: &[u8], output: &mut [u8], n: u32) {
+        let (pi, po) = (self.input_format().pixel_size(), self.output_format().pixel_size());
+        assert!(
+            input.len() >= n as usize * pi && output.len() >= n as usize * po,
+            "{n} pixels need {} input / {} output bytes; got {} / {}",
+            n as usize * pi,
+            n as usize * po,
+            input.len(),
+            output.len()
+        );
+        self.inner.apply(&mut scratch.0, input, output, n);
+    }
+    /// [`Plan::apply`] on typed slices — any [`bytemuck::Pod`] element
+    /// (`[u8; 3]`, `[u16; 4]`, `f32`, `[f64; 3]`, ...). The pixel count
+    /// comes from the byte length, so per-pixel arrays and flat sample
+    /// slices both work.
+    ///
     /// ```
+    /// use lcms::api::*;
+    /// let plan = Plan::new(&Profile::srgb(), &Profile::lab4(), Format::RGB_8, Format::LAB_DBL)?;
+    /// let mut lab = [[0f64; 3]; 2];
+    /// plan.apply_pixels(&mut plan.scratch(), &[[255u8, 255, 255], [0, 0, 0]], &mut lab);
+    /// assert!((lab[0][0] - 100.0).abs() < 0.01 && lab[1][0].abs() < 0.01);
+    /// # Ok::<(), lcms::api::Error>(())
+    /// ```
+    ///
+    /// # Panics
+    /// As [`Plan::apply`].
     pub fn apply_pixels<I: bytemuck::Pod, O: bytemuck::Pod>(
         &self,
         scratch: &mut Scratch,
         input: &[I],
         output: &mut [O],
     ) {
-        debug_assert_eq!(
-            std::mem::size_of::<I>(),
-            Format::from_u32(self.inner.input_format).pixel_size(),
-            "input pixel type doesn't match the plan's input format",
-        );
-        debug_assert_eq!(
-            std::mem::size_of::<O>(),
-            Format::from_u32(self.inner.output_format).pixel_size(),
-            "output pixel type doesn't match the plan's output format",
-        );
-        let n = input.len().min(output.len()) as u32;
-        self.inner.apply(
-            &mut scratch.0,
-            bytemuck::cast_slice(input),
-            bytemuck::cast_slice_mut(output),
-            n,
-        );
+        self.apply(scratch, bytemuck::cast_slice(input), bytemuck::cast_slice_mut(output));
     }
-    /// In-place apply — `input_format` and `output_format` must carry the
-    /// same pixel size. Implemented via a temporary copy (transforms are
-    /// pixel-independent), so `buf` may alias either side. Returns `false`
-    /// without touching `buf` when the formats can't overlap.
-    pub fn apply_in_place(&self, scratch: &mut Scratch, buf: &mut [u8]) -> bool {
-        let pi = Format::from_u32(self.inner.input_format).pixel_size();
-        let po = Format::from_u32(self.inner.output_format).pixel_size();
-        if pi == 0 || pi != po {
-            return false;
+    /// [`Plan::apply`] with a fresh internal [`Scratch`] — the one-call
+    /// form when you don't manage scratch yourself. Output is identical.
+    ///
+    /// # Panics
+    /// As [`Plan::apply`].
+    pub fn transform(&self, input: &[u8], output: &mut [u8]) {
+        self.apply(&mut self.scratch(), input, output);
+    }
+    /// [`Plan::apply_pixels`] with a fresh internal [`Scratch`].
+    ///
+    /// # Panics
+    /// As [`Plan::apply`].
+    pub fn transform_pixels<I: bytemuck::Pod, O: bytemuck::Pod>(&self, input: &[I], output: &mut [O]) {
+        self.apply_pixels(&mut self.scratch(), input, output);
+    }
+    /// In-place apply, for plans whose input and output pixels have the
+    /// same size (e.g. `RGB_8 -> BGR_8`). Works through a 4 KiB stack
+    /// buffer — no allocation.
+    ///
+    /// # Panics
+    /// If the pixel sizes differ, either format is planar, or `buf` isn't
+    /// a whole number of pixels.
+    pub fn apply_in_place(&self, scratch: &mut Scratch, buf: &mut [u8]) {
+        let (fi, fo) = (self.input_format(), self.output_format());
+        let px = fi.pixel_size();
+        assert!(
+            px > 0 && px == fo.pixel_size() && !fi.is_planar() && !fo.is_planar(),
+            "in-place needs equal interleaved pixel sizes, got {fi:?} -> {fo:?}"
+        );
+        assert!(buf.len() % px == 0, "buffer is not a whole number of {px}-byte pixels");
+        let mut tmp = [0u8; 4096];
+        let per_chunk = tmp.len() / px * px;
+        for chunk in buf.chunks_mut(per_chunk) {
+            let src = &mut tmp[..chunk.len()];
+            src.copy_from_slice(chunk);
+            self.inner.apply(&mut scratch.0, src, chunk, (chunk.len() / px) as u32);
         }
-        let tmp = buf.to_vec();
-        let n = buf.len() / pi;
-        self.inner.apply(&mut scratch.0, &tmp, buf, n as u32);
-        true
     }
-    /// `cmsDoTransformLineStride` — `pixels_per_line × lines` with
-    /// per-plane line strides ([`Stride`]). For chunky formats
-    /// `bytes_per_line_*` is the row advance; `bytes_per_plane_*` is the
-    /// plane advance used by planar formats.
+    /// A `width × height` image whose rows start `input_stride` /
+    /// `output_stride` bytes apart (`cmsDoTransformLineStride`). Bytes
+    /// between rows in `output` are left untouched.
+    ///
+    /// For planar formats each plane is `height` rows of the given stride,
+    /// planes back to back (plane size = `stride × height`).
+    ///
+    /// ```
+    /// use lcms::api::*;
+    /// let srgb = Profile::srgb();
+    /// let plan = Plan::new(&srgb, &srgb, Format::RGBA_8, Format::BGRA_8)?;
+    /// let (width, height, stride) = (2, 2, 12); // 8 pixel bytes + 4 padding
+    /// let src = vec![10u8; stride * height];
+    /// let mut dst = vec![0u8; stride * height];
+    /// plan.apply_strided(&mut plan.scratch(), &src, stride, &mut dst, stride, width, height);
+    /// assert_eq!(&dst[8..12], &[0, 0, 0, 0]); // row padding untouched
+    /// # Ok::<(), lcms::api::Error>(())
+    /// ```
+    ///
+    /// # Panics
+    /// If a stride is shorter than a row, or a buffer is too small for
+    /// `height` rows.
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_strided(
         &self,
         scratch: &mut Scratch,
         input: &[u8],
+        input_stride: usize,
         output: &mut [u8],
-        pixels_per_line: u32,
-        lines: u32,
-        stride: &Stride,
+        output_stride: usize,
+        width: usize,
+        height: usize,
     ) {
+        if width == 0 || height == 0 {
+            return;
+        }
+        let (bpl_in, bpp_in) =
+            stride_layout(self.input_format(), input.len(), input_stride, width, height, "input");
+        let (bpl_out, bpp_out) =
+            stride_layout(self.output_format(), output.len(), output_stride, width, height, "output");
+        let w = u32::try_from(width).expect("width exceeds u32");
+        let h = u32::try_from(height).expect("height exceeds u32");
         self.inner.apply_strided(
             &mut scratch.0,
             input,
             output,
-            pixels_per_line,
-            lines,
-            stride,
+            w,
+            h,
+            &xform::Stride {
+                bytes_per_line_in: bpl_in,
+                bytes_per_line_out: bpl_out,
+                bytes_per_plane_in: bpp_in,
+                bytes_per_plane_out: bpp_out,
+            },
         );
     }
-    /// Parallel apply — splits the contiguous pixel range into `threads`
-    /// chunks, each evaluated on its own fresh [`Scratch`]
-    /// (`&self` is `Sync`). `threads <= 1` or tiny `n` falls back to
-    /// serial. Uses `std::thread` — one spawn per call; for hot loops
-    /// keep worker threads and call [`Plan::apply`] per chunk instead.
-    pub fn apply_par(&self, input: &[u8], output: &mut [u8], n: u32, threads: usize) {
-        self.inner.apply_par(input, output, n, threads);
+    /// Parallel apply — splits the pixels into `threads` chunks, each on a
+    /// scoped thread with its own [`Scratch`]. `threads <= 1` runs on the
+    /// calling thread. Output is identical to [`Plan::apply`]. One spawn
+    /// per chunk per call; for hot loops keep worker threads and call
+    /// [`Plan::apply`] per chunk instead.
+    ///
+    /// # Panics
+    /// As [`Plan::apply`], or if a format is planar.
+    pub fn apply_par(&self, input: &[u8], output: &mut [u8], threads: usize) {
+        assert!(
+            !self.input_format().is_planar() && !self.output_format().is_planar(),
+            "apply_par splits interleaved pixels; use apply for planar formats"
+        );
+        let n = self.pixel_count(input.len(), output.len());
+        if n > 0 {
+            self.inner.apply_par(input, output, n, threads);
+        }
     }
 }
 
-/// `Stride` helpers — `Stride { bytes_per_line_in, .. }` has pub fields;
-/// this adds constructors.
-impl Stride {
-    /// A fully explicit stride (`bytes_per_line_in`, `bytes_per_line_out`,
-    /// `bytes_per_plane_in`, `bytes_per_plane_out` — C's
-    /// `cmsDoTransformLineStride` argument order).
-    pub const fn new(
-        bytes_per_line_in: u32,
-        bytes_per_line_out: u32,
-        bytes_per_plane_in: u32,
-        bytes_per_plane_out: u32,
-    ) -> Stride {
-        Stride {
-            bytes_per_line_in,
-            bytes_per_line_out,
-            bytes_per_plane_in,
-            bytes_per_plane_out,
-        }
-    }
-    /// Chunky rows with a byte stride — `bytes_per_line` for both
-    /// directions; plane strides set to `0` (contiguous-per-line like
-    /// `cmsDoTransformStride`).
-    pub const fn chunky(bytes_per_line: u32) -> Stride {
-        Stride {
-            bytes_per_line_in: bytes_per_line,
-            bytes_per_line_out: bytes_per_line,
-            bytes_per_plane_in: 0,
-            bytes_per_plane_out: 0,
-        }
-    }
+/// Validate one strided buffer; returns (bytes per line, bytes per plane).
+fn stride_layout(
+    f: Format,
+    len: usize,
+    stride: usize,
+    width: usize,
+    height: usize,
+    what: &str,
+) -> (u32, u32) {
+    let (row, planes) = if f.is_planar() {
+        (width * f.bytes_per_channel(), f.total_channels())
+    } else {
+        (width * f.pixel_size(), 1)
+    };
+    assert!(stride >= row, "{what} stride {stride} < row size {row} for {f:?}");
+    let plane = stride * height;
+    let needed = plane * (planes - 1) + stride * (height - 1) + row;
+    assert!(
+        len >= needed,
+        "{what} buffer is {len} bytes; {width}x{height} {f:?} needs {needed}"
+    );
+    let to32 = |v: usize| u32::try_from(v).expect("image too large for u32 strides");
+    (to32(stride), to32(plane))
 }
 
 // -- ToneCurve ------------------------------------------------------------------
@@ -1850,10 +2163,15 @@ impl Stride {
 ///
 /// ```
 /// use lcms::api::ToneCurve;
-/// let srgb = ToneCurve::srgb()?;
+/// let srgb = ToneCurve::srgb();
 /// assert_eq!(srgb.eval16(0), 0);
 /// assert_eq!(srgb.eval16(0xffff), 0xffff);
 /// assert!(srgb.is_monotonic());
+///
+/// let g = ToneCurve::gamma(2.2)?;
+/// let inv = g.reversed()?;
+/// assert!((inv.eval_f32(g.eval_f32(0.5)) - 0.5).abs() < 1e-3);
+/// assert!(g.join(&g, 256)?.is_linear()); // g⁻¹(g(t)) = t
 /// # Ok::<(), lcms::api::Error>(())
 /// ```
 #[derive(Clone)]
@@ -1876,49 +2194,40 @@ impl fmt::Debug for ToneCurve {
 impl ToneCurve {
     /// `cmsBuildGamma` — a plain `v^g` curve.
     pub fn gamma(g: f64) -> Result<Self> {
-        crate::gamma::build_gamma(None, g)
+        attempt(types::ERROR_RANGE, "build_gamma", || crate::gamma::build_gamma(None, g))
             .map(ToneCurve)
-            .ok_or_else(|| Error::from_last(types::ERROR_UNDEFINED, "build_gamma failed"))
     }
     /// A linear (identity) curve — `gamma(1.0)`.
-    pub fn linear() -> Result<Self> {
-        Self::gamma(1.0)
+    pub fn linear() -> Self {
+        Self::gamma(1.0).expect("gamma 1.0 is valid")
     }
     /// The standard sRGB tone curve — `cmsBuildParametricToneCurve` type 4
     /// (`2.4` gamma + linear toe), the same curve `Profile::srgb` carries.
-    pub fn srgb() -> Result<Self> {
+    pub fn srgb() -> Self {
         Self::parametric(4, &[2.4, 1.0 / 1.055, 0.055 / 1.055, 1.0 / 12.92, 0.04045])
+            .expect("the sRGB parametric curve is valid")
     }
     /// `cmsBuildTabulatedToneCurve16` — a `u16` interpolated table.
     pub fn tabulated16(values: &[u16]) -> Result<Self> {
-        crate::gamma::build_tabulated_tone_curve16(None, values.len() as u32, Some(values))
-            .map(ToneCurve)
-            .ok_or_else(|| {
-                Error::from_last(
-                    types::ERROR_UNDEFINED,
-                    "build_tabulated_tone_curve16 failed",
-                )
-            })
+        attempt(types::ERROR_RANGE, "build_tabulated_tone_curve16", || {
+            crate::gamma::build_tabulated_tone_curve16(None, values.len() as u32, Some(values))
+        })
+        .map(ToneCurve)
     }
     /// `cmsBuildTabulatedToneCurveFloat` — an `f32` interpolated table.
     pub fn tabulated_f32(values: &[f32]) -> Result<Self> {
-        crate::gamma::build_tabulated_tone_curve_float(None, values)
-            .map(ToneCurve)
-            .ok_or_else(|| {
-                Error::from_last(
-                    types::ERROR_UNDEFINED,
-                    "build_tabulated_tone_curve_float failed",
-                )
-            })
+        attempt(types::ERROR_RANGE, "build_tabulated_tone_curve_float", || {
+            crate::gamma::build_tabulated_tone_curve_float(None, values)
+        })
+        .map(ToneCurve)
     }
     /// `cmsBuildParametricToneCurve` — `type` + `params` (e.g. type 1
     /// pure gamma: `[g]`; type 4 sRGB: `[g, a, b, c, d]`).
     pub fn parametric(ty: i16, params: &[f64]) -> Result<Self> {
-        crate::gamma::build_parametric_tone_curve(None, ty as i32, params)
-            .map(ToneCurve)
-            .ok_or_else(|| {
-                Error::from_last(types::ERROR_UNDEFINED, "build_parametric_tone_curve failed")
-            })
+        attempt(types::ERROR_RANGE, "build_parametric_tone_curve", || {
+            crate::gamma::build_parametric_tone_curve(None, ty as i32, params)
+        })
+        .map(ToneCurve)
     }
     /// `cmsEvalToneCurve16`.
     pub fn eval16(&self, v: u16) -> u16 {
@@ -1968,24 +2277,27 @@ impl ToneCurve {
     pub fn segments(&self) -> &[crate::gamma::CurveSegment] {
         &self.0.segments
     }
-    /// `cmsReverseToneCurve` — the inverse curve (round-trips monotonic
-    /// curves; falls back to a copy on failure, like C).
-    pub fn reversed(&self) -> ToneCurve {
-        ToneCurve(crate::gamma::reverse_tone_curve(&self.0).unwrap_or_else(|| self.0.clone()))
+    /// `cmsReverseToneCurve` — the inverse curve (4096 samples).
+    pub fn reversed(&self) -> Result<ToneCurve> {
+        attempt(types::ERROR_RANGE, "reverse_tone_curve", || {
+            crate::gamma::reverse_tone_curve(&self.0)
+        })
+        .map(ToneCurve)
     }
-    /// `cmsReverseToneCurveEx` — reversed, sampled at `samples` points.
-    pub fn reversed_samples(&self, samples: usize) -> ToneCurve {
-        ToneCurve(
+    /// `cmsReverseToneCurveEx` — the inverse, sampled at `samples` points.
+    pub fn reversed_samples(&self, samples: usize) -> Result<ToneCurve> {
+        attempt(types::ERROR_RANGE, "reverse_tone_curve_ex", || {
             crate::gamma::reverse_tone_curve_ex(samples as u32, &self.0)
-                .unwrap_or_else(|| self.0.clone()),
-        )
+        })
+        .map(ToneCurve)
     }
-    /// `cmsJoinToneCurve` — `self⁻¹(other(t))` composed, `points` samples.
-    pub fn join(&self, other: &ToneCurve, points: usize) -> ToneCurve {
-        ToneCurve(
+    /// `cmsJoinToneCurve(self, other)` — `other⁻¹(self(t))` sampled at
+    /// `points` points: map through `self`, then back through `other`.
+    pub fn join(&self, other: &ToneCurve, points: usize) -> Result<ToneCurve> {
+        attempt(types::ERROR_RANGE, "join_tone_curve", || {
             crate::gamma::join_tone_curve(None, &self.0, &other.0, points as u32)
-                .unwrap_or_else(|| self.0.clone()),
-        )
+        })
+        .map(ToneCurve)
     }
     /// `cmsSmoothToneCurve` — smooth in place (`lambda` = smoothing
     /// factor; returns `false` if smoothing isn't applicable).
@@ -2200,9 +2512,10 @@ impl<'a> TagValue<'a> {
 /// use lcms::api::*;
 /// let mut p = Profile::placeholder();
 /// p.set_color_space(ColorSpace::Rgb);
-/// p.set_info(InfoType::Description, "My display");
-/// p.write_tag(Tag::MEDIA_WHITE_POINT, TagData::Xyz(d50_xyz()));
+/// p.set_info(InfoType::Description, "My display")?;
+/// p.write_tag(Tag::MEDIA_WHITE_POINT, D50_XYZ)?;
 /// assert!(p.has_tag(Tag::PROFILE_DESCRIPTION));
+/// # Ok::<(), lcms::api::Error>(())
 /// ```
 #[non_exhaustive]
 pub enum TagData<'a> {
@@ -2314,6 +2627,36 @@ impl From<ToneCurve> for TagData<'_> {
         TagData::Curve(c)
     }
 }
+impl From<CieXyz> for TagData<'_> {
+    fn from(x: CieXyz) -> Self {
+        TagData::Xyz(x)
+    }
+}
+impl From<CiexyYTriple> for TagData<'_> {
+    fn from(c: CiexyYTriple) -> Self {
+        TagData::Chromaticity(c)
+    }
+}
+impl From<Mlu> for TagData<'_> {
+    fn from(m: Mlu) -> Self {
+        TagData::Mlu(m)
+    }
+}
+impl From<NamedColorList> for TagData<'_> {
+    fn from(l: NamedColorList) -> Self {
+        TagData::NamedColors(l)
+    }
+}
+impl From<VideoSignal> for TagData<'_> {
+    fn from(v: VideoSignal) -> Self {
+        TagData::VideoSignal(v)
+    }
+}
+impl From<[ToneCurve; 3]> for TagData<'_> {
+    fn from(c: [ToneCurve; 3]) -> Self {
+        TagData::VcgtCurves(c)
+    }
+}
 
 // -- named colors --------------------------------------------------------------
 
@@ -2323,11 +2666,11 @@ impl From<ToneCurve> for TagData<'_> {
 /// use lcms::api::*;
 /// # let mut p = Profile::placeholder();
 /// # let mut list = NamedColorList::new(1, 3, "", "")?;
-/// # list.push("spot", [0xffff, 0x8000, 0x2000], &[0xffff, 0, 0, 0,0,0,0,0,0,0,0,0,0,0,0,0]);
-/// # p.write_tag(Tag::NAMED_COLOR2, TagData::NamedColors(list));
+/// # list.push("Spot", [0xffff, 0x8000, 0x2000], &[0xffff, 0, 0])?;
+/// # p.write_tag(Tag::NAMED_COLOR2, TagData::NamedColors(list))?;
 /// let ncl = p.named_colors().unwrap();
 /// for c in &ncl { println!("{} -> {:?}", c.name, c.pcs); }
-/// assert_eq!(ncl.position("spot"), Some(0));
+/// assert_eq!(ncl.position("spot"), Some(0)); // case-insensitive, like C
 /// # Ok::<(), lcms::api::Error>(())
 /// ```
 pub struct NamedColors<'a>(&'a NamedColorList);
@@ -2354,9 +2697,10 @@ impl<'a> NamedColors<'a> {
             colorant: c.device_colorant[..self.0.colorant_count as usize].to_vec(),
         })
     }
-    /// `cmsNamedColorIndex` — first index whose name matches (0-based).
+    /// `cmsNamedColorIndex` — index of the color called `name` (ASCII
+    /// case-insensitive, without the list's prefix/suffix).
     pub fn position(&self, name: &str) -> Option<usize> {
-        (0..self.len()).find(|&i| self.get(i).is_some_and(|c| c.name == name))
+        self.0.position(name)
     }
     /// The list-wide prefix string (`cmsNAMEDCOLORLIST` `Prefix`).
     pub fn prefix(&self) -> String {
@@ -2537,7 +2881,13 @@ impl Mlu {
     /// `cmsMLUgetUTF8` — the text for `locale` (`Locale::NONE` = best
     /// available translation).
     pub fn get(&self, locale: Locale) -> Option<String> {
-        let (n, mut buf) = named::mlu_get_utf8(self, &locale.language, &locale.country, Some(256));
+        // size query first: C's `cmsMLUgetUTF8(.., NULL, 0)` returns the
+        // byte count needed, NUL included — no fixed-buffer truncation.
+        let (need, _) = named::mlu_get_utf8(self, &locale.language, &locale.country, None);
+        if need == 0 {
+            return None;
+        }
+        let (n, mut buf) = named::mlu_get_utf8(self, &locale.language, &locale.country, Some(need));
         if n == 0 {
             return None;
         }
@@ -2549,7 +2899,11 @@ impl Mlu {
     }
     /// `cmsMLUgetASCII` — ASCII text for `locale`.
     pub fn get_ascii(&self, locale: Locale) -> Option<String> {
-        let (n, mut buf) = named::mlu_get_ascii(self, &locale.language, &locale.country, Some(256));
+        let (need, _) = named::mlu_get_ascii(self, &locale.language, &locale.country, None);
+        if need == 0 {
+            return None;
+        }
+        let (n, mut buf) = named::mlu_get_ascii(self, &locale.language, &locale.country, Some(need));
         if n == 0 {
             return None;
         }
@@ -2591,12 +2945,25 @@ impl NamedColorList {
         )
         .ok_or_else(|| Error::from_last(types::ERROR_UNDEFINED, "alloc_named_color_list failed"))
     }
-    /// `cmsAppendNamedColor` — grow by one entry (`name`, PCS triple,
-    /// 16-channel device colorant).
-    pub fn push(&mut self, name: &str, pcs: [u16; 3], colorant: &[u16; 16]) -> bool {
-        named::append_named_color(self, Some(name.as_bytes()), Some(&pcs), Some(colorant))
+    /// `cmsAppendNamedColor` — append an entry: `name` (truncated to 255
+    /// bytes), the 16-bit PCS triple, and `colorant_count` device values
+    /// (`&[]` = zeros).
+    pub fn push(&mut self, name: &str, pcs: [u16; 3], colorant: &[u16]) -> Result<()> {
+        let n = self.colorant_count as usize;
+        if !colorant.is_empty() && colorant.len() != n {
+            return Err(Error {
+                id: types::ERROR_RANGE,
+                message: format!("list has {n} colorants per color, got {}", colorant.len()),
+            });
+        }
+        let mut c = [0u16; 16];
+        c[..colorant.len()].copy_from_slice(colorant);
+        attempt_bool(types::ERROR_RANGE, "append_named_color", || {
+            named::append_named_color(self, Some(name.as_bytes()), Some(&pcs), Some(&c))
+        })
     }
-    /// `cmsNamedColorIndex` — first index whose name matches (0-based).
+    /// `cmsNamedColorIndex` — index of the color called `name` (ASCII
+    /// case-insensitive).
     pub fn position(&self, name: &str) -> Option<usize> {
         let i = named::named_color_index(self, name.as_bytes());
         if i < 0 { None } else { Some(i as usize) }
@@ -2664,7 +3031,26 @@ impl Dict {
 pub fn version() -> u32 {
     types::LCMS_VERSION
 }
-/// `cmsD50_XYZ` — the D50 white point in XYZ.
+/// The D50 white point (the ICC PCS illuminant) in XYZ — `cmsD50_XYZ()`.
+pub const D50_XYZ: CieXyz = CieXyz { X: types::D50X, Y: types::D50Y, Z: types::D50Z };
+/// The D50 white point in xyY — bit-identical to `cmsD50_xyY()` (same
+/// arithmetic as `cmsXYZ2xyY`).
+pub const D50: CiexyY = {
+    let i_sum = 1. / (types::D50X + types::D50Y + types::D50Z);
+    CiexyY { x: types::D50X * i_sum, y: types::D50Y * i_sum, Y: types::D50Y }
+};
+/// The D65 white point in xyY (CIE 15 / IEC 61966-2.1, the value
+/// [`Profile::srgb`] is built with).
+pub const D65: CiexyY = CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 };
+/// Rec. 709 / sRGB primaries in xyY (the values [`Profile::srgb`] is
+/// built with).
+pub const REC709_PRIMARIES: CiexyYTriple = CiexyYTriple {
+    Red: CiexyY { x: 0.6400, y: 0.3300, Y: 1.0 },
+    Green: CiexyY { x: 0.3000, y: 0.6000, Y: 1.0 },
+    Blue: CiexyY { x: 0.1500, y: 0.0600, Y: 1.0 },
+};
+
+/// `cmsD50_XYZ` — the D50 white point in XYZ ([`D50_XYZ`]).
 pub fn d50_xyz() -> CieXyz {
     crate::wtpnt::d50_xyz()
 }
@@ -2726,7 +3112,7 @@ pub fn lch_to_lab(lch: &CieLCh) -> CieLab {
     crate::pcs::lch2lab(lch)
 }
 /// `cmsFloat2LabEncoded` — Lab -> ICC v4-encoded `u16` triple
-/// (the `Format::LabU16` wire form).
+/// (the `Format::LAB_16` wire form).
 pub fn encode_lab(lab: &CieLab) -> [u16; 3] {
     crate::pcs::float2lab_encoded(lab)
 }

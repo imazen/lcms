@@ -6,17 +6,17 @@
 use crate::context::{Context, or_global};
 use crate::types::LCMS_VERSION;
 
-/// Default log handler — `cmsSignalError`'s built-in fallback:
-/// `fprintf(stderr, "lcms2: %s\n", Text)` is the C behaviour; the message is
-/// already formatted, so the port emits the same text on stderr.
+/// Default log handler — `cmsSignalError`'s built-in fallback. lcms2.20's
+/// `DefaultLogErrorHandlerFunction` (cmserr.c:521) is silent — its
+/// `fprintf(stderr, ...)` is commented out — so the port prints nothing
+/// either. The message still reaches callers through `take_last_error`
+/// (`api::Error`) and any handler registered with `cmsSetLogErrorHandler`.
 fn default_log_error_handler(_ctx: &Context, _code: i32, text: &str) {
     // FFI hook: `cmsSetLogErrorHandler` on the NULL context registers here
     // (Context0's chunk holds the handler in C).
     if let Some(f) = *GLOBAL_LOG_HOOK.lock().unwrap() {
         f(_ctx, _code, text);
-        return;
     }
-    eprintln!("lcms2: {text}");
 }
 
 /// `cmsSetLogErrorHandler` global handler slot — FFI-only bridge for the

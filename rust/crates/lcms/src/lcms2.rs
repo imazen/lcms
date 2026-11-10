@@ -250,21 +250,27 @@ pub struct PixelFormat(pub u32);
 impl PixelFormat {
     pub const GRAY_8: PixelFormat = PixelFormat(f8(PT_GRAY, 1));
     pub const GRAY_16: PixelFormat = PixelFormat(f16(PT_GRAY, 1));
-    pub const GRAY_DBL: PixelFormat = PixelFormat(ff32(PT_GRAY, 1));
+    pub const GRAY_FLT: PixelFormat = PixelFormat(ff32(PT_GRAY, 1));
+    pub const GRAY_DBL: PixelFormat = PixelFormat(fdbl(PT_GRAY, 1));
     pub const RGB_8: PixelFormat = PixelFormat(f8(PT_RGB, 3));
     pub const RGB_16: PixelFormat = PixelFormat(f16(PT_RGB, 3));
-    pub const RGB_DBL: PixelFormat = PixelFormat(ff32(PT_RGB, 3));
+    pub const RGB_FLT: PixelFormat = PixelFormat(ff32(PT_RGB, 3));
+    pub const RGB_DBL: PixelFormat = PixelFormat(fdbl(PT_RGB, 3));
     pub const RGBA_8: PixelFormat = PixelFormat(f8e(PT_RGB, 3, 1));
     pub const RGBA_16: PixelFormat = PixelFormat(f16e(PT_RGB, 3, 1));
-    pub const RGBA_DBL: PixelFormat = PixelFormat(ff32e(PT_RGB, 3, 1));
+    pub const RGBA_FLT: PixelFormat = PixelFormat(ff32e(PT_RGB, 3, 1));
+    pub const RGBA_DBL: PixelFormat = PixelFormat(fdble(PT_RGB, 3, 1));
     pub const LAB_8: PixelFormat = PixelFormat(f8(PT_LAB, 3));
     pub const LAB_16: PixelFormat = PixelFormat(f16(PT_LAB, 3));
-    pub const LAB_DBL: PixelFormat = PixelFormat(ff32(PT_LAB, 3));
+    pub const LAB_FLT: PixelFormat = PixelFormat(ff32(PT_LAB, 3));
+    pub const LAB_DBL: PixelFormat = PixelFormat(fdbl(PT_LAB, 3));
     pub const XYZ_16: PixelFormat = PixelFormat(f16(PT_XYZ, 3));
-    pub const XYZ_DBL: PixelFormat = PixelFormat(ff32(PT_XYZ, 3));
+    pub const XYZ_FLT: PixelFormat = PixelFormat(ff32(PT_XYZ, 3));
+    pub const XYZ_DBL: PixelFormat = PixelFormat(fdbl(PT_XYZ, 3));
     pub const CMYK_8: PixelFormat = PixelFormat(f8(PT_CMYK, 4));
     pub const CMYK_16: PixelFormat = PixelFormat(f16(PT_CMYK, 4));
-    pub const CMYK_DBL: PixelFormat = PixelFormat(ff32(PT_CMYK, 4));
+    pub const CMYK_FLT: PixelFormat = PixelFormat(ff32(PT_CMYK, 4));
+    pub const CMYK_DBL: PixelFormat = PixelFormat(fdbl(PT_CMYK, 4));
     /// Any packed `cmsFORMAT` — escape hatch.
     pub const fn raw(code: u32) -> PixelFormat { PixelFormat(code) }
     /// Bytes per pixel.
@@ -282,6 +288,9 @@ const fn f8e(pt: u32, ch: u32, ex: u32) -> u32 { pt << 16 | ex << 7 | ch << 3 | 
 const fn f16e(pt: u32, ch: u32, ex: u32) -> u32 { pt << 16 | ex << 7 | ch << 3 | 2 }
 const fn ff32(pt: u32, ch: u32) -> u32 { 1 << 22 | pt << 16 | ch << 3 | 4 }
 const fn ff32e(pt: u32, ch: u32, ex: u32) -> u32 { 1 << 22 | pt << 16 | ex << 7 | ch << 3 | 4 }
+// `TYPE_*_DBL`: FLOAT_SH(1) | BYTES_SH(0) — 8-byte doubles (lcms's 0 = 8).
+const fn fdbl(pt: u32, ch: u32) -> u32 { 1 << 22 | pt << 16 | ch << 3 }
+const fn fdble(pt: u32, ch: u32, ex: u32) -> u32 { 1 << 22 | pt << 16 | ex << 7 | ch << 3 }
 
 // -- CIE type aliases --------------------------------------------------------
 

@@ -2816,14 +2816,29 @@ fn alloc_empty_transform(
             cache_out: [0; MAX_CHANNELS],
         },
     });
-    // seed the 16-bit cache (transform of all-zeros)
+    seed_cache(&mut t, flags);
+    Some(t)
+}
+
+/// C's "init first value, which is zero (16 bits only)" — fill the pixel
+/// cache with the transform of all-zero input (through the gamut check
+/// when there is one). C does this as the last step of
+/// `cmsCreateExtendedTransform` (cmsxform.c:1272), after the gamut-check
+/// pipeline exists; `create_extended_transform` re-seeds once it attaches
+/// one.
+///
+/// The result also becomes the plan's `scratch_seed`, so every fresh
+/// scratch (`TransformPlan::scratch`, `apply_par` chunks, the `api::Plan`
+/// facade) starts where C's transform starts. Without that, a run whose
+/// first pixel was all zeros returned the zeroed `cache_out`.
+fn seed_cache(t: &mut Transform, flags: u32) {
     if flags & FLAGS_NOCACHE == 0 {
         if let Some(l) = &mut t.plan.lut {
-            if t.plan.gamut_check.is_some() {
-                let mut g_out = [0u16; MAX_CHANNELS];
-                let z_in = [0u16; MAX_CHANNELS];
-                let mut z_out = [0u16; MAX_CHANNELS];
-                if let Some(g) = &mut t.plan.gamut_check {
+            let z_in = [0u16; MAX_CHANNELS];
+            let mut z_out = [0u16; MAX_CHANNELS];
+            match &mut t.plan.gamut_check {
+                Some(g) => {
+                    let mut g_out = [0u16; MAX_CHANNELS];
                     g.eval16(&z_in, &mut g_out);
                     if g_out[0] > 0 {
                         z_out.copy_from_slice(&t.plan.alarm_codes);
@@ -2831,16 +2846,13 @@ fn alloc_empty_transform(
                         l.eval16(&z_in, &mut z_out);
                     }
                 }
-                t.scratch.cache_in = z_in;
-                t.scratch.cache_out = z_out;
-            } else {
-                let mut z_out = [0u16; MAX_CHANNELS];
-                l.eval16(&t.scratch.cache_in, &mut z_out);
-                t.scratch.cache_out = z_out;
+                None => l.eval16(&z_in, &mut z_out),
             }
+            t.scratch.cache_in = z_in;
+            t.scratch.cache_out = z_out;
         }
     }
-    Some(t)
+    t.plan.scratch_seed = t.scratch.clone();
 }
 
 /// `cmsDetectRGBProfileGamma` — estimate display gamma from the TRCs.
@@ -3007,6 +3019,11 @@ pub fn create_extended_transform(
                 gamut_pcs_position,
                 gp,
             );
+            // C seeds the cache after the gamut check exists.
+            if t.gamut_check.is_some() {
+                let f = t.dw_flags;
+                seed_cache(&mut t, f);
+            }
         }
     }
     // white points — media-white tag else D50
