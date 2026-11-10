@@ -162,13 +162,18 @@ pub use crate::named::PSeqDesc as ProfileSeqEntry;
 pub use crate::tagtypes::IccData;
 /// ICC `'view'` viewing conditions — `cmsICCViewingConditions`.
 pub use crate::tagtypes::IccViewingConditions;
-/// ICC `'MHC2'` display data — `cmsMHC2Type`.
+/// ICC `'MHC2'` display data — `cmsMHC2Type`. Plain data shared with the
+/// `lcms2` shim; [`Profile::write_tag`] rejects it unless every curve holds
+/// `curve_entries` values.
 pub use crate::tagtypes::Mhc2;
 /// ICC `'bfd '` undercolor removal / black generation — `cmsUcrBg`.
 pub use crate::tagtypes::UcrBg;
 /// ICC `'cicp'` video signal — `cmsVideoSignalType`.
 pub use crate::tagtypes::VideoSignal;
 /// ICC `'scrn'` halftone screening — `cmsScreening` + `cmsScreeningChannel`.
+/// Plain data shared with the `lcms2` shim; the first `n_channels` (at most
+/// 16) entries of `channels` are used, and [`Profile::write_tag`] rejects a
+/// larger count.
 pub use crate::tagtypes::{Screening, ScreeningChannel};
 /// CIE XYZ / xyY / Lab / LCh vocabulary types (`cmsCIE*`).
 pub use crate::types::{CieLCh, CieLab, CieXyz, CiexyY, CiexyYTriple};
@@ -1459,9 +1464,31 @@ impl Profile {
             TagData::Measurement(m) => TagObject::Measurement(m),
             TagData::ViewingConditions(v) => TagObject::ViewingConditions(v),
             TagData::UcrBg(u) => TagObject::UcrBg(u),
-            TagData::Screening(s) => TagObject::Screening(s),
+            TagData::Screening(s) => {
+                if s.n_channels as usize > s.channels.len() {
+                    return Err(Error::new(
+                        types::ERROR_RANGE,
+                        format!("screening has {} channels; at most {} fit", s.n_channels, s.channels.len()),
+                    ));
+                }
+                TagObject::Screening(s)
+            }
             TagData::VideoSignal(v) => TagObject::VideoSignal(v),
-            TagData::Mhc2(m) => TagObject::Mhc2(m),
+            TagData::Mhc2(m) => {
+                let n = m.curve_entries as usize;
+                if [&m.red_curve, &m.green_curve, &m.blue_curve].iter().any(|c| c.len() != n) {
+                    return Err(Error::new(
+                        types::ERROR_RANGE,
+                        format!(
+                            "MHC2 curve_entries is {n} but the curves hold {}/{}/{} entries",
+                            m.red_curve.len(),
+                            m.green_curve.len(),
+                            m.blue_curve.len()
+                        ),
+                    ));
+                }
+                TagObject::Mhc2(m)
+            }
             TagData::VcgtCurves(c) => TagObject::Vcgt(VcgtData::Curves(c)),
             TagData::VcgtTable {
                 channels,
@@ -1760,14 +1787,6 @@ impl PlanOptions {
     pub const fn adaptation_state(mut self, state: f64) -> PlanOptions {
         self.adaptation_state = Some(state);
         self
-    }
-    /// The rendering intent.
-    pub const fn get_intent(&self) -> Intent {
-        self.intent
-    }
-    /// The `cmsFLAGS_*` bits.
-    pub const fn get_flags(&self) -> u32 {
-        self.flags
     }
     fn bpc(&self) -> bool {
         self.flags & flags::BLACK_POINT_COMPENSATION != 0

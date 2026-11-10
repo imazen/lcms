@@ -883,7 +883,7 @@ fn plan_options_and_black_point_compensation() {
     let mut c = [0u8; 3];
     via_flag.transform(&[255; 4], &mut c);
     assert_eq!(b, c);
-    assert_eq!(PlanOptions::from(Intent::Saturation).get_intent(), Intent::Saturation);
+    assert_eq!(PlanOptions::from(Intent::Saturation), PlanOptions::new().intent(Intent::Saturation));
     // explicit adaptation state for absolute colorimetric
     let abs = PlanOptions::new().intent(Intent::AbsoluteColorimetric);
     let full = Plan::with_options(&testbed("test5.icc"), &Profile::lab4(), Format::RGB_8, Format::LAB_DBL, &abs).unwrap();
@@ -1088,4 +1088,39 @@ fn date_time_and_data_tags_roundtrip() {
     let text = IccData::text("hello");
     assert!(!text.is_binary());
     assert_eq!(text.bytes(), b"hello");
+}
+
+#[test]
+fn inconsistent_plain_tag_data_is_an_error_not_a_panic() {
+    let mut p = Profile::placeholder();
+    // Screening: only 16 channel slots exist
+    let ch = ScreeningChannel { frequency: 60.0, angle: 45.0, spot_shape: 1 };
+    let mut sc = Screening { flag: 0, channels: [ch; 16], n_channels: 17 };
+    let e = p.write_tag(Tag::SCREENING, TagData::Screening(sc.clone())).unwrap_err();
+    assert_eq!(e.kind(), ErrorKind::Range);
+    sc.n_channels = 2;
+    p.write_tag(Tag::SCREENING, TagData::Screening(sc)).unwrap();
+
+    // MHC2: every curve must hold curve_entries values
+    let mhc2 = Tag::new(*b"MHC2");
+    let good = Mhc2 {
+        curve_entries: 2,
+        red_curve: vec![0.0, 1.0],
+        green_curve: vec![0.0, 1.0],
+        blue_curve: vec![0.0, 1.0],
+        min_luminance: 0.1,
+        peak_luminance: 500.0,
+        xyz2xyz_matrix: [[1., 0., 0., 0.], [0., 1., 0., 0.], [0., 0., 1., 0.]],
+    };
+    let mut bad = good.clone();
+    bad.green_curve.pop();
+    assert_eq!(p.write_tag(mhc2, TagData::Mhc2(bad)).unwrap_err().kind(), ErrorKind::Range);
+    p.write_tag(mhc2, TagData::Mhc2(good)).unwrap();
+
+    let q = Profile::open(&p.save().unwrap()).unwrap();
+    match q.get(Tag::SCREENING) {
+        Some(TagValue::Screening(s)) => assert_eq!(s.n_channels, 2),
+        other => panic!("{other:?}"),
+    }
+    assert!(matches!(q.get(mhc2), Some(TagValue::Mhc2(m)) if m.curve_entries == 2));
 }

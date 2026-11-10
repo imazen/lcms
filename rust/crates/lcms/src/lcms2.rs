@@ -133,7 +133,7 @@ fn last_or(fallback_id: i32, fallback: &str) -> Error {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GlobalContext;
 /// `ThreadContext` — the lcms2-crate thread-context marker.
-pub struct ThreadContext(pub crate::context::Context);
+pub struct ThreadContext(pub(crate) crate::context::Context);
 impl ThreadContext {
     /// `ThreadContext::new` — a fresh context.
     pub fn new() -> Self { ThreadContext(crate::context::Context::default()) }

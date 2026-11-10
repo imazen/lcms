@@ -995,7 +995,7 @@ pub fn lcms2::Stage::new_identity(u32) -> lcms2::Stage
 pub fn lcms2::Stage::new_matrix(&[f64], usize, usize, core::option::Option<&[f64]>) -> lcms2::LCMSResult<Self>
 pub fn lcms2::Stage::new_tone_curves(&[&lcms2::ToneCurveRef]) -> lcms2::LCMSResult<Self>
 pub struct lcms2::StagesIter<'a>(_)
-pub struct lcms2::ThreadContext(pub context::Context)
+pub struct lcms2::ThreadContext(_)
 pub fn lcms2::ThreadContext::adaptation_state(&self) -> f64
 pub fn lcms2::ThreadContext::alarm_codes(&self) -> [u16; 16]
 pub fn lcms2::ThreadContext::install_plugin(&mut self)

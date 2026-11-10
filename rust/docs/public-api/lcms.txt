@@ -6,13 +6,13 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1027 lines (supported surface) | lcms.features.txt 1939 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 93 lines (93 hidden + 0 excluded-feature)
+# files: lcms.txt 1025 lines (supported surface) | lcms.features.txt 1939 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 93 lines (93 hidden + 0 excluded-feature)
 
 ## summary
 #
 #   pub modules                                17
 #   pub types (struct/enum/trait/alias)        66
-#   pub consts/statics                        473
+#   pub consts/statics                        471
 #   free functions                             30
 #   inherent methods                          185
 #   struct fields                             103
@@ -22,12 +22,12 @@
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
-#   (root)                           35
+#   (root)                           33
 #   api                             553
 #   signatures                      249
 #   types                           143
 
-## items (972 lines)
+## items (970 lines)
 
 pub mod lcms
 pub mod api
@@ -392,8 +392,6 @@ pub struct api::PlanOptions
 pub const fn api::PlanOptions::adaptation_state(self, f64) -> api::PlanOptions
 pub const fn api::PlanOptions::black_point_compensation(self, bool) -> api::PlanOptions
 pub const fn api::PlanOptions::flags(self, u32) -> api::PlanOptions
-pub const fn api::PlanOptions::get_flags(&self) -> u32
-pub const fn api::PlanOptions::get_intent(&self) -> api::Intent
 pub const fn api::PlanOptions::intent(self, api::Intent) -> api::PlanOptions
 pub const fn api::PlanOptions::new() -> api::PlanOptions
 pub struct api::Profile
