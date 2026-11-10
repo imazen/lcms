@@ -16,12 +16,13 @@ repository.workspace = true
 # - math-rust: pure f64 methods; host-deterministic, not oracle-exact.
 # - math-zen: reserved for a correctly-rounded zenmath impl.
 # Surface features:
-# - little-cms-api (default): the C-parity `cms*`/`pub mod` surface —
-#   what the differential gates test. Off => those modules go pub(crate);
-#   consumers get only `lcms::api` (+ `lcms2` compat under lcms2-api).
+# - little-cms-api: the C-parity `cms*`/`pub mod` surface — what the
+#   differential gates test (opt-in; `cargo test` needs it). Off => those
+#   modules go pub(crate); consumers get only `lcms::api` (+ `lcms2`
+#   compat under lcms2-api).
 # - lcms2-api: lcms::lcms2 — a drop-in API shim matching the `lcms2`
 #   crate's shape (Transform<I,O> + Pod pixels) for easy migrations.
-default = ["little-cms-api", "math-libm"]
+default = ["math-libm"]
 little-cms-api = []
 lcms2-api = []
 math-rust = []
@@ -46,3 +47,458 @@ zenhash = { path = "/home/lilith/work/zen/zenhash", features = ["xxh3"] }
 [[bench]]
 name = "perf_zenbench"
 harness = false
+
+[[test]]
+name = "c_parity_alpha"
+path = "tests/c_parity_alpha.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cam02"
+path = "tests/c_parity_cam02.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cgats"
+path = "tests/c_parity_cgats.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cgats2"
+path = "tests/c_parity_cgats2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cgats3"
+path = "tests/c_parity_cgats3.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cgats4"
+path = "tests/c_parity_cgats4.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cgats5"
+path = "tests/c_parity_cgats5.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cnvrt"
+path = "tests/c_parity_cnvrt.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_cube"
+path = "tests/c_parity_cube.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_err"
+path = "tests/c_parity_err.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_err2"
+path = "tests/c_parity_err2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_err3"
+path = "tests/c_parity_err3.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_fixed"
+path = "tests/c_parity_fixed.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_gamma"
+path = "tests/c_parity_gamma.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_gamma2"
+path = "tests/c_parity_gamma2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_gamma3"
+path = "tests/c_parity_gamma3.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_gbd"
+path = "tests/c_parity_gbd.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_gmt"
+path = "tests/c_parity_gmt.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_half"
+path = "tests/c_parity_half.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_intrp"
+path = "tests/c_parity_intrp.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io"
+path = "tests/c_parity_io.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io0b"
+path = "tests/c_parity_io0b.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io0c"
+path = "tests/c_parity_io0c.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io0d"
+path = "tests/c_parity_io0d.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io0e"
+path = "tests/c_parity_io0e.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io1"
+path = "tests/c_parity_io1.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io1c"
+path = "tests/c_parity_io1c.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io1d"
+path = "tests/c_parity_io1d.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io1e"
+path = "tests/c_parity_io1e.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_io1f"
+path = "tests/c_parity_io1f.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_ioerr"
+path = "tests/c_parity_ioerr.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_lut"
+path = "tests/c_parity_lut.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_md5"
+path = "tests/c_parity_md5.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_misc"
+path = "tests/c_parity_misc.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_mtrx"
+path = "tests/c_parity_mtrx.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_named"
+path = "tests/c_parity_named.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_named2"
+path = "tests/c_parity_named2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_named3"
+path = "tests/c_parity_named3.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_namedcolor"
+path = "tests/c_parity_namedcolor.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_opt"
+path = "tests/c_parity_opt.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_pack"
+path = "tests/c_parity_pack.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_pack2"
+path = "tests/c_parity_pack2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_pcs"
+path = "tests/c_parity_pcs.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_pcs2"
+path = "tests/c_parity_pcs2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_plugin"
+path = "tests/c_parity_plugin.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_plugin2"
+path = "tests/c_parity_plugin2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_profile"
+path = "tests/c_parity_profile.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_ps2"
+path = "tests/c_parity_ps2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_realprofile"
+path = "tests/c_parity_realprofile.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_sm"
+path = "tests/c_parity_sm.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_sm2"
+path = "tests/c_parity_sm2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_tagtypes"
+path = "tests/c_parity_tagtypes.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_types"
+path = "tests/c_parity_types.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_types3"
+path = "tests/c_parity_types3.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_types4"
+path = "tests/c_parity_types4.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_types5"
+path = "tests/c_parity_types5.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_virt"
+path = "tests/c_parity_virt.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_virt2"
+path = "tests/c_parity_virt2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_virt3"
+path = "tests/c_parity_virt3.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_virt4"
+path = "tests/c_parity_virt4.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_virt5"
+path = "tests/c_parity_virt5.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_wtpnt"
+path = "tests/c_parity_wtpnt.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_xform"
+path = "tests/c_parity_xform.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_xform2"
+path = "tests/c_parity_xform2.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_xform3"
+path = "tests/c_parity_xform3.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_xform4"
+path = "tests/c_parity_xform4.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "c_parity_xform_matrix"
+path = "tests/c_parity_xform_matrix.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "determinism"
+path = "tests/determinism.rs"
+required-features = ["little-cms-api"]
+
+[[test]]
+name = "lcms2_compat"
+path = "tests/lcms2_compat.rs"
+required-features = ["lcms2-api"]
+
+[[example]]
+name = "bisect_lab"
+path = "examples/bisect_lab.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_bp"
+path = "examples/dbg_bp.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_cgats"
+path = "examples/dbg_cgats.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_cmat"
+path = "examples/dbg_cmat.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_cnoopt"
+path = "examples/dbg_cnoopt.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_ctrc"
+path = "examples/dbg_ctrc.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_cube"
+path = "examples/dbg_cube.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_grayopt"
+path = "examples/dbg_grayopt.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_ibmt61"
+path = "examples/dbg_ibmt61.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_invmat"
+path = "examples/dbg_invmat.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_kplane"
+path = "examples/dbg_kplane.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_lex"
+path = "examples/dbg_lex.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_link"
+path = "examples/dbg_link.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_opt"
+path = "examples/dbg_opt.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_outlut"
+path = "examples/dbg_outlut.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_pcs"
+path = "examples/dbg_pcs.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_pipe"
+path = "examples/dbg_pipe.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_shaper"
+path = "examples/dbg_shaper.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_stages"
+path = "examples/dbg_stages.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "dbg_trcs"
+path = "examples/dbg_trcs.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "perf_xform"
+path = "examples/perf_xform.rs"
+required-features = ["little-cms-api"]
+
+[[example]]
+name = "tokcheck"
+path = "examples/tokcheck.rs"
+required-features = ["little-cms-api"]

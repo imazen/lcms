@@ -8,9 +8,23 @@
 
 ## Gates ---------------------------------------------------------------------
 
-# Run all gates (unit + C-parity tests)
+# Run all gates (unit + C-parity tests) — the full SURFACE feature set.
+# (math providers are mutually exclusive by design — `--all-features`
+# enables all three and fails to build; surface features are additive.)
 test:
-    cargo test --workspace
+    cargo test --workspace --features "little-cms-api lcms2-api"
+
+# Alternate math provider (math-rust: host-libm f64 methods).
+test-math-rust:
+    cargo test -p lcms --no-default-features --features "math-rust little-cms-api"
+
+# Facade-only surface — what a `--no-default-features` consumer sees.
+test-default:
+    cargo test --workspace --no-default-features --features math-libm
+
+# The lcms2-crate compat gate only.
+test-lcms2:
+    cargo test -p lcms --features lcms2-api --test lcms2_compat
 
 # Run one module's parity gate: `just gate pcs`
 gate name:
@@ -28,9 +42,10 @@ determinism-gate:
 determinism-goldens dir:
     bench/determinism-gate.sh --goldens {{dir}}
 
-# Full gate: cargo tests + upstream testbed + api-doc check + bench
-# differentials — the whole port-conformance sweep.
-verify: test determinism-gate testbed api-doc-check
+# Full gate: cargo tests (all features + facade-only) + upstream
+# testbed + api-doc check + bench differentials — the whole
+# port-conformance sweep.
+verify: test test-default determinism-gate testbed api-doc-check
     bench/bench.sh 2>&1 | grep -A10 "differentials"
 
 # Build + run the upstream testbed (testcms2) against both libs in a scratch
