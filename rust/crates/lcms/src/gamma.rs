@@ -833,6 +833,13 @@ pub fn build_parametric_tone_curve(
         },
     };
 
+    // C reads Params[i] unchecked — the caller's `double[10]` convention.
+    // A too-short slice is an invalid call; NULL, don't panic.
+    if params.len() < n_params {
+        err::signal_error(ctx, ERROR_RANGE, "Too few parameters for curve type");
+        return None;
+    }
+
     let mut seg0 = CurveSegment {
         x0: MINUS_INF,
         x1: PLUS_INF,
