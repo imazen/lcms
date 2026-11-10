@@ -25115,8 +25115,14 @@ fn internal_final78_arms() {
         c::cmsWriteRawTag(prof, 0x70736430,
             raw.as_ptr() as *const _, raw.len() as u32);
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        // 'psd0' holds a cmsICCData. A cmsToneCurve* here made
+        //   Type_Data_Dup read `len` from the curve's first field (a
+        //   pointer) and memcpy that much: an ASLR-dependent SIGSEGV.
+        #[repr(C)]
+        struct IccData4 { len: u32, flag: u32, data: [u8; 4] }
+        let typed = IccData4 { len: 4, flag: 1, data: [5, 6, 7, 8] };
         let wt = c::cmsWriteTag(prof, 0x70736430,
-            g as *const _);
+            &typed as *const IccData4 as *const _);
         eprintln!("typed-over-raw w={wt}");
         c::cmsCloseProfile(prof);
         // write same tag twice typed → overwrite path
