@@ -6,32 +6,89 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 595 lines (supported surface) | lcms.features.txt 1632 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 83 lines (83 hidden + 0 excluded-feature)
+# files: lcms.txt 1047 lines (supported surface) | lcms.features.txt 1788 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 91 lines (91 hidden + 0 excluded-feature)
 
 ## summary
 #
-#   pub modules                                16
-#   pub types (struct/enum/trait/alias)        37
-#   pub consts/statics                        351
-#   free functions                              1
-#   inherent methods                           59
-#   struct fields                              61
-#   enum variants                              42
-#   trait roster entries (type × trait)       103
-#   auto-trait-complete types                  25
+#   pub modules                                17
+#   pub types (struct/enum/trait/alias)        66
+#   pub consts/statics                        411
+#   free functions                             30
+#   inherent methods                          183
+#   struct fields                             172
+#   enum variants                             120
+#   trait roster entries (type × trait)       196
+#   auto-trait-complete types                  48
 #   auto-trait exceptions                       2
 #
 # per-module pub lines:
-#   (root)                            4
-#   api                             153
+#   (root)                           12
+#   api                             577
 #   signatures                      249
 #   types                           161
 
-## items (567 lines)
+## items (991 lines)
 
 pub mod lcms
 pub mod api
-pub enum api::Format
+pub mod api::flags
+pub const api::flags::BLACK_POINT_COMPENSATION: u32
+pub const api::flags::CLUT_POST_LINEARIZATION: u32
+pub const api::flags::CLUT_PRE_LINEARIZATION: u32
+pub const api::flags::COPY_ALPHA: u32
+pub const api::flags::DEVICELINK_8BITS: u32
+pub const api::flags::FORCE_CLUT: u32
+pub const api::flags::GAMUT_CHECK: u32
+pub const api::flags::GRIDPOINTS_MASK: u32
+pub const api::flags::GUESS_DEVICE_CLASS: u32
+pub const api::flags::HIGH_RES_PRECALC: u32
+pub const api::flags::KEEP_SEQUENCE: u32
+pub const api::flags::LOW_RES_PRECALC: u32
+pub const api::flags::NONE: u32
+pub const api::flags::NO_CACHE: u32
+pub const api::flags::NO_DEFAULT_RESOURCE_DEF: u32
+pub const api::flags::NO_NEGATIVES: u32
+pub const api::flags::NO_OPTIMIZE: u32
+pub const api::flags::NO_WHITE_ON_WHITE_FIXUP: u32
+pub const api::flags::NULL_TRANSFORM: u32
+pub const api::flags::SOFT_PROOFING: u32
+pub fn api::flags::gridpoints(u32) -> u32
+pub enum api::ColorSpace
+pub api::ColorSpace::Cmy
+pub api::ColorSpace::Cmyk
+pub api::ColorSpace::Gray
+pub api::ColorSpace::Hls
+pub api::ColorSpace::Hsv
+pub api::ColorSpace::Lab
+pub api::ColorSpace::Luv
+pub api::ColorSpace::Mch(u8)
+pub api::ColorSpace::NColor(u8)
+pub api::ColorSpace::Named
+pub api::ColorSpace::Other(u32)
+pub api::ColorSpace::Rgb
+pub api::ColorSpace::Xyz
+pub api::ColorSpace::YCbCr
+pub api::ColorSpace::Yxy
+pub fn api::ColorSpace::channels(self) -> u32
+pub fn api::ColorSpace::code(self) -> u32
+pub fn api::ColorSpace::from_u32(u32) -> api::ColorSpace
+pub enum api::ErrorKind
+pub api::ErrorKind::AlreadyDefined
+pub api::ErrorKind::BadSignature
+pub api::ErrorKind::ColorSpaceCheck
+pub api::ErrorKind::CorruptionDetected
+pub api::ErrorKind::File
+pub api::ErrorKind::Internal
+pub api::ErrorKind::NotSuitable
+pub api::ErrorKind::Null
+pub api::ErrorKind::Other(i32)
+pub api::ErrorKind::Range
+pub api::ErrorKind::Read
+pub api::ErrorKind::Seek
+pub api::ErrorKind::Undefined
+pub api::ErrorKind::UnknownExtension
+pub api::ErrorKind::Write
+#[non_exhaustive] pub enum api::Format
 pub api::Format::CmykF32
 pub api::Format::CmykU16
 pub api::Format::CmykU8
@@ -46,11 +103,20 @@ pub api::Format::RgbF32
 pub api::Format::RgbU16
 pub api::Format::RgbU8
 pub api::Format::RgbaF32
+pub api::Format::RgbaU16
 pub api::Format::RgbaU8
 pub api::Format::XyzF32
 pub api::Format::XyzU16
+pub fn api::Format::bytes_per_channel(self) -> usize
+pub fn api::Format::channels(self) -> usize
 pub fn api::Format::code(self) -> u32
+pub fn api::Format::color_space(self) -> core::option::Option<api::ColorSpace>
+pub fn api::Format::extra_channels(self) -> usize
+pub fn api::Format::from_u32(u32) -> api::Format
+pub fn api::Format::is_float(self) -> bool
+pub fn api::Format::is_planar(self) -> bool
 pub fn api::Format::pixel_size(self) -> usize
+pub fn api::Format::total_channels(self) -> usize
 pub enum api::InfoType
 pub api::InfoType::Copyright
 pub api::InfoType::Description
@@ -61,82 +127,348 @@ pub api::Intent::AbsoluteColorimetric
 pub api::Intent::Perceptual
 pub api::Intent::RelativeColorimetric
 pub api::Intent::Saturation
+pub const api::Intent::ALL: [api::Intent; 4]
 pub fn api::Intent::code(self) -> u32
 pub fn api::Intent::from_u32(u32) -> api::Intent
-pub enum api::TagData
+pub enum api::ProfileClass
+pub api::ProfileClass::Abstract
+pub api::ProfileClass::ColorSpace
+pub api::ProfileClass::DeviceLink
+pub api::ProfileClass::Display
+pub api::ProfileClass::Input
+pub api::ProfileClass::NamedColor
+pub api::ProfileClass::Other(u32)
+pub api::ProfileClass::Output
+pub fn api::ProfileClass::code(self) -> u32
+pub fn api::ProfileClass::from_u32(u32) -> api::ProfileClass
+#[non_exhaustive] pub enum api::TagData<'a>
+pub api::TagData::Chromaticity(types::CiexyYTriple)
+pub api::TagData::ColorantOrder([u8; 16])
 pub api::TagData::Curve(api::ToneCurve)
-pub api::TagData::Mlu(named::Mlu)
-pub api::TagData::Text(&'static str)
+pub api::TagData::Data(api::IccData)
+pub api::TagData::DateTime(api::Tm)
+pub api::TagData::Dict(api::Dict)
+pub api::TagData::Measurement(types::IccMeasurementConditions)
+pub api::TagData::Mhc2(api::Mhc2)
+pub api::TagData::Mlu(api::Mlu)
+pub api::TagData::NamedColors(api::NamedColorList)
+pub api::TagData::ParametricCurve(api::ToneCurve)
+pub api::TagData::Pipeline(api::Pipeline)
+pub api::TagData::S15Fixed16(alloc::vec::Vec<f64>)
+pub api::TagData::Screening(api::Screening)
+pub api::TagData::Seq(api::ProfileSeqDesc)
+pub api::TagData::Signature(u32)
+pub api::TagData::Text(&'a str)
+pub api::TagData::U16Fixed16(alloc::vec::Vec<f64>)
+pub api::TagData::UInt32(alloc::vec::Vec<u32>)
+pub api::TagData::UInt64(alloc::vec::Vec<u64>)
+pub api::TagData::UInt8(alloc::vec::Vec<u8>)
+pub api::TagData::UcrBg(api::UcrBg)
+pub api::TagData::VcgtCurves([api::ToneCurve; 3])
+pub api::TagData::VcgtTable
+pub api::TagData::VcgtTable::bytes: u16
+pub api::TagData::VcgtTable::channels: u16
+pub api::TagData::VcgtTable::data: alloc::vec::Vec<u8>
+pub api::TagData::VcgtTable::elems: u16
+pub api::TagData::VideoSignal(api::VideoSignal)
+pub api::TagData::ViewingConditions(api::IccViewingConditions)
 pub api::TagData::Xyz(types::CieXyz)
 #[non_exhaustive] pub enum api::TagValue<'a>
 pub api::TagValue::Chromaticity(&'a types::CiexyYTriple)
+pub api::TagValue::ColorantOrder(&'a [u8])
 pub api::TagValue::Curve(&'a api::ToneCurveRef)
 pub api::TagValue::Data(&'a [u8])
-pub api::TagValue::Mhc2(&'a tagtypes::Mhc2)
-pub api::TagValue::NamedColors(&'a api::NamedColorListRef)
+pub api::TagValue::DateTime(&'a api::Tm)
+pub api::TagValue::Dict(&'a api::Dict)
+pub api::TagValue::Measurement(&'a types::IccMeasurementConditions)
+pub api::TagValue::Mhc2(&'a api::Mhc2)
+pub api::TagValue::NamedColors(&'a api::NamedColorList)
 pub api::TagValue::Other
-pub api::TagValue::Pipeline(&'a api::PipelineRef)
-pub api::TagValue::Screening(&'a tagtypes::Screening)
-pub api::TagValue::Text(&'a api::MluView<'a>)
-pub api::TagValue::UcrBg(&'a tagtypes::UcrBg)
+pub api::TagValue::Pipeline(&'a api::Pipeline)
+pub api::TagValue::S15Fixed16(&'a [f64])
+pub api::TagValue::Screening(&'a api::Screening)
+pub api::TagValue::Seq(&'a api::ProfileSeqDesc)
+pub api::TagValue::Signature(u32)
+pub api::TagValue::Stage(&'a api::Stage)
+pub api::TagValue::Text(&'a api::Mlu)
+pub api::TagValue::U16Fixed16(&'a [f64])
+pub api::TagValue::UInt32(&'a [u32])
+pub api::TagValue::UInt64(&'a [u64])
+pub api::TagValue::UInt8(&'a [u8])
+pub api::TagValue::UcrBg(&'a api::UcrBg)
 pub api::TagValue::VcgtCurves([&'a api::ToneCurveRef; 3])
-pub api::TagValue::VideoSignal(&'a tagtypes::VideoSignal)
+pub api::TagValue::VcgtTable
+pub api::TagValue::VcgtTable::bytes: u16
+pub api::TagValue::VcgtTable::channels: u16
+pub api::TagValue::VcgtTable::data: &'a [u8]
+pub api::TagValue::VcgtTable::elems: u16
+pub api::TagValue::VideoSignal(&'a api::VideoSignal)
+pub api::TagValue::ViewingConditions(&'a api::IccViewingConditions)
 pub api::TagValue::Xyz(&'a types::CieXyz)
+pub fn api::TagValue<'a>::as_curve(&self) -> core::option::Option<&'a api::ToneCurveRef>
+pub fn api::TagValue<'a>::as_named_colors(&self) -> core::option::Option<&'a api::NamedColorList>
+pub fn api::TagValue<'a>::as_pipeline(&self) -> core::option::Option<&'a api::Pipeline>
+pub fn api::TagValue<'a>::as_text(&self) -> core::option::Option<&'a api::Mlu>
+pub fn api::TagValue<'a>::as_xyz(&self) -> core::option::Option<&'a types::CieXyz>
+pub fn api::TagValue<'a>::is_other(&self) -> bool
+pub enum api::VcgtData
+pub api::VcgtData::Curves([api::ToneCurveRef; 3])
+pub api::VcgtData::Table
+pub api::VcgtData::Table::bytes: u16
+pub api::VcgtData::Table::channels: u16
+pub api::VcgtData::Table::data: alloc::vec::Vec<u8>
+pub api::VcgtData::Table::elems: u16
+#[repr(C)] pub struct api::CieLCh [also: types]
+pub api::CieLCh::C: f64
+pub api::CieLCh::L: f64
+pub api::CieLCh::h: f64
+#[repr(C)] pub struct api::CieLab [also: types]
+pub api::CieLab::L: f64
+pub api::CieLab::a: f64
+pub api::CieLab::b: f64
+#[repr(C)] pub struct api::CieXyz [also: types]
+pub api::CieXyz::X: f64
+pub api::CieXyz::Y: f64
+pub api::CieXyz::Z: f64
+#[repr(C)] pub struct api::CiexyY [also: types]
+pub api::CiexyY::Y: f64
+pub api::CiexyY::x: f64
+pub api::CiexyY::y: f64
+#[repr(C)] pub struct api::CiexyYTriple [also: types]
+pub api::CiexyYTriple::Blue: types::CiexyY
+pub api::CiexyYTriple::Green: types::CiexyY
+pub api::CiexyYTriple::Red: types::CiexyY
+#[repr(C)] pub struct api::DateTimeNumber [also: types]
+pub api::DateTimeNumber::day: u16
+pub api::DateTimeNumber::hours: u16
+pub api::DateTimeNumber::minutes: u16
+pub api::DateTimeNumber::month: u16
+pub api::DateTimeNumber::seconds: u16
+pub api::DateTimeNumber::year: u16
+pub struct api::Dict
+pub api::Dict::entries: alloc::vec::Vec<named::DictEntry>
+pub fn api::Dict::add(&mut self, &str, &str) -> bool
+pub fn api::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
+pub fn api::Dict::is_empty(&self) -> bool
+pub fn api::Dict::len(&self) -> usize
+pub fn api::Dict::new() -> api::Dict
 pub struct api::Error
 pub api::Error::id: i32
 pub api::Error::message: alloc::string::String
 pub fn api::Error::from_last(i32, &str) -> Self
+pub fn api::Error::kind(&self) -> api::ErrorKind
+pub struct api::IccData
+pub api::IccData::data: alloc::vec::Vec<u8>
+pub api::IccData::flag: u32
+pub api::IccData::len: u32
+#[repr(C)] pub struct api::IccMeasurementConditions [also: types]
+pub api::IccMeasurementConditions::backing: types::EncodedXyzNumber
+pub api::IccMeasurementConditions::flare: f64
+pub api::IccMeasurementConditions::geometry: u32
+pub api::IccMeasurementConditions::illuminant: u32
+pub api::IccMeasurementConditions::observer: u32
+pub struct api::IccViewingConditions
+pub api::IccViewingConditions::illuminant_type: u32
+pub api::IccViewingConditions::illuminant_xyz: types::CieXyz
+pub api::IccViewingConditions::surround_xyz: types::CieXyz
+pub struct api::Locale
+pub api::Locale::country: [u8; 3]
+pub api::Locale::language: [u8; 3]
+pub const api::Locale::NONE: api::Locale
+pub fn api::Locale::country(&self) -> alloc::string::String
+pub fn api::Locale::from_parts(&str, &str) -> api::Locale
+pub fn api::Locale::is_none(&self) -> bool
+pub fn api::Locale::language(&self) -> alloc::string::String
+pub fn api::Locale::new(&str) -> api::Locale
+pub struct api::Mhc2
+pub api::Mhc2::blue_curve: alloc::vec::Vec<f64>
+pub api::Mhc2::curve_entries: u32
+pub api::Mhc2::green_curve: alloc::vec::Vec<f64>
+pub api::Mhc2::min_luminance: f64
+pub api::Mhc2::peak_luminance: f64
+pub api::Mhc2::red_curve: alloc::vec::Vec<f64>
+pub api::Mhc2::xyz2xyz_matrix: [[f64; 4]; 3]
+pub struct api::Mlu
+pub api::Mlu::allocated_entries: u32
+pub api::Mlu::entries: alloc::vec::Vec<named::MluEntry>
+pub api::Mlu::pool: alloc::vec::Vec<u8>
+pub api::Mlu::pool_used: u32
+pub api::Mlu::used_entries: u32
+pub fn api::Mlu::get(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn api::Mlu::get_ascii(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn api::Mlu::new(u32) -> api::Mlu
+pub fn api::Mlu::set(&mut self, api::Locale, &str) -> bool
+pub fn api::Mlu::set_ascii(&mut self, api::Locale, &str) -> bool
+pub fn api::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Locale>
+pub fn api::Mlu::translations(&self) -> u32
 pub struct api::NamedColor
 pub api::NamedColor::colorant: alloc::vec::Vec<u16>
 pub api::NamedColor::name: alloc::string::String
 pub api::NamedColor::pcs: [u16; 3]
+pub struct api::NamedColorList
+pub api::NamedColorList::allocated: u32
+pub api::NamedColorList::colorant_count: u32
+pub api::NamedColorList::list: alloc::vec::Vec<named::NamedColor>
+pub api::NamedColorList::n_colors: u32
+pub api::NamedColorList::prefix: [u8; 33]
+pub api::NamedColorList::suffix: [u8; 33]
+pub fn api::NamedColorList::is_empty(&self) -> bool
+pub fn api::NamedColorList::len(&self) -> usize
+pub fn api::NamedColorList::new(u32, u32, &str, &str) -> api::Result<api::NamedColorList>
+pub fn api::NamedColorList::position(&self, &str) -> core::option::Option<usize>
+pub fn api::NamedColorList::push(&mut self, &str, [u16; 3], &[u16; 16]) -> bool
 pub struct api::NamedColors<'a>(_)
-pub fn api::NamedColors<'a>::count(&self) -> usize
+pub fn api::NamedColors<'a>::colorant_count(&self) -> usize
 pub fn api::NamedColors<'a>::get(&self, usize) -> core::option::Option<api::NamedColor>
-pub fn api::NamedColors<'a>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = api::NamedColor> + '_
+pub fn api::NamedColors<'a>::is_empty(&self) -> bool
+pub fn api::NamedColors<'a>::iter(&self) -> api::NamedColorsIter<'_>
+pub fn api::NamedColors<'a>::len(&self) -> usize
+pub fn api::NamedColors<'a>::position(&self, &str) -> core::option::Option<usize>
+pub fn api::NamedColors<'a>::prefix(&self) -> alloc::string::String
+pub fn api::NamedColors<'a>::suffix(&self) -> alloc::string::String
+pub type &'a api::NamedColors<'a>::IntoIter = api::NamedColorsIter<'a>
+pub type &'a api::NamedColors<'a>::Item = api::NamedColor
+pub fn &'a api::NamedColors<'a>::into_iter(self) -> api::NamedColorsIter<'a>
+pub struct api::NamedColorsIter<'a>
+pub struct api::Pipeline
+pub api::Pipeline::elements: core::option::Option<alloc::boxed::Box<api::Stage>>
+pub api::Pipeline::eval16_fn: fn(&[u16], &mut [u16], &api::Pipeline)
+pub api::Pipeline::eval_float_fn: fn(&[f32], &mut [f32], &api::Pipeline)
+pub api::Pipeline::input_channels: u32
+pub api::Pipeline::opt_data: core::option::Option<opt::OptData>
+pub api::Pipeline::output_channels: u32
+pub api::Pipeline::save_as_8bits: bool
+pub fn api::Pipeline::cat(&mut self, &api::Pipeline) -> bool
+pub fn api::Pipeline::dup(&self) -> core::option::Option<api::Pipeline>
+pub fn api::Pipeline::eval16(&self, &[u16], &mut [u16])
+pub fn api::Pipeline::eval_float(&self, &[f32], &mut [f32])
+pub fn api::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
+pub fn api::Pipeline::first_stage(&self) -> core::option::Option<&api::Stage>
+pub fn api::Pipeline::input_channels(&self) -> u32
+pub fn api::Pipeline::insert_stage(&mut self, lut::StageLoc, api::Stage) -> bool
+pub fn api::Pipeline::last_stage(&self) -> core::option::Option<&api::Stage>
+pub fn api::Pipeline::output_channels(&self) -> u32
+pub fn api::Pipeline::set_save_as_8bits(&mut self, bool) -> bool
+pub fn api::Pipeline::stage_count(&self) -> u32
+pub fn api::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<api::Stage>
+pub fn api::Pipeline::new(u32, u32) -> api::Result<api::Pipeline>
+pub fn api::Pipeline::push(&mut self, api::Stage) -> bool
+pub fn api::Pipeline::push_front(&mut self, api::Stage) -> bool
+pub fn api::Pipeline::stages(&self) -> api::StagesIter<'_>
 pub struct api::Plan
 pub fn api::Plan::apply(&self, &mut api::Scratch, &[u8], &mut [u8])
+pub fn api::Plan::apply_in_place(&self, &mut api::Scratch, &mut [u8]) -> bool
 pub fn api::Plan::apply_n(&self, &mut api::Scratch, &[u8], &mut [u8], u32)
 pub fn api::Plan::apply_par(&self, &[u8], &mut [u8], u32, usize)
 pub fn api::Plan::apply_pixels<I: bytemuck::pod::Pod, O: bytemuck::pod::Pod>(&self, &mut api::Scratch, &[I], &mut [O])
-pub fn api::Plan::build(&mut api::Profile, &mut api::Profile, api::Format, api::Format, api::Intent, u32) -> core::result::Result<Self, api::Error>
-pub fn api::Plan::new(&mut api::Profile, &mut api::Profile, api::Format, api::Format) -> core::result::Result<Self, api::Error>
+pub fn api::Plan::apply_strided(&self, &mut api::Scratch, &[u8], &mut [u8], u32, u32, &api::Stride)
+pub fn api::Plan::build(&api::Profile, &api::Profile, api::Format, api::Format, api::Intent, u32) -> api::Result<Self>
+pub fn api::Plan::flags(&self) -> u32
+pub fn api::Plan::input_color_space(&self) -> api::ColorSpace
+pub fn api::Plan::input_colorants(&self) -> core::option::Option<api::NamedColors<'_>>
+pub fn api::Plan::input_format(&self) -> api::Format
+pub fn api::Plan::intent(&self) -> api::Intent
+pub fn api::Plan::new(&api::Profile, &api::Profile, api::Format, api::Format) -> api::Result<Self>
+pub fn api::Plan::new_multiprofile(&[&api::Profile], api::Format, api::Format, api::Intent, u32) -> api::Result<Self>
+pub fn api::Plan::new_proofing(&api::Profile, &api::Profile, &api::Profile, api::Format, api::Format, api::Intent, api::Intent, u32) -> api::Result<Self>
+pub fn api::Plan::output_color_space(&self) -> api::ColorSpace
+pub fn api::Plan::output_colorants(&self) -> core::option::Option<api::NamedColors<'_>>
+pub fn api::Plan::output_format(&self) -> api::Format
 pub fn api::Plan::scratch(&self) -> api::Scratch
-pub fn api::Plan::new_multiprofile(&mut [&mut api::Profile], api::Format, api::Format, api::Intent, u32) -> core::result::Result<Self, api::Error>
-pub fn api::Plan::to_device_link(self, f64) -> core::result::Result<api::Profile, api::Error>
+pub fn api::Plan::to_device_link(self, f64) -> api::Result<api::Profile>
+pub fn api::Plan::to_device_link_flags(self, f64, u32) -> api::Result<api::Profile>
 pub struct api::Profile
-pub fn api::Profile::color_space(&self) -> u32
-pub fn api::Profile::device_class(&self) -> u32
+pub fn api::Profile::bchsw_abstract(u32, f64, f64, f64, f64, u32, u32) -> api::Result<Self>
+pub fn api::Profile::color_space(&self) -> api::ColorSpace
+pub fn api::Profile::creation_date(&self) -> types::DateTimeNumber
+pub fn api::Profile::device_class(&self) -> api::ProfileClass
 pub fn api::Profile::freeze(&mut self)
-pub fn api::Profile::get(&self, api::Tag) -> core::option::Option<api::TagValue<'_>>
-pub fn api::Profile::gray() -> core::result::Result<Self, api::Error>
-pub fn api::Profile::gray_curve(&types::CiexyY, &api::ToneCurve) -> core::result::Result<Self, api::Error>
-pub fn api::Profile::has_tag(&self, api::Tag) -> bool
+pub fn api::Profile::get(&self, impl core::convert::Into<api::Tag>) -> core::option::Option<api::TagValue<'_>>
+pub fn api::Profile::gray() -> api::Result<Self>
+pub fn api::Profile::gray_curve(&types::CiexyY, &api::ToneCurve) -> api::Result<Self>
+pub fn api::Profile::has_tag(&self, impl core::convert::Into<api::Tag>) -> bool
 pub fn api::Profile::header_attributes(&self) -> u64
 pub fn api::Profile::header_creator(&self) -> u32
 pub fn api::Profile::header_flags(&self) -> u32
 pub fn api::Profile::header_intent(&self) -> api::Intent
+pub fn api::Profile::header_manufacturer(&self) -> u32
+pub fn api::Profile::header_model(&self) -> u32
 pub fn api::Profile::info(&self, api::InfoType) -> core::option::Option<alloc::string::String>
-pub fn api::Profile::lab2() -> core::result::Result<Self, api::Error>
-pub fn api::Profile::lab4() -> core::result::Result<Self, api::Error>
+pub fn api::Profile::info_in(&self, api::InfoType, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn api::Profile::ink_limiting_device_link(api::ColorSpace, f64) -> api::Result<Self>
+pub fn api::Profile::lab2() -> api::Result<Self>
+pub fn api::Profile::lab4() -> api::Result<Self>
+pub fn api::Profile::linearization_device_link(api::ColorSpace, &[api::ToneCurve]) -> api::Result<Self>
 pub fn api::Profile::named_colors(&self) -> core::option::Option<api::NamedColors<'_>>
-pub fn api::Profile::null() -> core::result::Result<Self, api::Error>
-pub fn api::Profile::open(&[u8]) -> core::result::Result<Self, api::Error>
-pub fn api::Profile::open_file(&std::path::Path) -> core::result::Result<Self, api::Error>
-pub fn api::Profile::pcs(&self) -> u32
-pub fn api::Profile::remove_tag(&mut self, api::Tag)
-pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&api::ToneCurve; 3]) -> core::result::Result<Self, api::Error>
-pub fn api::Profile::save(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, api::Error>
-pub fn api::Profile::set_color_space(&mut self, u32)
-pub fn api::Profile::set_device_class(&mut self, u32)
+pub fn api::Profile::null() -> api::Result<Self>
+pub fn api::Profile::oklab() -> api::Result<Self>
+pub fn api::Profile::open(&[u8]) -> api::Result<Self>
+pub fn api::Profile::open_file(impl core::convert::AsRef<std::path::Path>) -> api::Result<Self>
+pub fn api::Profile::pcs(&self) -> api::ColorSpace
+pub fn api::Profile::placeholder() -> Self
+pub fn api::Profile::platform(&self) -> u32
+pub fn api::Profile::profile_id(&self) -> types::ProfileId
+pub fn api::Profile::remove_tag(&mut self, impl core::convert::Into<api::Tag>)
+pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&api::ToneCurve; 3]) -> api::Result<Self>
+pub fn api::Profile::save(&self) -> api::Result<alloc::vec::Vec<u8>>
+pub fn api::Profile::save_file(&self, impl core::convert::AsRef<std::path::Path>) -> api::Result<()>
+pub fn api::Profile::set_color_space(&mut self, api::ColorSpace)
+pub fn api::Profile::set_device_class(&mut self, api::ProfileClass)
+pub fn api::Profile::set_header_attributes(&mut self, u64)
+pub fn api::Profile::set_header_flags(&mut self, u32)
 pub fn api::Profile::set_header_intent(&mut self, api::Intent)
-pub fn api::Profile::srgb() -> core::result::Result<Self, api::Error>
-pub fn api::Profile::tag(&self, u32) -> core::option::Option<api::TagValue<'_>>
+pub fn api::Profile::set_header_manufacturer(&mut self, u32)
+pub fn api::Profile::set_header_model(&mut self, u32)
+pub fn api::Profile::set_info(&mut self, api::InfoType, &str) -> bool
+pub fn api::Profile::set_pcs(&mut self, api::ColorSpace)
+pub fn api::Profile::srgb() -> api::Result<Self>
+pub fn api::Profile::tag_count(&self) -> usize
 pub fn api::Profile::tags(&self) -> impl core::iter::traits::iterator::Iterator<Item = api::Tag> + '_
 pub fn api::Profile::version(&self) -> u32
-pub fn api::Profile::write_tag(&mut self, api::Tag, api::TagData) -> bool
-pub fn api::Profile::xyz() -> core::result::Result<Self, api::Error>
+pub fn api::Profile::white_point(&self) -> core::option::Option<&types::CieXyz>
+pub fn api::Profile::write_tag(&mut self, impl core::convert::Into<api::Tag>, api::TagData<'_>) -> bool
+pub fn api::Profile::xyz() -> api::Result<Self>
+#[repr(C)] pub struct api::ProfileId [also: types]
+pub api::ProfileId::id8: [u8; 16]
+pub struct api::ProfileSeqDesc
+pub api::ProfileSeqDesc::seq: alloc::vec::Vec<named::PSeqDesc>
 pub struct api::Scratch(_)
+pub struct api::Screening
+pub api::Screening::channels: [api::ScreeningChannel; 16]
+pub api::Screening::flag: u32
+pub api::Screening::n_channels: u32
+pub struct api::ScreeningChannel
+pub api::ScreeningChannel::angle: f64
+pub api::ScreeningChannel::frequency: f64
+pub api::ScreeningChannel::spot_shape: u32
+pub struct api::Stage
+pub api::Stage::data: lut::StageData
+pub api::Stage::eval_ptr: fn(&[f32], &mut [f32], &api::Stage)
+pub api::Stage::implements: u32
+pub api::Stage::input_channels: u32
+pub api::Stage::next: core::option::Option<alloc::boxed::Box<api::Stage>>
+pub api::Stage::output_channels: u32
+pub api::Stage::type: u32
+pub fn api::Stage::clut16(u32, u32, u32, core::option::Option<&[u16]>) -> api::Result<api::Stage>
+pub fn api::Stage::clut16_granular(&[u32], u32, core::option::Option<&[u16]>) -> api::Result<api::Stage>
+pub fn api::Stage::clut_float(u32, u32, u32, core::option::Option<&[f32]>) -> api::Result<api::Stage>
+pub fn api::Stage::identity(u32) -> api::Stage
+pub fn api::Stage::matrix(&[f64], u32, u32, core::option::Option<&[f64]>) -> api::Result<api::Stage>
+pub fn api::Stage::tone_curves(&[&api::ToneCurveRef]) -> api::Result<api::Stage>
+pub fn api::Stage::eval(&self, &[f32], &mut [f32])
+pub fn api::Stage::foreign_stage_eval(&[f32], &mut [f32], &api::Stage)
+pub fn api::Stage::input_channels(&self) -> u32
+pub fn api::Stage::next(&self) -> core::option::Option<&api::Stage>
+pub fn api::Stage::output_channels(&self) -> u32
+pub fn api::Stage::stage_type(&self) -> u32
+pub struct api::StagesIter<'a>(_)
+pub struct api::Stride
+pub api::Stride::bytes_per_line_in: u32
+pub api::Stride::bytes_per_line_out: u32
+pub api::Stride::bytes_per_plane_in: u32
+pub api::Stride::bytes_per_plane_out: u32
+pub const fn api::Stride::chunky(u32) -> api::Stride
+pub const fn api::Stride::new(u32, u32, u32, u32) -> api::Stride
 pub struct api::Tag(pub u32)
 pub const api::Tag::A_TO_B0: api::Tag
 pub const api::Tag::A_TO_B1: api::Tag
@@ -146,17 +478,46 @@ pub const api::Tag::BLUE_TRC: api::Tag
 pub const api::Tag::B_TO_A0: api::Tag
 pub const api::Tag::B_TO_A1: api::Tag
 pub const api::Tag::B_TO_A2: api::Tag
+pub const api::Tag::B_TO_D0: api::Tag
+pub const api::Tag::B_TO_D1: api::Tag
+pub const api::Tag::B_TO_D2: api::Tag
+pub const api::Tag::B_TO_D3: api::Tag
+pub const api::Tag::CALIBRATION_DATE_TIME: api::Tag
 pub const api::Tag::CHARD: api::Tag
+pub const api::Tag::CHROMATICITY: api::Tag
 pub const api::Tag::CHROMATIC_ADAPTATION: api::Tag
+pub const api::Tag::CICP: api::Tag
+pub const api::Tag::COLORANT_ORDER: api::Tag
+pub const api::Tag::COLORANT_TABLE: api::Tag
+pub const api::Tag::COLORANT_TABLE_OUT: api::Tag
+pub const api::Tag::COLORIMETRIC_INTENT_IMAGE_STATE: api::Tag
 pub const api::Tag::COPYRIGHT: api::Tag
+pub const api::Tag::CRD_INFO: api::Tag
+pub const api::Tag::DATA: api::Tag
+pub const api::Tag::DEVICE_MFG_DESC: api::Tag
+pub const api::Tag::DEVICE_MODEL_DESC: api::Tag
+pub const api::Tag::D_TO_B0: api::Tag
+pub const api::Tag::D_TO_B1: api::Tag
+pub const api::Tag::D_TO_B2: api::Tag
+pub const api::Tag::D_TO_B3: api::Tag
 pub const api::Tag::GAMUT: api::Tag
 pub const api::Tag::GRAY_TRC: api::Tag
 pub const api::Tag::GREEN_COLORANT: api::Tag
 pub const api::Tag::GREEN_TRC: api::Tag
+pub const api::Tag::LUMINANCE: api::Tag
+pub const api::Tag::MEASUREMENT: api::Tag
 pub const api::Tag::MEDIA_BLACK_POINT: api::Tag
 pub const api::Tag::MEDIA_WHITE_POINT: api::Tag
+pub const api::Tag::META: api::Tag
 pub const api::Tag::NAMED_COLOR2: api::Tag
+pub const api::Tag::OUTPUT_RESPONSE: api::Tag
+pub const api::Tag::PREVIEW0: api::Tag
+pub const api::Tag::PREVIEW1: api::Tag
+pub const api::Tag::PREVIEW2: api::Tag
 pub const api::Tag::PROFILE_DESCRIPTION: api::Tag
+pub const api::Tag::PROFILE_DESCRIPTION_ML: api::Tag
+pub const api::Tag::PROFILE_SEQUENCE_DESC: api::Tag
+pub const api::Tag::PROFILE_SEQUENCE_ID: api::Tag
 pub const api::Tag::PS2_CRD0: api::Tag
 pub const api::Tag::PS2_CRD1: api::Tag
 pub const api::Tag::PS2_CRD2: api::Tag
@@ -165,25 +526,96 @@ pub const api::Tag::PS2_CSA: api::Tag
 pub const api::Tag::PS2_RENDERING_INTENT: api::Tag
 pub const api::Tag::RED_COLORANT: api::Tag
 pub const api::Tag::RED_TRC: api::Tag
+pub const api::Tag::SCREENING: api::Tag
 pub const api::Tag::SCREENING_DESC: api::Tag
+pub const api::Tag::TECHNOLOGY: api::Tag
 pub const api::Tag::UCRBG: api::Tag
 pub const api::Tag::VCGT: api::Tag
+pub const api::Tag::VIEWING_CONDITIONS: api::Tag
+pub const api::Tag::VIEWING_COND_DESC: api::Tag
+pub const fn api::Tag::chars(self) -> [u8; 4]
+pub const fn api::Tag::code(self) -> u32
+pub const fn api::Tag::new([u8; 4]) -> api::Tag
+pub struct api::Tm
+pub api::Tm::tm_hour: i32
+pub api::Tm::tm_isdst: i32
+pub api::Tm::tm_mday: i32
+pub api::Tm::tm_min: i32
+pub api::Tm::tm_mon: i32
+pub api::Tm::tm_sec: i32
+pub api::Tm::tm_wday: i32
+pub api::Tm::tm_yday: i32
+pub api::Tm::tm_year: i32
 pub struct api::ToneCurve(_)
 pub fn api::ToneCurve::estimated_gamma(&self) -> core::option::Option<f64>
+pub fn api::ToneCurve::estimated_gamma_p(&self, f64) -> core::option::Option<f64>
+pub fn api::ToneCurve::estimated_table(&self) -> &[u16]
 pub fn api::ToneCurve::eval16(&self, u16) -> u16
 pub fn api::ToneCurve::eval_f32(&self, f32) -> f32
-pub fn api::ToneCurve::gamma(f64) -> core::result::Result<Self, api::Error>
+pub fn api::ToneCurve::gamma(f64) -> api::Result<Self>
 pub fn api::ToneCurve::is_descending(&self) -> bool
+pub fn api::ToneCurve::is_linear(&self) -> bool
 pub fn api::ToneCurve::is_monotonic(&self) -> bool
-pub fn api::ToneCurve::parametric(i16, &[f64]) -> core::result::Result<Self, api::Error>
+pub fn api::ToneCurve::is_multisegment(&self) -> bool
+pub fn api::ToneCurve::join(&self, &api::ToneCurve, usize) -> api::ToneCurve
+pub fn api::ToneCurve::linear() -> api::Result<Self>
+pub fn api::ToneCurve::parametric(i16, &[f64]) -> api::Result<Self>
+pub fn api::ToneCurve::parametric_type(&self) -> i32
 pub fn api::ToneCurve::reversed(&self) -> api::ToneCurve
-pub fn api::ToneCurve::tabulated16(&[u16]) -> core::result::Result<Self, api::Error>
-pub fn api::ToneCurve::tabulated_f32(&[f32]) -> core::result::Result<Self, api::Error>
-pub type api::MluView<'a> = named::Mlu
-pub type api::NamedColorListRef = named::NamedColorList
-pub type api::PipelineRef = lut::Pipeline
-pub type api::StageRef = lut::Stage
-pub type api::ToneCurveRef = gamma::ToneCurve
+pub fn api::ToneCurve::reversed_samples(&self, usize) -> api::ToneCurve
+pub fn api::ToneCurve::segments(&self) -> &[gamma::CurveSegment]
+pub fn api::ToneCurve::smooth(&mut self, f64) -> bool
+pub fn api::ToneCurve::srgb() -> api::Result<Self>
+pub fn api::ToneCurve::tabulated16(&[u16]) -> api::Result<Self>
+pub fn api::ToneCurve::tabulated_f32(&[f32]) -> api::Result<Self>
+pub struct api::ToneCurveRef
+pub api::ToneCurveRef::evals: alloc::vec::Vec<core::option::Option<fn(i32, &[f64; 10], f64) -> f64>>
+pub api::ToneCurveRef::n_entries: u32
+pub api::ToneCurveRef::segments: alloc::vec::Vec<gamma::CurveSegment>
+pub api::ToneCurveRef::table16: alloc::vec::Vec<u16>
+pub fn api::ToneCurveRef::estimated_table(&self) -> &[u16]
+pub fn api::ToneCurveRef::estimated_table_entries(&self) -> u32
+pub fn api::ToneCurveRef::eval16(&self, u16) -> u16
+pub fn api::ToneCurveRef::eval_float(&self, f32) -> f32
+pub fn api::ToneCurveRef::parametric_type(&self) -> i32
+pub fn api::ToneCurveRef::segment(&self, i32) -> core::option::Option<&gamma::CurveSegment>
+pub struct api::UcrBg
+pub api::UcrBg::bg: api::ToneCurveRef
+pub api::UcrBg::desc: api::Mlu
+pub api::UcrBg::ucr: api::ToneCurveRef
+pub struct api::VideoSignal
+pub api::VideoSignal::colour_primaries: u8
+pub api::VideoSignal::matrix_coefficients: u8
+pub api::VideoSignal::transfer_characteristics: u8
+pub api::VideoSignal::video_full_range_flag: u8
+pub fn api::adaptation_state() -> f64
+pub fn api::alarm_codes() -> [u16; 16]
+pub fn api::bfd_delta_e(&types::CieLab, &types::CieLab) -> f64
+pub fn api::cie2000_delta_e(&types::CieLab, &types::CieLab, f64, f64, f64) -> f64
+pub fn api::cie94_delta_e(&types::CieLab, &types::CieLab) -> f64
+pub fn api::cmc_delta_e(&types::CieLab, &types::CieLab, f64, f64) -> f64
+pub fn api::d50_xyy() -> types::CiexyY
+pub fn api::d50_xyz() -> types::CieXyz
+pub fn api::decode_lab([u16; 3]) -> types::CieLab
+pub fn api::decode_lab_v2([u16; 3]) -> types::CieLab
+pub fn api::decode_xyz([u16; 3]) -> types::CieXyz
+pub fn api::delta_e(&types::CieLab, &types::CieLab) -> f64
+pub fn api::desaturate_lab(&mut types::CieLab, f64, f64, f64, f64) -> bool
+pub fn api::encode_lab(&types::CieLab) -> [u16; 3]
+pub fn api::encode_lab_v2(&types::CieLab) -> [u16; 3]
+pub fn api::encode_xyz(&types::CieXyz) -> [u16; 3]
+pub fn api::lab_to_lch(&types::CieLab) -> types::CieLCh
+pub fn api::lab_to_xyz(core::option::Option<&types::CieXyz>, &types::CieLab) -> types::CieXyz
+pub fn api::lch_to_lab(&types::CieLCh) -> types::CieLab
+pub fn api::set_adaptation_state(f64) -> f64
+pub fn api::set_alarm_codes([u16; 16])
+pub fn api::temp_from_white_point(&types::CiexyY) -> core::option::Option<f64>
+pub fn api::version() -> u32
+pub fn api::white_point_from_temp(f64) -> core::option::Option<types::CiexyY>
+pub fn api::xyy_to_xyz(&types::CiexyY) -> types::CieXyz
+pub fn api::xyz_to_lab(core::option::Option<&types::CieXyz>, &types::CieXyz) -> types::CieLab
+pub fn api::xyz_to_xyy(&types::CieXyz) -> types::CiexyY
+pub type api::Result<T> = core::result::Result<T, api::Error>
 pub mod signatures
 pub mod signatures::colorspace
 pub const signatures::colorspace::Sig10colorData: types::Signature
@@ -435,23 +867,18 @@ pub const signatures::technology::SigThermalWaxPrinter: types::Signature
 pub const signatures::technology::SigVideoCamera: types::Signature
 pub const signatures::technology::SigVideoMonitor: types::Signature
 pub mod types
-#[repr(C)] pub struct types::CieLCh
 pub types::CieLCh::C: f64
 pub types::CieLCh::L: f64
 pub types::CieLCh::h: f64
-#[repr(C)] pub struct types::CieLab
 pub types::CieLab::L: f64
 pub types::CieLab::a: f64
 pub types::CieLab::b: f64
-#[repr(C)] pub struct types::CieXyz
 pub types::CieXyz::X: f64
 pub types::CieXyz::Y: f64
 pub types::CieXyz::Z: f64
-#[repr(C)] pub struct types::CiexyY
 pub types::CiexyY::Y: f64
 pub types::CiexyY::x: f64
 pub types::CiexyY::y: f64
-#[repr(C)] pub struct types::CiexyYTriple
 pub types::CiexyYTriple::Blue: types::CiexyY
 pub types::CiexyYTriple::Green: types::CiexyY
 pub types::CiexyYTriple::Red: types::CiexyY
@@ -473,7 +900,6 @@ pub types::Context::tag_descriptors: alloc::vec::Vec<(u32, tagtypes::TagDescript
 pub types::Context::tag_type_handlers: alloc::vec::Vec<tagtypes::TagTypeHandler>
 pub types::Context::user_data: core::sync::atomic::AtomicUsize
 pub fn types::Context::plugin(&mut self, &[context::Plugin]) -> bool
-#[repr(C)] pub struct types::DateTimeNumber
 pub types::DateTimeNumber::day: u16
 pub types::DateTimeNumber::hours: u16
 pub types::DateTimeNumber::minutes: u16
@@ -484,7 +910,6 @@ pub types::DateTimeNumber::year: u16
 pub types::EncodedXyzNumber::X: types::S15Fixed16
 pub types::EncodedXyzNumber::Y: types::S15Fixed16
 pub types::EncodedXyzNumber::Z: types::S15Fixed16
-#[repr(C)] pub struct types::IccMeasurementConditions
 pub types::IccMeasurementConditions::backing: types::EncodedXyzNumber
 pub types::IccMeasurementConditions::flare: f64
 pub types::IccMeasurementConditions::geometry: u32
@@ -496,7 +921,6 @@ pub types::JCh::J: f64
 pub types::JCh::h: f64
 #[repr(C)] pub struct types::Mat3
 pub types::Mat3::v: [types::Vec3; 3]
-#[repr(C)] pub struct types::ProfileId
 pub types::ProfileId::id8: [u8; 16]
 #[repr(C)] pub struct types::Vec3
 pub types::Vec3::n: [f64; 3]
@@ -597,18 +1021,46 @@ pub type types::Signature = u32
 pub type types::U16Fixed16 = u32
 pub type types::U8Fixed8 = u16
 
-## trait impls (25 types)
+## trait impls (53 types)
 
-api::Error: Debug, Display, Error
-api::Format: Clone, Copy, Debug, Eq, PartialEq
-api::InfoType: Clone, Copy, Debug, Eq, PartialEq
-api::Intent: Clone, Copy, Debug, Eq, PartialEq
+&'a api::NamedColors<'a>: IntoIterator
+api::ColorSpace: Clone, Copy, Debug, Display, Eq, From<u32>, Hash, PartialEq
+api::Dict: Clone, Default
+api::Error: Clone, Debug, Display, Error, PartialEq
+api::ErrorKind: Clone, Copy, Debug, Eq, Hash, PartialEq
+api::Format: Clone, Copy, Debug, Display, Eq, From<u32>, Hash, PartialEq
+api::IccData: Clone
+api::IccViewingConditions: Clone
+api::InfoType: Clone, Copy, Debug, Eq, Hash, PartialEq
+api::Intent: Clone, Copy, Debug, Default, Eq, From<u32>, Hash, PartialEq
+api::Locale: Clone, Copy, Debug, Default, Display, Eq, From<&str>, Hash, Ord, PartialEq, PartialOrd
+api::Mhc2: Clone
+api::Mlu: Clone, Default
 api::NamedColor: Clone, Debug, PartialEq
+api::NamedColorList: Clone
+api::NamedColorsIter<'_>: ExactSizeIterator, FusedIterator, Iterator
+api::Pipeline: Clone
 api::Plan: Debug
-api::Profile: Debug
-api::Scratch: Debug
-api::Tag: Clone, Copy, Debug, Display, Eq, From<u32>, Ord, PartialEq, PartialOrd
-api::ToneCurve: Clone, Debug
+api::Profile: Clone, Debug
+api::ProfileClass: Clone, Copy, Debug, Display, Eq, From<u32>, Hash, PartialEq
+api::ProfileSeqDesc: Clone
+api::Scratch: Clone, Debug
+api::Screening: Clone
+api::ScreeningChannel: Clone, Copy, Debug, Default
+api::Stage: Clone, Drop
+api::StagesIter<'_>: FusedIterator
+api::StagesIter<'a>: Iterator
+api::Stride: Clone, Copy, Default
+api::Tag: Clone, Copy, Debug, Display, Eq, From<u32>, Hash, Ord, PartialEq, PartialOrd
+api::TagData<'_>: Debug, From<api::ToneCurve>
+api::TagData<'a>: From<&'a str>
+api::TagValue<'_>: Debug
+api::Tm: Clone, Copy, Debug, Default, PartialEq
+api::ToneCurve: Clone, Debug, Deref
+api::ToneCurveRef: Clone
+api::UcrBg: Clone
+api::VcgtData: Clone
+api::VideoSignal: Clone, Copy, Debug, Default, PartialEq
 types::CieLCh: Clone, Copy, Debug, Default, PartialEq
 types::CieLab: Clone, Copy, Debug, Default, PartialEq
 types::CieXyz: Clone, Copy, Debug, Default, PartialEq
@@ -623,10 +1075,10 @@ types::Mat3: Clone, Copy, Debug, Default, PartialEq
 types::ProfileId: Clone, Copy, Debug, Default, PartialEq
 types::Vec3: Clone, Copy, Debug, Default, PartialEq
 types::ViewingConditions: Clone, Copy, Debug, Default, PartialEq
-u32: From<api::Tag>
+u32: From<api::ColorSpace>, From<api::Format>, From<api::Intent>, From<api::ProfileClass>, From<api::Tag>
 
 ## auto traits
 
-25 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+48 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
 api::Plan: !Freeze !RefUnwindSafe !UnwindSafe
 types::Context: !Freeze

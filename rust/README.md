@@ -24,17 +24,18 @@ Pick the layer that matches what you're doing:
 ```rust
 use lcms::api::*;
 
-// Open or build profiles.
-let mut srgb = Profile::srgb()?;
-let mut p3 = Profile::open(&std::fs::read("Display-P3.icc")?)?;
+// Open or build profiles — always ready to read (`&Profile` is Sync).
+let srgb = Profile::srgb()?;
+let p3 = Profile::open_file("Display-P3.icc")?;
 
 // Link once — the expensive part (pipeline + optimizer + CLUT
 // flattening). Plan is Sync: Arc-share it across workers.
-let plan = Plan::new(&mut p3, &mut srgb, Format::RgbU8, Format::RgbU8)?;
+let plan = Plan::new(&p3, &srgb, Format::RgbU8, Format::RgbU8)?;
 
 // Per-request scratch — ~64 B, or pooled thread_local.
 let mut sc = plan.scratch();
 plan.apply(&mut sc, &[255u8, 0, 0], &mut [0u8; 3]);
+plan.apply_pixels(&mut sc, &[[255u8; 3]], &mut [[0u8; 3]]); // typed pixels
 
 // Large images: pixel-independent parallel split, scratch-per-chunk.
 // plan.apply_par(&pixels_in, &mut pixels_out, n_pixels, n_threads);
@@ -43,10 +44,10 @@ plan.apply(&mut sc, &[255u8, 0, 0], &mut [0u8; 3]);
 Read/write tags, named colors, header fields:
 
 ```rust
-srgb.freeze();                       // materialize lazy tags → &Profile is Sync
 for tag in srgb.tags() { println!("{tag}"); }
-let wp = srgb.get(Tag(0x77747074));  // 'wtpt' → Option<&TagObject>
+let wp = srgb.get(Tag::MEDIA_WHITE_POINT);   // Option<TagValue<'_>>
 if let Some(ncl) = srgb.named_colors() { /* iterate the palette */ }
+let desc = srgb.info(InfoType::Description); // localized text
 ```
 
 ### `lcms::lcms2` — drop-in migration from the `lcms2` crate

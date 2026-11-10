@@ -10,28 +10,28 @@
 ## summary
 #
 #   pub modules                                30
-#   pub types (struct/enum/trait/alias)       161
-#   pub consts/statics                        121
+#   pub types (struct/enum/trait/alias)       163
+#   pub consts/statics                        125
 #   free functions                            386
-#   inherent methods                          247
-#   struct fields                             332
-#   enum variants                             242
+#   inherent methods                          362
+#   struct fields                             342
+#   enum variants                             269
 #   re-exports                                  3
 #   trait roster entries (type × trait)       257
 #   auto-trait-complete types                  96
 #   auto-trait exceptions                      10
 #
 # per-module pub lines:
-#   (root)                           44
+#   (root)                           48
 #   alpha                             3
-#   api                               2
+#   api                              48
 #   cam02                             4
 #   cgats                           111
 #   cnvrt                            13
 #   context                          82
 #   err                               3
 #   fixed                            14
-#   gamma                            59
+#   gamma                            78
 #   gbd                              19
 #   half                              2
 #   half_tables                       5
@@ -39,10 +39,10 @@
 #   io                               47
 #   io1                              10
 #   lcms2                           327
-#   lut                             107
+#   lut                             150
 #   md5                               6
 #   mtrx                             13
-#   named                            75
+#   named                           119
 #   opt                              34
 #   pack                            161
 #   pcs                              23
@@ -50,19 +50,148 @@
 #   ps2                               5
 #   sm                                6
 #   tagtypes                        129
-#   types                             4
+#   types                             6
 #   virt                             14
 #   wtpnt                             7
 #   xform                            74
 
-## items (1517 lines)
+## items (1673 lines)
 
 pub mod alpha
 pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
 pub fn alpha::handle_extra_channels(core::option::Option<&context::Context>, &[u8], &mut [u8], u32, u32, &xform::Stride, u32, u32, u32)
 pub type alpha::FormatterAlphaFn = fn(&mut [u8], &[u8])
+pub api::TagData::Data(tagtypes::IccData)
+pub api::TagData::DateTime(tagtypes::Tm)
+pub api::TagData::Dict(named::Dict)
+pub api::TagData::Mhc2(tagtypes::Mhc2)
+pub api::TagData::Mlu(named::Mlu)
+pub api::TagData::NamedColors(named::NamedColorList)
+pub api::TagData::Pipeline(lut::Pipeline)
+pub api::TagData::Screening(tagtypes::Screening)
+pub api::TagData::Seq(named::ProfileSeqDesc)
+pub api::TagData::UcrBg(tagtypes::UcrBg)
+pub api::TagData::VideoSignal(tagtypes::VideoSignal)
+pub api::TagData::ViewingConditions(tagtypes::IccViewingConditions)
+pub api::TagValue::Curve(&'a gamma::ToneCurve)
+pub api::TagValue::DateTime(&'a tagtypes::Tm)
+pub api::TagValue::Dict(&'a named::Dict)
+pub api::TagValue::Mhc2(&'a tagtypes::Mhc2)
+pub api::TagValue::NamedColors(&'a named::NamedColorList)
+pub api::TagValue::Pipeline(&'a lut::Pipeline)
+pub api::TagValue::Screening(&'a tagtypes::Screening)
+pub api::TagValue::Seq(&'a named::ProfileSeqDesc)
+pub api::TagValue::Stage(&'a lut::Stage)
+pub api::TagValue::Text(&'a named::Mlu)
+pub api::TagValue::UcrBg(&'a tagtypes::UcrBg)
+pub api::TagValue::VcgtCurves([&'a gamma::ToneCurve; 3])
+pub api::TagValue::VideoSignal(&'a tagtypes::VideoSignal)
+pub api::TagValue::ViewingConditions(&'a tagtypes::IccViewingConditions)
+pub fn api::TagValue<'a>::as_curve(&self) -> core::option::Option<&'a gamma::ToneCurve>
+pub fn api::TagValue<'a>::as_named_colors(&self) -> core::option::Option<&'a named::NamedColorList>
+pub fn api::TagValue<'a>::as_pipeline(&self) -> core::option::Option<&'a lut::Pipeline>
+pub fn api::TagValue<'a>::as_text(&self) -> core::option::Option<&'a named::Mlu>
+pub api::VcgtData::Curves([gamma::ToneCurve; 3])
+pub fn types::CieXyz::d50() -> Self
+pub fn types::CiexyY::d50() -> Self
+pub fn named::Dict::add(&mut self, &str, &str) -> bool
+pub fn named::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
+pub fn named::Dict::is_empty(&self) -> bool
+pub fn named::Dict::len(&self) -> usize
+pub fn named::Dict::new() -> named::Dict
+pub fn named::Mlu::get(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn named::Mlu::get_ascii(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn named::Mlu::new(u32) -> named::Mlu
+pub fn named::Mlu::set(&mut self, api::Locale, &str) -> bool
+pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> bool
+pub fn named::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Locale>
+pub fn named::Mlu::translations(&self) -> u32
+pub fn named::Mlu::set_text(&mut self, &str, lcms2::Locale) -> bool
+pub fn named::Mlu::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
+pub fn named::Mlu::text(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
+pub fn named::Mlu::text_ascii(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
+pub fn named::Mlu::translations_count(&self) -> u32
+pub fn named::NamedColorList::append(&mut self, &str, [u16; 3], [u16; 16]) -> bool
+pub fn named::NamedColorList::colors(&self) -> alloc::vec::Vec<lcms2::NamedColorInfo>
+pub fn named::NamedColorList::count(&self) -> usize
+pub fn named::NamedColorList::get(&self, usize) -> core::option::Option<lcms2::NamedColorInfo>
+pub fn named::NamedColorList::index_of(&self, &str) -> usize
+pub fn named::NamedColorList::is_empty(&self) -> bool
+pub fn named::NamedColorList::len(&self) -> usize
+pub fn named::NamedColorList::new(u32, u32, &str, &str) -> api::Result<named::NamedColorList>
+pub fn named::NamedColorList::position(&self, &str) -> core::option::Option<usize>
+pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16; 16]) -> bool
+pub api::Pipeline::elements: core::option::Option<alloc::boxed::Box<lut::Stage>>
+pub api::Pipeline::eval16_fn: lut::PipelineEval16Fn
+pub api::Pipeline::eval_float_fn: lut::PipelineEvalFloatFn
+pub fn lut::Pipeline::cat(&mut self, &lut::Pipeline) -> bool
+pub fn lut::Pipeline::dup(&self) -> core::option::Option<lut::Pipeline>
+pub fn lut::Pipeline::eval16(&self, &[u16], &mut [u16])
+pub fn lut::Pipeline::eval_float(&self, &[f32], &mut [f32])
+pub fn lut::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
+pub fn lut::Pipeline::first_stage(&self) -> core::option::Option<&lut::Stage>
+pub fn lut::Pipeline::input_channels(&self) -> u32
+pub fn lut::Pipeline::insert_stage(&mut self, lut::StageLoc, lut::Stage) -> bool
+pub fn lut::Pipeline::last_stage(&self) -> core::option::Option<&lut::Stage>
+pub fn lut::Pipeline::output_channels(&self) -> u32
+pub fn lut::Pipeline::set_save_as_8bits(&mut self, bool) -> bool
+pub fn lut::Pipeline::stage_count(&self) -> u32
+pub fn lut::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<lut::Stage>
+pub fn lut::Pipeline::eval_f32(&self, &[f32], &mut [f32])
+pub fn lut::Pipeline::eval_u16(&self, &[u16], &mut [u16])
+pub fn lut::Pipeline::set_8bit(&mut self, bool) -> bool
+pub fn lut::Pipeline::to_owned(&self) -> lcms2::Pipeline
+pub fn lut::Pipeline::new(u32, u32) -> api::Result<lut::Pipeline>
+pub fn lut::Pipeline::push(&mut self, lut::Stage) -> bool
+pub fn lut::Pipeline::push_front(&mut self, lut::Stage) -> bool
+pub fn lut::Pipeline::stages(&self) -> api::StagesIter<'_>
+pub fn api::Plan::apply_strided(&self, &mut api::Scratch, &[u8], &mut [u8], u32, u32, &xform::Stride)
 pub fn api::Profile::icc(&self) -> &profile::IccProfile
 pub fn api::Profile::icc_mut(&mut self) -> &mut profile::IccProfile
+pub api::Screening::channels: [tagtypes::ScreeningChannel; 16]
+pub api::Stage::eval_ptr: lut::StageEvalFn
+pub api::Stage::next: core::option::Option<alloc::boxed::Box<lut::Stage>>
+pub fn lut::Stage::clut16(u32, u32, u32, core::option::Option<&[u16]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::clut16_granular(&[u32], u32, core::option::Option<&[u16]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::clut_float(u32, u32, u32, core::option::Option<&[f32]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::identity(u32) -> lut::Stage
+pub fn lut::Stage::matrix(&[f64], u32, u32, core::option::Option<&[f64]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::tone_curves(&[&gamma::ToneCurve]) -> api::Result<lut::Stage>
+pub fn lut::Stage::eval(&self, &[f32], &mut [f32])
+pub fn lut::Stage::foreign_stage_eval(&[f32], &mut [f32], &lut::Stage)
+pub fn lut::Stage::input_channels(&self) -> u32
+pub fn lut::Stage::next(&self) -> core::option::Option<&lut::Stage>
+pub fn lut::Stage::output_channels(&self) -> u32
+pub fn lut::Stage::stage_type(&self) -> u32
+pub type api::StagesIter<'a>::Item = &'a lut::Stage
+pub fn api::StagesIter<'a>::next(&mut self) -> core::option::Option<&'a lut::Stage>
+pub const fn xform::Stride::chunky(u32) -> xform::Stride [also: (root)]
+pub const fn xform::Stride::new(u32, u32, u32, u32) -> xform::Stride [also: (root)]
+pub type api::ToneCurve::Target = gamma::ToneCurve
+pub fn api::ToneCurve::deref(&self) -> &gamma::ToneCurve
+pub api::ToneCurveRef::evals: alloc::vec::Vec<core::option::Option<context::ParametricCurveEvaluator>>
+pub fn gamma::ToneCurve::estimated_entries(&self) -> &[u16]
+pub fn gamma::ToneCurve::estimated_entry_count(&self) -> u32
+pub fn gamma::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
+pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
+pub fn gamma::ToneCurve::is_descending(&self) -> bool
+pub fn gamma::ToneCurve::is_linear(&self) -> bool
+pub fn gamma::ToneCurve::is_monotonic(&self) -> bool
+pub fn gamma::ToneCurve::is_multisegment(&self) -> bool
+pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::smooth(&mut self, f64) -> bool
+pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::estimated_table(&self) -> &[u16]
+pub fn gamma::ToneCurve::estimated_table_entries(&self) -> u32
+pub fn gamma::ToneCurve::eval16(&self, u16) -> u16
+pub fn gamma::ToneCurve::eval_float(&self, f32) -> f32
+pub fn gamma::ToneCurve::parametric_type(&self) -> i32
+pub fn gamma::ToneCurve::segment(&self, i32) -> core::option::Option<&gamma::CurveSegment>
+pub api::UcrBg::bg: gamma::ToneCurve
+pub api::UcrBg::desc: named::Mlu
+pub api::UcrBg::ucr: gamma::ToneCurve
 pub mod cam02
 pub struct cam02::CieCam02
 pub fn cam02::CieCam02::forward(&self, &types::CieXyz, &mut types::JCh)
@@ -893,6 +1022,10 @@ pub fn lut::Pipeline::eval_f32(&self, &[f32], &mut [f32])
 pub fn lut::Pipeline::eval_u16(&self, &[u16], &mut [u16])
 pub fn lut::Pipeline::set_8bit(&mut self, bool) -> bool
 pub fn lut::Pipeline::to_owned(&self) -> lcms2::Pipeline
+pub fn lut::Pipeline::new(u32, u32) -> api::Result<lut::Pipeline>
+pub fn lut::Pipeline::push(&mut self, lut::Stage) -> bool
+pub fn lut::Pipeline::push_front(&mut self, lut::Stage) -> bool
+pub fn lut::Pipeline::stages(&self) -> api::StagesIter<'_>
 pub struct lut::Stage
 pub lut::Stage::data: lut::StageData
 pub lut::Stage::eval_ptr: lut::StageEvalFn
@@ -901,6 +1034,12 @@ pub lut::Stage::input_channels: u32
 pub lut::Stage::next: core::option::Option<alloc::boxed::Box<lut::Stage>>
 pub lut::Stage::output_channels: u32
 pub lut::Stage::type: u32
+pub fn lut::Stage::clut16(u32, u32, u32, core::option::Option<&[u16]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::clut16_granular(&[u32], u32, core::option::Option<&[u16]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::clut_float(u32, u32, u32, core::option::Option<&[f32]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::identity(u32) -> lut::Stage
+pub fn lut::Stage::matrix(&[f64], u32, u32, core::option::Option<&[f64]>) -> api::Result<lut::Stage>
+pub fn lut::Stage::tone_curves(&[&gamma::ToneCurve]) -> api::Result<lut::Stage>
 pub fn lut::Stage::eval(&self, &[f32], &mut [f32])
 pub fn lut::Stage::foreign_stage_eval(&[f32], &mut [f32], &lut::Stage)
 pub fn lut::Stage::input_channels(&self) -> u32
@@ -968,6 +1107,11 @@ pub fn mtrx::vec3_minus(&mut types::Vec3, &types::Vec3, &types::Vec3)
 pub mod named
 pub struct named::Dict
 pub named::Dict::entries: alloc::vec::Vec<named::DictEntry>
+pub fn named::Dict::add(&mut self, &str, &str) -> bool
+pub fn named::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
+pub fn named::Dict::is_empty(&self) -> bool
+pub fn named::Dict::len(&self) -> usize
+pub fn named::Dict::new() -> named::Dict
 pub struct named::DictEntry
 pub named::DictEntry::display_name: core::option::Option<named::Mlu>
 pub named::DictEntry::display_value: core::option::Option<named::Mlu>
@@ -979,6 +1123,13 @@ pub named::Mlu::entries: alloc::vec::Vec<named::MluEntry>
 pub named::Mlu::pool: alloc::vec::Vec<u8>
 pub named::Mlu::pool_used: u32
 pub named::Mlu::used_entries: u32
+pub fn named::Mlu::get(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn named::Mlu::get_ascii(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn named::Mlu::new(u32) -> named::Mlu
+pub fn named::Mlu::set(&mut self, api::Locale, &str) -> bool
+pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> bool
+pub fn named::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Locale>
+pub fn named::Mlu::translations(&self) -> u32
 pub fn named::Mlu::set_text(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::text(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
@@ -1005,6 +1156,11 @@ pub fn named::NamedColorList::colors(&self) -> alloc::vec::Vec<lcms2::NamedColor
 pub fn named::NamedColorList::count(&self) -> usize
 pub fn named::NamedColorList::get(&self, usize) -> core::option::Option<lcms2::NamedColorInfo>
 pub fn named::NamedColorList::index_of(&self, &str) -> usize
+pub fn named::NamedColorList::is_empty(&self) -> bool
+pub fn named::NamedColorList::len(&self) -> usize
+pub fn named::NamedColorList::new(u32, u32, &str, &str) -> api::Result<named::NamedColorList>
+pub fn named::NamedColorList::position(&self, &str) -> core::option::Option<usize>
+pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16; 16]) -> bool
 pub struct named::PSeqDesc
 pub named::PSeqDesc::attributes: u64
 pub named::PSeqDesc::description: core::option::Option<named::Mlu>
@@ -1696,8 +1852,300 @@ profile::IccProfile: !Freeze
 xform::Transform: !Freeze !RefUnwindSafe !UnwindSafe
 xform::TransformPlan: !Freeze !RefUnwindSafe !UnwindSafe
 
-## removed by features (15 lines)
+## removed by features (307 lines)
 
+pub api::TagData::Data(api::IccData)
+pub api::TagData::DateTime(api::Tm)
+pub api::TagData::Dict(api::Dict)
+pub api::TagData::Mhc2(api::Mhc2)
+pub api::TagData::Mlu(api::Mlu)
+pub api::TagData::NamedColors(api::NamedColorList)
+pub api::TagData::Pipeline(api::Pipeline)
+pub api::TagData::Screening(api::Screening)
+pub api::TagData::Seq(api::ProfileSeqDesc)
+pub api::TagData::UcrBg(api::UcrBg)
+pub api::TagData::VideoSignal(api::VideoSignal)
+pub api::TagData::ViewingConditions(api::IccViewingConditions)
+pub api::TagValue::Curve(&'a api::ToneCurveRef)
+pub api::TagValue::DateTime(&'a api::Tm)
+pub api::TagValue::Dict(&'a api::Dict)
+pub api::TagValue::Mhc2(&'a api::Mhc2)
+pub api::TagValue::NamedColors(&'a api::NamedColorList)
+pub api::TagValue::Pipeline(&'a api::Pipeline)
+pub api::TagValue::Screening(&'a api::Screening)
+pub api::TagValue::Seq(&'a api::ProfileSeqDesc)
+pub api::TagValue::Stage(&'a api::Stage)
+pub api::TagValue::Text(&'a api::Mlu)
+pub api::TagValue::UcrBg(&'a api::UcrBg)
+pub api::TagValue::VcgtCurves([&'a api::ToneCurveRef; 3])
+pub api::TagValue::VideoSignal(&'a api::VideoSignal)
+pub api::TagValue::ViewingConditions(&'a api::IccViewingConditions)
+pub fn api::TagValue<'a>::as_curve(&self) -> core::option::Option<&'a api::ToneCurveRef>
+pub fn api::TagValue<'a>::as_named_colors(&self) -> core::option::Option<&'a api::NamedColorList>
+pub fn api::TagValue<'a>::as_pipeline(&self) -> core::option::Option<&'a api::Pipeline>
+pub fn api::TagValue<'a>::as_text(&self) -> core::option::Option<&'a api::Mlu>
+pub api::VcgtData::Curves([api::ToneCurveRef; 3])
+impl core::clone::Clone for api::VcgtData
+pub fn api::VcgtData::clone(&self) -> api::VcgtData
+impl core::marker::Freeze for api::VcgtData
+impl core::marker::Send for api::VcgtData
+impl core::marker::Sync for api::VcgtData
+impl core::marker::Unpin for api::VcgtData
+impl core::marker::UnsafeUnpin for api::VcgtData
+impl core::panic::unwind_safe::RefUnwindSafe for api::VcgtData
+impl core::panic::unwind_safe::UnwindSafe for api::VcgtData
+impl api::Dict
+pub fn api::Dict::add(&mut self, &str, &str) -> bool
+pub fn api::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
+pub fn api::Dict::is_empty(&self) -> bool
+pub fn api::Dict::len(&self) -> usize
+pub fn api::Dict::new() -> api::Dict
+impl core::clone::Clone for api::Dict
+pub fn api::Dict::clone(&self) -> api::Dict
+impl core::default::Default for api::Dict
+pub fn api::Dict::default() -> api::Dict
+impl core::marker::Freeze for api::Dict
+impl core::marker::Send for api::Dict
+impl core::marker::Sync for api::Dict
+impl core::marker::Unpin for api::Dict
+impl core::marker::UnsafeUnpin for api::Dict
+impl core::panic::unwind_safe::RefUnwindSafe for api::Dict
+impl core::panic::unwind_safe::UnwindSafe for api::Dict
+impl core::clone::Clone for api::IccData
+pub fn api::IccData::clone(&self) -> api::IccData
+impl core::marker::Freeze for api::IccData
+impl core::marker::Send for api::IccData
+impl core::marker::Sync for api::IccData
+impl core::marker::Unpin for api::IccData
+impl core::marker::UnsafeUnpin for api::IccData
+impl core::panic::unwind_safe::RefUnwindSafe for api::IccData
+impl core::panic::unwind_safe::UnwindSafe for api::IccData
+impl core::clone::Clone for api::IccViewingConditions
+pub fn api::IccViewingConditions::clone(&self) -> api::IccViewingConditions
+impl core::marker::Freeze for api::IccViewingConditions
+impl core::marker::Send for api::IccViewingConditions
+impl core::marker::Sync for api::IccViewingConditions
+impl core::marker::Unpin for api::IccViewingConditions
+impl core::marker::UnsafeUnpin for api::IccViewingConditions
+impl core::panic::unwind_safe::RefUnwindSafe for api::IccViewingConditions
+impl core::panic::unwind_safe::UnwindSafe for api::IccViewingConditions
+impl core::clone::Clone for api::Mhc2
+pub fn api::Mhc2::clone(&self) -> api::Mhc2
+impl core::marker::Freeze for api::Mhc2
+impl core::marker::Send for api::Mhc2
+impl core::marker::Sync for api::Mhc2
+impl core::marker::Unpin for api::Mhc2
+impl core::marker::UnsafeUnpin for api::Mhc2
+impl core::panic::unwind_safe::RefUnwindSafe for api::Mhc2
+impl core::panic::unwind_safe::UnwindSafe for api::Mhc2
+impl api::Mlu
+pub fn api::Mlu::get(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn api::Mlu::get_ascii(&self, api::Locale) -> core::option::Option<alloc::string::String>
+pub fn api::Mlu::new(u32) -> api::Mlu
+pub fn api::Mlu::set(&mut self, api::Locale, &str) -> bool
+pub fn api::Mlu::set_ascii(&mut self, api::Locale, &str) -> bool
+pub fn api::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Locale>
+pub fn api::Mlu::translations(&self) -> u32
+impl core::clone::Clone for api::Mlu
+pub fn api::Mlu::clone(&self) -> api::Mlu
+impl core::default::Default for api::Mlu
+pub fn api::Mlu::default() -> api::Mlu
+impl core::marker::Freeze for api::Mlu
+impl core::marker::Send for api::Mlu
+impl core::marker::Sync for api::Mlu
+impl core::marker::Unpin for api::Mlu
+impl core::marker::UnsafeUnpin for api::Mlu
+impl core::panic::unwind_safe::RefUnwindSafe for api::Mlu
+impl core::panic::unwind_safe::UnwindSafe for api::Mlu
+impl api::NamedColorList
+pub fn api::NamedColorList::is_empty(&self) -> bool
+pub fn api::NamedColorList::len(&self) -> usize
+pub fn api::NamedColorList::new(u32, u32, &str, &str) -> api::Result<api::NamedColorList>
+pub fn api::NamedColorList::position(&self, &str) -> core::option::Option<usize>
+pub fn api::NamedColorList::push(&mut self, &str, [u16; 3], &[u16; 16]) -> bool
+impl core::clone::Clone for api::NamedColorList
+pub fn api::NamedColorList::clone(&self) -> api::NamedColorList
+impl core::marker::Freeze for api::NamedColorList
+impl core::marker::Send for api::NamedColorList
+impl core::marker::Sync for api::NamedColorList
+impl core::marker::Unpin for api::NamedColorList
+impl core::marker::UnsafeUnpin for api::NamedColorList
+impl core::panic::unwind_safe::RefUnwindSafe for api::NamedColorList
+impl core::panic::unwind_safe::UnwindSafe for api::NamedColorList
+pub api::Pipeline::elements: core::option::Option<alloc::boxed::Box<api::Stage>>
+pub api::Pipeline::eval16_fn: fn(&[u16], &mut [u16], &api::Pipeline)
+pub api::Pipeline::eval_float_fn: fn(&[f32], &mut [f32], &api::Pipeline)
+impl api::Pipeline
+pub fn api::Pipeline::cat(&mut self, &api::Pipeline) -> bool
+pub fn api::Pipeline::dup(&self) -> core::option::Option<api::Pipeline>
+pub fn api::Pipeline::eval16(&self, &[u16], &mut [u16])
+pub fn api::Pipeline::eval_float(&self, &[f32], &mut [f32])
+pub fn api::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
+pub fn api::Pipeline::first_stage(&self) -> core::option::Option<&api::Stage>
+pub fn api::Pipeline::input_channels(&self) -> u32
+pub fn api::Pipeline::insert_stage(&mut self, lut::StageLoc, api::Stage) -> bool
+pub fn api::Pipeline::last_stage(&self) -> core::option::Option<&api::Stage>
+pub fn api::Pipeline::output_channels(&self) -> u32
+pub fn api::Pipeline::set_save_as_8bits(&mut self, bool) -> bool
+pub fn api::Pipeline::stage_count(&self) -> u32
+pub fn api::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<api::Stage>
+impl api::Pipeline
+pub fn api::Pipeline::new(u32, u32) -> api::Result<api::Pipeline>
+pub fn api::Pipeline::push(&mut self, api::Stage) -> bool
+pub fn api::Pipeline::push_front(&mut self, api::Stage) -> bool
+pub fn api::Pipeline::stages(&self) -> api::StagesIter<'_>
+impl core::clone::Clone for api::Pipeline
+pub fn api::Pipeline::clone(&self) -> api::Pipeline
+impl core::marker::Freeze for api::Pipeline
+impl core::marker::Send for api::Pipeline
+impl core::marker::Sync for api::Pipeline
+impl core::marker::Unpin for api::Pipeline
+impl core::marker::UnsafeUnpin for api::Pipeline
+impl core::panic::unwind_safe::RefUnwindSafe for api::Pipeline
+impl core::panic::unwind_safe::UnwindSafe for api::Pipeline
+pub fn api::Plan::apply_strided(&self, &mut api::Scratch, &[u8], &mut [u8], u32, u32, &api::Stride)
+impl core::clone::Clone for api::ProfileSeqDesc
+pub fn api::ProfileSeqDesc::clone(&self) -> api::ProfileSeqDesc
+impl core::marker::Freeze for api::ProfileSeqDesc
+impl core::marker::Send for api::ProfileSeqDesc
+impl core::marker::Sync for api::ProfileSeqDesc
+impl core::marker::Unpin for api::ProfileSeqDesc
+impl core::marker::UnsafeUnpin for api::ProfileSeqDesc
+impl core::panic::unwind_safe::RefUnwindSafe for api::ProfileSeqDesc
+impl core::panic::unwind_safe::UnwindSafe for api::ProfileSeqDesc
+pub api::Screening::channels: [api::ScreeningChannel; 16]
+impl core::clone::Clone for api::Screening
+pub fn api::Screening::clone(&self) -> api::Screening
+impl core::marker::Freeze for api::Screening
+impl core::marker::Send for api::Screening
+impl core::marker::Sync for api::Screening
+impl core::marker::Unpin for api::Screening
+impl core::marker::UnsafeUnpin for api::Screening
+impl core::panic::unwind_safe::RefUnwindSafe for api::Screening
+impl core::panic::unwind_safe::UnwindSafe for api::Screening
+impl core::clone::Clone for api::ScreeningChannel
+pub fn api::ScreeningChannel::clone(&self) -> api::ScreeningChannel
+impl core::default::Default for api::ScreeningChannel
+pub fn api::ScreeningChannel::default() -> api::ScreeningChannel
+impl core::fmt::Debug for api::ScreeningChannel
+pub fn api::ScreeningChannel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for api::ScreeningChannel
+impl core::marker::Freeze for api::ScreeningChannel
+impl core::marker::Send for api::ScreeningChannel
+impl core::marker::Sync for api::ScreeningChannel
+impl core::marker::Unpin for api::ScreeningChannel
+impl core::marker::UnsafeUnpin for api::ScreeningChannel
+impl core::panic::unwind_safe::RefUnwindSafe for api::ScreeningChannel
+impl core::panic::unwind_safe::UnwindSafe for api::ScreeningChannel
+pub api::Stage::eval_ptr: fn(&[f32], &mut [f32], &api::Stage)
+pub api::Stage::next: core::option::Option<alloc::boxed::Box<api::Stage>>
+impl api::Stage
+pub fn api::Stage::clut16(u32, u32, u32, core::option::Option<&[u16]>) -> api::Result<api::Stage>
+pub fn api::Stage::clut16_granular(&[u32], u32, core::option::Option<&[u16]>) -> api::Result<api::Stage>
+pub fn api::Stage::clut_float(u32, u32, u32, core::option::Option<&[f32]>) -> api::Result<api::Stage>
+pub fn api::Stage::identity(u32) -> api::Stage
+pub fn api::Stage::matrix(&[f64], u32, u32, core::option::Option<&[f64]>) -> api::Result<api::Stage>
+pub fn api::Stage::tone_curves(&[&api::ToneCurveRef]) -> api::Result<api::Stage>
+impl api::Stage
+pub fn api::Stage::eval(&self, &[f32], &mut [f32])
+pub fn api::Stage::foreign_stage_eval(&[f32], &mut [f32], &api::Stage)
+pub fn api::Stage::input_channels(&self) -> u32
+pub fn api::Stage::next(&self) -> core::option::Option<&api::Stage>
+pub fn api::Stage::output_channels(&self) -> u32
+pub fn api::Stage::stage_type(&self) -> u32
+impl core::clone::Clone for api::Stage
+pub fn api::Stage::clone(&self) -> api::Stage
+impl core::ops::drop::Drop for api::Stage
+pub fn api::Stage::drop(&mut self)
+impl core::marker::Freeze for api::Stage
+impl core::marker::Send for api::Stage
+impl core::marker::Sync for api::Stage
+impl core::marker::Unpin for api::Stage
+impl core::marker::UnsafeUnpin for api::Stage
+impl core::panic::unwind_safe::RefUnwindSafe for api::Stage
+impl core::panic::unwind_safe::UnwindSafe for api::Stage
+pub type api::StagesIter<'a>::Item = &'a api::Stage
+pub fn api::StagesIter<'a>::next(&mut self) -> core::option::Option<&'a api::Stage>
+impl api::Stride
+pub const fn api::Stride::chunky(u32) -> api::Stride
+pub const fn api::Stride::new(u32, u32, u32, u32) -> api::Stride
+impl core::clone::Clone for api::Stride
+pub fn api::Stride::clone(&self) -> api::Stride
+impl core::default::Default for api::Stride
+pub fn api::Stride::default() -> api::Stride
+impl core::marker::Copy for api::Stride
+impl core::marker::Freeze for api::Stride
+impl core::marker::Send for api::Stride
+impl core::marker::Sync for api::Stride
+impl core::marker::Unpin for api::Stride
+impl core::marker::UnsafeUnpin for api::Stride
+impl core::panic::unwind_safe::RefUnwindSafe for api::Stride
+impl core::panic::unwind_safe::UnwindSafe for api::Stride
+impl core::clone::Clone for api::Tm
+pub fn api::Tm::clone(&self) -> api::Tm
+impl core::cmp::PartialEq for api::Tm
+pub fn api::Tm::eq(&self, &api::Tm) -> bool
+impl core::default::Default for api::Tm
+pub fn api::Tm::default() -> api::Tm
+impl core::fmt::Debug for api::Tm
+pub fn api::Tm::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for api::Tm
+impl core::marker::StructuralPartialEq for api::Tm
+impl core::marker::Freeze for api::Tm
+impl core::marker::Send for api::Tm
+impl core::marker::Sync for api::Tm
+impl core::marker::Unpin for api::Tm
+impl core::marker::UnsafeUnpin for api::Tm
+impl core::panic::unwind_safe::RefUnwindSafe for api::Tm
+impl core::panic::unwind_safe::UnwindSafe for api::Tm
+pub type api::ToneCurve::Target = api::ToneCurveRef
+pub fn api::ToneCurve::deref(&self) -> &api::ToneCurveRef
+pub api::ToneCurveRef::evals: alloc::vec::Vec<core::option::Option<fn(i32, &[f64; 10], f64) -> f64>>
+impl api::ToneCurveRef
+pub fn api::ToneCurveRef::estimated_table(&self) -> &[u16]
+pub fn api::ToneCurveRef::estimated_table_entries(&self) -> u32
+pub fn api::ToneCurveRef::eval16(&self, u16) -> u16
+pub fn api::ToneCurveRef::eval_float(&self, f32) -> f32
+pub fn api::ToneCurveRef::parametric_type(&self) -> i32
+pub fn api::ToneCurveRef::segment(&self, i32) -> core::option::Option<&gamma::CurveSegment>
+impl core::clone::Clone for api::ToneCurveRef
+pub fn api::ToneCurveRef::clone(&self) -> Self
+impl core::marker::Freeze for api::ToneCurveRef
+impl core::marker::Send for api::ToneCurveRef
+impl core::marker::Sync for api::ToneCurveRef
+impl core::marker::Unpin for api::ToneCurveRef
+impl core::marker::UnsafeUnpin for api::ToneCurveRef
+impl core::panic::unwind_safe::RefUnwindSafe for api::ToneCurveRef
+impl core::panic::unwind_safe::UnwindSafe for api::ToneCurveRef
+pub api::UcrBg::bg: api::ToneCurveRef
+pub api::UcrBg::desc: api::Mlu
+pub api::UcrBg::ucr: api::ToneCurveRef
+impl core::clone::Clone for api::UcrBg
+pub fn api::UcrBg::clone(&self) -> api::UcrBg
+impl core::marker::Freeze for api::UcrBg
+impl core::marker::Send for api::UcrBg
+impl core::marker::Sync for api::UcrBg
+impl core::marker::Unpin for api::UcrBg
+impl core::marker::UnsafeUnpin for api::UcrBg
+impl core::panic::unwind_safe::RefUnwindSafe for api::UcrBg
+impl core::panic::unwind_safe::UnwindSafe for api::UcrBg
+impl core::clone::Clone for api::VideoSignal
+pub fn api::VideoSignal::clone(&self) -> api::VideoSignal
+impl core::cmp::PartialEq for api::VideoSignal
+pub fn api::VideoSignal::eq(&self, &api::VideoSignal) -> bool
+impl core::default::Default for api::VideoSignal
+pub fn api::VideoSignal::default() -> api::VideoSignal
+impl core::fmt::Debug for api::VideoSignal
+pub fn api::VideoSignal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for api::VideoSignal
+impl core::marker::StructuralPartialEq for api::VideoSignal
+impl core::marker::Freeze for api::VideoSignal
+impl core::marker::Send for api::VideoSignal
+impl core::marker::Sync for api::VideoSignal
+impl core::marker::Unpin for api::VideoSignal
+impl core::marker::UnsafeUnpin for api::VideoSignal
+impl core::panic::unwind_safe::RefUnwindSafe for api::VideoSignal
+impl core::panic::unwind_safe::UnwindSafe for api::VideoSignal
 pub types::Context::interpolators: core::option::Option<fn(u32, u32, u32) -> core::option::Option<intrp::Interpolation>>
 pub types::Context::log_error_handler: core::option::Option<fn(&types::Context, i32, &str)>
 impl types::Context

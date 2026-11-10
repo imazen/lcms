@@ -254,9 +254,9 @@ impl PixelFormat {
     pub const RGB_8: PixelFormat = PixelFormat(f8(PT_RGB, 3));
     pub const RGB_16: PixelFormat = PixelFormat(f16(PT_RGB, 3));
     pub const RGB_DBL: PixelFormat = PixelFormat(ff32(PT_RGB, 3));
-    pub const RGBA_8: PixelFormat = PixelFormat(f8(PT_RGB, 4));
-    pub const RGBA_16: PixelFormat = PixelFormat(f16(PT_RGB, 4));
-    pub const RGBA_DBL: PixelFormat = PixelFormat(ff32(PT_RGB, 4));
+    pub const RGBA_8: PixelFormat = PixelFormat(f8e(PT_RGB, 3, 1));
+    pub const RGBA_16: PixelFormat = PixelFormat(f16e(PT_RGB, 3, 1));
+    pub const RGBA_DBL: PixelFormat = PixelFormat(ff32e(PT_RGB, 3, 1));
     pub const LAB_8: PixelFormat = PixelFormat(f8(PT_LAB, 3));
     pub const LAB_16: PixelFormat = PixelFormat(f16(PT_LAB, 3));
     pub const LAB_DBL: PixelFormat = PixelFormat(ff32(PT_LAB, 3));
@@ -278,7 +278,10 @@ const PT_XYZ: u32 = 9;
 const PT_LAB: u32 = 10;
 const fn f8(pt: u32, ch: u32) -> u32 { pt << 16 | ch << 3 | 1 }
 const fn f16(pt: u32, ch: u32) -> u32 { pt << 16 | ch << 3 | 2 }
+const fn f8e(pt: u32, ch: u32, ex: u32) -> u32 { pt << 16 | ex << 7 | ch << 3 | 1 }
+const fn f16e(pt: u32, ch: u32, ex: u32) -> u32 { pt << 16 | ex << 7 | ch << 3 | 2 }
 const fn ff32(pt: u32, ch: u32) -> u32 { 1 << 22 | pt << 16 | ch << 3 | 4 }
+const fn ff32e(pt: u32, ch: u32, ex: u32) -> u32 { 1 << 22 | pt << 16 | ex << 7 | ch << 3 | 4 }
 
 // -- CIE type aliases --------------------------------------------------------
 
