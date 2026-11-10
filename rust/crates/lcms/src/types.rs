@@ -14,7 +14,9 @@ pub type U8Fixed8 = u16;
 /// cmsU16Fixed16Number.
 pub type U16Fixed16 = u32;
 /// cmsContext is opaque in C; here it is a `&crate::context::Context`
-/// (or `None`, matching C's NULL → global context).
+/// (or `None`, matching C's NULL → global context). Public only with the
+/// parity surface: `lcms::api` never takes or returns a context.
+#[cfg(feature = "little-cms-api")]
 pub use crate::context::Context;
 
 /// cmsFloat64Number and cmsFloat32Number stay `f64`/`f32` in signatures.

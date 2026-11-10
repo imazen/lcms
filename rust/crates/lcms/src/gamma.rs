@@ -67,6 +67,7 @@ pub struct ParametricCurves {
     pub evaluator: ParametricCurveEvaluator,
 }
 
+parity_struct! {
 /// `cmsToneCurve`
 pub struct ToneCurve {
     pub n_entries: u32,
@@ -87,22 +88,12 @@ pub struct ToneCurve {
     /// `InterpParams.Domain[0]` — kept for `GetInterval` which reads it.
     domain0: u32,
 }
+}
 
 impl ToneCurve {
-    /// `cmsGetToneCurveEstimatedTableEntries`
-    pub fn estimated_table_entries(&self) -> u32 {
-        self.n_entries
-    }
     /// `cmsGetToneCurveEstimatedTable`
     pub fn estimated_table(&self) -> &[u16] {
         &self.table16
-    }
-    /// `cmsGetToneCurveSegment`
-    pub fn segment(&self, n: i32) -> Option<&CurveSegment> {
-        if n < 0 || n >= self.segments.len() as i32 {
-            return None;
-        }
-        Some(&self.segments[n as usize])
     }
     /// `cmsGetToneCurveParametricType`
     pub fn parametric_type(&self) -> i32 {
@@ -155,6 +146,21 @@ impl ToneCurve {
         }
         eval_segmented_fn(self, v as f64) as f32
     }
+}
+parity_impl! {
+impl ToneCurve {
+    /// `cmsGetToneCurveEstimatedTableEntries`
+    pub fn estimated_table_entries(&self) -> u32 {
+        self.n_entries
+    }
+    /// `cmsGetToneCurveSegment`
+    pub fn segment(&self, n: i32) -> Option<&CurveSegment> {
+        if n < 0 || n >= self.segments.len() as i32 {
+            return None;
+        }
+        Some(&self.segments[n as usize])
+    }
+}
 }
 
 /// `EvalSegmentedFn` — `-Inf` (`MINUS_INF`) when no segment covers `R`.
@@ -236,6 +242,12 @@ fn eval_segmented_fn(g: &ToneCurve, r: f64) -> f64 {
 /// `IsInSet` — index of `|Type|` in the collection, or None.
 fn is_in_set(r#type: i32, c: &ParametricCurves) -> Option<usize> {
     c.function_types.iter().position(|&t| t == r#type.abs())
+}
+
+/// How many parameters parametric type `ty` takes (built-in or registered
+/// on the global context); `None` for an unknown type.
+pub(crate) fn parametric_param_count(ty: i32) -> Option<usize> {
+    get_parametric_curve_by_type(None, ty).map(|(pos, c)| c.parameter_count[pos] as usize)
 }
 
 /// `GetParametricCurveByType` — plugins first, then the built-in defaults.

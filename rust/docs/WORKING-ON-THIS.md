@@ -88,6 +88,22 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
 - **Gates that feed 85 identical zero pixels, or never set BPC, can't see
   any of the above.** Sweep varied inputs, every intent, BPC on/off, and
   read-before-link (frozen) profiles.
+- **Transform white points are the raw `'wtpt'` tag** (`cmsReadTag`,
+  cmsxform.c:1220), not `_cmsReadMediaWhitePoint`, which substitutes D50 for
+  v2 display profiles. Only `cmsTransform2DeviceLink` reads them, so pixel
+  gates never saw the difference; `api_c_parity::device_link_bytes_match_c`
+  does.
+- **`cmsFLAGS_KEEP_SEQUENCE` is `0x0080`** and makes the transform keep a
+  `_cmsCompileProfileSequence` for device links (`'pseq'`, plus `'psid'` on
+  v4). The port once had neither the field nor the right constant.
+- **A parity type that `lcms::api` re-exports is declared with
+  `parity_struct!`, and its C-shaped methods go in `parity_impl!`** (lib.rs).
+  Fields and those methods are then `pub` only under `little-cms-api`.
+  Methods the api keeps go in a plain `impl`. The `lcms2` shim puts
+  inherent methods on the same types, so a name both layers define must have
+  one signature (see the note above `impl crate::gamma::ToneCurve` in
+  lcms2.rs). The snapshot `docs/public-api/lcms.txt` must show no
+  `gamma::`/`lut::`/`named::` paths under `api`.
 - **A test that calls `fork()` must start with `if solo::delegated("<name>")
   { return; }`** (`tests/support/solo.rs`). libtest runs tests on parallel
   threads; a child forked while another thread holds `_cmsContextPoolHeadMutex`

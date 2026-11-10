@@ -25,8 +25,6 @@ fn default_log_error_handler(_ctx: &Context, _code: i32, text: &str) {
 pub static GLOBAL_LOG_HOOK: std::sync::Mutex<Option<crate::context::LogErrorHandler>> =
     std::sync::Mutex::new(None);
 
-/// `cmsSignalError` — route an error through the context's log handler.
-/// `ctx == None` is C's `NULL` (global context). The text is preformatted;
 thread_local! {
     /// The most recent `signal_error` (code, text) on this thread —
     /// lets `api::Error` carry the real message a failing call produced.

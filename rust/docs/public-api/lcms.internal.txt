@@ -12,11 +12,11 @@ NOTE: excluded-feature surface (math-rust,math-zen) not buildable: rustdoc JSON 
 #
 #   pub consts/statics                          1
 #   free functions                              4
-#   inherent methods                           26
+#   inherent methods                           27
 #   trait roster entries (type × trait)        61
 #
 # per-module pub lines:
-#   api                               8
+#   api                               9
 #   cgats                             2
 #   cnvrt                             2
 #   context                           1
@@ -28,9 +28,10 @@ NOTE: excluded-feature surface (math-rust,math-zen) not buildable: rustdoc JSON 
 #   lut                               1
 #   xform                             1
 
-## items (31 lines)
+## items (32 lines)
 
 pub fn api::ColorSpace::assert_fields_are_eq(&self)
+pub fn api::Error::assert_fields_are_eq(&self)
 pub fn api::ErrorKind::assert_fields_are_eq(&self)
 pub fn api::Format::assert_fields_are_eq(&self)
 pub fn api::InfoType::assert_fields_are_eq(&self)

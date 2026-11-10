@@ -767,8 +767,8 @@ fn api_error_real_message() {
     let e = Profile::open(&[0u8; 64]).unwrap_err();
     // open_profile_from_mem signals a corruption/unsupported error —
     // the message should come from the error handler, not our fallback
-    assert!(!e.message.is_empty());
-    eprintln!("api err: {} (id {})", e.message, e.id);
+    assert!(!e.message().is_empty());
+    eprintln!("api err: {} (id {})", e.message(), e.code());
 }
 
 /// lcms2-api shim smoke: Profile + typed Transform<[u8;3],[u8;3]>.

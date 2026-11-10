@@ -29,6 +29,7 @@ pub struct MluEntry {
     pub len: u32,   // Length in bytes
 }
 
+parity_struct! {
 /// `cmsMLU`
 ///
 /// `Default` = zero-entries MLU — the state a NULL `cmsMLU*` produces
@@ -40,6 +41,7 @@ pub struct Mlu {
     pub entries: Vec<MluEntry>, // len == allocated_entries
     pub pool: Vec<u8>,          // MemPool; len == pool_size
     pub pool_used: u32,
+}
 }
 
 /// `cmsMLUalloc`
@@ -497,6 +499,7 @@ pub struct NamedColor {
     pub device_colorant: [u16; 16],
 }
 
+parity_struct! {
 /// `cmsNAMEDCOLORLIST`
 #[derive(Clone)]
 pub struct NamedColorList {
@@ -506,6 +509,7 @@ pub struct NamedColorList {
     pub colorant_count: u32,
     pub prefix: [u8; 33],
     pub suffix: [u8; 33],
+}
 }
 
 /// `GrowNamedColorList`
@@ -720,6 +724,7 @@ pub fn stage_alloc_named_color(list: &NamedColorList, use_pcs: bool) -> Option<S
 // Profile sequence descriptions
 // ---------------------------------------------------------------------------
 
+parity_struct! {
 /// `cmsPSEQDESC`
 #[derive(Clone)]
 pub struct PSeqDesc {
@@ -732,11 +737,14 @@ pub struct PSeqDesc {
     pub model: Option<Mlu>,
     pub description: Option<Mlu>,
 }
+}
 
+parity_struct! {
 /// `cmsSEQ`
 #[derive(Clone)]
 pub struct ProfileSeqDesc {
     pub seq: Vec<PSeqDesc>,
+}
 }
 
 /// `cmsAllocProfileSequenceDescription` — max 255 profiles linked.
@@ -775,10 +783,12 @@ pub struct DictEntry {
     pub value: Option<Vec<Wchar>>,
 }
 
+parity_struct! {
 /// `cmsDICT` — entries stored newest-first (C prepends to a linked list).
 #[derive(Clone, Default)]
 pub struct Dict {
     pub entries: Vec<DictEntry>,
+}
 }
 
 /// `DupWcs` — duplicate a NUL-terminated wide string (keeps the NUL).

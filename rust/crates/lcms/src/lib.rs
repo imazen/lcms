@@ -12,6 +12,46 @@
 
 #![forbid(unsafe_code)]
 
+/// Declares a parity-layer struct that [`api`] also re-exports.
+///
+/// Its fields mirror the C struct and are `pub` only under `little-cms-api`
+/// (the parity surface, where the differential tests poke at them). In the
+/// default build every field is `pub(crate)`, so `lcms::api` users see a type
+/// with no fields — C bookkeeping (`allocated`, `pool_used`, linked-list
+/// `next`, fn pointers) stays internal while `&T` borrows stay zero-cost.
+macro_rules! parity_struct {
+    (
+        $(#[$m:meta])*
+        pub struct $name:ident {
+            $( $(#[$fm:meta])* $fv:vis $f:ident : $t:ty ),* $(,)?
+        }
+    ) => {
+        #[cfg(feature = "little-cms-api")]
+        $(#[$m])*
+        pub struct $name { $( $(#[$fm])* $fv $f: $t ),* }
+        #[cfg(not(feature = "little-cms-api"))]
+        $(#[$m])*
+        pub struct $name { $( $(#[$fm])* pub(crate) $f: $t ),* }
+    };
+}
+
+/// An `impl` block of parity-only methods on a type [`api`] re-exports:
+/// `pub` under `little-cms-api`, `pub(crate)` otherwise (see
+/// `parity_struct!`). Methods the api surface keeps go in a plain `impl`.
+macro_rules! parity_impl {
+    (
+        impl $t:ty {
+            $( $(#[$a:meta])* pub fn $name:ident $args:tt $(-> $ret:ty)? $body:block )*
+        }
+    ) => {
+        #[cfg(feature = "little-cms-api")]
+        impl $t { $( $(#[$a])* pub fn $name $args $(-> $ret)? $body )* }
+        #[cfg(not(feature = "little-cms-api"))]
+        #[allow(dead_code)]
+        impl $t { $( $(#[$a])* pub(crate) fn $name $args $(-> $ret)? $body )* }
+    };
+}
+
 #[cfg(feature = "little-cms-api")]
 pub mod alpha;
 #[cfg(not(feature = "little-cms-api"))]

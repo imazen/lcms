@@ -99,6 +99,7 @@ pub enum StageData {
     },
 }
 
+parity_struct! {
 /// `cmsStage`
 #[derive(Clone)]
 pub struct Stage {
@@ -109,6 +110,7 @@ pub struct Stage {
     pub eval_ptr: StageEvalFn,
     pub data: StageData,
     pub next: Option<Box<Stage>>,
+}
 }
 
 impl Stage {
@@ -124,6 +126,14 @@ impl Stage {
     pub fn stage_type(&self) -> u32 {
         self.r#type
     }
+    /// `mpe->EvalPtr(in, out, mpe)`
+    #[inline]
+    pub fn eval(&self, input: &[f32], output: &mut [f32]) {
+        (self.eval_ptr)(input, output, self)
+    }
+}
+parity_impl! {
+impl Stage {
     /// `cmsStageNext`
     pub fn next(&self) -> Option<&Stage> {
         self.next.as_deref()
@@ -138,11 +148,7 @@ impl Stage {
             );
         }
     }
-    /// `mpe->EvalPtr(in, out, mpe)`
-    #[inline]
-    pub fn eval(&self, input: &[f32], output: &mut [f32]) {
-        (self.eval_ptr)(input, output, self)
-    }
+}
 }
 
 impl Drop for Stage {
@@ -1071,6 +1077,7 @@ pub type PipelineEval16Fn = fn(input: &[u16], output: &mut [u16], lut: &Pipeline
 /// `_cmsPipelineEvalFloatFn`
 pub type PipelineEvalFloatFn = fn(input: &[f32], output: &mut [f32], lut: &Pipeline);
 
+parity_struct! {
 /// `cmsPipeline`
 #[derive(Clone)]
 pub struct Pipeline {
@@ -1083,6 +1090,7 @@ pub struct Pipeline {
     pub save_as_8bits: bool,
     /// `_cmsPipelineSetOptimizationParameters` — optional baked fast-eval data
     pub opt_data: Option<crate::opt::OptData>,
+}
 }
 
 /// `BlessLUT` — set channel counts from first/last stage, check chain.
@@ -1263,6 +1271,9 @@ impl Pipeline {
         prev
     }
 
+}
+parity_impl! {
+impl Pipeline {
     /// `cmsPipelineInsertStage` — `mpe` is consumed into the chain.
     /// Returns false (and drops mpe) on inconsistent channel chain, like C.
     pub fn insert_stage(&mut self, loc: StageLoc, mut mpe: Stage) -> bool {
@@ -1286,7 +1297,6 @@ impl Pipeline {
         }
         bless_lut(self)
     }
-
     /// `cmsPipelineUnlinkStage` — returns the unlinked stage (C writes it to an
     /// out-param or frees it when the out-param is NULL; we always return it).
     pub fn unlink_stage(&mut self, loc: StageLoc) -> Option<Stage> {
@@ -1313,7 +1323,6 @@ impl Pipeline {
         let _ = bless_lut(self);
         unlinked
     }
-
     /// `cmsPipelineCat` — append dups of l2's stages.
     pub fn cat(&mut self, l2: &Pipeline) -> bool {
         // If both LUTs are empty, inherit channel counts
@@ -1332,7 +1341,6 @@ impl Pipeline {
         }
         bless_lut(self)
     }
-
     /// `cmsPipelineDup`
     pub fn dup(&self) -> Option<Pipeline> {
         let mut new_lut = pipeline_alloc(None, self.input_channels, self.output_channels)?;
@@ -1348,7 +1356,6 @@ impl Pipeline {
         new_lut.save_as_8bits = self.save_as_8bits;
         Some(new_lut)
     }
-
     /// `cmsPipelineEvalReverseFloat` — Newton inversion on 3->3 / 4->3 LUTs.
     pub fn eval_reverse_float(
         &self,
@@ -1440,6 +1447,7 @@ impl Pipeline {
         }
         true
     }
+}
 }
 
 /// `IncDelta` — increment with reflexion on boundary.

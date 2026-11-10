@@ -68,54 +68,111 @@
 //! and panic (like slice indexing); everything that depends on input data
 //! (profile bytes, tag types, link feasibility) returns [`Result`].
 
-use crate::tagtypes::TagObject;
+use crate::tagtypes::{TagObject, Tm, VcgtData};
 use crate::{named, profile, types, virt, xform};
 use std::fmt;
-use std::ops::Deref;
 
 // ---------------------------------------------------------------------------
 // Re-exports — the api's owned/borrowed vocabulary types.
 //
-// These live in the parity modules (`pub(crate)` under the default
-// surface); re-exporting them here keeps `TagValue`/`TagData` payloads
-// nameable (`lcms::api::Pipeline`, `lcms::api::Mlu`, ...) and zero-cost —
-// they are the same types, not wrappers.
+// These are the parity layer's own types, not wrappers, so a `TagValue`
+// borrows straight into the profile (`&Pipeline`, `&ToneCurve`) at no cost.
+// In the default build their fields and C-shaped methods are `pub(crate)`
+// (`parity_struct!`/`parity_impl!` in lib.rs): what `lcms::api` shows is the
+// methods defined in this file plus the few accessors the parity impls keep
+// public (`eval16`, `eval_float`, `input_channels`, ...).
 // ---------------------------------------------------------------------------
 
-/// Borrowed tone curve — the parity layer's `gamma::ToneCurve`.
-/// `&api::ToneCurve` derefs to it (the `String` → `str` model).
-pub use crate::gamma::ToneCurve as ToneCurveRef;
-/// A processing pipeline — `cmsPipeline` (mft/mAB/mBA LUTs, stage chains).
+/// A tone curve — gamma, parametric, tabulated or segmented
+/// (`cmsToneCurve`). Owned and borrowed like any Rust value: build one with
+/// [`ToneCurve::gamma`] and friends, or borrow one out of a profile with
+/// [`TagValue::as_curve`].
+///
+/// ```
+/// use lcms::api::ToneCurve;
+/// let srgb = ToneCurve::srgb();
+/// assert_eq!(srgb.eval16(0), 0);
+/// assert_eq!(srgb.eval16(0xffff), 0xffff);
+/// assert!(srgb.is_monotonic());
+///
+/// let g = ToneCurve::gamma(2.2)?;
+/// let inv = g.inverse()?;
+/// assert!((inv.eval_float(g.eval_float(0.5)) - 0.5).abs() < 1e-3);
+/// assert!(g.then_inverse_of(&g, 256)?.is_linear()); // g⁻¹(g(t)) = t
+/// assert!((g.estimated_gamma(0.01).unwrap() - 2.2).abs() < 0.01);
+/// # Ok::<(), lcms::api::Error>(())
+/// ```
+pub use crate::gamma::ToneCurve;
+/// A processing pipeline — a chain of [`Stage`]s (`cmsPipeline`; the
+/// payload of mft1/mft2/mAB/mBA/mpet LUT tags).
+///
+/// ```
+/// use lcms::api::*;
+/// let mut lut = Pipeline::new(3, 3)?;
+/// lut.push(Stage::matrix(&[0., 0., 1., 0., 1., 0., 1., 0., 0.], 3, 3, None)?)?;
+/// lut.push(Stage::identity(3))?;
+/// assert_eq!(lut.stage_count(), 2);
+/// let mut out = [0f32; 3];
+/// lut.eval_float(&[0.1, 0.2, 0.3], &mut out);
+/// assert_eq!(out, [0.3, 0.2, 0.1]); // the matrix swaps R and B
+/// # Ok::<(), lcms::api::Error>(())
+/// ```
 pub use crate::lut::Pipeline;
-/// One pipeline stage — `cmsStage` (curves, matrix, CLUT, ...).
+/// One pipeline stage — curves, a matrix, a CLUT, ... (`cmsStage`).
 pub use crate::lut::Stage;
 /// A name/value dictionary — `cmsDICT` (`'dict'` tags).
+///
+/// ```
+/// use lcms::api::Dict;
+/// let mut d = Dict::new();
+/// d.add("model", "X1")?;
+/// assert_eq!(d.get("model").as_deref(), Some("X1"));
+/// assert_eq!(d.iter().collect::<Vec<_>>(), [("model".to_string(), "X1".to_string())]);
+/// # Ok::<(), lcms::api::Error>(())
+/// ```
 pub use crate::named::Dict;
 /// Multi-language Unicode text — `cmsMLU`.
+///
+/// ```
+/// use lcms::api::{Locale, Mlu};
+/// let mut m = Mlu::from("Hello");
+/// m.set(Locale::new("es_ES"), "Hola")?;
+/// assert_eq!(m.get(Locale::new("es_ES")).as_deref(), Some("Hola"));
+/// assert_eq!(m.get(Locale::NONE).as_deref(), Some("Hello"));
+/// assert_eq!(m.len(), 2);
+/// # Ok::<(), lcms::api::Error>(())
+/// ```
 pub use crate::named::Mlu;
-/// A named-color palette — `cmsNAMEDCOLORLIST`.
+/// A named-color palette — `cmsNAMEDCOLORLIST` (`'ncl2'`/`'clrt'` tags).
+///
+/// ```
+/// use lcms::api::*;
+/// let mut list = NamedColorList::new(3, "PANTONE ", " C")?;
+/// list.push("Orange 021", [0xa000, 0xb000, 0x2000], &[0, 0x8000, 0xffff])?;
+/// assert_eq!(list.position("orange 021"), Some(0)); // ASCII case-insensitive, like C
+/// for c in &list { assert_eq!(c.colorant, [0, 0x8000, 0xffff]); }
+/// # Ok::<(), lcms::api::Error>(())
+/// ```
 pub use crate::named::NamedColorList;
 /// A profile sequence descriptor — `cmsSEQ` (`'pseq'`/`'psid'` tags).
 pub use crate::named::ProfileSeqDesc;
-/// An ICC `'data'` tag payload — `cmsICCData`.
+/// One entry of a [`ProfileSeqDesc`] — `cmsPSEQDESC`.
+pub use crate::named::PSeqDesc as ProfileSeqEntry;
+/// An ICC `'data'` tag payload — `cmsICCData` (ASCII text or binary bytes).
 pub use crate::tagtypes::IccData;
 /// ICC `'view'` viewing conditions — `cmsICCViewingConditions`.
 pub use crate::tagtypes::IccViewingConditions;
 /// ICC `'MHC2'` display data — `cmsMHC2Type`.
 pub use crate::tagtypes::Mhc2;
-/// A `struct tm`-shaped calendar time — `'dtim'` tag payload.
-pub use crate::tagtypes::Tm;
-/// ICC `'bfd '` undercolor-removal/black-generation — `cmsUcrBg`.
+/// ICC `'bfd '` undercolor removal / black generation — `cmsUcrBg`.
 pub use crate::tagtypes::UcrBg;
-/// The `'vcgt'` payload — `Curves` or a raw `Table`.
-pub use crate::tagtypes::VcgtData;
 /// ICC `'cicp'` video signal — `cmsVideoSignalType`.
 pub use crate::tagtypes::VideoSignal;
 /// ICC `'scrn'` halftone screening — `cmsScreening` + `cmsScreeningChannel`.
 pub use crate::tagtypes::{Screening, ScreeningChannel};
 /// CIE XYZ / xyY / Lab / LCh vocabulary types (`cmsCIE*`).
 pub use crate::types::{CieLCh, CieLab, CieXyz, CiexyY, CiexyYTriple};
-/// ICC header types — `'dtim'` header date, `cmsProfileID`, `'meas'` conditions.
+/// ICC header types — `'dtim'` date, `cmsProfileID`, `'meas'` conditions.
 pub use crate::types::{DateTimeNumber, IccMeasurementConditions, ProfileId};
 
 // -- Error -----------------------------------------------------------------
@@ -123,26 +180,31 @@ pub use crate::types::{DateTimeNumber, IccMeasurementConditions, ProfileId};
 /// The api result alias — `Result<T, api::Error>`.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// An lcms failure — the `cmsSignalError` error id plus its message.
+/// An lcms failure: the `cmsERROR_*` code the failing path signaled, and
+/// its message.
 ///
-/// `id` is one of the `cmsERROR_*` codes; [`Error::kind`] maps it to an
-/// [`ErrorKind`]. `message` is the real text the failing path signaled
-/// (a generic fallback when it didn't signal).
-#[derive(Debug, Clone, PartialEq)]
+/// The message is the real text lcms signaled (`cmsSignalError`), or a
+/// short "`<operation>` failed" when the path failed without signaling.
+///
+/// ```
+/// use lcms::api::{ErrorKind, Profile};
+/// let e = Profile::open(b"not an ICC profile").unwrap_err();
+/// assert_eq!(e.kind(), ErrorKind::Read); // too short for an ICC header
+/// assert!(!e.message().is_empty());
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
-    /// `cmsERROR_*` code (`types::ERROR_*`).
-    pub id: i32,
-    /// The signaled message, or a fallback.
-    pub message: String,
+    code: i32,
+    message: String,
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "lcms error 0x{:x}: {}", self.id, self.message)
+        write!(f, "{} ({:?})", self.message, self.kind())
     }
 }
 impl std::error::Error for Error {}
 
-/// A coarse classification of an [`Error::id`] — the `cmsERROR_*` codes.
+/// What went wrong — the `cmsERROR_*` code of an [`Error`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ErrorKind {
     /// `cmsERROR_UNDEFINED` — the failing path didn't set a code.
@@ -178,21 +240,32 @@ pub enum ErrorKind {
 }
 
 impl Error {
-    /// Build from the last `signal_error` this thread produced, or the
-    /// fallback if the failing path didn't signal one.
-    pub fn from_last(fallback_id: i32, fallback: &str) -> Self {
-        match crate::err::take_last_error() {
-            Some((id, message)) => Error { id, message },
-            None => Error {
-                id: fallback_id,
-                message: fallback.into(),
-            },
+    pub(crate) fn new(code: i32, message: impl Into<String>) -> Self {
+        Error {
+            code,
+            message: message.into(),
         }
     }
-    /// The [`ErrorKind`] for `id`.
+    /// Build from the last `signal_error` this thread produced, or the
+    /// fallback if the failing path didn't signal one.
+    pub(crate) fn from_last(fallback_code: i32, fallback: &str) -> Self {
+        match crate::err::take_last_error() {
+            Some((code, message)) => Error { code, message },
+            None => Error::new(fallback_code, fallback),
+        }
+    }
+    /// The signaled message (or the "`<operation>` failed" fallback).
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+    /// The raw `cmsERROR_*` code; [`Error::kind`] is the typed form.
+    pub fn code(&self) -> i32 {
+        self.code
+    }
+    /// What went wrong.
     pub fn kind(&self) -> ErrorKind {
         use types as t;
-        match self.id {
+        match self.code {
             t::ERROR_UNDEFINED => ErrorKind::Undefined,
             t::ERROR_FILE => ErrorKind::File,
             t::ERROR_RANGE => ErrorKind::Range,
@@ -725,10 +798,7 @@ impl From<Intent> for u32 {
 impl TryFrom<u32> for Intent {
     type Error = Error;
     fn try_from(v: u32) -> Result<Intent> {
-        Intent::from_u32(v).ok_or_else(|| Error {
-            id: types::ERROR_RANGE,
-            message: format!("unknown rendering intent {v}"),
-        })
+        Intent::from_u32(v).ok_or_else(|| Error::new(types::ERROR_RANGE, format!("unknown rendering intent {v}")))
     }
 }
 
@@ -1196,7 +1266,7 @@ impl Profile {
     pub fn gray() -> Self {
         let g = ToneCurve::gamma(2.2).expect("gamma 2.2 is valid");
         Self::builtin("create_gray_profile", || {
-            virt::create_gray_profile(None, Some(&D50), Some(&g.0))
+            virt::create_gray_profile(None, Some(&D50), Some(&g))
         })
     }
     /// `cmsCreateXYZProfile` — XYZ identity.
@@ -1248,14 +1318,14 @@ impl Profile {
                 None,
                 Some(white_point),
                 Some(primaries),
-                Some([&curves[0].0, &curves[1].0, &curves[2].0]),
+                Some(curves),
             )
         })
     }
     /// `cmsCreateGrayProfile` — white point + a custom tone curve.
     pub fn gray_curve(white_point: &CiexyY, curve: &ToneCurve) -> Result<Self> {
         Self::wrap("create_gray_profile", || {
-            virt::create_gray_profile(None, Some(white_point), Some(&curve.0))
+            virt::create_gray_profile(None, Some(white_point), Some(curve))
         })
     }
     /// `cmsCreateLinearizationDeviceLink` — a device-link profile whose
@@ -1264,7 +1334,7 @@ impl Profile {
         color_space: ColorSpace,
         curves: &[ToneCurve],
     ) -> Result<Self> {
-        let refs: Vec<&ToneCurveRef> = curves.iter().map(|c| &c.0).collect();
+        let refs: Vec<&ToneCurve> = curves.iter().collect();
         Self::wrap("create_linearization_device_link", || {
             virt::create_linearization_device_link(None, color_space.code(), &refs)
         })
@@ -1306,10 +1376,7 @@ impl Profile {
     }
     /// `cmsOpenProfileFromFile` — read an ICC file off disk.
     pub fn open_file(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let data = std::fs::read(path.as_ref()).map_err(|e| Error {
-            id: types::ERROR_FILE,
-            message: e.to_string(),
-        })?;
+        let data = std::fs::read(path.as_ref()).map_err(|e| Error::new(types::ERROR_FILE, e.to_string()))?;
         Self::open(&data)
     }
 
@@ -1326,10 +1393,7 @@ impl Profile {
     /// `cmsSaveProfileToFile` — write the serialized ICC bytes to disk.
     pub fn save_file(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
         let bytes = self.save()?;
-        std::fs::write(path.as_ref(), bytes).map_err(|e| Error {
-            id: types::ERROR_WRITE,
-            message: e.to_string(),
-        })
+        std::fs::write(path.as_ref(), bytes).map_err(|e| Error::new(types::ERROR_WRITE, e.to_string()))
     }
     /// Eagerly materialize all tags — a no-op on profiles built by this
     /// API (constructors freeze already); kept for explicitness.
@@ -1379,11 +1443,11 @@ impl Profile {
             TagData::Xyz(x) => TagObject::Xyz(x),
             TagData::Chromaticity(c) => TagObject::Chromaticity(c),
             TagData::ColorantOrder(o) => TagObject::ColorantOrder(o),
-            TagData::Curve(c) => TagObject::Curve(c.0),
-            TagData::ParametricCurve(c) => TagObject::ParametricCurve(c.0),
+            TagData::Curve(c) => TagObject::Curve(c),
+            TagData::ParametricCurve(c) => TagObject::ParametricCurve(c),
             TagData::Text(s) => {
-                let mut m = Mlu::new(1);
-                attempt_bool(types::ERROR_WRITE, "mlu_set_utf8", || m.set(Locale::NONE, s))?;
+                let mut m = Mlu::new();
+                m.set(Locale::NONE, s)?;
                 TagObject::Mlu(m)
             }
             TagData::Mlu(m) => TagObject::Mlu(m),
@@ -1391,14 +1455,14 @@ impl Profile {
             TagData::Pipeline(p) => TagObject::Lut16(p),
             TagData::Data(d) => TagObject::Data(d),
             TagData::Signature(s) => TagObject::Signature(s),
-            TagData::DateTime(t) => TagObject::DateTime(t),
+            TagData::DateTime(d) => TagObject::DateTime(tm_from(d)),
             TagData::Measurement(m) => TagObject::Measurement(m),
             TagData::ViewingConditions(v) => TagObject::ViewingConditions(v),
             TagData::UcrBg(u) => TagObject::UcrBg(u),
             TagData::Screening(s) => TagObject::Screening(s),
             TagData::VideoSignal(v) => TagObject::VideoSignal(v),
             TagData::Mhc2(m) => TagObject::Mhc2(m),
-            TagData::VcgtCurves([r, g, b]) => TagObject::Vcgt(VcgtData::Curves([r.0, g.0, b.0])),
+            TagData::VcgtCurves(c) => TagObject::Vcgt(VcgtData::Curves(c)),
             TagData::VcgtTable {
                 channels,
                 elems,
@@ -1438,14 +1502,14 @@ impl Profile {
         crate::profile::cms_is_tag(&self.icc, tag.into().0)
     }
     /// The named-color palette (`'ncl2'`/`'clrt'`), if present.
-    pub fn named_colors(&self) -> Option<NamedColors<'_>> {
+    pub fn named_colors(&self) -> Option<&NamedColorList> {
         for sig in [
             crate::signatures::tag::SigNamedColor2Tag,
             crate::signatures::tag::SigColorantTableTag,
         ] {
             match profile::read_tag_frozen(&self.icc, sig) {
                 Some(TagObject::NamedColor(l)) | Some(TagObject::ColorantTable(l)) => {
-                    return Some(NamedColors(l));
+                    return Some(l);
                 }
                 _ => {}
             }
@@ -1783,10 +1847,7 @@ impl Plan {
         options: &PlanOptions,
     ) -> Result<Self> {
         if profiles.is_empty() || profiles.len() > 255 {
-            return Err(Error {
-                id: types::ERROR_RANGE,
-                message: format!("a profile chain needs 1..=255 profiles, got {}", profiles.len()),
-            });
+            return Err(Error::new(types::ERROR_RANGE, format!("a profile chain needs 1..=255 profiles, got {}", profiles.len())));
         }
         Self::link(profiles, None, fmt_in, fmt_out, options, None)
     }
@@ -1924,12 +1985,12 @@ impl Plan {
     }
     /// `cmsGetTransformInputColorantTable` — the input profile's named
     /// colorant table, if it had one.
-    pub fn input_colorants(&self) -> Option<NamedColors<'_>> {
-        self.inner.input_colorants.as_ref().map(NamedColors)
+    pub fn input_colorants(&self) -> Option<&NamedColorList> {
+        self.inner.input_colorants.as_ref()
     }
     /// `cmsGetTransformOutputColorantTable`.
-    pub fn output_colorants(&self) -> Option<NamedColors<'_>> {
-        self.inner.output_colorants.as_ref().map(NamedColors)
+    pub fn output_colorants(&self) -> Option<&NamedColorList> {
+        self.inner.output_colorants.as_ref()
     }
 
     // -- evaluation ---------------------------------------------------------------
@@ -2154,48 +2215,12 @@ fn stride_layout(
 
 // -- ToneCurve ------------------------------------------------------------------
 
-/// An owned ICC tone curve (gamma/parametric/tabulated) — `Clone`.
-///
-/// `&ToneCurve` derefs to [`ToneCurveRef`] (the parity `gamma::ToneCurve`),
-/// so the full read API — `eval16`, `eval_float`, `estimated_table`,
-/// `parametric_type`, `segment(n)` — is available directly; the methods
-/// here are the idiomatic front.
-///
-/// ```
-/// use lcms::api::ToneCurve;
-/// let srgb = ToneCurve::srgb();
-/// assert_eq!(srgb.eval16(0), 0);
-/// assert_eq!(srgb.eval16(0xffff), 0xffff);
-/// assert!(srgb.is_monotonic());
-///
-/// let g = ToneCurve::gamma(2.2)?;
-/// let inv = g.reversed()?;
-/// assert!((inv.eval_f32(g.eval_f32(0.5)) - 0.5).abs() < 1e-3);
-/// assert!(g.join(&g, 256)?.is_linear()); // g⁻¹(g(t)) = t
-/// # Ok::<(), lcms::api::Error>(())
-/// ```
-#[derive(Clone)]
-pub struct ToneCurve(pub(crate) crate::gamma::ToneCurve);
-impl Deref for ToneCurve {
-    type Target = ToneCurveRef;
-    fn deref(&self) -> &ToneCurveRef {
-        &self.0
-    }
-}
-impl fmt::Debug for ToneCurve {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ToneCurve")
-            .field("parametric_type", &self.0.parametric_type())
-            .field("estimated_gamma", &self.estimated_gamma())
-            .field("entries", &self.0.estimated_table_entries())
-            .finish()
-    }
-}
+/// Construction, evaluation and inversion. `eval16`, `eval_float`,
+/// `estimated_table` and `parametric_type` come from the parity impl.
 impl ToneCurve {
     /// `cmsBuildGamma` — a plain `v^g` curve.
     pub fn gamma(g: f64) -> Result<Self> {
         attempt(types::ERROR_RANGE, "build_gamma", || crate::gamma::build_gamma(None, g))
-            .map(ToneCurve)
     }
     /// A linear (identity) curve — `gamma(1.0)`.
     pub fn linear() -> Self {
@@ -2207,102 +2232,96 @@ impl ToneCurve {
         Self::parametric(4, &[2.4, 1.0 / 1.055, 0.055 / 1.055, 1.0 / 12.92, 0.04045])
             .expect("the sRGB parametric curve is valid")
     }
-    /// `cmsBuildTabulatedToneCurve16` — a `u16` interpolated table.
+    /// `cmsBuildTabulatedToneCurve16` — a `u16` table, linearly interpolated.
     pub fn tabulated16(values: &[u16]) -> Result<Self> {
         attempt(types::ERROR_RANGE, "build_tabulated_tone_curve16", || {
             crate::gamma::build_tabulated_tone_curve16(None, values.len() as u32, Some(values))
         })
-        .map(ToneCurve)
     }
-    /// `cmsBuildTabulatedToneCurveFloat` — an `f32` interpolated table.
-    pub fn tabulated_f32(values: &[f32]) -> Result<Self> {
+    /// `cmsBuildTabulatedToneCurveFloat` — an `f32` table over `0.0..=1.0`.
+    pub fn tabulated_float(values: &[f32]) -> Result<Self> {
         attempt(types::ERROR_RANGE, "build_tabulated_tone_curve_float", || {
             crate::gamma::build_tabulated_tone_curve_float(None, values)
         })
-        .map(ToneCurve)
     }
-    /// `cmsBuildParametricToneCurve` — `type` + `params` (e.g. type 1
-    /// pure gamma: `[g]`; type 4 sRGB: `[g, a, b, c, d]`).
-    pub fn parametric(ty: i16, params: &[f64]) -> Result<Self> {
+    /// `cmsBuildParametricToneCurve` — ICC parametric function `ty` with
+    /// its `params` (type 1, pure gamma: `[g]`; type 4, sRGB-style:
+    /// `[g, a, b, c, d]`; a negative type is the analytic inverse).
+    pub fn parametric(ty: i32, params: &[f64]) -> Result<Self> {
         attempt(types::ERROR_RANGE, "build_parametric_tone_curve", || {
-            crate::gamma::build_parametric_tone_curve(None, ty as i32, params)
+            crate::gamma::build_parametric_tone_curve(None, ty, params)
         })
-        .map(ToneCurve)
     }
-    /// `cmsEvalToneCurve16`.
-    pub fn eval16(&self, v: u16) -> u16 {
-        self.0.eval16(v)
+    /// `cmsGetToneCurveParams` — the parameters of a single-segment
+    /// parametric curve, as many as its type takes (`None` for tabulated
+    /// or segmented curves).
+    pub fn parameters(&self) -> Option<&[f64]> {
+        let ty = self.parametric_type();
+        if ty == 0 {
+            return None;
+        }
+        let seg = &self.segments[0];
+        let n = crate::gamma::parametric_param_count(ty).unwrap_or(seg.params.len());
+        Some(&seg.params[..n])
     }
-    /// `cmsEvalToneCurveFloat`.
-    pub fn eval_f32(&self, v: f32) -> f32 {
-        self.0.eval_float(v)
-    }
-    /// `cmsEstimateGamma` — the effective single-gamma fit at 0.1%
-    /// precision (`None` when the curve can't be fit — e.g. multisegment).
-    pub fn estimated_gamma(&self) -> Option<f64> {
-        self.estimated_gamma_p(0.001)
-    }
-    /// [`ToneCurve::estimated_gamma`] with a precision parameter
-    /// (`cmsEstimateGamma(curve, precision)`).
-    pub fn estimated_gamma_p(&self, precision: f64) -> Option<f64> {
-        let g = crate::gamma::estimate_gamma(&self.0, precision);
+    /// `cmsEstimateGamma` — the single gamma that best fits the curve
+    /// within `precision` (e.g. `0.01`); `None` when none does.
+    pub fn estimated_gamma(&self, precision: f64) -> Option<f64> {
+        let g = crate::gamma::estimate_gamma(self, precision);
         if g < 0.0 { None } else { Some(g) }
     }
     /// `cmsIsToneCurveLinear`.
     pub fn is_linear(&self) -> bool {
-        crate::gamma::is_tone_curve_linear(&self.0)
+        crate::gamma::is_tone_curve_linear(self)
     }
     /// `cmsIsToneCurveMonotonic`.
     pub fn is_monotonic(&self) -> bool {
-        crate::gamma::is_tone_curve_monotonic(&self.0)
+        crate::gamma::is_tone_curve_monotonic(self)
     }
     /// `cmsIsToneCurveDescending`.
     pub fn is_descending(&self) -> bool {
-        crate::gamma::is_tone_curve_descending(&self.0)
+        crate::gamma::is_tone_curve_descending(self)
     }
     /// `cmsIsToneCurveMultisegment`.
     pub fn is_multisegment(&self) -> bool {
-        crate::gamma::is_tone_curve_multisegment(&self.0)
-    }
-    /// `cmsGetToneCurveEstimatedTable` — the precomputed eval table.
-    pub fn estimated_table(&self) -> &[u16] {
-        self.0.estimated_table()
-    }
-    /// `cmsGetToneCurveParametricType` — the parametric function number
-    /// (`<= 0` for tabulated/segmented curves).
-    pub fn parametric_type(&self) -> i32 {
-        self.0.parametric_type()
-    }
-    /// `cmsGetToneCurveParametricParams` — the segment params.
-    pub fn segments(&self) -> &[crate::gamma::CurveSegment] {
-        &self.0.segments
+        crate::gamma::is_tone_curve_multisegment(self)
     }
     /// `cmsReverseToneCurve` — the inverse curve (4096 samples).
-    pub fn reversed(&self) -> Result<ToneCurve> {
+    pub fn inverse(&self) -> Result<ToneCurve> {
         attempt(types::ERROR_RANGE, "reverse_tone_curve", || {
-            crate::gamma::reverse_tone_curve(&self.0)
+            crate::gamma::reverse_tone_curve(self)
         })
-        .map(ToneCurve)
     }
     /// `cmsReverseToneCurveEx` — the inverse, sampled at `samples` points.
-    pub fn reversed_samples(&self, samples: usize) -> Result<ToneCurve> {
+    pub fn inverse_sampled(&self, samples: usize) -> Result<ToneCurve> {
         attempt(types::ERROR_RANGE, "reverse_tone_curve_ex", || {
-            crate::gamma::reverse_tone_curve_ex(samples as u32, &self.0)
+            crate::gamma::reverse_tone_curve_ex(samples as u32, self)
         })
-        .map(ToneCurve)
     }
     /// `cmsJoinToneCurve(self, other)` — `other⁻¹(self(t))` sampled at
     /// `points` points: map through `self`, then back through `other`.
-    pub fn join(&self, other: &ToneCurve, points: usize) -> Result<ToneCurve> {
+    pub fn then_inverse_of(&self, other: &ToneCurve, points: usize) -> Result<ToneCurve> {
         attempt(types::ERROR_RANGE, "join_tone_curve", || {
-            crate::gamma::join_tone_curve(None, &self.0, &other.0, points as u32)
+            crate::gamma::join_tone_curve(None, self, other, points as u32)
         })
-        .map(ToneCurve)
     }
-    /// `cmsSmoothToneCurve` — smooth in place (`lambda` = smoothing
-    /// factor; returns `false` if smoothing isn't applicable).
-    pub fn smooth(&mut self, lambda: f64) -> bool {
-        crate::gamma::smooth_tone_curve(None, &mut self.0, lambda)
+    /// `cmsSmoothToneCurve` — a copy smoothed with Whittaker factor
+    /// `lambda`. Fails on curves too short or too irregular to smooth.
+    pub fn smoothed(&self, lambda: f64) -> Result<ToneCurve> {
+        let mut c = self.clone();
+        attempt_bool(types::ERROR_RANGE, "smooth_tone_curve", || {
+            crate::gamma::smooth_tone_curve(None, &mut c, lambda)
+        })?;
+        Ok(c)
+    }
+}
+impl fmt::Debug for ToneCurve {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ToneCurve")
+            .field("parametric_type", &self.parametric_type())
+            .field("estimated_gamma", &self.estimated_gamma(0.001))
+            .field("entries", &self.estimated_table().len())
+            .finish()
     }
 }
 
@@ -2318,7 +2337,7 @@ pub enum TagValue<'a> {
     /// Chromaticity (xyY primaries triple — `'chrm'`).
     Chromaticity(&'a CiexyYTriple),
     /// A tone curve (TRC, parametric curve, vcgt members).
-    Curve(&'a ToneCurveRef),
+    Curve(&'a ToneCurve),
     /// Multi-language text (description/copyright/text/desc/crdi).
     Text(&'a Mlu),
     /// A named-color palette (`'ncl2'`/`'clrt'`).
@@ -2328,7 +2347,7 @@ pub enum TagValue<'a> {
     /// A lone processing stage (MPE element payload).
     Stage(&'a Stage),
     /// The 3-curve `'vcgt'` tag (video card gamma).
-    VcgtCurves([&'a ToneCurveRef; 3]),
+    VcgtCurves([&'a ToneCurve; 3]),
     /// The raw-table form of `'vcgt'`.
     VcgtTable {
         /// Channel count.
@@ -2361,7 +2380,7 @@ pub enum TagValue<'a> {
     /// `'sig '` — a bare signature value.
     Signature(u32),
     /// `'dtim'` — a calendar timestamp.
-    DateTime(&'a Tm),
+    DateTime(DateTimeNumber),
     /// `'ui08'`/`'ui32'`/`'ui64'` — integer arrays.
     UInt8(&'a [u8]),
     /// `'ui32'`.
@@ -2455,7 +2474,7 @@ impl<'a> TagValue<'a> {
             TagObject::ProfileSeqDesc(s) | TagObject::ProfileSeqId(s) => TagValue::Seq(s),
             TagObject::Dictionary(d) => TagValue::Dict(d),
             TagObject::Signature(s) => TagValue::Signature(*s),
-            TagObject::DateTime(t) => TagValue::DateTime(t),
+            TagObject::DateTime(t) => TagValue::DateTime(date_time_from(t)),
             TagObject::UInt8(v) => TagValue::UInt8(v),
             TagObject::UInt32(v) => TagValue::UInt32(v),
             TagObject::UInt64(v) => TagValue::UInt64(v),
@@ -2472,7 +2491,7 @@ impl<'a> TagValue<'a> {
         }
     }
     /// `Some(&curve)` for [`TagValue::Curve`].
-    pub fn as_curve(&self) -> Option<&'a ToneCurveRef> {
+    pub fn as_curve(&self) -> Option<&'a ToneCurve> {
         match self {
             TagValue::Curve(c) => Some(c),
             _ => None,
@@ -2496,6 +2515,27 @@ impl<'a> TagValue<'a> {
     pub fn as_pipeline(&self) -> Option<&'a Pipeline> {
         match self {
             TagValue::Pipeline(p) => Some(p),
+            _ => None,
+        }
+    }
+    /// `Some(&stage)` for [`TagValue::Stage`].
+    pub fn as_stage(&self) -> Option<&'a Stage> {
+        match self {
+            TagValue::Stage(s) => Some(s),
+            _ => None,
+        }
+    }
+    /// `Some(&dict)` for [`TagValue::Dict`].
+    pub fn as_dict(&self) -> Option<&'a Dict> {
+        match self {
+            TagValue::Dict(d) => Some(d),
+            _ => None,
+        }
+    }
+    /// `Some(&seq)` for [`TagValue::Seq`].
+    pub fn as_seq(&self) -> Option<&'a ProfileSeqDesc> {
+        match self {
+            TagValue::Seq(s) => Some(s),
             _ => None,
         }
     }
@@ -2543,7 +2583,7 @@ pub enum TagData<'a> {
     /// A `'sig '` bare signature.
     Signature(u32),
     /// A `'dtim'` timestamp.
-    DateTime(Tm),
+    DateTime(DateTimeNumber),
     /// A `'meas'` measurement-conditions record.
     Measurement(IccMeasurementConditions),
     /// A `'view'` viewing-conditions record.
@@ -2660,81 +2700,16 @@ impl From<[ToneCurve; 3]> for TagData<'_> {
 
 // -- named colors --------------------------------------------------------------
 
-/// A borrowed view of a profile's named-color palette — zero-cost.
-///
-/// ```
-/// use lcms::api::*;
-/// # let mut p = Profile::placeholder();
-/// # let mut list = NamedColorList::new(1, 3, "", "")?;
-/// # list.push("Spot", [0xffff, 0x8000, 0x2000], &[0xffff, 0, 0])?;
-/// # p.write_tag(Tag::NAMED_COLOR2, TagData::NamedColors(list))?;
-/// let ncl = p.named_colors().unwrap();
-/// for c in &ncl { println!("{} -> {:?}", c.name, c.pcs); }
-/// assert_eq!(ncl.position("spot"), Some(0)); // case-insensitive, like C
-/// # Ok::<(), lcms::api::Error>(())
-/// ```
-pub struct NamedColors<'a>(&'a NamedColorList);
-impl<'a> NamedColors<'a> {
-    /// Number of entries.
-    pub fn len(&self) -> usize {
-        self.0.n_colors as usize
-    }
-    /// `true` when the palette is empty.
-    pub fn is_empty(&self) -> bool {
-        self.0.n_colors == 0
-    }
-    /// The `index`-th entry (`None` if out of bounds).
-    pub fn get(&self, index: usize) -> Option<NamedColor> {
-        // bound by n_colors — `list` holds `allocated` blank entries beyond it
-        if index >= self.0.n_colors as usize {
-            return None;
-        }
-        let c = self.0.list.get(index)?;
-        let name_end = c.name.iter().position(|&b| b == 0).unwrap_or(c.name.len());
-        Some(NamedColor {
-            name: String::from_utf8_lossy(&c.name[..name_end]).into_owned(),
-            pcs: c.pcs,
-            colorant: c.device_colorant[..self.0.colorant_count as usize].to_vec(),
-        })
-    }
-    /// `cmsNamedColorIndex` — index of the color called `name` (ASCII
-    /// case-insensitive, without the list's prefix/suffix).
-    pub fn position(&self, name: &str) -> Option<usize> {
-        self.0.position(name)
-    }
-    /// The list-wide prefix string (`cmsNAMEDCOLORLIST` `Prefix`).
-    pub fn prefix(&self) -> String {
-        cstr(&self.0.prefix)
-    }
-    /// The list-wide suffix string.
-    pub fn suffix(&self) -> String {
-        cstr(&self.0.suffix)
-    }
-    /// Device colorant channels per entry.
-    pub fn colorant_count(&self) -> usize {
-        self.0.colorant_count as usize
-    }
-    /// Iterate the entries.
-    pub fn iter(&self) -> NamedColorsIter<'_> {
-        NamedColorsIter { list: self, i: 0 }
-    }
-}
-impl<'a> IntoIterator for &'a NamedColors<'a> {
-    type Item = NamedColor;
-    type IntoIter = NamedColorsIter<'a>;
-    fn into_iter(self) -> NamedColorsIter<'a> {
-        self.iter()
-    }
-}
-/// Iterator over a [`NamedColors`] palette — see [`NamedColors::iter`].
-pub struct NamedColorsIter<'a> {
-    list: &'a NamedColors<'a>,
+/// Iterator over a [`NamedColorList`] — see [`NamedColorList::iter`].
+#[derive(Clone, Debug)]
+pub struct NamedColorIter<'a> {
+    list: &'a NamedColorList,
     i: usize,
 }
-impl Iterator for NamedColorsIter<'_> {
+impl Iterator for NamedColorIter<'_> {
     type Item = NamedColor;
     fn next(&mut self) -> Option<NamedColor> {
-        let c = self.list.get(self.i)?;
+        let c = self.list.entry(self.i)?;
         self.i += 1;
         Some(c)
     }
@@ -2743,8 +2718,41 @@ impl Iterator for NamedColorsIter<'_> {
         (left, Some(left))
     }
 }
-impl ExactSizeIterator for NamedColorsIter<'_> {}
-impl std::iter::FusedIterator for NamedColorsIter<'_> {}
+impl ExactSizeIterator for NamedColorIter<'_> {}
+impl std::iter::FusedIterator for NamedColorIter<'_> {}
+impl<'a> IntoIterator for &'a NamedColorList {
+    type Item = NamedColor;
+    type IntoIter = NamedColorIter<'a>;
+    fn into_iter(self) -> NamedColorIter<'a> {
+        self.iter()
+    }
+}
+
+/// `'dtim'` tags decode to a C `struct tm`; the api speaks the ICC
+/// `dateTimeNumber` both ways (the writer converts back exactly).
+fn date_time_from(t: &Tm) -> DateTimeNumber {
+    DateTimeNumber {
+        year: (t.tm_year + 1900) as u16,
+        month: (t.tm_mon + 1) as u16,
+        day: t.tm_mday as u16,
+        hours: t.tm_hour as u16,
+        minutes: t.tm_min as u16,
+        seconds: t.tm_sec as u16,
+    }
+}
+fn tm_from(d: DateTimeNumber) -> Tm {
+    Tm {
+        tm_sec: d.seconds as i32,
+        tm_min: d.minutes as i32,
+        tm_hour: d.hours as i32,
+        tm_mday: d.day as i32,
+        tm_mon: d.month as i32 - 1,
+        tm_year: d.year as i32 - 1900,
+        tm_wday: -1,
+        tm_yday: -1,
+        tm_isdst: 0,
+    }
+}
 
 fn cstr(b: &[u8]) -> String {
     let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
@@ -2768,30 +2776,100 @@ pub struct NamedColor {
 // feature configuration and never collide with the lcms2 shim (which
 // deliberately picked different names).
 
-/// `Pipeline` — construct + author + iterate (`cmsPipeline*`).
+/// Construction, editing and evaluation (`cmsPipeline*`). The accessors
+/// `input_channels`, `output_channels`, `stage_count`, `first_stage`,
+/// `last_stage`, `eval16`, `eval_float` and `set_save_as_8bits` come from
+/// the parity impl.
 impl Pipeline {
-    /// `cmsPipelineAlloc` — an empty pipeline (`in` → `out` channels).
+    /// `cmsPipelineAlloc` — an empty pipeline from `input_channels` to
+    /// `output_channels` (each `1..=15`).
     pub fn new(input_channels: u32, output_channels: u32) -> Result<Pipeline> {
-        crate::lut::pipeline_alloc(None, input_channels, output_channels)
-            .ok_or_else(|| Error::from_last(types::ERROR_UNDEFINED, "pipeline_alloc failed"))
+        attempt(types::ERROR_RANGE, "pipeline_alloc", || {
+            crate::lut::pipeline_alloc(None, input_channels, output_channels)
+        })
     }
-    /// `cmsPipelineInsertStage(.., cmsAtEnd)` — append a stage.
-    pub fn push(&mut self, stage: Stage) -> bool {
-        self.insert_stage(crate::lut::StageLoc::AtEnd, stage)
+    /// `cmsPipelineInsertStage(.., cmsAtEnd)` — append `stage`. Fails,
+    /// leaving the pipeline as it was, when the stage's input channels
+    /// don't match the current output.
+    pub fn push(&mut self, stage: Stage) -> Result<()> {
+        self.insert(crate::lut::StageLoc::AtEnd, stage)
     }
-    /// `cmsPipelineInsertStage(.., cmsAtBegin)` — prepend a stage.
-    pub fn push_front(&mut self, stage: Stage) -> bool {
-        self.insert_stage(crate::lut::StageLoc::AtBegin, stage)
+    /// `cmsPipelineInsertStage(.., cmsAtBegin)` — prepend `stage`; fails
+    /// like [`Pipeline::push`].
+    pub fn push_front(&mut self, stage: Stage) -> Result<()> {
+        self.insert(crate::lut::StageLoc::AtBegin, stage)
     }
-    /// Iterate the stage chain head -> tail.
-    pub fn stages(&self) -> StagesIter<'_> {
-        StagesIter(self.elements.as_deref())
+    fn insert(&mut self, loc: crate::lut::StageLoc, stage: Stage) -> Result<()> {
+        let (stage_in, stage_out) = (stage.input_channels(), stage.output_channels());
+        let _ = crate::err::take_last_error();
+        if self.insert_stage(loc, stage) {
+            return Ok(());
+        }
+        // C leaves the rejected stage linked into the chain; unlink it so a
+        // failed push is a no-op.
+        let _ = self.unlink_stage(loc);
+        let _ = crate::err::take_last_error();
+        Err(Error::new(
+            types::ERROR_RANGE,
+            format!(
+                "a {stage_in}->{stage_out} channel stage doesn't chain onto this {}->{} pipeline",
+                self.input_channels(),
+                self.output_channels()
+            ),
+        ))
+    }
+    /// `cmsPipelineUnlinkStage(.., cmsAtEnd)` — remove and return the last
+    /// stage.
+    pub fn pop(&mut self) -> Option<Stage> {
+        self.unlink_stage(crate::lut::StageLoc::AtEnd)
+    }
+    /// `cmsPipelineUnlinkStage(.., cmsAtBegin)` — remove and return the
+    /// first stage.
+    pub fn pop_front(&mut self) -> Option<Stage> {
+        self.unlink_stage(crate::lut::StageLoc::AtBegin)
+    }
+    /// `cmsPipelineCat` — append copies of `other`'s stages. Fails, leaving
+    /// the pipeline as it was, when the channel counts don't chain.
+    pub fn append(&mut self, other: &Pipeline) -> Result<()> {
+        let before = self.clone();
+        attempt_bool(types::ERROR_RANGE, "pipeline_cat", || self.cat(other)).inspect_err(|_| {
+            // C keeps whatever stages it linked before the mismatch
+            *self = before;
+        })
+    }
+    /// `cmsPipelineEvalReverseFloat` — Newton-solve for the input that
+    /// produces `target` (3 output channels; 3- or 4-channel input),
+    /// starting from `hint` (default `[0.3, 0.3, 0.3]`). Returns the best
+    /// input found; fails for other channel layouts or a singular step.
+    pub fn eval_reverse(&self, target: &[f32; 3], hint: Option<&[f32]>) -> Result<Vec<f32>> {
+        let mut out = vec![0f32; self.input_channels() as usize];
+        if let Some(h) = hint {
+            assert!(h.len() >= 3, "hint needs 3 values, got {}", h.len());
+        }
+        attempt_bool(types::ERROR_RANGE, "pipeline_eval_reverse_float", || {
+            self.eval_reverse_float(target, &mut out, hint)
+        })?;
+        Ok(out)
+    }
+    /// Iterate the stages, first to last.
+    pub fn stages(&self) -> Stages<'_> {
+        Stages(self.elements.as_deref())
+    }
+}
+impl fmt::Debug for Pipeline {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Pipeline")
+            .field("input_channels", &self.input_channels())
+            .field("output_channels", &self.output_channels())
+            .field("stages", &self.stages().collect::<Vec<_>>())
+            .finish()
     }
 }
 
-/// Stage-chain iterator — see [`Pipeline::stages`].
-pub struct StagesIter<'a>(Option<&'a Stage>);
-impl<'a> Iterator for StagesIter<'a> {
+/// Iterator over a [`Pipeline`]'s stages — see [`Pipeline::stages`].
+#[derive(Clone, Debug)]
+pub struct Stages<'a>(Option<&'a Stage>);
+impl<'a> Iterator for Stages<'a> {
     type Item = &'a Stage;
     fn next(&mut self) -> Option<&'a Stage> {
         let s = self.0?;
@@ -2799,87 +2877,92 @@ impl<'a> Iterator for StagesIter<'a> {
         Some(s)
     }
 }
-impl std::iter::FusedIterator for StagesIter<'_> {}
+impl std::iter::FusedIterator for Stages<'_> {}
+impl<'a> IntoIterator for &'a Pipeline {
+    type Item = &'a Stage;
+    type IntoIter = Stages<'a>;
+    fn into_iter(self) -> Stages<'a> {
+        self.stages()
+    }
+}
 
-/// `Stage` — the `cmsStageAlloc*` constructors.
+/// The `cmsStageAlloc*` constructors. `input_channels`, `output_channels`,
+/// `stage_type` (the stage's ICC signature, e.g. `'matf'`) and `eval` come
+/// from the parity impl.
 impl Stage {
-    /// `cmsStageAllocIdentity` — pass-through.
+    /// `cmsStageAllocIdentity` — pass `n_channels` channels through.
     pub fn identity(n_channels: u32) -> Stage {
         crate::lut::stage_alloc_identity(None, n_channels)
     }
     /// `cmsStageAllocToneCurves` — one curve per channel.
-    pub fn tone_curves(curves: &[&ToneCurveRef]) -> Result<Stage> {
-        crate::lut::stage_alloc_tone_curves(None, curves.len() as u32, Some(curves)).ok_or_else(
-            || Error::from_last(types::ERROR_UNDEFINED, "stage_alloc_tone_curves failed"),
-        )
-    }
-    /// `cmsStageAllocMatrix` — `rows × cols` matrix + optional offsets.
-    pub fn matrix(
-        matrix2d: &[f64],
-        rows: u32,
-        cols: u32,
-        offsets: Option<&[f64]>,
-    ) -> Result<Stage> {
-        crate::lut::stage_alloc_matrix(None, rows, cols, matrix2d, offsets)
-            .ok_or_else(|| Error::from_last(types::ERROR_UNDEFINED, "stage_alloc_matrix failed"))
-    }
-    /// `cmsStageAllocCLut16bit` — a uniform `points`-per-dim u16 CLUT.
-    /// `table` len = `points^in_chan × out_chan` (`None` = zeroed).
-    pub fn clut16(
-        points: u32,
-        in_chan: u32,
-        out_chan: u32,
-        table: Option<&[u16]>,
-    ) -> Result<Stage> {
-        crate::lut::stage_alloc_clut16bit(None, points, in_chan, out_chan, table)
-            .ok_or_else(|| Error::from_last(types::ERROR_UNDEFINED, "stage_alloc_clut16bit failed"))
-    }
-    /// `cmsStageAllocCLut16bitGranular` — per-dimension grid points.
-    pub fn clut16_granular(points: &[u32], out_chan: u32, table: Option<&[u16]>) -> Result<Stage> {
-        crate::lut::stage_alloc_clut16bit_granular(
-            None,
-            points,
-            points.len() as u32,
-            out_chan,
-            table,
-        )
-        .ok_or_else(|| {
-            Error::from_last(
-                types::ERROR_UNDEFINED,
-                "stage_alloc_clut16bit_granular failed",
-            )
+    pub fn tone_curves(curves: &[&ToneCurve]) -> Result<Stage> {
+        attempt(types::ERROR_RANGE, "stage_alloc_tone_curves", || {
+            crate::lut::stage_alloc_tone_curves(None, curves.len() as u32, Some(curves))
         })
     }
-    /// `cmsStageAllocCLutFloat` — a uniform `points`-per-dim f32 CLUT.
-    pub fn clut_float(
-        points: u32,
-        in_chan: u32,
-        out_chan: u32,
-        table: Option<&[f32]>,
-    ) -> Result<Stage> {
-        crate::lut::stage_alloc_clut_float(None, points, in_chan, out_chan, table).ok_or_else(
-            || Error::from_last(types::ERROR_UNDEFINED, "stage_alloc_clut_float failed"),
-        )
+    /// `cmsStageAllocMatrix` — a `rows × cols` matrix (row-major, `cols`
+    /// inputs → `rows` outputs) plus optional per-output offsets.
+    pub fn matrix(matrix: &[f64], rows: u32, cols: u32, offsets: Option<&[f64]>) -> Result<Stage> {
+        attempt(types::ERROR_RANGE, "stage_alloc_matrix", || {
+            crate::lut::stage_alloc_matrix(None, rows, cols, matrix, offsets)
+        })
+    }
+    /// `cmsStageAllocCLut16bit` — a CLUT with `points` grid points per
+    /// input dimension. `table` holds `points^in_chan × out_chan` values
+    /// (`None` = all zero).
+    pub fn clut16(points: u32, in_chan: u32, out_chan: u32, table: Option<&[u16]>) -> Result<Stage> {
+        attempt(types::ERROR_RANGE, "stage_alloc_clut16bit", || {
+            crate::lut::stage_alloc_clut16bit(None, points, in_chan, out_chan, table)
+        })
+    }
+    /// `cmsStageAllocCLut16bitGranular` — a CLUT with its own grid size per
+    /// input dimension (`points.len()` inputs).
+    pub fn clut16_granular(points: &[u32], out_chan: u32, table: Option<&[u16]>) -> Result<Stage> {
+        attempt(types::ERROR_RANGE, "stage_alloc_clut16bit_granular", || {
+            crate::lut::stage_alloc_clut16bit_granular(None, points, points.len() as u32, out_chan, table)
+        })
+    }
+    /// `cmsStageAllocCLutFloat` — [`Stage::clut16`] with `f32` entries.
+    pub fn clut_float(points: u32, in_chan: u32, out_chan: u32, table: Option<&[f32]>) -> Result<Stage> {
+        attempt(types::ERROR_RANGE, "stage_alloc_clut_float", || {
+            crate::lut::stage_alloc_clut_float(None, points, in_chan, out_chan, table)
+        })
+    }
+}
+impl fmt::Debug for Stage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Stage")
+            .field("type", &Tag(self.stage_type()))
+            .field("input_channels", &self.input_channels())
+            .field("output_channels", &self.output_channels())
+            .finish()
     }
 }
 
-/// `Mlu` — build/read multi-language text (`cmsMLU*`).
+/// Build and read multi-language text (`cmsMLU*`).
 impl Mlu {
-    /// `cmsMLUalloc` — a new empty MLU with `capacity` translation slots.
-    pub fn new(capacity: u32) -> Mlu {
-        named::mlu_alloc(None, capacity).unwrap_or_default()
+    /// `cmsMLUalloc` — empty text with no translations.
+    pub fn new() -> Mlu {
+        named::mlu_alloc(None, 0).expect("mlu_alloc never fails")
     }
-    /// `cmsMLUsetUTF8` — set `text` under `locale`.
-    pub fn set(&mut self, locale: Locale, text: &str) -> bool {
-        named::mlu_set_utf8(self, &locale.language, &locale.country, text.as_bytes())
+    /// `cmsMLUsetUTF8` — set `text` for `locale`, replacing any text the
+    /// locale already had ([`Locale::NONE`] is the default entry).
+    pub fn set(&mut self, locale: Locale, text: &str) -> Result<()> {
+        attempt_bool(types::ERROR_RANGE, "mlu_set_utf8", || {
+            named::mlu_set_utf8(self, &locale.language, &locale.country, text.as_bytes())
+        })
     }
-    /// `cmsMLUsetASCII` — set `text` under `locale` (ASCII only —
-    /// rejects non-ASCII input).
-    pub fn set_ascii(&mut self, locale: Locale, text: &str) -> bool {
-        named::mlu_set_ascii(self, &locale.language, &locale.country, text.as_bytes())
+    /// `cmsMLUsetASCII` — [`Mlu::set`] for ASCII text; fails on non-ASCII.
+    pub fn set_ascii(&mut self, locale: Locale, text: &str) -> Result<()> {
+        if !text.is_ascii() {
+            return Err(Error::new(types::ERROR_RANGE, "set_ascii: text is not ASCII"));
+        }
+        attempt_bool(types::ERROR_RANGE, "mlu_set_ascii", || {
+            named::mlu_set_ascii(self, &locale.language, &locale.country, text.as_bytes())
+        })
     }
-    /// `cmsMLUgetUTF8` — the text for `locale` (`Locale::NONE` = best
-    /// available translation).
+    /// `cmsMLUgetUTF8` — the text for `locale`, falling back like C: same
+    /// language in another country, then the first entry.
     pub fn get(&self, locale: Locale) -> Option<String> {
         // size query first: C's `cmsMLUgetUTF8(.., NULL, 0)` returns the
         // byte count needed, NUL included — no fixed-buffer truncation.
@@ -2887,74 +2970,90 @@ impl Mlu {
         if need == 0 {
             return None;
         }
-        let (n, mut buf) = named::mlu_get_utf8(self, &locale.language, &locale.country, Some(need));
-        if n == 0 {
-            return None;
-        }
-        buf.truncate(n as usize);
-        while buf.last() == Some(&0) {
-            buf.pop();
-        }
-        String::from_utf8(buf).ok()
+        let (n, buf) = named::mlu_get_utf8(self, &locale.language, &locale.country, Some(need));
+        trimmed(n, buf)
     }
-    /// `cmsMLUgetASCII` — ASCII text for `locale`.
+    /// `cmsMLUgetASCII` — [`Mlu::get`] with non-ASCII characters replaced
+    /// by `?`, as C does.
     pub fn get_ascii(&self, locale: Locale) -> Option<String> {
         let (need, _) = named::mlu_get_ascii(self, &locale.language, &locale.country, None);
         if need == 0 {
             return None;
         }
-        let (n, mut buf) = named::mlu_get_ascii(self, &locale.language, &locale.country, Some(need));
-        if n == 0 {
-            return None;
-        }
-        buf.truncate(n as usize);
-        while buf.last() == Some(&0) {
-            buf.pop();
-        }
-        String::from_utf8(buf).ok()
+        let (n, buf) = named::mlu_get_ascii(self, &locale.language, &locale.country, Some(need));
+        trimmed(n, buf)
     }
-    /// `cmsMLUtranslationsCount`.
-    pub fn translations(&self) -> u32 {
-        named::mlu_translations_count(self)
+    /// `cmsMLUtranslationsCount` — how many locales have text.
+    pub fn len(&self) -> usize {
+        named::mlu_translations_count(self) as usize
     }
-    /// `cmsMLUtranslationsCodes` — the `idx`-th translation's locale.
-    pub fn translation_codes(&self, idx: u32) -> Option<Locale> {
-        named::mlu_translations_codes(self, idx).map(|(l, c)| Locale {
-            language: l,
-            country: c,
+    /// `true` when no locale has text.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// `cmsMLUtranslationsCodes` — the locales that have text, in the
+    /// order they were added.
+    pub fn locales(&self) -> impl ExactSizeIterator<Item = Locale> + '_ {
+        (0..self.len() as u32).map(|i| {
+            let (language, country) =
+                named::mlu_translations_codes(self, i).expect("index below translation count");
+            Locale { language, country }
         })
     }
 }
-
-/// `NamedColorList` — authored palettes (`cmsAllocNamedColorList`/`cmsAppendNamedColor`).
-impl NamedColorList {
-    /// `cmsAllocNamedColorList` — `spots` initial entries, `colorant_count`
-    /// device channels per entry, list-wide `prefix`/`suffix` strings.
-    pub fn new(
-        spots: u32,
-        colorant_count: u32,
-        prefix: &str,
-        suffix: &str,
-    ) -> Result<NamedColorList> {
-        named::alloc_named_color_list(
-            None,
-            spots,
-            colorant_count,
-            prefix.as_bytes(),
-            suffix.as_bytes(),
-        )
-        .ok_or_else(|| Error::from_last(types::ERROR_UNDEFINED, "alloc_named_color_list failed"))
+fn trimmed(n: u32, mut buf: Vec<u8>) -> Option<String> {
+    if n == 0 {
+        return None;
     }
-    /// `cmsAppendNamedColor` — append an entry: `name` (truncated to 255
-    /// bytes), the 16-bit PCS triple, and `colorant_count` device values
-    /// (`&[]` = zeros).
+    buf.truncate(n as usize);
+    while buf.last() == Some(&0) {
+        buf.pop();
+    }
+    String::from_utf8(buf).ok()
+}
+/// Text in the default locale ([`Locale::NONE`]).
+impl From<&str> for Mlu {
+    fn from(text: &str) -> Mlu {
+        let mut m = Mlu::new();
+        m.set(Locale::NONE, text).expect("UTF-8 text always fits an MLU");
+        m
+    }
+}
+impl fmt::Debug for Mlu {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.locales().map(|l| (l, self.get(l).unwrap_or_default())))
+            .finish()
+    }
+}
+
+/// Build and read palettes (`cmsAllocNamedColorList`, `cmsAppendNamedColor`,
+/// `cmsNamedColorInfo`, ...).
+impl NamedColorList {
+    /// `cmsAllocNamedColorList` — an empty palette whose entries carry
+    /// `colorant_count` device channels (`0..=15`), with list-wide `prefix`
+    /// and `suffix` strings (each up to 32 bytes).
+    pub fn new(colorant_count: usize, prefix: &str, suffix: &str) -> Result<NamedColorList> {
+        attempt(types::ERROR_RANGE, "alloc_named_color_list", || {
+            named::alloc_named_color_list(
+                None,
+                0,
+                colorant_count as u32,
+                prefix.as_bytes(),
+                suffix.as_bytes(),
+            )
+        })
+    }
+    /// `cmsAppendNamedColor` — append an entry: `name` (up to 255 bytes),
+    /// its 16-bit PCS encoding, and one value per device colorant (`&[]`
+    /// = all zero).
     pub fn push(&mut self, name: &str, pcs: [u16; 3], colorant: &[u16]) -> Result<()> {
         let n = self.colorant_count as usize;
         if !colorant.is_empty() && colorant.len() != n {
-            return Err(Error {
-                id: types::ERROR_RANGE,
-                message: format!("list has {n} colorants per color, got {}", colorant.len()),
-            });
+            return Err(Error::new(
+                types::ERROR_RANGE,
+                format!("list has {n} colorants per color, got {}", colorant.len()),
+            ));
         }
         let mut c = [0u16; 16];
         c[..colorant.len()].copy_from_slice(colorant);
@@ -2962,58 +3061,98 @@ impl NamedColorList {
             named::append_named_color(self, Some(name.as_bytes()), Some(&pcs), Some(&c))
         })
     }
-    /// `cmsNamedColorIndex` — index of the color called `name` (ASCII
-    /// case-insensitive).
-    pub fn position(&self, name: &str) -> Option<usize> {
-        let i = named::named_color_index(self, name.as_bytes());
-        if i < 0 { None } else { Some(i as usize) }
-    }
-    /// Entry count (`cmsNamedColorCount`).
+    /// `cmsNamedColorCount`.
     pub fn len(&self) -> usize {
         self.n_colors as usize
     }
-    /// `true` when empty.
+    /// `true` when the palette has no entries.
     pub fn is_empty(&self) -> bool {
         self.n_colors == 0
     }
+    /// `cmsNamedColorInfo` — the `index`-th entry.
+    pub fn entry(&self, index: usize) -> Option<NamedColor> {
+        // `list` holds `allocated` slots; only the first `n_colors` are set
+        if index >= self.len() {
+            return None;
+        }
+        let c = &self.list[index];
+        Some(NamedColor {
+            name: cstr(&c.name),
+            pcs: c.pcs,
+            colorant: c.device_colorant[..self.colorant_count as usize].to_vec(),
+        })
+    }
+    /// `cmsNamedColorIndex` — the index of the entry called `name` (ASCII
+    /// case-insensitive, without the prefix/suffix).
+    pub fn position(&self, name: &str) -> Option<usize> {
+        usize::try_from(named::named_color_index(self, name.as_bytes())).ok()
+    }
+    /// Iterate the entries in order.
+    pub fn iter(&self) -> NamedColorIter<'_> {
+        NamedColorIter { list: self, i: 0 }
+    }
+    /// The list-wide prefix (e.g. `"PANTONE "`).
+    pub fn prefix(&self) -> String {
+        cstr(&self.prefix)
+    }
+    /// The list-wide suffix.
+    pub fn suffix(&self) -> String {
+        cstr(&self.suffix)
+    }
+    /// Device colorant channels per entry.
+    pub fn colorant_count(&self) -> usize {
+        self.colorant_count as usize
+    }
+}
+impl fmt::Debug for NamedColorList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NamedColorList")
+            .field("prefix", &self.prefix())
+            .field("suffix", &self.suffix())
+            .field("colors", &self.iter().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
-/// `Dict` — name/value string dictionary (`cmsDict*`).
+/// Name/value string pairs (`cmsDict*`).
 impl Dict {
-    /// `cmsDictAlloc`.
+    /// `cmsDictAlloc` — an empty dictionary.
     pub fn new() -> Dict {
         named::dict_alloc(None)
     }
-    /// `cmsDictAddEntry` — add a `name`/`value` pair (display strings are
-    /// built for both, in the default locale).
-    pub fn add(&mut self, name: &str, value: &str) -> bool {
-        let name_w: Vec<named::Wchar> =
-            name.chars().map(|c| c as named::Wchar).chain([0]).collect();
-        let value_w: Vec<named::Wchar> = value
-            .chars()
-            .map(|c| c as named::Wchar)
-            .chain([0])
-            .collect();
-        let mut dn = named::mlu_alloc(None, 1).unwrap_or_default();
-        named::mlu_set_ascii(&mut dn, &[0; 3], &[0; 3], name.as_bytes());
-        let mut dv = named::mlu_alloc(None, 1).unwrap_or_default();
-        named::mlu_set_ascii(&mut dv, &[0; 3], &[0; 3], value.as_bytes());
-        named::dict_add_entry(&mut *self, &name_w, Some(&value_w), Some(&dn), Some(&dv))
+    /// `cmsDictAddEntry` — add `name` = `value`, with matching display
+    /// strings in the default locale. Names may repeat; [`Dict::get`]
+    /// sees the newest.
+    pub fn add(&mut self, name: &str, value: &str) -> Result<()> {
+        let wide = |s: &str| -> Vec<named::Wchar> {
+            s.chars().map(|c| c as named::Wchar).chain([0]).collect()
+        };
+        let display_name = Mlu::from(name);
+        let display_value = Mlu::from(value);
+        attempt_bool(types::ERROR_RANGE, "dict_add_entry", || {
+            named::dict_add_entry(
+                self,
+                &wide(name),
+                Some(&wide(value)),
+                Some(&display_name),
+                Some(&display_value),
+            )
+        })
     }
-    /// The display value stored under `name`.
+    /// The value stored under `name` (the newest, if it repeats).
     pub fn get(&self, name: &str) -> Option<String> {
+        // `entries` is newest-first, like C's linked list
         self.entries
             .iter()
-            .find(|e| {
-                e.name
-                    .iter()
-                    .take_while(|&&c| c != 0)
-                    .map(|&c| c as u8 as char)
-                    .collect::<String>()
-                    == name
-            })
-            .and_then(|e| e.display_value.as_ref())
-            .and_then(|v| Mlu::get(v, Locale::NONE))
+            .find(|e| narrow(&e.name) == name)
+            .map(|e| e.value.as_deref().map(narrow).unwrap_or_default())
+    }
+    /// `(name, value)` pairs in the order they were added.
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (String, String)> + ExactSizeIterator + '_ {
+        self.entries
+            .iter()
+            .rev()
+            .map(|e| (narrow(&e.name), e.value.as_deref().map(narrow).unwrap_or_default()))
     }
     /// Entry count.
     pub fn len(&self) -> usize {
@@ -3022,6 +3161,131 @@ impl Dict {
     /// `true` when empty.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+/// A NUL-terminated `wchar_t` string as UTF-8 (invalid code points → U+FFFD).
+fn narrow(w: &[named::Wchar]) -> String {
+    w.iter()
+        .take_while(|&&c| c != 0)
+        .map(|&c| u32::try_from(c).ok().and_then(char::from_u32).unwrap_or('\u{fffd}'))
+        .collect()
+}
+impl fmt::Debug for Dict {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+/// The per-profile records of a `'pseq'`/`'psid'` tag.
+impl ProfileSeqDesc {
+    /// Number of profiles described.
+    pub fn len(&self) -> usize {
+        self.seq.len()
+    }
+    /// `true` when empty.
+    pub fn is_empty(&self) -> bool {
+        self.seq.is_empty()
+    }
+    /// The `index`-th profile's record.
+    pub fn get(&self, index: usize) -> Option<&ProfileSeqEntry> {
+        self.seq.get(index)
+    }
+    /// Iterate the records in chain order.
+    pub fn iter(&self) -> std::slice::Iter<'_, ProfileSeqEntry> {
+        self.seq.iter()
+    }
+}
+impl<'a> IntoIterator for &'a ProfileSeqDesc {
+    type Item = &'a ProfileSeqEntry;
+    type IntoIter = std::slice::Iter<'a, ProfileSeqEntry>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+impl fmt::Debug for ProfileSeqDesc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+
+/// One linked profile's header fields and description text.
+impl ProfileSeqEntry {
+    /// The profile's device manufacturer signature.
+    pub fn device_manufacturer(&self) -> u32 {
+        self.device_mfg
+    }
+    /// The profile's device model signature.
+    pub fn device_model(&self) -> u32 {
+        self.device_model
+    }
+    /// The profile's header attributes.
+    pub fn attributes(&self) -> u64 {
+        self.attributes
+    }
+    /// The `'tech'` technology signature.
+    pub fn technology(&self) -> u32 {
+        self.technology
+    }
+    /// The profile ID (all zero in `'pseq'`, set in `'psid'`).
+    pub fn profile_id(&self) -> ProfileId {
+        self.profile_id
+    }
+    /// The manufacturer description, if recorded.
+    pub fn manufacturer(&self) -> Option<&Mlu> {
+        self.manufacturer.as_ref()
+    }
+    /// The model description, if recorded.
+    pub fn model(&self) -> Option<&Mlu> {
+        self.model.as_ref()
+    }
+    /// The profile description, if recorded (`'psid'`).
+    pub fn description(&self) -> Option<&Mlu> {
+        self.description.as_ref()
+    }
+}
+impl fmt::Debug for ProfileSeqEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProfileSeqEntry")
+            .field("device_manufacturer", &Tag(self.device_mfg))
+            .field("device_model", &Tag(self.device_model))
+            .field("technology", &Tag(self.technology))
+            .field("description", &self.description)
+            .finish()
+    }
+}
+
+/// An ICC `'data'` payload.
+impl IccData {
+    /// ASCII text (stored with `flag` 0).
+    pub fn text(text: &str) -> IccData {
+        IccData::with_flag(0, text.as_bytes().to_vec())
+    }
+    /// Binary bytes (`flag` 1).
+    pub fn binary(bytes: Vec<u8>) -> IccData {
+        IccData::with_flag(1, bytes)
+    }
+    fn with_flag(flag: u32, data: Vec<u8>) -> IccData {
+        IccData {
+            len: data.len() as u32,
+            flag,
+            data,
+        }
+    }
+    /// `true` for binary data, `false` for ASCII text.
+    pub fn is_binary(&self) -> bool {
+        self.flag != 0
+    }
+    /// The payload bytes.
+    pub fn bytes(&self) -> &[u8] {
+        &self.data[..(self.len as usize).min(self.data.len())]
+    }
+}
+impl fmt::Debug for IccData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IccData")
+            .field("binary", &self.is_binary())
+            .field("len", &self.bytes().len())
+            .finish()
     }
 }
 
@@ -3050,14 +3314,6 @@ pub const REC709_PRIMARIES: CiexyYTriple = CiexyYTriple {
     Blue: CiexyY { x: 0.1500, y: 0.0600, Y: 1.0 },
 };
 
-/// `cmsD50_XYZ` — the D50 white point in XYZ ([`D50_XYZ`]).
-pub fn d50_xyz() -> CieXyz {
-    crate::wtpnt::d50_xyz()
-}
-/// `cmsD50_xyY` — D50 in xyY.
-pub fn d50_xyy() -> CiexyY {
-    crate::wtpnt::d50_xyy()
-}
 /// `cmsWhitePointFromTemp` — white point (xyY) for a blackbody/`D`
 /// illuminant temperature in K (`4000`..`25000`).
 pub fn white_point_from_temp(temp_k: f64) -> Option<CiexyY> {

@@ -409,28 +409,16 @@ impl ToneCurve {
 
 /// Methods on `ToneCurveRef` (= `gamma::ToneCurve`) carrying the
 /// lcms2-crate names — inherent impls on the same-crate type.
+/// `is_linear`, `is_monotonic`, `is_descending`, `is_multisegment` and
+/// `estimated_gamma(precision)` have identical signatures in `lcms::api`
+/// and are defined there once for both layers.
 impl crate::gamma::ToneCurve {
     /// `cmsEvalToneCurve*` on a `FloatOrU16` input.
     pub fn eval<V: FloatOrU16>(&self, v: V) -> V { v.eval_curve(self) }
-    /// `cmsIsToneCurveMonotonic`
-    pub fn is_monotonic(&self) -> bool { crate::gamma::is_tone_curve_monotonic(self) }
-    /// `cmsIsToneCurveDescending`
-    pub fn is_descending(&self) -> bool { crate::gamma::is_tone_curve_descending(self) }
-    /// `cmsIsToneCurveLinear`
-    pub fn is_linear(&self) -> bool {
-        self.estimated_table().iter().copied().eq(0..=0xffff)
-    }
-    /// `cmsIsToneCurveMultisegment`
-    pub fn is_multisegment(&self) -> bool { self.segments.len() > 1 }
     /// `cmsGetToneCurveEstimatedTable`
     pub fn estimated_entries(&self) -> &[u16] { self.estimated_table() }
     /// `cmsGetToneCurveEstimatedTableEntries`
     pub fn estimated_entry_count(&self) -> u32 { self.estimated_table_entries() }
-    /// `cmsEstimateGamma`
-    pub fn estimated_gamma(&self, precision: f64) -> Option<f64> {
-        let g = crate::gamma::estimate_gamma(self, precision);
-        if g < 0.0 { None } else { Some(g) }
-    }
     /// `cmsSmoothToneCurve`
     pub fn smooth(&mut self, lambda: f64) -> bool {
         crate::gamma::smooth_tone_curve(None, self, lambda)

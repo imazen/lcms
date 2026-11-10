@@ -27,12 +27,14 @@ pub const V2_UNICODE: &[u8] = b"\xff\xff";
 
 const CMS_MAX_CHANNELS: usize = 16;
 
+parity_struct! {
 /// `cmsICCData` — data type payload
 #[derive(Clone)]
 pub struct IccData {
     pub len: u32,
     pub flag: u32,
     pub data: Vec<u8>,
+}
 }
 
 /// `struct tm` equivalent
@@ -58,7 +60,7 @@ pub struct ScreeningChannel {
 }
 
 /// `cmsScreening`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Screening {
     pub flag: u32,
     pub channels: [ScreeningChannel; CMS_MAX_CHANNELS],
@@ -66,7 +68,7 @@ pub struct Screening {
 }
 
 /// `cmsICCViewingConditions` (ICC viewingConditionsType)
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IccViewingConditions {
     pub illuminant_xyz: CieXyz,
     pub surround_xyz: CieXyz,
@@ -74,7 +76,7 @@ pub struct IccViewingConditions {
 }
 
 /// `cmsUcrBg`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UcrBg {
     pub ucr: ToneCurve,
     pub bg: ToneCurve,
@@ -91,7 +93,7 @@ pub struct VideoSignal {
 }
 
 /// `cmsMHC2Type`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Mhc2 {
     pub curve_entries: u32,
     pub red_curve: Vec<f64>,

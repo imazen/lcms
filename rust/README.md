@@ -63,6 +63,25 @@ p.write_tag(Tag::COPYRIGHT, "No rights reserved")?;  // &str, CieXyz, ToneCurve,
 let bytes = p.save()?;
 ```
 
+Tag payloads are ordinary Rust values. `TagValue` borrows straight into the
+profile (`&ToneCurve`, `&Pipeline`, `&Mlu`, `&NamedColorList`, ...) at no
+cost, and the same types are what you build and hand to `write_tag`:
+
+```rust
+let trc = srgb.get(Tag::RED_TRC).and_then(|v| v.as_curve()).unwrap();
+let inv = trc.inverse()?;                              // an owned ToneCurve
+let mut lut = Pipeline::new(3, 3)?;
+lut.push(Stage::tone_curves(&[trc, trc, trc])?)?;      // a failed push changes nothing
+let mut name = Mlu::from("Display");
+name.set(Locale::new("de_DE"), "Bildschirm")?;
+for color in srgb.named_colors().into_iter().flatten() { println!("{}", color.name); }
+```
+
+They are the parity layer's own types with the C bookkeeping hidden: their
+fields and C-shaped methods are crate-private unless `little-cms-api` is on,
+so borrowing costs nothing and no `lcms::api` signature exposes an internal
+type (`docs/public-api/lcms.txt` is the checked snapshot).
+
 ### `lcms::lcms2` — drop-in migration from the `lcms2` crate
 
 ```toml
@@ -112,7 +131,7 @@ See `docs/public-api/lcms2-comparison.md` for the full surface diff vs
 
 `cmsCreateTransform`, `cmsDoTransform`, `IccProfile`, `Pipeline`, the
 `cmsPACK`/`fmt` machinery — 1:1 with the C source, same operation order.
-Gated by the `little-cms-api` feature (default on; without it the modules
+Gated by the `little-cms-api` feature (opt-in; without it the modules
 are crate-private and consumers see only `lcms::api`). This is what the
 ~30 `c_parity_*` differential suites gate against the oracle — use it when
 you need C-shaped behavior or are porting C callers.

@@ -10,71 +10,72 @@
 ## summary
 #
 #   pub modules                                30
-#   pub types (struct/enum/trait/alias)       163
-#   pub consts/statics                        127
-#   free functions                            386
-#   inherent methods                          361
-#   struct fields                             342
+#   pub types (struct/enum/trait/alias)       175
+#   pub consts/statics                        126
+#   free functions                            394
+#   inherent methods                          445
+#   struct fields                             393
 #   enum variants                             269
 #   re-exports                                  3
-#   trait roster entries (type × trait)       260
+#   trait roster entries (type × trait)       279
 #   auto-trait-complete types                  96
 #   auto-trait exceptions                      10
 #
 # per-module pub lines:
-#   (root)                           44
+#   (root)                           62
 #   alpha                             3
-#   api                              47
+#   api                              90
 #   cam02                             4
 #   cgats                           111
 #   cnvrt                            13
 #   context                          82
 #   err                               3
 #   fixed                            14
-#   gamma                            78
+#   gamma                           100
 #   gbd                              19
 #   half                              2
 #   half_tables                       5
 #   intrp                            65
 #   io                               47
-#   io1                              10
+#   io1                              12
 #   lcms2                           333
-#   lut                             150
+#   lut                             158
 #   md5                               6
 #   mtrx                             13
-#   named                           119
+#   named                           157
 #   opt                              34
 #   pack                            161
 #   pcs                              23
 #   profile                          54
 #   ps2                               5
 #   sm                                6
-#   tagtypes                        129
-#   types                             6
+#   tagtypes                        137
+#   types                            21
 #   virt                             14
 #   wtpnt                             7
 #   xform                            74
 
-## items (1676 lines)
+## items (1820 lines)
 
 pub mod alpha
 pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
 pub fn alpha::handle_extra_channels(core::option::Option<&context::Context>, &[u8], &mut [u8], u32, u32, &xform::Stride, u32, u32, u32)
 pub type alpha::FormatterAlphaFn = fn(&mut [u8], &[u8])
+pub api::TagData::Curve(gamma::ToneCurve)
 pub api::TagData::Data(tagtypes::IccData)
-pub api::TagData::DateTime(tagtypes::Tm)
 pub api::TagData::Dict(named::Dict)
 pub api::TagData::Mhc2(tagtypes::Mhc2)
 pub api::TagData::Mlu(named::Mlu)
 pub api::TagData::NamedColors(named::NamedColorList)
+pub api::TagData::ParametricCurve(gamma::ToneCurve)
 pub api::TagData::Pipeline(lut::Pipeline)
 pub api::TagData::Screening(tagtypes::Screening)
 pub api::TagData::Seq(named::ProfileSeqDesc)
 pub api::TagData::UcrBg(tagtypes::UcrBg)
+pub api::TagData::VcgtCurves([gamma::ToneCurve; 3])
 pub api::TagData::VideoSignal(tagtypes::VideoSignal)
 pub api::TagData::ViewingConditions(tagtypes::IccViewingConditions)
 pub api::TagValue::Curve(&'a gamma::ToneCurve)
-pub api::TagValue::DateTime(&'a tagtypes::Tm)
 pub api::TagValue::Dict(&'a named::Dict)
 pub api::TagValue::Mhc2(&'a tagtypes::Mhc2)
 pub api::TagValue::NamedColors(&'a named::NamedColorList)
@@ -88,68 +89,145 @@ pub api::TagValue::VcgtCurves([&'a gamma::ToneCurve; 3])
 pub api::TagValue::VideoSignal(&'a tagtypes::VideoSignal)
 pub api::TagValue::ViewingConditions(&'a tagtypes::IccViewingConditions)
 pub fn api::TagValue<'a>::as_curve(&self) -> core::option::Option<&'a gamma::ToneCurve>
+pub fn api::TagValue<'a>::as_dict(&self) -> core::option::Option<&'a named::Dict>
 pub fn api::TagValue<'a>::as_named_colors(&self) -> core::option::Option<&'a named::NamedColorList>
 pub fn api::TagValue<'a>::as_pipeline(&self) -> core::option::Option<&'a lut::Pipeline>
+pub fn api::TagValue<'a>::as_seq(&self) -> core::option::Option<&'a named::ProfileSeqDesc>
+pub fn api::TagValue<'a>::as_stage(&self) -> core::option::Option<&'a lut::Stage>
 pub fn api::TagValue<'a>::as_text(&self) -> core::option::Option<&'a named::Mlu>
-pub api::VcgtData::Curves([gamma::ToneCurve; 3])
 pub fn types::CieXyz::d50() -> Self
 pub fn types::CiexyY::d50() -> Self
-pub fn named::Dict::add(&mut self, &str, &str) -> bool
+pub api::Dict::entries: alloc::vec::Vec<named::DictEntry>
+pub fn named::Dict::add(&mut self, &str, &str) -> api::Result<()>
 pub fn named::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
 pub fn named::Dict::is_empty(&self) -> bool
+pub fn named::Dict::iter(&self) -> impl core::iter::traits::double_ended::DoubleEndedIterator<Item = (alloc::string::String, alloc::string::String)> + core::iter::traits::exact_size::ExactSizeIterator + '_
 pub fn named::Dict::len(&self) -> usize
 pub fn named::Dict::new() -> named::Dict
+pub api::IccData::data: alloc::vec::Vec<u8>
+pub api::IccData::flag: u32
+pub api::IccData::len: u32
+pub fn tagtypes::IccData::binary(alloc::vec::Vec<u8>) -> tagtypes::IccData
+pub fn tagtypes::IccData::bytes(&self) -> &[u8]
+pub fn tagtypes::IccData::is_binary(&self) -> bool
+pub fn tagtypes::IccData::text(&str) -> tagtypes::IccData
+pub api::Mlu::allocated_entries: u32
+pub api::Mlu::entries: alloc::vec::Vec<named::MluEntry>
+pub api::Mlu::pool: alloc::vec::Vec<u8>
+pub api::Mlu::pool_used: u32
+pub api::Mlu::used_entries: u32
 pub fn named::Mlu::get(&self, api::Locale) -> core::option::Option<alloc::string::String>
 pub fn named::Mlu::get_ascii(&self, api::Locale) -> core::option::Option<alloc::string::String>
-pub fn named::Mlu::new(u32) -> named::Mlu
-pub fn named::Mlu::set(&mut self, api::Locale, &str) -> bool
-pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> bool
-pub fn named::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Locale>
-pub fn named::Mlu::translations(&self) -> u32
+pub fn named::Mlu::is_empty(&self) -> bool
+pub fn named::Mlu::len(&self) -> usize
+pub fn named::Mlu::locales(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = api::Locale> + '_
+pub fn named::Mlu::new() -> named::Mlu
+pub fn named::Mlu::set(&mut self, api::Locale, &str) -> api::Result<()>
+pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> api::Result<()>
 pub fn named::Mlu::set_text(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::text(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
 pub fn named::Mlu::text_ascii(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
 pub fn named::Mlu::translations_count(&self) -> u32
+pub api::NamedColorList::allocated: u32
+pub api::NamedColorList::colorant_count: u32
+pub api::NamedColorList::list: alloc::vec::Vec<named::NamedColor>
+pub api::NamedColorList::n_colors: u32
+pub api::NamedColorList::prefix: [u8; 33]
+pub api::NamedColorList::suffix: [u8; 33]
 pub fn named::NamedColorList::append(&mut self, &str, [u16; 3], [u16; 16]) -> bool
 pub fn named::NamedColorList::colors(&self) -> alloc::vec::Vec<lcms2::NamedColorInfo>
 pub fn named::NamedColorList::count(&self) -> usize
 pub fn named::NamedColorList::get(&self, usize) -> core::option::Option<lcms2::NamedColorInfo>
 pub fn named::NamedColorList::index_of(&self, &str) -> usize
+pub fn named::NamedColorList::colorant_count(&self) -> usize
+pub fn named::NamedColorList::entry(&self, usize) -> core::option::Option<api::NamedColor>
 pub fn named::NamedColorList::is_empty(&self) -> bool
+pub fn named::NamedColorList::iter(&self) -> api::NamedColorIter<'_>
 pub fn named::NamedColorList::len(&self) -> usize
-pub fn named::NamedColorList::new(u32, u32, &str, &str) -> api::Result<named::NamedColorList>
+pub fn named::NamedColorList::new(usize, &str, &str) -> api::Result<named::NamedColorList>
 pub fn named::NamedColorList::position(&self, &str) -> core::option::Option<usize>
+pub fn named::NamedColorList::prefix(&self) -> alloc::string::String
 pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16]) -> api::Result<()>
+pub fn named::NamedColorList::suffix(&self) -> alloc::string::String
+pub type &'a named::NamedColorList::IntoIter = api::NamedColorIter<'a> [also: (root)]
+pub type &'a named::NamedColorList::Item = api::NamedColor [also: (root)]
+pub fn &'a named::NamedColorList::into_iter(self) -> api::NamedColorIter<'a> [also: (root)]
 pub api::Pipeline::elements: core::option::Option<alloc::boxed::Box<lut::Stage>>
 pub api::Pipeline::eval16_fn: lut::PipelineEval16Fn
 pub api::Pipeline::eval_float_fn: lut::PipelineEvalFloatFn
+pub api::Pipeline::input_channels: u32
+pub api::Pipeline::opt_data: core::option::Option<opt::OptData>
+pub api::Pipeline::output_channels: u32
+pub api::Pipeline::save_as_8bits: bool
+pub fn lut::Pipeline::append(&mut self, &lut::Pipeline) -> api::Result<()>
+pub fn lut::Pipeline::eval_reverse(&self, &[f32; 3], core::option::Option<&[f32]>) -> api::Result<alloc::vec::Vec<f32>>
+pub fn lut::Pipeline::new(u32, u32) -> api::Result<lut::Pipeline>
+pub fn lut::Pipeline::pop(&mut self) -> core::option::Option<lut::Stage>
+pub fn lut::Pipeline::pop_front(&mut self) -> core::option::Option<lut::Stage>
+pub fn lut::Pipeline::push(&mut self, lut::Stage) -> api::Result<()>
+pub fn lut::Pipeline::push_front(&mut self, lut::Stage) -> api::Result<()>
+pub fn lut::Pipeline::stages(&self) -> api::Stages<'_>
 pub fn lut::Pipeline::cat(&mut self, &lut::Pipeline) -> bool
 pub fn lut::Pipeline::dup(&self) -> core::option::Option<lut::Pipeline>
+pub fn lut::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
+pub fn lut::Pipeline::insert_stage(&mut self, lut::StageLoc, lut::Stage) -> bool
+pub fn lut::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<lut::Stage>
 pub fn lut::Pipeline::eval16(&self, &[u16], &mut [u16])
 pub fn lut::Pipeline::eval_float(&self, &[f32], &mut [f32])
-pub fn lut::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
 pub fn lut::Pipeline::first_stage(&self) -> core::option::Option<&lut::Stage>
 pub fn lut::Pipeline::input_channels(&self) -> u32
-pub fn lut::Pipeline::insert_stage(&mut self, lut::StageLoc, lut::Stage) -> bool
 pub fn lut::Pipeline::last_stage(&self) -> core::option::Option<&lut::Stage>
 pub fn lut::Pipeline::output_channels(&self) -> u32
 pub fn lut::Pipeline::set_save_as_8bits(&mut self, bool) -> bool
 pub fn lut::Pipeline::stage_count(&self) -> u32
-pub fn lut::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<lut::Stage>
 pub fn lut::Pipeline::eval_f32(&self, &[f32], &mut [f32])
 pub fn lut::Pipeline::eval_u16(&self, &[u16], &mut [u16])
 pub fn lut::Pipeline::set_8bit(&mut self, bool) -> bool
 pub fn lut::Pipeline::to_owned(&self) -> lcms2::Pipeline
-pub fn lut::Pipeline::new(u32, u32) -> api::Result<lut::Pipeline>
-pub fn lut::Pipeline::push(&mut self, lut::Stage) -> bool
-pub fn lut::Pipeline::push_front(&mut self, lut::Stage) -> bool
-pub fn lut::Pipeline::stages(&self) -> api::StagesIter<'_>
+pub type &'a lut::Pipeline::IntoIter = api::Stages<'a> [also: (root)]
+pub type &'a lut::Pipeline::Item = &'a lut::Stage [also: (root)]
+pub fn &'a lut::Pipeline::into_iter(self) -> api::Stages<'a> [also: (root)]
+pub fn api::Plan::input_colorants(&self) -> core::option::Option<&named::NamedColorList>
+pub fn api::Plan::output_colorants(&self) -> core::option::Option<&named::NamedColorList>
+pub fn api::Profile::gray_curve(&types::CiexyY, &gamma::ToneCurve) -> api::Result<Self>
 pub fn api::Profile::icc(&self) -> &profile::IccProfile
 pub fn api::Profile::icc_mut(&mut self) -> &mut profile::IccProfile
+pub fn api::Profile::linearization_device_link(api::ColorSpace, &[gamma::ToneCurve]) -> api::Result<Self>
+pub fn api::Profile::named_colors(&self) -> core::option::Option<&named::NamedColorList>
+pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&gamma::ToneCurve; 3]) -> api::Result<Self>
+pub api::ProfileSeqDesc::seq: alloc::vec::Vec<named::PSeqDesc>
+pub fn named::ProfileSeqDesc::get(&self, usize) -> core::option::Option<&named::PSeqDesc>
+pub fn named::ProfileSeqDesc::is_empty(&self) -> bool
+pub fn named::ProfileSeqDesc::iter(&self) -> core::slice::iter::Iter<'_, named::PSeqDesc>
+pub fn named::ProfileSeqDesc::len(&self) -> usize
+pub type &'a named::ProfileSeqDesc::IntoIter = core::slice::iter::Iter<'a, named::PSeqDesc> [also: (root)]
+pub type &'a named::ProfileSeqDesc::Item = &'a named::PSeqDesc [also: (root)]
+pub fn &'a named::ProfileSeqDesc::into_iter(self) -> Self::IntoIter [also: (root)]
+pub api::ProfileSeqEntry::attributes: u64
+pub api::ProfileSeqEntry::description: core::option::Option<named::Mlu>
+pub api::ProfileSeqEntry::device_mfg: u32
+pub api::ProfileSeqEntry::device_model: u32
+pub api::ProfileSeqEntry::manufacturer: core::option::Option<named::Mlu>
+pub api::ProfileSeqEntry::model: core::option::Option<named::Mlu>
+pub api::ProfileSeqEntry::profile_id: types::ProfileId
+pub api::ProfileSeqEntry::technology: u32
+pub fn named::PSeqDesc::attributes(&self) -> u64
+pub fn named::PSeqDesc::description(&self) -> core::option::Option<&named::Mlu>
+pub fn named::PSeqDesc::device_manufacturer(&self) -> u32
+pub fn named::PSeqDesc::device_model(&self) -> u32
+pub fn named::PSeqDesc::manufacturer(&self) -> core::option::Option<&named::Mlu>
+pub fn named::PSeqDesc::model(&self) -> core::option::Option<&named::Mlu>
+pub fn named::PSeqDesc::profile_id(&self) -> types::ProfileId
+pub fn named::PSeqDesc::technology(&self) -> u32
 pub api::Screening::channels: [tagtypes::ScreeningChannel; 16]
+pub api::Stage::data: lut::StageData
 pub api::Stage::eval_ptr: lut::StageEvalFn
+pub api::Stage::implements: u32
+pub api::Stage::input_channels: u32
 pub api::Stage::next: core::option::Option<alloc::boxed::Box<lut::Stage>>
+pub api::Stage::output_channels: u32
+pub api::Stage::type: u32
 pub fn lut::Stage::clut16(u32, u32, u32, core::option::Option<&[u16]>) -> api::Result<lut::Stage>
 pub fn lut::Stage::clut16_granular(&[u32], u32, core::option::Option<&[u16]>) -> api::Result<lut::Stage>
 pub fn lut::Stage::clut_float(u32, u32, u32, core::option::Option<&[f32]>) -> api::Result<lut::Stage>
@@ -157,34 +235,46 @@ pub fn lut::Stage::identity(u32) -> lut::Stage
 pub fn lut::Stage::matrix(&[f64], u32, u32, core::option::Option<&[f64]>) -> api::Result<lut::Stage>
 pub fn lut::Stage::tone_curves(&[&gamma::ToneCurve]) -> api::Result<lut::Stage>
 pub fn lut::Stage::eval(&self, &[f32], &mut [f32])
-pub fn lut::Stage::foreign_stage_eval(&[f32], &mut [f32], &lut::Stage)
 pub fn lut::Stage::input_channels(&self) -> u32
-pub fn lut::Stage::next(&self) -> core::option::Option<&lut::Stage>
 pub fn lut::Stage::output_channels(&self) -> u32
 pub fn lut::Stage::stage_type(&self) -> u32
-pub type api::StagesIter<'a>::Item = &'a lut::Stage
-pub fn api::StagesIter<'a>::next(&mut self) -> core::option::Option<&'a lut::Stage>
-pub type api::ToneCurve::Target = gamma::ToneCurve
-pub fn api::ToneCurve::deref(&self) -> &gamma::ToneCurve
-pub api::ToneCurveRef::evals: alloc::vec::Vec<core::option::Option<context::ParametricCurveEvaluator>>
+pub fn lut::Stage::foreign_stage_eval(&[f32], &mut [f32], &lut::Stage)
+pub fn lut::Stage::next(&self) -> core::option::Option<&lut::Stage>
+pub type api::Stages<'a>::Item = &'a lut::Stage
+pub fn api::Stages<'a>::next(&mut self) -> core::option::Option<&'a lut::Stage>
+pub api::ToneCurve::evals: alloc::vec::Vec<core::option::Option<context::ParametricCurveEvaluator>>
+pub api::ToneCurve::n_entries: u32
+pub api::ToneCurve::segments: alloc::vec::Vec<gamma::CurveSegment>
+pub api::ToneCurve::table16: alloc::vec::Vec<u16>
 pub fn gamma::ToneCurve::estimated_entries(&self) -> &[u16]
 pub fn gamma::ToneCurve::estimated_entry_count(&self) -> u32
-pub fn gamma::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
 pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
-pub fn gamma::ToneCurve::is_descending(&self) -> bool
-pub fn gamma::ToneCurve::is_linear(&self) -> bool
-pub fn gamma::ToneCurve::is_monotonic(&self) -> bool
-pub fn gamma::ToneCurve::is_multisegment(&self) -> bool
 pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::smooth(&mut self, f64) -> bool
 pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
+pub fn gamma::ToneCurve::gamma(f64) -> api::Result<Self>
+pub fn gamma::ToneCurve::inverse(&self) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::inverse_sampled(&self, usize) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::is_descending(&self) -> bool
+pub fn gamma::ToneCurve::is_linear(&self) -> bool
+pub fn gamma::ToneCurve::is_monotonic(&self) -> bool
+pub fn gamma::ToneCurve::is_multisegment(&self) -> bool
+pub fn gamma::ToneCurve::linear() -> Self
+pub fn gamma::ToneCurve::parameters(&self) -> core::option::Option<&[f64]>
+pub fn gamma::ToneCurve::parametric(i32, &[f64]) -> api::Result<Self>
+pub fn gamma::ToneCurve::smoothed(&self, f64) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::srgb() -> Self
+pub fn gamma::ToneCurve::tabulated16(&[u16]) -> api::Result<Self>
+pub fn gamma::ToneCurve::tabulated_float(&[f32]) -> api::Result<Self>
+pub fn gamma::ToneCurve::then_inverse_of(&self, &gamma::ToneCurve, usize) -> api::Result<gamma::ToneCurve>
 pub fn gamma::ToneCurve::estimated_table(&self) -> &[u16]
-pub fn gamma::ToneCurve::estimated_table_entries(&self) -> u32
 pub fn gamma::ToneCurve::eval16(&self, u16) -> u16
 pub fn gamma::ToneCurve::eval_float(&self, f32) -> f32
 pub fn gamma::ToneCurve::parametric_type(&self) -> i32
+pub fn gamma::ToneCurve::estimated_table_entries(&self) -> u32
 pub fn gamma::ToneCurve::segment(&self, i32) -> core::option::Option<&gamma::CurveSegment>
 pub api::UcrBg::bg: gamma::ToneCurve
 pub api::UcrBg::desc: named::Mlu
@@ -352,7 +442,6 @@ pub struct context::CParametricSet
 pub context::CParametricSet::evaluator: usize
 pub context::CParametricSet::function_types: alloc::vec::Vec<i32>
 pub context::CParametricSet::parameter_count: alloc::vec::Vec<u32>
-pub struct context::Context
 pub context::Context::adaptation_state: core::sync::atomic::AtomicU64
 pub context::Context::alarm_codes: std::sync::poison::mutex::Mutex<[u16; 16]>
 pub context::Context::c_header: context::CHeaderSet
@@ -438,22 +527,33 @@ pub gamma::ToneCurve::segments: alloc::vec::Vec<gamma::CurveSegment>
 pub gamma::ToneCurve::table16: alloc::vec::Vec<u16>
 pub fn gamma::ToneCurve::estimated_entries(&self) -> &[u16]
 pub fn gamma::ToneCurve::estimated_entry_count(&self) -> u32
-pub fn gamma::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
 pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
-pub fn gamma::ToneCurve::is_descending(&self) -> bool
-pub fn gamma::ToneCurve::is_linear(&self) -> bool
-pub fn gamma::ToneCurve::is_monotonic(&self) -> bool
-pub fn gamma::ToneCurve::is_multisegment(&self) -> bool
 pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::smooth(&mut self, f64) -> bool
 pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
+pub fn gamma::ToneCurve::gamma(f64) -> api::Result<Self>
+pub fn gamma::ToneCurve::inverse(&self) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::inverse_sampled(&self, usize) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::is_descending(&self) -> bool
+pub fn gamma::ToneCurve::is_linear(&self) -> bool
+pub fn gamma::ToneCurve::is_monotonic(&self) -> bool
+pub fn gamma::ToneCurve::is_multisegment(&self) -> bool
+pub fn gamma::ToneCurve::linear() -> Self
+pub fn gamma::ToneCurve::parameters(&self) -> core::option::Option<&[f64]>
+pub fn gamma::ToneCurve::parametric(i32, &[f64]) -> api::Result<Self>
+pub fn gamma::ToneCurve::smoothed(&self, f64) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::srgb() -> Self
+pub fn gamma::ToneCurve::tabulated16(&[u16]) -> api::Result<Self>
+pub fn gamma::ToneCurve::tabulated_float(&[f32]) -> api::Result<Self>
+pub fn gamma::ToneCurve::then_inverse_of(&self, &gamma::ToneCurve, usize) -> api::Result<gamma::ToneCurve>
 pub fn gamma::ToneCurve::estimated_table(&self) -> &[u16]
-pub fn gamma::ToneCurve::estimated_table_entries(&self) -> u32
 pub fn gamma::ToneCurve::eval16(&self, u16) -> u16
 pub fn gamma::ToneCurve::eval_float(&self, f32) -> f32
 pub fn gamma::ToneCurve::parametric_type(&self) -> i32
+pub fn gamma::ToneCurve::estimated_table_entries(&self) -> u32
 pub fn gamma::ToneCurve::segment(&self, i32) -> core::option::Option<&gamma::CurveSegment>
 pub const gamma::MAX_NODES_IN_CURVE: usize
 pub const gamma::MAX_TYPES_IN_LCMS_PLUGIN: usize [also: profile]
@@ -625,6 +725,7 @@ pub mod io1
 pub const io1::LCMS_USED_AS_INPUT: i32
 pub const io1::LCMS_USED_AS_OUTPUT: i32
 pub const io1::LCMS_USED_AS_PROOF: i32
+pub fn io1::compile_profile_sequence(&mut [alloc::boxed::Box<profile::IccProfile>]) -> core::option::Option<named::ProfileSeqDesc>
 pub fn io1::is_clut(&profile::IccProfile, u32, i32) -> bool
 pub fn io1::is_intent_supported(&profile::IccProfile, u32, i32) -> bool
 pub fn io1::read_chad(&mut profile::IccProfile) -> types::Mat3
@@ -632,6 +733,7 @@ pub fn io1::read_devicelink_lut(&mut profile::IccProfile, u32) -> core::option::
 pub fn io1::read_input_lut(&mut profile::IccProfile, u32) -> core::option::Option<lut::Pipeline>
 pub fn io1::read_media_white_point(&mut profile::IccProfile) -> types::CieXyz
 pub fn io1::read_output_lut(&mut profile::IccProfile, u32) -> core::option::Option<lut::Pipeline>
+pub fn io1::write_profile_sequence(&mut profile::IccProfile, &named::ProfileSeqDesc) -> bool
 pub mod lcms2
 pub use lcms2::Pod
 pub use lcms2::Zeroable
@@ -1008,27 +1110,31 @@ pub lut::Pipeline::input_channels: u32
 pub lut::Pipeline::opt_data: core::option::Option<opt::OptData>
 pub lut::Pipeline::output_channels: u32
 pub lut::Pipeline::save_as_8bits: bool
+pub fn lut::Pipeline::append(&mut self, &lut::Pipeline) -> api::Result<()>
+pub fn lut::Pipeline::eval_reverse(&self, &[f32; 3], core::option::Option<&[f32]>) -> api::Result<alloc::vec::Vec<f32>>
+pub fn lut::Pipeline::new(u32, u32) -> api::Result<lut::Pipeline>
+pub fn lut::Pipeline::pop(&mut self) -> core::option::Option<lut::Stage>
+pub fn lut::Pipeline::pop_front(&mut self) -> core::option::Option<lut::Stage>
+pub fn lut::Pipeline::push(&mut self, lut::Stage) -> api::Result<()>
+pub fn lut::Pipeline::push_front(&mut self, lut::Stage) -> api::Result<()>
+pub fn lut::Pipeline::stages(&self) -> api::Stages<'_>
 pub fn lut::Pipeline::cat(&mut self, &lut::Pipeline) -> bool
 pub fn lut::Pipeline::dup(&self) -> core::option::Option<lut::Pipeline>
+pub fn lut::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
+pub fn lut::Pipeline::insert_stage(&mut self, lut::StageLoc, lut::Stage) -> bool
+pub fn lut::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<lut::Stage>
 pub fn lut::Pipeline::eval16(&self, &[u16], &mut [u16])
 pub fn lut::Pipeline::eval_float(&self, &[f32], &mut [f32])
-pub fn lut::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
 pub fn lut::Pipeline::first_stage(&self) -> core::option::Option<&lut::Stage>
 pub fn lut::Pipeline::input_channels(&self) -> u32
-pub fn lut::Pipeline::insert_stage(&mut self, lut::StageLoc, lut::Stage) -> bool
 pub fn lut::Pipeline::last_stage(&self) -> core::option::Option<&lut::Stage>
 pub fn lut::Pipeline::output_channels(&self) -> u32
 pub fn lut::Pipeline::set_save_as_8bits(&mut self, bool) -> bool
 pub fn lut::Pipeline::stage_count(&self) -> u32
-pub fn lut::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<lut::Stage>
 pub fn lut::Pipeline::eval_f32(&self, &[f32], &mut [f32])
 pub fn lut::Pipeline::eval_u16(&self, &[u16], &mut [u16])
 pub fn lut::Pipeline::set_8bit(&mut self, bool) -> bool
 pub fn lut::Pipeline::to_owned(&self) -> lcms2::Pipeline
-pub fn lut::Pipeline::new(u32, u32) -> api::Result<lut::Pipeline>
-pub fn lut::Pipeline::push(&mut self, lut::Stage) -> bool
-pub fn lut::Pipeline::push_front(&mut self, lut::Stage) -> bool
-pub fn lut::Pipeline::stages(&self) -> api::StagesIter<'_>
 pub struct lut::Stage
 pub lut::Stage::data: lut::StageData
 pub lut::Stage::eval_ptr: lut::StageEvalFn
@@ -1044,11 +1150,11 @@ pub fn lut::Stage::identity(u32) -> lut::Stage
 pub fn lut::Stage::matrix(&[f64], u32, u32, core::option::Option<&[f64]>) -> api::Result<lut::Stage>
 pub fn lut::Stage::tone_curves(&[&gamma::ToneCurve]) -> api::Result<lut::Stage>
 pub fn lut::Stage::eval(&self, &[f32], &mut [f32])
-pub fn lut::Stage::foreign_stage_eval(&[f32], &mut [f32], &lut::Stage)
 pub fn lut::Stage::input_channels(&self) -> u32
-pub fn lut::Stage::next(&self) -> core::option::Option<&lut::Stage>
 pub fn lut::Stage::output_channels(&self) -> u32
 pub fn lut::Stage::stage_type(&self) -> u32
+pub fn lut::Stage::foreign_stage_eval(&[f32], &mut [f32], &lut::Stage)
+pub fn lut::Stage::next(&self) -> core::option::Option<&lut::Stage>
 pub const lut::MAX_CHANNELS: usize [also: xform]
 pub const lut::MAX_ENCODEABLE_XYZ: f64
 pub const lut::SAMPLER_INSPECT: u32
@@ -1110,9 +1216,10 @@ pub fn mtrx::vec3_minus(&mut types::Vec3, &types::Vec3, &types::Vec3)
 pub mod named
 pub struct named::Dict
 pub named::Dict::entries: alloc::vec::Vec<named::DictEntry>
-pub fn named::Dict::add(&mut self, &str, &str) -> bool
+pub fn named::Dict::add(&mut self, &str, &str) -> api::Result<()>
 pub fn named::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
 pub fn named::Dict::is_empty(&self) -> bool
+pub fn named::Dict::iter(&self) -> impl core::iter::traits::double_ended::DoubleEndedIterator<Item = (alloc::string::String, alloc::string::String)> + core::iter::traits::exact_size::ExactSizeIterator + '_
 pub fn named::Dict::len(&self) -> usize
 pub fn named::Dict::new() -> named::Dict
 pub struct named::DictEntry
@@ -1128,11 +1235,12 @@ pub named::Mlu::pool_used: u32
 pub named::Mlu::used_entries: u32
 pub fn named::Mlu::get(&self, api::Locale) -> core::option::Option<alloc::string::String>
 pub fn named::Mlu::get_ascii(&self, api::Locale) -> core::option::Option<alloc::string::String>
-pub fn named::Mlu::new(u32) -> named::Mlu
-pub fn named::Mlu::set(&mut self, api::Locale, &str) -> bool
-pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> bool
-pub fn named::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Locale>
-pub fn named::Mlu::translations(&self) -> u32
+pub fn named::Mlu::is_empty(&self) -> bool
+pub fn named::Mlu::len(&self) -> usize
+pub fn named::Mlu::locales(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = api::Locale> + '_
+pub fn named::Mlu::new() -> named::Mlu
+pub fn named::Mlu::set(&mut self, api::Locale, &str) -> api::Result<()>
+pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> api::Result<()>
 pub fn named::Mlu::set_text(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::text(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
@@ -1159,11 +1267,16 @@ pub fn named::NamedColorList::colors(&self) -> alloc::vec::Vec<lcms2::NamedColor
 pub fn named::NamedColorList::count(&self) -> usize
 pub fn named::NamedColorList::get(&self, usize) -> core::option::Option<lcms2::NamedColorInfo>
 pub fn named::NamedColorList::index_of(&self, &str) -> usize
+pub fn named::NamedColorList::colorant_count(&self) -> usize
+pub fn named::NamedColorList::entry(&self, usize) -> core::option::Option<api::NamedColor>
 pub fn named::NamedColorList::is_empty(&self) -> bool
+pub fn named::NamedColorList::iter(&self) -> api::NamedColorIter<'_>
 pub fn named::NamedColorList::len(&self) -> usize
-pub fn named::NamedColorList::new(u32, u32, &str, &str) -> api::Result<named::NamedColorList>
+pub fn named::NamedColorList::new(usize, &str, &str) -> api::Result<named::NamedColorList>
 pub fn named::NamedColorList::position(&self, &str) -> core::option::Option<usize>
+pub fn named::NamedColorList::prefix(&self) -> alloc::string::String
 pub fn named::NamedColorList::push(&mut self, &str, [u16; 3], &[u16]) -> api::Result<()>
+pub fn named::NamedColorList::suffix(&self) -> alloc::string::String
 pub struct named::PSeqDesc
 pub named::PSeqDesc::attributes: u64
 pub named::PSeqDesc::description: core::option::Option<named::Mlu>
@@ -1173,8 +1286,20 @@ pub named::PSeqDesc::manufacturer: core::option::Option<named::Mlu>
 pub named::PSeqDesc::model: core::option::Option<named::Mlu>
 pub named::PSeqDesc::profile_id: types::ProfileId
 pub named::PSeqDesc::technology: u32
+pub fn named::PSeqDesc::attributes(&self) -> u64
+pub fn named::PSeqDesc::description(&self) -> core::option::Option<&named::Mlu>
+pub fn named::PSeqDesc::device_manufacturer(&self) -> u32
+pub fn named::PSeqDesc::device_model(&self) -> u32
+pub fn named::PSeqDesc::manufacturer(&self) -> core::option::Option<&named::Mlu>
+pub fn named::PSeqDesc::model(&self) -> core::option::Option<&named::Mlu>
+pub fn named::PSeqDesc::profile_id(&self) -> types::ProfileId
+pub fn named::PSeqDesc::technology(&self) -> u32
 pub struct named::ProfileSeqDesc
 pub named::ProfileSeqDesc::seq: alloc::vec::Vec<named::PSeqDesc>
+pub fn named::ProfileSeqDesc::get(&self, usize) -> core::option::Option<&named::PSeqDesc>
+pub fn named::ProfileSeqDesc::is_empty(&self) -> bool
+pub fn named::ProfileSeqDesc::iter(&self) -> core::slice::iter::Iter<'_, named::PSeqDesc>
+pub fn named::ProfileSeqDesc::len(&self) -> usize
 pub const named::CMS_MAX_PATH: usize
 pub fn named::alloc_named_color_list(core::option::Option<&context::Context>, u32, u32, &[u8], &[u8]) -> core::option::Option<named::NamedColorList>
 pub fn named::alloc_profile_seq_desc(core::option::Option<&context::Context>, u32) -> core::option::Option<named::ProfileSeqDesc>
@@ -1556,6 +1681,10 @@ pub struct tagtypes::IccData
 pub tagtypes::IccData::data: alloc::vec::Vec<u8>
 pub tagtypes::IccData::flag: u32
 pub tagtypes::IccData::len: u32
+pub fn tagtypes::IccData::binary(alloc::vec::Vec<u8>) -> tagtypes::IccData
+pub fn tagtypes::IccData::bytes(&self) -> &[u8]
+pub fn tagtypes::IccData::is_binary(&self) -> bool
+pub fn tagtypes::IccData::text(&str) -> tagtypes::IccData
 pub struct tagtypes::IccViewingConditions
 pub tagtypes::IccViewingConditions::illuminant_type: u32
 pub tagtypes::IccViewingConditions::illuminant_xyz: types::CieXyz
@@ -1633,8 +1762,23 @@ pub fn tagtypes::write_wchar_array(&mut io::IoHandler, &[named::Wchar]) -> bool
 pub type tagtypes::PositionTableEntryFn = fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, usize, u32) -> bool
 pub fn types::CieXyz::d50() -> Self
 pub fn types::CiexyY::d50() -> Self
+pub struct types::Context [also: context]
+pub types::Context::adaptation_state: core::sync::atomic::AtomicU64
+pub types::Context::alarm_codes: std::sync::poison::mutex::Mutex<[u16; 16]>
+pub types::Context::c_header: context::CHeaderSet
+pub types::Context::c_intents: alloc::vec::Vec<context::CIntentSet>
+pub types::Context::c_parametric_curves: alloc::vec::Vec<context::CParametricSet>
+pub types::Context::c_xform_factories: alloc::vec::Vec<(usize, usize)>
+pub types::Context::formatter_factories: alloc::vec::Vec<usize>
+pub types::Context::interp_factories: alloc::vec::Vec<usize>
 pub types::Context::interpolators: core::option::Option<context::InterpFnFactory>
 pub types::Context::log_error_handler: core::option::Option<context::LogErrorHandler>
+pub types::Context::mem_fns: [usize; 6]
+pub types::Context::mpe_handlers: alloc::vec::Vec<tagtypes::MpeElemHandler>
+pub types::Context::parametric_curves: alloc::vec::Vec<gamma::ParametricCurves>
+pub types::Context::tag_descriptors: alloc::vec::Vec<(u32, tagtypes::TagDescriptor)>
+pub types::Context::tag_type_handlers: alloc::vec::Vec<tagtypes::TagTypeHandler>
+pub types::Context::user_data: core::sync::atomic::AtomicUsize
 pub fn context::Context::plugin(&mut self, &[context::Plugin]) -> bool
 pub mod virt
 pub const virt::INTENT_PERCEPTUAL: u32 [also: cnvrt]
@@ -1703,6 +1847,7 @@ pub xform::TransformPlan::output_colorants: core::option::Option<named::NamedCol
 pub xform::TransformPlan::output_format: u32
 pub xform::TransformPlan::rendering_intent: u32
 pub xform::TransformPlan::scratch_seed: xform::TransformScratch
+pub xform::TransformPlan::sequence: core::option::Option<named::ProfileSeqDesc>
 pub xform::TransformPlan::stride: xform::Stride
 pub xform::TransformPlan::user_data: core::option::Option<alloc::boxed::Box<(dyn core::any::Any + core::marker::Send + core::marker::Sync)>>
 pub xform::TransformPlan::worker: xform::Worker
@@ -1720,7 +1865,6 @@ pub const xform::FLAGS_CAN_CHANGE_FORMATTER: u32
 pub const xform::FLAGS_COPY_ALPHA: u32
 pub const xform::FLAGS_GAMUTCHECK: u32
 pub const xform::FLAGS_HIGHRESPRECALC: u32
-pub const xform::FLAGS_KEEP_SEQUENCE: u32
 pub const xform::FLAGS_LOWRESPRECALC: u32
 pub const xform::FLAGS_NOCACHE: u32
 pub const xform::FLAGS_NOOPTIMIZE: u32
@@ -1734,9 +1878,12 @@ pub fn xform::get_transform_output_colorants(&xform::Transform) -> core::option:
 pub fn xform::set_adaptation_state(core::option::Option<&context::Context>, f64) -> f64
 pub fn xform::set_alarm_codes(core::option::Option<&context::Context>, &[u16; 16])
 
-## trait impls (105 types)
+## trait impls (108 types)
 
-api::TagData<'_>: From<named::Mlu>, From<named::NamedColorList>, From<tagtypes::VideoSignal>
+&'a lut::Pipeline: IntoIterator
+&'a named::NamedColorList: IntoIterator
+&'a named::ProfileSeqDesc: IntoIterator
+api::TagData<'_>: From<[gamma::ToneCurve; 3]>, From<gamma::ToneCurve>, From<named::Mlu>, From<named::NamedColorList>, From<tagtypes::VideoSignal>
 cgats::KeyValue: Clone
 cgats::Keyword: Clone, Copy
 cgats::Symbol: Clone, Copy, Debug, Eq, PartialEq
@@ -1754,7 +1901,7 @@ f32: lcms2::FloatOrU16
 f64: lcms2::FloatOrU16
 gamma::CurveSegment: Clone, Default
 gamma::ParametricCurves: Clone
-gamma::ToneCurve: Clone
+gamma::ToneCurve: Clone, Debug
 gbd::GdbPoint: Clone, Copy, Default
 gbd::GdbPointType: Clone, Copy, Default, Eq, PartialEq
 gbd::Spherical: Clone, Copy, Default
@@ -1797,19 +1944,19 @@ lcms2::TechnologySignature: Clone, Copy, Debug, Eq, Hash, PartialEq
 lcms2::ThreadContext: Default
 lcms2::ToneCurve: Clone, Deref, DerefMut
 lut::CLutData: Clone
-lut::Pipeline: Clone
-lut::Stage: Clone, Drop
+lut::Pipeline: Clone, Debug
+lut::Stage: Clone, Debug, Drop
 lut::StageData: Clone
 lut::StageLoc: Clone, Copy, Debug, Eq, PartialEq
 md5::Md5: Default
-named::Dict: Clone, Default
+named::Dict: Clone, Debug, Default
 named::DictEntry: Clone
-named::Mlu: Clone, Default
+named::Mlu: Clone, Debug, Default, From<&str>
 named::MluEntry: Clone, Copy, Debug, Default
 named::NamedColor: Clone
-named::NamedColorList: Clone
-named::PSeqDesc: Clone
-named::ProfileSeqDesc: Clone
+named::NamedColorList: Clone, Debug
+named::PSeqDesc: Clone, Debug
+named::ProfileSeqDesc: Clone, Debug
 opt::ClutOnly: Clone
 opt::Curves16Data: Clone
 opt::MatShaper8Data: Clone
@@ -1821,17 +1968,17 @@ pack::FormatterDir: Clone, Copy, PartialEq
 profile::IccProfile: Clone, Default
 tagtypes::CrdInfo: Clone
 tagtypes::ForeignTag: Clone, Drop
-tagtypes::IccData: Clone
-tagtypes::IccViewingConditions: Clone
-tagtypes::Mhc2: Clone
+tagtypes::IccData: Clone, Debug
+tagtypes::IccViewingConditions: Clone, Debug
+tagtypes::Mhc2: Clone, Debug
 tagtypes::MpeElemHandler: Clone, Copy
-tagtypes::Screening: Clone
+tagtypes::Screening: Clone, Debug
 tagtypes::ScreeningChannel: Clone, Copy, Debug, Default
 tagtypes::TagDescriptor: Clone, Copy
 tagtypes::TagObject: Clone
 tagtypes::TagTypeHandler: Clone, Copy
 tagtypes::Tm: Clone, Copy, Debug, Default, PartialEq
-tagtypes::UcrBg: Clone
+tagtypes::UcrBg: Clone, Debug
 tagtypes::VcgtData: Clone
 tagtypes::VideoSignal: Clone, Copy, Debug, Default, PartialEq
 u16: lcms2::FloatOrU16
@@ -1856,28 +2003,33 @@ profile::IccProfile: !Freeze
 xform::Transform: !Freeze !RefUnwindSafe !UnwindSafe
 xform::TransformPlan: !Freeze !RefUnwindSafe !UnwindSafe
 
-## removed by features (303 lines)
+## removed by features (356 lines)
 
+pub api::TagData::Curve(api::ToneCurve)
 pub api::TagData::Data(api::IccData)
-pub api::TagData::DateTime(api::Tm)
 pub api::TagData::Dict(api::Dict)
 pub api::TagData::Mhc2(api::Mhc2)
 pub api::TagData::Mlu(api::Mlu)
 pub api::TagData::NamedColors(api::NamedColorList)
+pub api::TagData::ParametricCurve(api::ToneCurve)
 pub api::TagData::Pipeline(api::Pipeline)
 pub api::TagData::Screening(api::Screening)
 pub api::TagData::Seq(api::ProfileSeqDesc)
 pub api::TagData::UcrBg(api::UcrBg)
+pub api::TagData::VcgtCurves([api::ToneCurve; 3])
 pub api::TagData::VideoSignal(api::VideoSignal)
 pub api::TagData::ViewingConditions(api::IccViewingConditions)
+impl core::convert::From<[api::ToneCurve; 3]> for api::TagData<'_>
+pub fn api::TagData<'_>::from([api::ToneCurve; 3]) -> Self
 impl core::convert::From<api::Mlu> for api::TagData<'_>
 pub fn api::TagData<'_>::from(api::Mlu) -> Self
 impl core::convert::From<api::NamedColorList> for api::TagData<'_>
 pub fn api::TagData<'_>::from(api::NamedColorList) -> Self
+impl core::convert::From<api::ToneCurve> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::ToneCurve) -> Self
 impl core::convert::From<api::VideoSignal> for api::TagData<'_>
 pub fn api::TagData<'_>::from(api::VideoSignal) -> Self
-pub api::TagValue::Curve(&'a api::ToneCurveRef)
-pub api::TagValue::DateTime(&'a api::Tm)
+pub api::TagValue::Curve(&'a api::ToneCurve)
 pub api::TagValue::Dict(&'a api::Dict)
 pub api::TagValue::Mhc2(&'a api::Mhc2)
 pub api::TagValue::NamedColors(&'a api::NamedColorList)
@@ -1887,33 +2039,29 @@ pub api::TagValue::Seq(&'a api::ProfileSeqDesc)
 pub api::TagValue::Stage(&'a api::Stage)
 pub api::TagValue::Text(&'a api::Mlu)
 pub api::TagValue::UcrBg(&'a api::UcrBg)
-pub api::TagValue::VcgtCurves([&'a api::ToneCurveRef; 3])
+pub api::TagValue::VcgtCurves([&'a api::ToneCurve; 3])
 pub api::TagValue::VideoSignal(&'a api::VideoSignal)
 pub api::TagValue::ViewingConditions(&'a api::IccViewingConditions)
-pub fn api::TagValue<'a>::as_curve(&self) -> core::option::Option<&'a api::ToneCurveRef>
+pub fn api::TagValue<'a>::as_curve(&self) -> core::option::Option<&'a api::ToneCurve>
+pub fn api::TagValue<'a>::as_dict(&self) -> core::option::Option<&'a api::Dict>
 pub fn api::TagValue<'a>::as_named_colors(&self) -> core::option::Option<&'a api::NamedColorList>
 pub fn api::TagValue<'a>::as_pipeline(&self) -> core::option::Option<&'a api::Pipeline>
+pub fn api::TagValue<'a>::as_seq(&self) -> core::option::Option<&'a api::ProfileSeqDesc>
+pub fn api::TagValue<'a>::as_stage(&self) -> core::option::Option<&'a api::Stage>
 pub fn api::TagValue<'a>::as_text(&self) -> core::option::Option<&'a api::Mlu>
-pub api::VcgtData::Curves([api::ToneCurveRef; 3])
-impl core::clone::Clone for api::VcgtData
-pub fn api::VcgtData::clone(&self) -> api::VcgtData
-impl core::marker::Freeze for api::VcgtData
-impl core::marker::Send for api::VcgtData
-impl core::marker::Sync for api::VcgtData
-impl core::marker::Unpin for api::VcgtData
-impl core::marker::UnsafeUnpin for api::VcgtData
-impl core::panic::unwind_safe::RefUnwindSafe for api::VcgtData
-impl core::panic::unwind_safe::UnwindSafe for api::VcgtData
 impl api::Dict
-pub fn api::Dict::add(&mut self, &str, &str) -> bool
+pub fn api::Dict::add(&mut self, &str, &str) -> api::Result<()>
 pub fn api::Dict::get(&self, &str) -> core::option::Option<alloc::string::String>
 pub fn api::Dict::is_empty(&self) -> bool
+pub fn api::Dict::iter(&self) -> impl core::iter::traits::double_ended::DoubleEndedIterator<Item = (alloc::string::String, alloc::string::String)> + core::iter::traits::exact_size::ExactSizeIterator + '_
 pub fn api::Dict::len(&self) -> usize
 pub fn api::Dict::new() -> api::Dict
 impl core::clone::Clone for api::Dict
 pub fn api::Dict::clone(&self) -> api::Dict
 impl core::default::Default for api::Dict
 pub fn api::Dict::default() -> api::Dict
+impl core::fmt::Debug for api::Dict
+pub fn api::Dict::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for api::Dict
 impl core::marker::Send for api::Dict
 impl core::marker::Sync for api::Dict
@@ -1921,8 +2069,15 @@ impl core::marker::Unpin for api::Dict
 impl core::marker::UnsafeUnpin for api::Dict
 impl core::panic::unwind_safe::RefUnwindSafe for api::Dict
 impl core::panic::unwind_safe::UnwindSafe for api::Dict
+impl api::IccData
+pub fn api::IccData::binary(alloc::vec::Vec<u8>) -> api::IccData
+pub fn api::IccData::bytes(&self) -> &[u8]
+pub fn api::IccData::is_binary(&self) -> bool
+pub fn api::IccData::text(&str) -> api::IccData
 impl core::clone::Clone for api::IccData
 pub fn api::IccData::clone(&self) -> api::IccData
+impl core::fmt::Debug for api::IccData
+pub fn api::IccData::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for api::IccData
 impl core::marker::Send for api::IccData
 impl core::marker::Sync for api::IccData
@@ -1932,6 +2087,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for api::IccData
 impl core::panic::unwind_safe::UnwindSafe for api::IccData
 impl core::clone::Clone for api::IccViewingConditions
 pub fn api::IccViewingConditions::clone(&self) -> api::IccViewingConditions
+impl core::fmt::Debug for api::IccViewingConditions
+pub fn api::IccViewingConditions::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for api::IccViewingConditions
 impl core::marker::Send for api::IccViewingConditions
 impl core::marker::Sync for api::IccViewingConditions
@@ -1941,6 +2098,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for api::IccViewingConditions
 impl core::panic::unwind_safe::UnwindSafe for api::IccViewingConditions
 impl core::clone::Clone for api::Mhc2
 pub fn api::Mhc2::clone(&self) -> api::Mhc2
+impl core::fmt::Debug for api::Mhc2
+pub fn api::Mhc2::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for api::Mhc2
 impl core::marker::Send for api::Mhc2
 impl core::marker::Sync for api::Mhc2
@@ -1951,17 +2110,22 @@ impl core::panic::unwind_safe::UnwindSafe for api::Mhc2
 impl api::Mlu
 pub fn api::Mlu::get(&self, api::Locale) -> core::option::Option<alloc::string::String>
 pub fn api::Mlu::get_ascii(&self, api::Locale) -> core::option::Option<alloc::string::String>
-pub fn api::Mlu::new(u32) -> api::Mlu
-pub fn api::Mlu::set(&mut self, api::Locale, &str) -> bool
-pub fn api::Mlu::set_ascii(&mut self, api::Locale, &str) -> bool
-pub fn api::Mlu::translation_codes(&self, u32) -> core::option::Option<api::Locale>
-pub fn api::Mlu::translations(&self) -> u32
+pub fn api::Mlu::is_empty(&self) -> bool
+pub fn api::Mlu::len(&self) -> usize
+pub fn api::Mlu::locales(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = api::Locale> + '_
+pub fn api::Mlu::new() -> api::Mlu
+pub fn api::Mlu::set(&mut self, api::Locale, &str) -> api::Result<()>
+pub fn api::Mlu::set_ascii(&mut self, api::Locale, &str) -> api::Result<()>
 impl core::clone::Clone for api::Mlu
 pub fn api::Mlu::clone(&self) -> api::Mlu
+impl core::convert::From<&str> for api::Mlu
+pub fn api::Mlu::from(&str) -> api::Mlu
 impl core::convert::From<api::Mlu> for api::TagData<'_>
 pub fn api::TagData<'_>::from(api::Mlu) -> Self
 impl core::default::Default for api::Mlu
 pub fn api::Mlu::default() -> api::Mlu
+impl core::fmt::Debug for api::Mlu
+pub fn api::Mlu::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for api::Mlu
 impl core::marker::Send for api::Mlu
 impl core::marker::Sync for api::Mlu
@@ -1970,15 +2134,26 @@ impl core::marker::UnsafeUnpin for api::Mlu
 impl core::panic::unwind_safe::RefUnwindSafe for api::Mlu
 impl core::panic::unwind_safe::UnwindSafe for api::Mlu
 impl api::NamedColorList
+pub fn api::NamedColorList::colorant_count(&self) -> usize
+pub fn api::NamedColorList::entry(&self, usize) -> core::option::Option<api::NamedColor>
 pub fn api::NamedColorList::is_empty(&self) -> bool
+pub fn api::NamedColorList::iter(&self) -> api::NamedColorIter<'_>
 pub fn api::NamedColorList::len(&self) -> usize
-pub fn api::NamedColorList::new(u32, u32, &str, &str) -> api::Result<api::NamedColorList>
+pub fn api::NamedColorList::new(usize, &str, &str) -> api::Result<api::NamedColorList>
 pub fn api::NamedColorList::position(&self, &str) -> core::option::Option<usize>
+pub fn api::NamedColorList::prefix(&self) -> alloc::string::String
 pub fn api::NamedColorList::push(&mut self, &str, [u16; 3], &[u16]) -> api::Result<()>
+pub fn api::NamedColorList::suffix(&self) -> alloc::string::String
 impl core::clone::Clone for api::NamedColorList
 pub fn api::NamedColorList::clone(&self) -> api::NamedColorList
 impl core::convert::From<api::NamedColorList> for api::TagData<'_>
 pub fn api::TagData<'_>::from(api::NamedColorList) -> Self
+impl core::fmt::Debug for api::NamedColorList
+pub fn api::NamedColorList::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::iter::traits::collect::IntoIterator for &'a api::NamedColorList
+pub type &'a api::NamedColorList::IntoIter = api::NamedColorIter<'a>
+pub type &'a api::NamedColorList::Item = api::NamedColor
+pub fn &'a api::NamedColorList::into_iter(self) -> api::NamedColorIter<'a>
 impl core::marker::Freeze for api::NamedColorList
 impl core::marker::Send for api::NamedColorList
 impl core::marker::Sync for api::NamedColorList
@@ -1986,30 +2161,32 @@ impl core::marker::Unpin for api::NamedColorList
 impl core::marker::UnsafeUnpin for api::NamedColorList
 impl core::panic::unwind_safe::RefUnwindSafe for api::NamedColorList
 impl core::panic::unwind_safe::UnwindSafe for api::NamedColorList
-pub api::Pipeline::elements: core::option::Option<alloc::boxed::Box<api::Stage>>
-pub api::Pipeline::eval16_fn: fn(&[u16], &mut [u16], &api::Pipeline)
-pub api::Pipeline::eval_float_fn: fn(&[f32], &mut [f32], &api::Pipeline)
 impl api::Pipeline
-pub fn api::Pipeline::cat(&mut self, &api::Pipeline) -> bool
-pub fn api::Pipeline::dup(&self) -> core::option::Option<api::Pipeline>
+pub fn api::Pipeline::append(&mut self, &api::Pipeline) -> api::Result<()>
+pub fn api::Pipeline::eval_reverse(&self, &[f32; 3], core::option::Option<&[f32]>) -> api::Result<alloc::vec::Vec<f32>>
+pub fn api::Pipeline::new(u32, u32) -> api::Result<api::Pipeline>
+pub fn api::Pipeline::pop(&mut self) -> core::option::Option<api::Stage>
+pub fn api::Pipeline::pop_front(&mut self) -> core::option::Option<api::Stage>
+pub fn api::Pipeline::push(&mut self, api::Stage) -> api::Result<()>
+pub fn api::Pipeline::push_front(&mut self, api::Stage) -> api::Result<()>
+pub fn api::Pipeline::stages(&self) -> api::Stages<'_>
+impl api::Pipeline
 pub fn api::Pipeline::eval16(&self, &[u16], &mut [u16])
 pub fn api::Pipeline::eval_float(&self, &[f32], &mut [f32])
-pub fn api::Pipeline::eval_reverse_float(&self, &[f32], &mut [f32], core::option::Option<&[f32]>) -> bool
 pub fn api::Pipeline::first_stage(&self) -> core::option::Option<&api::Stage>
 pub fn api::Pipeline::input_channels(&self) -> u32
-pub fn api::Pipeline::insert_stage(&mut self, lut::StageLoc, api::Stage) -> bool
 pub fn api::Pipeline::last_stage(&self) -> core::option::Option<&api::Stage>
 pub fn api::Pipeline::output_channels(&self) -> u32
 pub fn api::Pipeline::set_save_as_8bits(&mut self, bool) -> bool
 pub fn api::Pipeline::stage_count(&self) -> u32
-pub fn api::Pipeline::unlink_stage(&mut self, lut::StageLoc) -> core::option::Option<api::Stage>
-impl api::Pipeline
-pub fn api::Pipeline::new(u32, u32) -> api::Result<api::Pipeline>
-pub fn api::Pipeline::push(&mut self, api::Stage) -> bool
-pub fn api::Pipeline::push_front(&mut self, api::Stage) -> bool
-pub fn api::Pipeline::stages(&self) -> api::StagesIter<'_>
 impl core::clone::Clone for api::Pipeline
 pub fn api::Pipeline::clone(&self) -> api::Pipeline
+impl core::fmt::Debug for api::Pipeline
+pub fn api::Pipeline::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::iter::traits::collect::IntoIterator for &'a api::Pipeline
+pub type &'a api::Pipeline::IntoIter = api::Stages<'a>
+pub type &'a api::Pipeline::Item = &'a api::Stage
+pub fn &'a api::Pipeline::into_iter(self) -> api::Stages<'a>
 impl core::marker::Freeze for api::Pipeline
 impl core::marker::Send for api::Pipeline
 impl core::marker::Sync for api::Pipeline
@@ -2017,8 +2194,25 @@ impl core::marker::Unpin for api::Pipeline
 impl core::marker::UnsafeUnpin for api::Pipeline
 impl core::panic::unwind_safe::RefUnwindSafe for api::Pipeline
 impl core::panic::unwind_safe::UnwindSafe for api::Pipeline
+pub fn api::Plan::input_colorants(&self) -> core::option::Option<&api::NamedColorList>
+pub fn api::Plan::output_colorants(&self) -> core::option::Option<&api::NamedColorList>
+pub fn api::Profile::gray_curve(&types::CiexyY, &api::ToneCurve) -> api::Result<Self>
+pub fn api::Profile::linearization_device_link(api::ColorSpace, &[api::ToneCurve]) -> api::Result<Self>
+pub fn api::Profile::named_colors(&self) -> core::option::Option<&api::NamedColorList>
+pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&api::ToneCurve; 3]) -> api::Result<Self>
+impl api::ProfileSeqDesc
+pub fn api::ProfileSeqDesc::get(&self, usize) -> core::option::Option<&api::ProfileSeqEntry>
+pub fn api::ProfileSeqDesc::is_empty(&self) -> bool
+pub fn api::ProfileSeqDesc::iter(&self) -> core::slice::iter::Iter<'_, api::ProfileSeqEntry>
+pub fn api::ProfileSeqDesc::len(&self) -> usize
 impl core::clone::Clone for api::ProfileSeqDesc
 pub fn api::ProfileSeqDesc::clone(&self) -> api::ProfileSeqDesc
+impl core::fmt::Debug for api::ProfileSeqDesc
+pub fn api::ProfileSeqDesc::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::iter::traits::collect::IntoIterator for &'a api::ProfileSeqDesc
+pub type &'a api::ProfileSeqDesc::IntoIter = core::slice::iter::Iter<'a, api::ProfileSeqEntry>
+pub type &'a api::ProfileSeqDesc::Item = &'a api::ProfileSeqEntry
+pub fn &'a api::ProfileSeqDesc::into_iter(self) -> Self::IntoIter
 impl core::marker::Freeze for api::ProfileSeqDesc
 impl core::marker::Send for api::ProfileSeqDesc
 impl core::marker::Sync for api::ProfileSeqDesc
@@ -2026,9 +2220,31 @@ impl core::marker::Unpin for api::ProfileSeqDesc
 impl core::marker::UnsafeUnpin for api::ProfileSeqDesc
 impl core::panic::unwind_safe::RefUnwindSafe for api::ProfileSeqDesc
 impl core::panic::unwind_safe::UnwindSafe for api::ProfileSeqDesc
+impl api::ProfileSeqEntry
+pub fn api::ProfileSeqEntry::attributes(&self) -> u64
+pub fn api::ProfileSeqEntry::description(&self) -> core::option::Option<&api::Mlu>
+pub fn api::ProfileSeqEntry::device_manufacturer(&self) -> u32
+pub fn api::ProfileSeqEntry::device_model(&self) -> u32
+pub fn api::ProfileSeqEntry::manufacturer(&self) -> core::option::Option<&api::Mlu>
+pub fn api::ProfileSeqEntry::model(&self) -> core::option::Option<&api::Mlu>
+pub fn api::ProfileSeqEntry::profile_id(&self) -> types::ProfileId
+pub fn api::ProfileSeqEntry::technology(&self) -> u32
+impl core::clone::Clone for api::ProfileSeqEntry
+pub fn api::ProfileSeqEntry::clone(&self) -> api::ProfileSeqEntry
+impl core::fmt::Debug for api::ProfileSeqEntry
+pub fn api::ProfileSeqEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for api::ProfileSeqEntry
+impl core::marker::Send for api::ProfileSeqEntry
+impl core::marker::Sync for api::ProfileSeqEntry
+impl core::marker::Unpin for api::ProfileSeqEntry
+impl core::marker::UnsafeUnpin for api::ProfileSeqEntry
+impl core::panic::unwind_safe::RefUnwindSafe for api::ProfileSeqEntry
+impl core::panic::unwind_safe::UnwindSafe for api::ProfileSeqEntry
 pub api::Screening::channels: [api::ScreeningChannel; 16]
 impl core::clone::Clone for api::Screening
 pub fn api::Screening::clone(&self) -> api::Screening
+impl core::fmt::Debug for api::Screening
+pub fn api::Screening::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for api::Screening
 impl core::marker::Send for api::Screening
 impl core::marker::Sync for api::Screening
@@ -2050,24 +2266,22 @@ impl core::marker::Unpin for api::ScreeningChannel
 impl core::marker::UnsafeUnpin for api::ScreeningChannel
 impl core::panic::unwind_safe::RefUnwindSafe for api::ScreeningChannel
 impl core::panic::unwind_safe::UnwindSafe for api::ScreeningChannel
-pub api::Stage::eval_ptr: fn(&[f32], &mut [f32], &api::Stage)
-pub api::Stage::next: core::option::Option<alloc::boxed::Box<api::Stage>>
 impl api::Stage
 pub fn api::Stage::clut16(u32, u32, u32, core::option::Option<&[u16]>) -> api::Result<api::Stage>
 pub fn api::Stage::clut16_granular(&[u32], u32, core::option::Option<&[u16]>) -> api::Result<api::Stage>
 pub fn api::Stage::clut_float(u32, u32, u32, core::option::Option<&[f32]>) -> api::Result<api::Stage>
 pub fn api::Stage::identity(u32) -> api::Stage
 pub fn api::Stage::matrix(&[f64], u32, u32, core::option::Option<&[f64]>) -> api::Result<api::Stage>
-pub fn api::Stage::tone_curves(&[&api::ToneCurveRef]) -> api::Result<api::Stage>
+pub fn api::Stage::tone_curves(&[&api::ToneCurve]) -> api::Result<api::Stage>
 impl api::Stage
 pub fn api::Stage::eval(&self, &[f32], &mut [f32])
-pub fn api::Stage::foreign_stage_eval(&[f32], &mut [f32], &api::Stage)
 pub fn api::Stage::input_channels(&self) -> u32
-pub fn api::Stage::next(&self) -> core::option::Option<&api::Stage>
 pub fn api::Stage::output_channels(&self) -> u32
 pub fn api::Stage::stage_type(&self) -> u32
 impl core::clone::Clone for api::Stage
 pub fn api::Stage::clone(&self) -> api::Stage
+impl core::fmt::Debug for api::Stage
+pub fn api::Stage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::ops::drop::Drop for api::Stage
 pub fn api::Stage::drop(&mut self)
 impl core::marker::Freeze for api::Stage
@@ -2077,49 +2291,50 @@ impl core::marker::Unpin for api::Stage
 impl core::marker::UnsafeUnpin for api::Stage
 impl core::panic::unwind_safe::RefUnwindSafe for api::Stage
 impl core::panic::unwind_safe::UnwindSafe for api::Stage
-pub type api::StagesIter<'a>::Item = &'a api::Stage
-pub fn api::StagesIter<'a>::next(&mut self) -> core::option::Option<&'a api::Stage>
-impl core::clone::Clone for api::Tm
-pub fn api::Tm::clone(&self) -> api::Tm
-impl core::cmp::PartialEq for api::Tm
-pub fn api::Tm::eq(&self, &api::Tm) -> bool
-impl core::default::Default for api::Tm
-pub fn api::Tm::default() -> api::Tm
-impl core::fmt::Debug for api::Tm
-pub fn api::Tm::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for api::Tm
-impl core::marker::StructuralPartialEq for api::Tm
-impl core::marker::Freeze for api::Tm
-impl core::marker::Send for api::Tm
-impl core::marker::Sync for api::Tm
-impl core::marker::Unpin for api::Tm
-impl core::marker::UnsafeUnpin for api::Tm
-impl core::panic::unwind_safe::RefUnwindSafe for api::Tm
-impl core::panic::unwind_safe::UnwindSafe for api::Tm
-pub type api::ToneCurve::Target = api::ToneCurveRef
-pub fn api::ToneCurve::deref(&self) -> &api::ToneCurveRef
-pub api::ToneCurveRef::evals: alloc::vec::Vec<core::option::Option<fn(i32, &[f64; 10], f64) -> f64>>
-impl api::ToneCurveRef
-pub fn api::ToneCurveRef::estimated_table(&self) -> &[u16]
-pub fn api::ToneCurveRef::estimated_table_entries(&self) -> u32
-pub fn api::ToneCurveRef::eval16(&self, u16) -> u16
-pub fn api::ToneCurveRef::eval_float(&self, f32) -> f32
-pub fn api::ToneCurveRef::parametric_type(&self) -> i32
-pub fn api::ToneCurveRef::segment(&self, i32) -> core::option::Option<&gamma::CurveSegment>
-impl core::clone::Clone for api::ToneCurveRef
-pub fn api::ToneCurveRef::clone(&self) -> Self
-impl core::marker::Freeze for api::ToneCurveRef
-impl core::marker::Send for api::ToneCurveRef
-impl core::marker::Sync for api::ToneCurveRef
-impl core::marker::Unpin for api::ToneCurveRef
-impl core::marker::UnsafeUnpin for api::ToneCurveRef
-impl core::panic::unwind_safe::RefUnwindSafe for api::ToneCurveRef
-impl core::panic::unwind_safe::UnwindSafe for api::ToneCurveRef
-pub api::UcrBg::bg: api::ToneCurveRef
+pub type api::Stages<'a>::Item = &'a api::Stage
+pub fn api::Stages<'a>::next(&mut self) -> core::option::Option<&'a api::Stage>
+impl api::ToneCurve
+pub fn api::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
+pub fn api::ToneCurve::gamma(f64) -> api::Result<Self>
+pub fn api::ToneCurve::inverse(&self) -> api::Result<api::ToneCurve>
+pub fn api::ToneCurve::inverse_sampled(&self, usize) -> api::Result<api::ToneCurve>
+pub fn api::ToneCurve::is_descending(&self) -> bool
+pub fn api::ToneCurve::is_linear(&self) -> bool
+pub fn api::ToneCurve::is_monotonic(&self) -> bool
+pub fn api::ToneCurve::is_multisegment(&self) -> bool
+pub fn api::ToneCurve::linear() -> Self
+pub fn api::ToneCurve::parameters(&self) -> core::option::Option<&[f64]>
+pub fn api::ToneCurve::parametric(i32, &[f64]) -> api::Result<Self>
+pub fn api::ToneCurve::smoothed(&self, f64) -> api::Result<api::ToneCurve>
+pub fn api::ToneCurve::srgb() -> Self
+pub fn api::ToneCurve::tabulated16(&[u16]) -> api::Result<Self>
+pub fn api::ToneCurve::tabulated_float(&[f32]) -> api::Result<Self>
+pub fn api::ToneCurve::then_inverse_of(&self, &api::ToneCurve, usize) -> api::Result<api::ToneCurve>
+impl api::ToneCurve
+pub fn api::ToneCurve::estimated_table(&self) -> &[u16]
+pub fn api::ToneCurve::eval16(&self, u16) -> u16
+pub fn api::ToneCurve::eval_float(&self, f32) -> f32
+pub fn api::ToneCurve::parametric_type(&self) -> i32
+impl core::clone::Clone for api::ToneCurve
+pub fn api::ToneCurve::clone(&self) -> Self
+impl core::convert::From<api::ToneCurve> for api::TagData<'_>
+pub fn api::TagData<'_>::from(api::ToneCurve) -> Self
+impl core::fmt::Debug for api::ToneCurve
+pub fn api::ToneCurve::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for api::ToneCurve
+impl core::marker::Send for api::ToneCurve
+impl core::marker::Sync for api::ToneCurve
+impl core::marker::Unpin for api::ToneCurve
+impl core::marker::UnsafeUnpin for api::ToneCurve
+impl core::panic::unwind_safe::RefUnwindSafe for api::ToneCurve
+impl core::panic::unwind_safe::UnwindSafe for api::ToneCurve
+pub api::UcrBg::bg: api::ToneCurve
 pub api::UcrBg::desc: api::Mlu
-pub api::UcrBg::ucr: api::ToneCurveRef
+pub api::UcrBg::ucr: api::ToneCurve
 impl core::clone::Clone for api::UcrBg
 pub fn api::UcrBg::clone(&self) -> api::UcrBg
+impl core::fmt::Debug for api::UcrBg
+pub fn api::UcrBg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for api::UcrBg
 impl core::marker::Send for api::UcrBg
 impl core::marker::Sync for api::UcrBg
@@ -2146,18 +2361,3 @@ impl core::marker::Unpin for api::VideoSignal
 impl core::marker::UnsafeUnpin for api::VideoSignal
 impl core::panic::unwind_safe::RefUnwindSafe for api::VideoSignal
 impl core::panic::unwind_safe::UnwindSafe for api::VideoSignal
-pub types::Context::interpolators: core::option::Option<fn(u32, u32, u32) -> core::option::Option<intrp::Interpolation>>
-pub types::Context::log_error_handler: core::option::Option<fn(&types::Context, i32, &str)>
-impl types::Context
-pub fn types::Context::plugin(&mut self, &[context::Plugin]) -> bool
-impl core::clone::Clone for types::Context
-pub fn types::Context::clone(&self) -> Self
-impl core::default::Default for types::Context
-pub fn types::Context::default() -> Self
-impl !core::marker::Freeze for types::Context
-impl core::marker::Send for types::Context
-impl core::marker::Sync for types::Context
-impl core::marker::Unpin for types::Context
-impl core::marker::UnsafeUnpin for types::Context
-impl core::panic::unwind_safe::RefUnwindSafe for types::Context
-impl core::panic::unwind_safe::UnwindSafe for types::Context
