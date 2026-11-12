@@ -93,6 +93,7 @@ fn main() {
     }
 
     println!("cargo:rerun-if-env-changed=LCMS_CREF_MATH");
+    println!("cargo::rustc-check-cfg=cfg(math_sys)");
     let math_sys = env::var("LCMS_CREF_MATH").ok().as_deref() == Some("sys");
     if math_sys {
         println!("cargo:rustc-cfg=math_sys");

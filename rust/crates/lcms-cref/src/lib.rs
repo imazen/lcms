@@ -1085,8 +1085,11 @@ pub mod math_abi {
 
     // GCC may fuse sin+cos pairs into `sincos` PLT calls in the oracle —
     // interpose that too so the fused path runs libm as well.
+    /// # Safety
+    /// `s` and `c` must be valid for writing one `f64` each (the C ABI
+    /// contract of `sincos`).
     #[unsafe(no_mangle)]
-    pub extern "C" fn sincos(x: f64, s: *mut f64, c: *mut f64) {
+    pub unsafe extern "C" fn sincos(x: f64, s: *mut f64, c: *mut f64) {
         let (sv, cv) = libm::sincos(x);
         unsafe {
             *s = sv;

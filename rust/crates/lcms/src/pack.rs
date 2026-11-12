@@ -332,9 +332,14 @@ macro_rules! unroll8 {
             let a = &a[..N];
             let mut o = 0;
             $(
-                if $idx == 255 { o += 1; } else {
-                    w[$idx] = f8to16(a[o]); o += 1;
+                // 255 marks a skipped channel. Real indices are checked at
+                // compile time; `get_mut` keeps clippy from flagging the dead
+                // `w[255]` arm.
+                const { assert!($idx == 255 || $idx < crate::xform::MAX_CHANNELS) };
+                if $idx != 255 {
+                    if let Some(slot) = w.get_mut($idx) { *slot = f8to16(a[o]); }
                 }
+                o += 1;
             )+
             o + $skip
         }
@@ -659,9 +664,11 @@ macro_rules! unrollw {
             let a = &a[..N];
             let mut o = 0;
             $(
-                if $idx == 255 { o += 2; } else {
-                    w[$idx] = rd16(a, o); o += 2;
+                const { assert!($idx == 255 || $idx < crate::xform::MAX_CHANNELS) };
+                if $idx != 255 {
+                    if let Some(slot) = w.get_mut($idx) { *slot = rd16(a, o); }
                 }
+                o += 2;
             )+
             o + $adv
         }

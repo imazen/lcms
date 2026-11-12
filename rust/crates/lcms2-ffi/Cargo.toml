@@ -10,4 +10,4 @@ description = "C-compatible drop-in replacement for Little-CMS 2 (lcms2) backed 
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-lcms = { path = "../lcms" }
+lcms = { path = "../lcms", features = ["little-cms-api"] }

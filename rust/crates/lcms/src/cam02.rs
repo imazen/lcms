@@ -12,6 +12,11 @@ use crate::types::{
     ViewingConditions,
 };
 
+/// The π literal `cmscam02.c` writes (`3.141592654`), not `M_PI`: the
+/// degree/radian factors must round exactly as C's do for bit-exact output.
+#[allow(clippy::approx_constant)]
+const C_PI: f64 = 3.141592654;
+
 /// `CAM02COLOR` — the working color record.
 #[derive(Clone, Copy, Debug, Default)]
 struct Cam02Color {
@@ -108,7 +113,7 @@ fn compute_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
     let a = clr.rgbpa[0] - (12.0 * clr.rgbpa[1] / 11.0) + (clr.rgbpa[2] / 11.0);
     let b = (clr.rgbpa[0] + clr.rgbpa[1] - (2.0 * clr.rgbpa[2])) / 9.0;
 
-    let r2d = 180.0 / 3.141592654;
+    let r2d = 180.0 / C_PI;
     if a == 0.0 {
         if b == 0.0 {
             clr.h = 0.0;
@@ -131,7 +136,7 @@ fn compute_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
         clr.h = (r2d * temp.g_atan()) + 180.0;
     }
 
-    let d2r = 3.141592654 / 180.0;
+    let d2r = C_PI / 180.0;
     let e = ((12500.0 / 13.0) * m.nc * m.ncb) * ((clr.h * d2r + 2.0).g_cos() + 3.8);
 
     let temp;
@@ -172,7 +177,7 @@ fn compute_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
 }
 
 fn inverse_correlates(mut clr: Cam02Color, m: &CieCam02) -> Cam02Color {
-    let d2r = 3.141592654 / 180.0;
+    let d2r = C_PI / 180.0;
 
     let t = (clr.c_upper
         / ((clr.j_upper / 100.0).cpow(0.5) * (1.64 - 0.29_f64.cpow(m.n)).cpow(0.73)))
