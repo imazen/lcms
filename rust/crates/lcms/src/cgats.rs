@@ -284,15 +284,11 @@ fn is_middle(c: i32) -> bool {
 }
 /// `isidchar` = isalnum(c) || ismiddle(c)
 fn is_idchar(c: i32) -> bool {
-    (0..128).contains(&c)
-        && ((c as u8 as char).is_ascii_alphanumeric() || is_middle(c))
+    (0..128).contains(&c) && ((c as u8 as char).is_ascii_alphanumeric() || is_middle(c))
 }
 /// `isfirstidchar` — c != '-' && !isdigit(c) && ismiddle(c)
 fn is_first_idchar(c: i32) -> bool {
-    c != b'-' as i32
-        && (0..128).contains(&c)
-        && !(c as u8 as char).is_ascii_digit()
-        && is_middle(c)
+    c != b'-' as i32 && (0..128).contains(&c) && !(c as u8 as char).is_ascii_digit() && is_middle(c)
 }
 
 fn strcasecmp(a: &str, b: &str) -> i32 {
@@ -332,11 +328,7 @@ fn format_dbl(fmt: &str, val: f64) -> String {
                 Some(p) => format!("{val:.p$e}"),
                 None => format!("{val:e}"),
             };
-            if conv == b'E' {
-                s.to_uppercase()
-            } else {
-                s
-            }
+            if conv == b'E' { s.to_uppercase() } else { s }
         }
         // %g = %e when exp < -4 or >= precision, else %f; strips trailing zeros
         b'g' | b'G' => {
@@ -349,8 +341,12 @@ fn format_dbl(fmt: &str, val: f64) -> String {
             };
             let mut s = s;
             if s.contains('.') {
-                while s.ends_with('0') { s.pop(); }
-                if s.ends_with('.') { s.pop(); }
+                while s.ends_with('0') {
+                    s.pop();
+                }
+                if s.ends_with('.') {
+                    s.pop();
+                }
             }
             if conv == b'G' { s.to_uppercase() } else { s }
         }
@@ -597,9 +593,7 @@ impl It8 {
                     None => strcasecmp(&kv.keyword, key) == 0,
                     Some(sk) => {
                         strcasecmp(&kv.keyword, key) == 0
-                            && kv.subkey
-                                .as_deref()
-                                .is_some_and(|a| strcasecmp(a, sk) == 0)
+                            && kv.subkey.as_deref().is_some_and(|a| strcasecmp(a, sk) == 0)
                     }
                 })
         } else {
@@ -1245,10 +1239,7 @@ impl It8 {
     /// (C: `if (it8->sy == sy && it8->sy != SEOF && it8->sy !=
     /// SSYNERROR) InSymbol(it8)`).
     fn skip(&mut self, sy: Symbol) -> bool {
-        if self.sy == sy
-            && self.sy != Symbol::Eof
-            && self.sy != Symbol::SynError
-        {
+        if self.sy == sy && self.sy != Symbol::Eof && self.sy != Symbol::SynError {
             self.in_symbol();
         }
         true
@@ -1435,9 +1426,10 @@ impl It8 {
                         .valid_keywords
                         .iter()
                         .any(|(k, _)| strcasecmp(k, &var_name) == 0)
-                        && !self.add_available_property(&var_name.clone(), WriteMode::Uncooked) {
-                            return false;
-                        }
+                        && !self.add_available_property(&var_name.clone(), WriteMode::Uncooked)
+                    {
+                        return false;
+                    }
                     let write_as = self
                         .valid_keywords
                         .iter()
@@ -1471,16 +1463,18 @@ impl It8 {
                             if let Some(comma) = pair.rfind(',') {
                                 let sub = pair[..comma].trim();
                                 let val = pair[comma + 1..].trim();
-                                if !sub.is_empty() && !val.is_empty()
+                                if !sub.is_empty()
+                                    && !val.is_empty()
                                     && !self.add_to_list(
                                         true,
                                         &var_name.clone(),
                                         Some(sub),
                                         Some(val),
                                         WriteMode::Pair,
-                                    ) {
-                                        return false;
-                                    }
+                                    )
+                                {
+                                    return false;
+                                }
                             }
                         }
                     }

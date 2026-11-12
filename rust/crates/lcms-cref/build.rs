@@ -39,7 +39,9 @@ fn main() {
 
     // Rebuild only when the submodule HEAD (or this script) changes.
     let submodule_head = repo_root.join(".git/modules/reference/lcms2/HEAD");
-    let math_mode = env::var("LCMS_CREF_MATH").ok().unwrap_or_else(|| "abi".into());
+    let math_mode = env::var("LCMS_CREF_MATH")
+        .ok()
+        .unwrap_or_else(|| "abi".into());
     let mut stamp_key = format!("lcms-cref-v3:{math_mode}:");
     if submodule_head.exists() {
         println!("cargo:rerun-if-changed={}", submodule_head.display());

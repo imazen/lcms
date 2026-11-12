@@ -68,14 +68,22 @@ fn gray_profiles() {
     }
     // non-default white point
     unsafe {
-        let wp = c::CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 };
+        let wp = c::CiexyY {
+            x: 0.3127,
+            y: 0.3290,
+            Y: 1.0,
+        };
         let tc = c_gamma(2.2);
         let p = c::cmsCreateGrayProfile(&wp as *const _ as *const _, tc);
         assert!(!p.is_null());
         let c_b = c_save(p);
         c::cmsCloseProfile(p);
         let tc_r = r_gamma(2.2);
-        let wp_r = lcms::types::CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 };
+        let wp_r = lcms::types::CiexyY {
+            x: 0.3127,
+            y: 0.3290,
+            Y: 1.0,
+        };
         let mut r_p = virt::create_gray_profile(None, Some(&wp_r), Some(&tc_r)).expect("gray wp");
         cmp("gray d65", c_b, r_save(&mut r_p));
     }
@@ -85,9 +93,21 @@ fn gray_profiles() {
 fn rgb_profiles() {
     // sRGB primaries + a couple of TRC shapes
     let prim = c::CiexyYTriple {
-        Red: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
-        Green: c::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
-        Blue: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+        Red: c::CiexyY {
+            x: 0.64,
+            y: 0.33,
+            Y: 1.0,
+        },
+        Green: c::CiexyY {
+            x: 0.30,
+            y: 0.60,
+            Y: 1.0,
+        },
+        Blue: c::CiexyY {
+            x: 0.15,
+            y: 0.06,
+            Y: 1.0,
+        },
     };
     for gamma in [1.8, 2.2] {
         unsafe {
@@ -105,9 +125,21 @@ fn rgb_profiles() {
             let tc_r = r_gamma(gamma);
             let wp_r = lcms::wtpnt::d50_xyy();
             let prim_r = lcms::types::CiexyYTriple {
-                Red: lcms::types::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
-                Green: lcms::types::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
-                Blue: lcms::types::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+                Red: lcms::types::CiexyY {
+                    x: 0.64,
+                    y: 0.33,
+                    Y: 1.0,
+                },
+                Green: lcms::types::CiexyY {
+                    x: 0.30,
+                    y: 0.60,
+                    Y: 1.0,
+                },
+                Blue: lcms::types::CiexyY {
+                    x: 0.15,
+                    y: 0.06,
+                    Y: 1.0,
+                },
             };
             let mut r_p = virt::create_rgb_profile(
                 None,
@@ -166,18 +198,15 @@ fn linearization_links() {
     ] {
         unsafe {
             let tcs: Vec<*mut c::ToneCurve> = (0..nch).map(|_| c_gamma(2.2)).collect();
-            let p = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(),
-                cs_sig,
-                tcs.as_ptr(),
-            );
+            let p =
+                c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), cs_sig, tcs.as_ptr());
             assert!(!p.is_null(), "C lin {name}");
             let c_b = c_save(p);
             c::cmsCloseProfile(p);
             let tc_r = r_gamma(2.2);
             let tr: Vec<&lcms::gamma::ToneCurve> = (0..nch).map(|_| &tc_r).collect();
-            let mut r_p = virt::create_linearization_device_link(None, cs_sig, &tr)
-                .expect("rust lin");
+            let mut r_p =
+                virt::create_linearization_device_link(None, cs_sig, &tr).expect("rust lin");
             cmp(&format!("lin {name}"), c_b, r_save(&mut r_p));
         }
     }
@@ -220,9 +249,8 @@ fn bchsw_abstract() {
         (33, -20.0, 15.0, 10.0, -10.0, 5000, 6500),
     ] {
         unsafe {
-            let p = c::cmsCreateBCHSWabstractProfile(
-                lut_pts, bright, contrast, hue, sat, tsrc, tdst,
-            );
+            let p =
+                c::cmsCreateBCHSWabstractProfile(lut_pts, bright, contrast, hue, sat, tsrc, tdst);
             assert!(!p.is_null(), "C bchsw");
             let c_b = c_save(p);
             c::cmsCloseProfile(p);
@@ -244,30 +272,90 @@ fn bchsw_abstract() {
 #[test]
 fn rgb_profile_builders() {
     let wps: Vec<lcms::types::CiexyY> = vec![
-        lcms::types::CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 }, // D65
-        lcms::types::CiexyY { x: 0.3457, y: 0.3585, Y: 1.0 }, // D50
-        lcms::types::CiexyY { x: 1.0 / 3.0, y: 1.0 / 3.0, Y: 1.0 }, // E
+        lcms::types::CiexyY {
+            x: 0.3127,
+            y: 0.3290,
+            Y: 1.0,
+        }, // D65
+        lcms::types::CiexyY {
+            x: 0.3457,
+            y: 0.3585,
+            Y: 1.0,
+        }, // D50
+        lcms::types::CiexyY {
+            x: 1.0 / 3.0,
+            y: 1.0 / 3.0,
+            Y: 1.0,
+        }, // E
     ];
     let prim_sets: Vec<lcms::types::CiexyYTriple> = vec![
         lcms::types::CiexyYTriple {
-            Red: lcms::types::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
-            Green: lcms::types::CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
-            Blue: lcms::types::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+            Red: lcms::types::CiexyY {
+                x: 0.64,
+                y: 0.33,
+                Y: 1.0,
+            },
+            Green: lcms::types::CiexyY {
+                x: 0.30,
+                y: 0.60,
+                Y: 1.0,
+            },
+            Blue: lcms::types::CiexyY {
+                x: 0.15,
+                y: 0.06,
+                Y: 1.0,
+            },
         }, // sRGB
         lcms::types::CiexyYTriple {
-            Red: lcms::types::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
-            Green: lcms::types::CiexyY { x: 0.21, y: 0.71, Y: 1.0 },
-            Blue: lcms::types::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+            Red: lcms::types::CiexyY {
+                x: 0.64,
+                y: 0.33,
+                Y: 1.0,
+            },
+            Green: lcms::types::CiexyY {
+                x: 0.21,
+                y: 0.71,
+                Y: 1.0,
+            },
+            Blue: lcms::types::CiexyY {
+                x: 0.15,
+                y: 0.06,
+                Y: 1.0,
+            },
         }, // Adobe RGB
         lcms::types::CiexyYTriple {
-            Red: lcms::types::CiexyY { x: 0.7347, y: 0.2653, Y: 1.0 },
-            Green: lcms::types::CiexyY { x: 0.1596, y: 0.8404, Y: 1.0 },
-            Blue: lcms::types::CiexyY { x: 0.0366, y: 0.0001, Y: 1.0 },
+            Red: lcms::types::CiexyY {
+                x: 0.7347,
+                y: 0.2653,
+                Y: 1.0,
+            },
+            Green: lcms::types::CiexyY {
+                x: 0.1596,
+                y: 0.8404,
+                Y: 1.0,
+            },
+            Blue: lcms::types::CiexyY {
+                x: 0.0366,
+                y: 0.0001,
+                Y: 1.0,
+            },
         }, // ProPhoto
         lcms::types::CiexyYTriple {
-            Red: lcms::types::CiexyY { x: 0.68, y: 0.32, Y: 1.0 },
-            Green: lcms::types::CiexyY { x: 0.265, y: 0.69, Y: 1.0 },
-            Blue: lcms::types::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+            Red: lcms::types::CiexyY {
+                x: 0.68,
+                y: 0.32,
+                Y: 1.0,
+            },
+            Green: lcms::types::CiexyY {
+                x: 0.265,
+                y: 0.69,
+                Y: 1.0,
+            },
+            Blue: lcms::types::CiexyY {
+                x: 0.15,
+                y: 0.06,
+                Y: 1.0,
+            },
         }, // DCI-P3
     ];
     for (wi, wp) in wps.iter().enumerate() {
@@ -284,16 +372,18 @@ fn rgb_profile_builders() {
                     );
                     if ch.is_null() {
                         // C rejected the combo — rust must too
-                        let r = lcms::virt::create_rgb_profile(
-                            None, Some(wp), Some(prim), None,
-                        );
+                        let r = lcms::virt::create_rgb_profile(None, Some(wp), Some(prim), None);
                         assert!(r.is_none(), "wp{wi} prim{pi} g{g}: C-NULL vs rust");
                         continue;
                     }
                     let r_g = lcms::gamma::build_gamma(None, g).unwrap();
                     let mut rp = lcms::virt::create_rgb_profile(
-                        None, Some(wp), Some(prim), Some([&r_g, &r_g, &r_g]),
-                    ).expect("rust rgb profile");
+                        None,
+                        Some(wp),
+                        Some(prim),
+                        Some([&r_g, &r_g, &r_g]),
+                    )
+                    .expect("rust rgb profile");
                     // serialize + byte-compare (created masked)
                     let mut cn = 0u32;
                     assert!(c::cmsSaveProfileToMem(ch, std::ptr::null_mut(), &mut cn) != 0);
@@ -302,7 +392,9 @@ fn rgb_profile_builders() {
                     let rb = lcms::profile::save_profile_to_mem(&mut rp).unwrap();
                     assert_eq!(cb.len(), rb.len(), "wp{wi} prim{pi} g{g} len");
                     for (i, (a, b)) in cb.iter().zip(rb.iter()).enumerate() {
-                        if (24..36).contains(&i) { continue; }
+                        if (24..36).contains(&i) {
+                            continue;
+                        }
                         assert_eq!(a, b, "wp{wi} prim{pi} g{g} byte @{i:#x}");
                     }
                     c::cmsCloseProfile(ch);
@@ -318,29 +410,20 @@ fn rgb_profile_builders() {
 fn placeholder_variants() {
     unsafe {
         for (name, cls, cs, pcs) in [
-            ("mntr-rgb", 0x6D6E7472u32, 0x52474220u32,
-             0x58595A20u32),
-            ("mntr-rgb-lab", 0x6D6E7472u32, 0x52474220u32,
-             0x4C616220u32),
-            ("prtr-cmyk", 0x70727472u32, 0x434D594Bu32,
-             0x4C616220u32),
-            ("link-rgb", 0x6C696E6Bu32, 0x52474220u32,
-             0x58595A20u32),
-            ("spac", 0x73706163u32, 0x52474220u32,
-             0x58595A20u32),
-            ("abst", 0x61627374u32, 0x52474220u32,
-             0x4C616220u32),
-            ("nmcl", 0x6E6D636Cu32, 0x6E6D636Cu32,
-             0x4C616220u32),
+            ("mntr-rgb", 0x6D6E7472u32, 0x52474220u32, 0x58595A20u32),
+            ("mntr-rgb-lab", 0x6D6E7472u32, 0x52474220u32, 0x4C616220u32),
+            ("prtr-cmyk", 0x70727472u32, 0x434D594Bu32, 0x4C616220u32),
+            ("link-rgb", 0x6C696E6Bu32, 0x52474220u32, 0x58595A20u32),
+            ("spac", 0x73706163u32, 0x52474220u32, 0x58595A20u32),
+            ("abst", 0x61627374u32, 0x52474220u32, 0x4C616220u32),
+            ("nmcl", 0x6E6D636Cu32, 0x6E6D636Cu32, 0x4C616220u32),
         ] {
-            let h = c::cmsCreateProfilePlaceholder(
-                std::ptr::null_mut());
+            let h = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(h, cls);
             c::cmsSetColorSpace(h, cs);
             c::cmsSetPCS(h, pcs);
             let mut cn = 0u32;
-            let ok = c::cmsSaveProfileToMem(h,
-                std::ptr::null_mut(), &mut cn);
+            let ok = c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
             eprintln!("{name} save={ok}");
             c::cmsCloseProfile(h);
         }
@@ -353,11 +436,14 @@ fn placeholder_variants() {
 fn version_machinery() {
     unsafe {
         for (name, v) in [
-            ("v2.0", 0x02000000u32), ("v2.1", 0x02100000),
-            ("v2.4", 0x02400000), ("v4.0", 0x04000000),
-            ("v4.3", 0x04300000), ("v4.4", 0x04400000)] {
-            let h = c::cmsCreateProfilePlaceholder(
-                std::ptr::null_mut());
+            ("v2.0", 0x02000000u32),
+            ("v2.1", 0x02100000),
+            ("v2.4", 0x02400000),
+            ("v4.0", 0x04000000),
+            ("v4.3", 0x04300000),
+            ("v4.4", 0x04400000),
+        ] {
+            let h = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetEncodedICCversion(h, v);
             let rv = c::cmsGetEncodedICCversion(h);
             eprintln!("{name} enc={:#x}", rv);
@@ -371,10 +457,8 @@ fn version_machinery() {
 #[test]
 fn version_getters() {
     unsafe {
-        for (name, v) in [
-            ("v2.0", 0x02000000u32), ("v4.3", 0x04300000)] {
-            let h = c::cmsCreateProfilePlaceholder(
-                std::ptr::null_mut());
+        for (name, v) in [("v2.0", 0x02000000u32), ("v4.3", 0x04300000)] {
+            let h = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetEncodedICCversion(h, v);
             let enc = c::cmsGetEncodedICCversion(h);
             let pv = c::cmsGetProfileVersion(h);
@@ -396,14 +480,17 @@ fn oklab_header_intent() {
         let c_intent = c::cmsGetHeaderRenderingIntent(cp);
         let c_b = c_save(cp);
         c::cmsCloseProfile(cp);
-        let mut rp = virt::create_oklab_profile(None)
-            .expect("rust oklab");
-        assert_eq!(c_intent,
+        let mut rp = virt::create_oklab_profile(None).expect("rust oklab");
+        assert_eq!(
+            c_intent,
             lcms::types::INTENT_RELATIVE_COLORIMETRIC,
-            "C OkLab header intent");
-        assert_eq!(rp.rendering_intent,
+            "C OkLab header intent"
+        );
+        assert_eq!(
+            rp.rendering_intent,
             lcms::types::INTENT_RELATIVE_COLORIMETRIC,
-            "rust OkLab header intent");
+            "rust OkLab header intent"
+        );
         cmp("oklab", c_b, r_save(&mut rp));
     }
 }
@@ -412,8 +499,8 @@ fn oklab_header_intent() {
 /// impls using the named RELATIVE constant, not a literal.
 #[test]
 fn oklab_transform_relative() {
-    const INFMT: u32 = (0 << 16) | (3 << 3) | 1;   // PT_ANY 3ch u8
-    const OUTFMT: u32 = (9 << 16) | (3 << 3) | 2;  // PT_XYZ 3ch u16
+    const INFMT: u32 = (0 << 16) | (3 << 3) | 1; // PT_ANY 3ch u8
+    const OUTFMT: u32 = (9 << 16) | (3 << 3) | 2; // PT_XYZ 3ch u16
     let inp = [64u8, 128, 192, 0, 255, 32];
     let n_px = 2u32;
     // C side
@@ -421,11 +508,14 @@ fn oklab_transform_relative() {
     unsafe {
         let oklab = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
-        let t = c::cmsCreateTransform(oklab, INFMT, xyz,
-            OUTFMT, 1, 0);
+        let t = c::cmsCreateTransform(oklab, INFMT, xyz, OUTFMT, 1, 0);
         assert!(!t.is_null(), "C transform failed");
-        c::cmsDoTransform(t, inp.as_ptr() as *const _,
-            c_out.as_mut_ptr() as *mut _, n_px);
+        c::cmsDoTransform(
+            t,
+            inp.as_ptr() as *const _,
+            c_out.as_mut_ptr() as *mut _,
+            n_px,
+        );
         c::cmsDeleteTransform(t);
         c::cmsCloseProfile(oklab);
         c::cmsCloseProfile(xyz);
@@ -439,9 +529,9 @@ fn oklab_transform_relative() {
     let intents = [lcms::types::INTENT_RELATIVE_COLORIMETRIC; 2];
     let adapt = [1.0f64, 1.0];
     let mut t = lcms::xform::create_extended_transform(
-        None, &mut profs, &mut bpc, &intents, &adapt,
-        None, 0, INFMT, OUTFMT, 0)
-        .expect("rust transform");
+        None, &mut profs, &mut bpc, &intents, &adapt, None, 0, INFMT, OUTFMT, 0,
+    )
+    .expect("rust transform");
     let mut r_out = vec![0u8; 2 * 3 * 2];
     t.do_transform(&inp, &mut r_out, n_px);
     assert_eq!(c_out, r_out, "OkLab→XYZ output diverged");
@@ -453,49 +543,67 @@ fn oklab_transform_relative() {
 fn misc_virt_builders() {
     unsafe {
         // BCHSW abstract (n_lut, bright, contrast, hue, sat, tempK src/dst)
-        for (nl, b, cn, h, sa, ts, td) in
-            [(17u32, 0.0, 1.0, 0.0, 0.0, 6500u32, 5000u32),
-             (33, -0.1, 1.2, 15.0, 1.5, 5000, 6500)] {
+        for (nl, b, cn, h, sa, ts, td) in [
+            (17u32, 0.0, 1.0, 0.0, 0.0, 6500u32, 5000u32),
+            (33, -0.1, 1.2, 15.0, 1.5, 5000, 6500),
+        ] {
             let p = c::cmsCreateBCHSWabstractProfile(nl, b, cn, h, sa, ts, td);
             assert!(!p.is_null());
-            cmp(&format!("bchsw{nl}"), c_save(p),
-                r_save(&mut *virt::create_bchsw_abstract_profile(
-                    None, nl, b, cn, h, sa, ts, td).unwrap()));
+            cmp(
+                &format!("bchsw{nl}"),
+                c_save(p),
+                r_save(
+                    &mut *virt::create_bchsw_abstract_profile(None, nl, b, cn, h, sa, ts, td)
+                        .unwrap(),
+                ),
+            );
             c::cmsCloseProfile(p);
         }
         // NULL profile
         let p = c::cmsCreateNULLProfile();
         assert!(!p.is_null());
-        cmp("nullprof", c_save(p),
-            r_save(&mut *virt::create_null_profile(None).unwrap()));
+        cmp(
+            "nullprof",
+            c_save(p),
+            r_save(&mut *virt::create_null_profile(None).unwrap()),
+        );
         c::cmsCloseProfile(p);
         // OkLab profile
         let p = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
         assert!(!p.is_null());
-        cmp("oklab", c_save(p),
-            r_save(&mut *virt::create_oklab_profile(None).unwrap()));
+        cmp(
+            "oklab",
+            c_save(p),
+            r_save(&mut *virt::create_oklab_profile(None).unwrap()),
+        );
         c::cmsCloseProfile(p);
         // ink-limiting devicelink — CMYK + RGB + Gray color spaces
-        for (cs, lim) in [(0x434D594Bu32, 260.0),   // 'CMYK'
-                          (0x52474220u32, 200.0),   // 'RGB '
-                          (0x47524159u32, 240.0)] { // 'GRAY'
+        for (cs, lim) in [
+            (0x434D594Bu32, 260.0), // 'CMYK'
+            (0x52474220u32, 200.0), // 'RGB '
+            (0x47524159u32, 240.0),
+        ] {
+            // 'GRAY'
             let p = c::cmsCreateInkLimitingDeviceLink(cs, lim);
-            let rok = virt::create_ink_limiting_device_link(
-                None, cs, lim).is_some();
+            let rok = virt::create_ink_limiting_device_link(None, cs, lim).is_some();
             eprintln!("inklim cs={cs:#x} C={} R={}", !p.is_null(), rok);
             assert_eq!(!p.is_null(), rok, "inklim {cs:#x} parity");
             if !p.is_null() {
-                cmp(&format!("inklim{cs:#x}"), c_save(p),
-                    r_save(&mut *virt::create_ink_limiting_device_link(
-                        None, cs, lim).unwrap()));
+                cmp(
+                    &format!("inklim{cs:#x}"),
+                    c_save(p),
+                    r_save(&mut *virt::create_ink_limiting_device_link(None, cs, lim).unwrap()),
+                );
                 c::cmsCloseProfile(p);
             }
         }
         // transform -> devicelink
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let t = c::cmsCreateTransform(srgb, 0x00ff04, // TYPE_RGB_8
-            lab, 0x0a0702, 0, 0); // TYPE_Lab_16
+        let t = c::cmsCreateTransform(
+            srgb, 0x00ff04, // TYPE_RGB_8
+            lab, 0x0a0702, 0, 0,
+        ); // TYPE_Lab_16
         if !t.is_null() {
             let p = c::cmsTransform2DeviceLink(t, 4.4, 0);
             eprintln!("t2dl ok={}", !p.is_null());
@@ -516,31 +624,30 @@ fn misc_virt_builders() {
 #[test]
 fn proofing_transform_paths() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let srgb = c::cmsCreate_sRGBProfile();
         let mut cmyk = std::ptr::null_mut();
         if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
-            cmyk = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
+            cmyk = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
         }
         for flags in [0x4000u32, 0x5000, 0x1000 | 0x4000] {
             // input + output + proofing profile
             if !cmyk.is_null() {
                 let t = c::cmsCreateProofingTransform(
-                    srgb, 0x00ff04, cmyk, 0x4c02f1, cmyk,
-                    0, 1, flags);
+                    srgb, 0x00ff04, cmyk, 0x4c02f1, cmyk, 0, 1, flags,
+                );
                 eprintln!("proof f{flags:#x} t={}", !t.is_null());
                 if !t.is_null() {
                     let inp = [128u8, 64, 200];
                     let mut out = [0u8; 4];
-                    c::cmsDoTransform(t, inp.as_ptr() as *const _,
-                        out.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t, inp.as_ptr() as *const _, out.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
             }
         }
-        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !cmyk.is_null() {
+            c::cmsCloseProfile(cmyk);
+        }
         c::cmsCloseProfile(srgb);
     }
 }
@@ -555,23 +662,23 @@ fn gamut_preview_lut_readers() {
         let mut cc = [g; 3];
         // build a pipeline for the gamt tag
         let gp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(gp, 1,
-            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(
+            gp,
+            1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()),
+        );
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsWriteTag(prof, 0x67616D74, gp as *const _); // 'gamt'
         let cmyk = c::cmsCreate_sRGBProfile(); // reuse as proof target
         let srgb = c::cmsCreate_sRGBProfile();
         for flags in [0x4000u32, 0x5000] {
             let rgb16 = (4u32 << 16) | (3 << 3) | 2;
-            let t = c::cmsCreateProofingTransform(
-                srgb, rgb16, cmyk, rgb16, prof,
-                0, 0, flags);
+            let t = c::cmsCreateProofingTransform(srgb, rgb16, cmyk, rgb16, prof, 0, 0, flags);
             eprintln!("gamut proof f{flags:#x} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [100u8, 150, 200];
                 let mut ob = [0u8; 4];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -589,23 +696,26 @@ fn linearization_devicelink() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         for (cs, name, ch) in [
-            (0x52474220u32, "rgb", 3),   // 'RGB '
-            (0x434D594B, "cmyk", 4),      // 'CMYK'
-            (0x47524159, "gray", 1),      // 'GRAY'
+            (0x52474220u32, "rgb", 3), // 'RGB '
+            (0x434D594B, "cmyk", 4),   // 'CMYK'
+            (0x47524159, "gray", 1),   // 'GRAY'
         ] {
-            let dl = c::cmsCreateLinearizationDeviceLink(
-                cs, [g; 4].as_ptr() as *mut _);
+            let dl = c::cmsCreateLinearizationDeviceLink(cs, [g; 4].as_ptr() as *mut _);
             eprintln!("{name} dl={}", !dl.is_null());
             if !dl.is_null() {
                 // transform through the devicelink (link IS the xform)
                 let f = ((cs & 0xff) as u32) | (((ch) << 3) | 1);
                 let fmt = ((cs == 0x434D594B) as u32 * 6
                     | (cs == 0x52474220) as u32 * 4
-                    | (cs == 0x47524159) as u32 * 3) << 16
-                    | (ch << 3) | 1;
+                    | (cs == 0x47524159) as u32 * 3)
+                    << 16
+                    | (ch << 3)
+                    | 1;
                 let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
                 eprintln!("  t={}", !t.is_null());
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
                 c::cmsCloseProfile(dl);
             }
         }
@@ -630,14 +740,18 @@ fn xyz_null_profiles() {
         ] {
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
         }
         // NULL profile — identity transform
         let nul = c::cmsCreateNULLProfile();
         if !nul.is_null() {
             let t = c::cmsCreateTransform(nul, r16, srgb, r16, 0, 0);
             eprintln!("null t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(nul);
         }
         c::cmsCloseProfile(xyz);
@@ -651,7 +765,11 @@ fn xyz_null_profiles() {
 #[test]
 fn lab_profile_variants() {
     unsafe {
-        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let wp = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
         for (v, name) in [(2u32, "lab2"), (4, "lab4")] {
             let p = if v == 2 {
                 c::cmsCreateLab2Profile(&wp as *const _ as *const _)
@@ -663,20 +781,25 @@ fn lab_profile_variants() {
                 // save->read covers the identity-CLUT tag structure
                 let mut buf = vec![0u8; 1 << 20];
                 let mut n = buf.len() as u32;
-                let s = c::cmsSaveProfileToMem(p,
-                    buf.as_mut_ptr() as *mut _, &mut n);
+                let s = c::cmsSaveProfileToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
                 let rp = if s != 0 {
                     c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
-                } else { std::ptr::null_mut() };
+                } else {
+                    std::ptr::null_mut()
+                };
                 eprintln!("  save={s} reopen={}", !rp.is_null());
-                if !rp.is_null() { c::cmsCloseProfile(rp); }
+                if !rp.is_null() {
+                    c::cmsCloseProfile(rp);
+                }
                 c::cmsCloseProfile(p);
             }
         }
         // NULL whitepoint variant
         let p2 = c::cmsCreateLab2Profile(std::ptr::null_mut());
         eprintln!("lab2-null-wp={}", !p2.is_null());
-        if !p2.is_null() { c::cmsCloseProfile(p2); }
+        if !p2.is_null() {
+            c::cmsCloseProfile(p2);
+        }
     }
 }
 
@@ -689,8 +812,13 @@ fn devicelink_combinations() {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let gray = c::cmsCreateGrayProfile(
-            &c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 } as *const _ as *const _,
-            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+            &c::CieXyz {
+                X: 0.9642,
+                Y: 1.0,
+                Z: 0.8249,
+            } as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let g16 = (3u32 << 16) | (1 << 3) | 2;
@@ -701,10 +829,15 @@ fn devicelink_combinations() {
             (srgb, gray, r16, g16, "srgb->gray"),
         ] {
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
-            if t.is_null() { eprintln!("{name} t=null"); continue; }
+            if t.is_null() {
+                eprintln!("{name} t=null");
+                continue;
+            }
             let dl = c::cmsTransform2DeviceLink(t, 4.4, 0);
             eprintln!("{name} dl={}", !dl.is_null());
-            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            if !dl.is_null() {
+                c::cmsCloseProfile(dl);
+            }
             c::cmsDeleteTransform(t);
         }
         c::cmsCloseProfile(gray);
@@ -718,35 +851,66 @@ fn devicelink_combinations() {
 #[test]
 fn virt_builders() {
     unsafe {
-        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let wp = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut trc = [g; 3];
-        #[repr(C)] struct Prim { r: c::CiexyY, g: c::CiexyY,
-            b: c::CiexyY }
+        #[repr(C)]
+        struct Prim {
+            r: c::CiexyY,
+            g: c::CiexyY,
+            b: c::CiexyY,
+        }
         // RGB profile — explicit primaries
         let prim = Prim {
-            r: c::CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
-            g: c::CiexyY { x: 0.3, y: 0.6, Y: 1.0 },
-            b: c::CiexyY { x: 0.15, y: 0.06, Y: 1.0 },
+            r: c::CiexyY {
+                x: 0.64,
+                y: 0.33,
+                Y: 1.0,
+            },
+            g: c::CiexyY {
+                x: 0.3,
+                y: 0.6,
+                Y: 1.0,
+            },
+            b: c::CiexyY {
+                x: 0.15,
+                y: 0.06,
+                Y: 1.0,
+            },
         };
-        let rgb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
+        let rgb = c::cmsCreateRGBProfileTHR(
+            std::ptr::null_mut(),
             &wp as *const _ as *const _,
             &prim as *const _ as *const _,
-            trc.as_mut_ptr() as *mut _);
+            trc.as_mut_ptr() as *mut _,
+        );
         // Gray profile
-        let g2 = c::cmsCreateGrayProfileTHR(std::ptr::null_mut(),
-            &wp as *const _ as *const _, g as *const _);
+        let g2 = c::cmsCreateGrayProfileTHR(
+            std::ptr::null_mut(),
+            &wp as *const _ as *const _,
+            g as *const _,
+        );
         // Lab profile
-        let lab = c::cmsCreateLab4Profile(
-            &wp as *const _ as *const _);
+        let lab = c::cmsCreateLab4Profile(&wp as *const _ as *const _);
         // XYZ profile
         let xyz = c::cmsCreateXYZProfile();
         // NULL profile
         let nul = c::cmsCreateNULLProfile();
-        for (p, name) in [(rgb, "rgb"), (g2, "gray"), (lab, "lab"),
-                          (xyz, "xyz"), (nul, "null")] {
+        for (p, name) in [
+            (rgb, "rgb"),
+            (g2, "gray"),
+            (lab, "lab"),
+            (xyz, "xyz"),
+            (nul, "null"),
+        ] {
             eprintln!("{name}={}", !p.is_null());
-            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
         }
     }
 }
@@ -760,14 +924,17 @@ fn inklimit_bchs_builders() {
         for (cs, name) in [(0x434D594Bu32, "cmyk"), (0x52474220, "rgb")] {
             let dl = c::cmsCreateInkLimitingDeviceLink(cs, 0.8);
             eprintln!("inklim {name}={}", !dl.is_null());
-            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            if !dl.is_null() {
+                c::cmsCloseProfile(dl);
+            }
         }
         // BCHSWabstractProfile — different white-point temps
         for (src, dst) in [(5000u32, 6500), (6500, 5000)] {
-            let ap = c::cmsCreateBCHSWabstractProfile(
-                17, 0.0, 0.0, 0.0, 1.0, src, dst);
+            let ap = c::cmsCreateBCHSWabstractProfile(17, 0.0, 0.0, 0.0, 1.0, src, dst);
             eprintln!("bchs {src}->{dst}={}", !ap.is_null());
-            if !ap.is_null() { c::cmsCloseProfile(ap); }
+            if !ap.is_null() {
+                c::cmsCloseProfile(ap);
+            }
         }
     }
 }
@@ -787,12 +954,16 @@ fn virt_devicelink_internals() {
             (srgb, srgb, r16, r16, 2, "srgb-srgb-i2"),
             (lab, lab, l16, l16, 3, "lab-lab-i3"),
         ] {
-            let t = c::cmsCreateTransform(inp, if_, outp, of,
-                intent, 0);
-            if t.is_null() { eprintln!("{name} t=NULL"); continue; }
+            let t = c::cmsCreateTransform(inp, if_, outp, of, intent, 0);
+            if t.is_null() {
+                eprintln!("{name} t=NULL");
+                continue;
+            }
             let dl = c::cmsTransform2DeviceLink(t, 3.4, 0);
             eprintln!("{name} dl={}", !dl.is_null());
-            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            if !dl.is_null() {
+                c::cmsCloseProfile(dl);
+            }
             c::cmsDeleteTransform(t);
         }
         c::cmsCloseProfile(srgb);
@@ -811,30 +982,44 @@ fn virt_builders2() {
             (100.0, 100.0, 360.0, 100.0, 6500, 5000, "bchsw-max"),
             (-50.0, 50.0, -30.0, -20.0, 4000, 9000, "bchsw-neg"),
         ] {
-            let p = c::cmsCreateBCHSWabstractProfile(
-                4, b, c, h, s, t1, t2);
+            let p = c::cmsCreateBCHSWabstractProfile(4, b, c, h, s, t1, t2);
             eprintln!("{name} p={}", !p.is_null());
-            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
         }
         for lim in [0.0f64, 50.0, 100.0, 200.0, 300.0] {
-            let p = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), 0x434d594b, lim);
+            let p = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), 0x434d594b, lim);
             eprintln!("ink{lim} p={}", !p.is_null());
-            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
         }
         for (n, name) in [(256usize, "lin256"), (2, "lin2"), (17, "lin17")] {
             let mut tab = vec![0f32; n];
-            for i in 0..n { tab[i] = i as f32 / (n - 1).max(1) as f32; }
+            for i in 0..n {
+                tab[i] = i as f32 / (n - 1).max(1) as f32;
+            }
             let mut curves = [std::ptr::null_mut(); 4];
             for c_ in curves.iter_mut() {
                 *c_ = c::cmsBuildTabulatedToneCurveFloat(
-                    std::ptr::null_mut(), n as u32, tab.as_ptr());
+                    std::ptr::null_mut(),
+                    n as u32,
+                    tab.as_ptr(),
+                );
             }
             let p = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), 0x434d594b, curves.as_ptr());
+                std::ptr::null_mut(),
+                0x434d594b,
+                curves.as_ptr(),
+            );
             eprintln!("{name} p={}", !p.is_null());
-            if !p.is_null() { c::cmsCloseProfile(p); }
-            for c_ in curves { c::cmsFreeToneCurve(c_); }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
+            for c_ in curves {
+                c::cmsFreeToneCurve(c_);
+            }
         }
     }
 }
@@ -853,7 +1038,9 @@ fn virt_text_tags_internals() {
             (c::cmsCreate_OkLabProfile(std::ptr::null_mut()), "oklab"),
         ] {
             eprintln!("{name} p={}", !p.is_null());
-            if p.is_null() { continue; }
+            if p.is_null() {
+                continue;
+            }
             // read the text tags SetTextTags wrote
             for sig in [0x64657363u32, 0x63707274, 0x77747074] {
                 let t = c::cmsReadTag(p, sig);
@@ -861,14 +1048,16 @@ fn virt_text_tags_internals() {
             }
             let mut buf = vec![0u8; 1 << 20];
             let mut n = buf.len() as u32;
-            let s = c::cmsSaveProfileToMem(p,
-                buf.as_mut_ptr() as *mut _, &mut n);
+            let s = c::cmsSaveProfileToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
             let rp = if s != 0 {
                 c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
-            } else { std::ptr::null_mut() };
-            eprintln!("  {name} saved={s} n={n} reopen={}",
-                !rp.is_null());
-            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            } else {
+                std::ptr::null_mut()
+            };
+            eprintln!("  {name} saved={s} n={n} reopen={}", !rp.is_null());
+            if !rp.is_null() {
+                c::cmsCloseProfile(rp);
+            }
             c::cmsCloseProfile(p);
         }
     }
@@ -884,16 +1073,19 @@ fn named_devicelink() {
         c::cmsSetColorSpace(nmcl, 0x33434c52); // '3CLR' device
         c::cmsSetPCS(nmcl, 0x4c616220);
         let list = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 4, 3,
-            b"pre\0".as_ptr(), b"post\0".as_ptr());
+            std::ptr::null_mut(),
+            4,
+            3,
+            b"pre\0".as_ptr(),
+            b"post\0".as_ptr(),
+        );
         for i in 0..4u32 {
             let mut name = [0u8; 256];
             let nm = format!("color{}\0", i);
             name[..nm.len()].copy_from_slice(nm.as_bytes());
             let pcs = [100u16 * (i as u16 + 1), 200, 300];
             let dev = [0u16; 15];
-            c::cmsAppendNamedColor(list,
-                name.as_ptr() as *mut _, pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(list, name.as_ptr() as *mut _, pcs.as_ptr(), dev.as_ptr());
         }
         c::cmsWriteTag(nmcl, 0x6e636c32, list as *const _);
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -905,7 +1097,9 @@ fn named_devicelink() {
         if !t.is_null() {
             let dl = c::cmsTransform2DeviceLink(t, 4.4, 0);
             eprintln!("devicelink={}", !dl.is_null());
-            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            if !dl.is_null() {
+                c::cmsCloseProfile(dl);
+            }
             c::cmsDeleteTransform(t);
         }
         c::cmsCloseProfile(nmcl);
@@ -926,22 +1120,42 @@ fn virt_opt_residual_arms() {
         let l8 = (10u32 << 16) | (3 << 3) | 1;
         // profile-creation on unusual args
         for (r, name) in [
-            (0.0f64, "zero"), (0.5, "mid"), (-1.0, "neg"),
-            (1e6, "huge"), (1e-6, "tiny"), (f64::NAN, "nan"),
-            (f64::INFINITY, "inf"), (f64::NEG_INFINITY, "-inf"),
+            (0.0f64, "zero"),
+            (0.5, "mid"),
+            (-1.0, "neg"),
+            (1e6, "huge"),
+            (1e-6, "tiny"),
+            (f64::NAN, "nan"),
+            (f64::INFINITY, "inf"),
+            (f64::NEG_INFINITY, "-inf"),
         ] {
             let p = c::cmsCreateBCHSWabstractProfileTHR(
-                std::ptr::null_mut(), 17, r, r, r, r,
-                std::ptr::null(), std::ptr::null());
-            let p2 = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), 0x434D594B, r);
-            let p3 = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), 0x52474220, r);
-            eprintln!("{name} bchsw={} ink-cmyk={} ink-rgb={}",
-                !p.is_null(), !p2.is_null(), !p3.is_null());
-            if !p.is_null() { c::cmsCloseProfile(p); }
-            if !p2.is_null() { c::cmsCloseProfile(p2); }
-            if !p3.is_null() { c::cmsCloseProfile(p3); }
+                std::ptr::null_mut(),
+                17,
+                r,
+                r,
+                r,
+                r,
+                std::ptr::null(),
+                std::ptr::null(),
+            );
+            let p2 = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), 0x434D594B, r);
+            let p3 = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), 0x52474220, r);
+            eprintln!(
+                "{name} bchsw={} ink-cmyk={} ink-rgb={}",
+                !p.is_null(),
+                !p2.is_null(),
+                !p3.is_null()
+            );
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
+            if !p2.is_null() {
+                c::cmsCloseProfile(p2);
+            }
+            if !p3.is_null() {
+                c::cmsCloseProfile(p3);
+            }
         }
         // devicelink transforms on unusual profile combos
         for (cls, cs, pcs, name) in [
@@ -951,43 +1165,53 @@ fn virt_opt_residual_arms() {
             (0x61627374, 0x4C616220, 0x4C616220, "abst-lab"),
             (0x73706163, 0x4C616220, 0x58595A20, "spac-lab"),
         ] {
-            let prof = c::cmsCreateProfilePlaceholder(
-                std::ptr::null_mut());
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(prof, cls);
             c::cmsSetColorSpace(prof, cs);
             c::cmsSetPCS(prof, pcs);
             c::cmsSetProfileVersion(prof, 4.4);
-            let p = c::cmsPipelineAlloc(
-                std::ptr::null_mut(), 3, 3);
-            c::cmsPipelineInsertStage(p, 0,
-                c::cmsStageAllocToneCurves(
-                    std::ptr::null_mut(), 3,
-                    [g, g, g].as_ptr() as *mut _));
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
+            c::cmsPipelineInsertStage(
+                p,
+                0,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
+            );
             let dims = [3u32; 3];
             let grid = vec![0x4000u16; 81];
-            c::cmsPipelineInsertStage(p, 1,
+            c::cmsPipelineInsertStage(
+                p,
+                1,
                 c::cmsStageAllocCLut16bitGranular(
-                    std::ptr::null_mut(), dims.as_ptr(), 3, 3,
-                    grid.as_ptr()));
-            c::cmsWriteTag(prof, 0x41324230,
-                p as *const _);
+                    std::ptr::null_mut(),
+                    dims.as_ptr(),
+                    3,
+                    3,
+                    grid.as_ptr(),
+                ),
+            );
+            c::cmsWriteTag(prof, 0x41324230, p as *const _);
             let mut buf = vec![0u8; 1 << 20];
             let mut n = buf.len() as u32;
-            let s = c::cmsSaveProfileToMem(prof,
-                buf.as_mut_ptr() as *mut _, &mut n);
+            let s = c::cmsSaveProfileToMem(prof, buf.as_mut_ptr() as *mut _, &mut n);
             let rp = if s != 0 {
-                c::cmsOpenProfileFromMem(buf.as_ptr()
-                    as *const _, n)
-            } else { std::ptr::null_mut() };
+                c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, n)
+            } else {
+                std::ptr::null_mut()
+            };
             for flags in [0u32, 0x0100, 0x0400, 0x0001] {
                 let t = if !rp.is_null() {
-                    c::cmsCreateTransform(rp, r8, srgb,
-                        r8, 0, flags)
-                } else { std::ptr::null_mut() };
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                    c::cmsCreateTransform(rp, r8, srgb, r8, 0, flags)
+                } else {
+                    std::ptr::null_mut()
+                };
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             eprintln!("{name} s={s}");
-            if !rp.is_null() { c::cmsCloseProfile(rp); }
+            if !rp.is_null() {
+                c::cmsCloseProfile(rp);
+            }
             c::cmsCloseProfile(prof);
             c::cmsPipelineFree(p);
         }
@@ -1015,14 +1239,13 @@ fn virt_builders2_arms() {
             (0x36434C52, 6, "6CLR"),
             (0x4D434846, 15, "MCHF"),
         ] {
-            let tcs: Vec<*mut c::ToneCurve> =
-                vec![g; nch.min(15)];
-            let dl2 = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), sig,
-                tcs.as_ptr());
+            let tcs: Vec<*mut c::ToneCurve> = vec![g; nch.min(15)];
+            let dl2 =
+                c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), sig, tcs.as_ptr());
             eprintln!("lin {name} dl={}", !dl2.is_null());
             if !dl2.is_null() {
-                c::cmsCloseProfile(dl2); }
+                c::cmsCloseProfile(dl2);
+            }
         }
         // ink-limiting devicelink at limits
         for (lim, sig, name) in [
@@ -1034,11 +1257,11 @@ fn virt_builders2_arms() {
             (-1.0, 0x434D594B, "limneg"),
             (100.0, 0x52474220, "lim100-rgb"),
         ] {
-            let dl3 = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), sig, lim);
+            let dl3 = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), sig, lim);
             eprintln!("{name} dl={}", !dl3.is_null());
             if !dl3.is_null() {
-                c::cmsCloseProfile(dl3); }
+                c::cmsCloseProfile(dl3);
+            }
         }
         c::cmsFreeToneCurve(g);
     }
@@ -1065,40 +1288,45 @@ fn virt_bchsw_arms() {
             (8, 5.0, 5.0, 5.0, 5.0, "lut8"),
         ] {
             let p = c::cmsCreateBCHSWabstractProfileTHR(
-                std::ptr::null_mut(), lut, b, c_, h, s,
-                std::ptr::null(), std::ptr::null());
+                std::ptr::null_mut(),
+                lut,
+                b,
+                c_,
+                h,
+                s,
+                std::ptr::null(),
+                std::ptr::null(),
+            );
             eprintln!("{name} prof={}", !p.is_null());
             if !p.is_null() {
                 // use it in a transform
-                let lab4 = c::cmsCreateLab4Profile(
-                    std::ptr::null_mut());
+                let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
                 let flab = (10u32 << 16) | (3 << 3) | 2;
                 let mut profs = [lab4, p, lab4];
-                let t = c::cmsCreateMultiprofileTransform(
-                    profs.as_mut_ptr(), 3,
-                    flab, flab, 0, 0);
+                let t = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 3, flab, flab, 0, 0);
                 eprintln!("  chain t={}", !t.is_null());
                 if !t.is_null() {
-                    c::cmsDeleteTransform(t); }
+                    c::cmsDeleteTransform(t);
+                }
                 c::cmsCloseProfile(lab4);
                 c::cmsCloseProfile(p);
             }
         }
         // NULL + OkLab + Lab2 on ctx
-        let nul = c::cmsCreateNULLProfileTHR(
-            std::ptr::null_mut());
+        let nul = c::cmsCreateNULLProfileTHR(std::ptr::null_mut());
         eprintln!("null-prof={}", !nul.is_null());
         if !nul.is_null() {
-            c::cmsCloseProfile(nul); }
-        let okl = c::cmsCreate_OkLabProfile(
-            std::ptr::null_mut());
+            c::cmsCloseProfile(nul);
+        }
+        let okl = c::cmsCreate_OkLabProfile(std::ptr::null_mut());
         eprintln!("oklab={}", !okl.is_null());
         if !okl.is_null() {
-            c::cmsCloseProfile(okl); }
-        let lab2 = c::cmsCreateLab2ProfileTHR(
-            std::ptr::null_mut(), std::ptr::null());
+            c::cmsCloseProfile(okl);
+        }
+        let lab2 = c::cmsCreateLab2ProfileTHR(std::ptr::null_mut(), std::ptr::null());
         eprintln!("lab2={}", !lab2.is_null());
         if !lab2.is_null() {
-            c::cmsCloseProfile(lab2); }
+            c::cmsCloseProfile(lab2);
+        }
     }
 }

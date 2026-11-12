@@ -314,7 +314,11 @@ unsafe extern "C" {
         access_mode: *const u8,
     ) -> Handle;
     pub fn cmsCloseIOhandler(io: Handle) -> i32;
-    pub fn cmsOpenIOhandlerFromFile(context_id: Context, name: *const i8, access: *const u8) -> Handle;
+    pub fn cmsOpenIOhandlerFromFile(
+        context_id: Context,
+        name: *const i8,
+        access: *const u8,
+    ) -> Handle;
     pub fn cmsOpenIOhandlerFromStream(context_id: Context, stream: *mut c_void) -> Handle;
     // --- cmsio0 profile API ---
     pub fn cmsOpenProfileFromFile(name: *const i8, access: *const u8) -> *mut c_void;
@@ -336,16 +340,34 @@ unsafe extern "C" {
     pub fn cmsWriteRawTag(p: *mut c_void, sig: u32, data: *const c_void, size: u32) -> i32;
     pub fn cmsSaveProfileToMem(p: *mut c_void, mem: *mut c_void, size: *mut u32) -> i32;
     pub fn cmsCreateProfilePlaceholder(ctx: *mut c_void) -> *mut c_void;
-    pub fn cmsCreateGrayProfileTHR(ctx: *mut c_void, wp: *const c_void, tf: *const c_void) -> *mut c_void;
+    pub fn cmsCreateGrayProfileTHR(
+        ctx: *mut c_void,
+        wp: *const c_void,
+        tf: *const c_void,
+    ) -> *mut c_void;
     pub fn cmsCreateLab2ProfileTHR(ctx: *mut c_void, wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateLab4ProfileTHR(ctx: *mut c_void, wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateXYZProfileTHR(ctx: *mut c_void) -> *mut c_void;
     pub fn cmsCreate_sRGBProfileTHR(ctx: *mut c_void) -> *mut c_void;
-    pub fn cmsCreateBCHSWabstractProfileTHR(ctx: *mut c_void, n_lut: u32, bright: f64, contrast: f64, hue: f64, sat: f64, wp_src: *const c_void, wp_dest: *const c_void) -> *mut c_void;
+    pub fn cmsCreateBCHSWabstractProfileTHR(
+        ctx: *mut c_void,
+        n_lut: u32,
+        bright: f64,
+        contrast: f64,
+        hue: f64,
+        sat: f64,
+        wp_src: *const c_void,
+        wp_dest: *const c_void,
+    ) -> *mut c_void;
     pub fn cmsCreateNULLProfileTHR(ctx: *mut c_void) -> *mut c_void;
     // --- cmsvirt ---
     pub fn cmsCreate_sRGBProfile() -> *mut c_void;
-    pub fn cmsCreateRGBProfileTHR(ctx: Context, white: *const c_void, primaries: *const c_void, transfer: *const *mut c_void) -> *mut c_void;
+    pub fn cmsCreateRGBProfileTHR(
+        ctx: Context,
+        white: *const c_void,
+        primaries: *const c_void,
+        transfer: *const *mut c_void,
+    ) -> *mut c_void;
     pub fn cmsCreateLab2Profile(wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateLab4Profile(wp: *const c_void) -> *mut c_void;
     pub fn cmsCreateXYZProfile() -> *mut c_void;
@@ -490,7 +512,13 @@ unsafe extern "C" {
         output_chan: U32,
         table: *const F32,
     ) -> Handle;
-    pub fn cmsStageAllocCLutFloatGranular(ctx: *mut c_void, grid: *const u32, inch: u32, outch: u32, tab: *const f32) -> *mut c_void;
+    pub fn cmsStageAllocCLutFloatGranular(
+        ctx: *mut c_void,
+        grid: *const u32,
+        inch: u32,
+        outch: u32,
+        tab: *const f32,
+    ) -> *mut c_void;
     pub fn cmsStageDup(mpe: Handle) -> Handle;
     pub fn cmsStageFree(mpe: Handle);
     pub fn cmsStageInputChannels(mpe: Handle) -> U32;
@@ -604,7 +632,14 @@ unsafe extern "C" {
     pub fn orc_get_output_fmt16(ty: u32) -> *mut c_void;
     pub fn orc_get_output_fmtfl(ty: u32) -> *mut c_void;
     // --- transform ---
-    pub fn cmsCreateTransform(input: *mut c_void, input_format: u32, output: *mut c_void, output_format: u32, intent: u32, flags: u32) -> *mut c_void;
+    pub fn cmsCreateTransform(
+        input: *mut c_void,
+        input_format: u32,
+        output: *mut c_void,
+        output_format: u32,
+        intent: u32,
+        flags: u32,
+    ) -> *mut c_void;
     pub fn cmsDoTransform(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32);
     pub fn cmsDeleteTransform(t: *mut c_void);
     pub fn cmsGetTransformContextID(t: *const c_void) -> *mut c_void;
@@ -620,15 +655,50 @@ unsafe extern "C" {
     pub fn _cmsReadCHAD(dest: *mut c_void, prof: *mut c_void) -> i32;
     pub fn cmsSetProfileVersion(p: *mut c_void, version: f64);
     pub fn cmsGetProfileVersion(p: *const c_void) -> f64;
-    pub fn cmsGetProfileInfo(p: *mut c_void, info: u32, lang: *const i8, cntry: *const i8, buf: *mut c_void, bufsize: u32) -> u32;
-    pub fn cmsGetProfileInfoASCII(p: *mut c_void, info: u32, lang: *const i8, cntry: *const i8, buf: *mut c_void, bufsize: u32) -> u32;
-    pub fn cmsGetProfileInfoUTF8(p: *mut c_void, info: u32, lang: *const i8, cntry: *const i8, buf: *mut c_void, bufsize: u32) -> u32;
+    pub fn cmsGetProfileInfo(
+        p: *mut c_void,
+        info: u32,
+        lang: *const i8,
+        cntry: *const i8,
+        buf: *mut c_void,
+        bufsize: u32,
+    ) -> u32;
+    pub fn cmsGetProfileInfoASCII(
+        p: *mut c_void,
+        info: u32,
+        lang: *const i8,
+        cntry: *const i8,
+        buf: *mut c_void,
+        bufsize: u32,
+    ) -> u32;
+    pub fn cmsGetProfileInfoUTF8(
+        p: *mut c_void,
+        info: u32,
+        lang: *const i8,
+        cntry: *const i8,
+        buf: *mut c_void,
+        bufsize: u32,
+    ) -> u32;
     pub fn cmsGetProfileContextID(p: *const c_void) -> *mut c_void;
     pub fn cmsIsMatrixShaper(prof: *mut c_void) -> i32;
     pub fn cmsSetHeaderRenderingIntent(p: *mut c_void, intent: u32);
     // --- PostScript CSA/CRD ---
-    pub fn cmsGetPostScriptCSA(ctx: *mut c_void, p: *mut c_void, intent: u32, flags: u32, buf: *mut c_void, len: u32) -> u32;
-    pub fn cmsGetPostScriptCRD(ctx: *mut c_void, p: *mut c_void, intent: u32, flags: u32, buf: *mut c_void, len: u32) -> u32;
+    pub fn cmsGetPostScriptCSA(
+        ctx: *mut c_void,
+        p: *mut c_void,
+        intent: u32,
+        flags: u32,
+        buf: *mut c_void,
+        len: u32,
+    ) -> u32;
+    pub fn cmsGetPostScriptCRD(
+        ctx: *mut c_void,
+        p: *mut c_void,
+        intent: u32,
+        flags: u32,
+        buf: *mut c_void,
+        len: u32,
+    ) -> u32;
     // --- cgats / IT8 ---
     pub fn cmsIT8Alloc(ctx: *mut c_void) -> *mut c_void;
     pub fn cmsIT8LoadFromMem(ctx: *mut c_void, ptr: *const c_void, len: u32) -> *mut c_void;
@@ -644,25 +714,44 @@ unsafe extern "C" {
     pub fn cmsIT8SetPropertyStr(h: *mut c_void, prop: *const i8, val: *const i8) -> i32;
     pub fn cmsIT8SetPropertyDbl(h: *mut c_void, prop: *const i8, val: f64) -> i32;
     pub fn cmsIT8SetPropertyHex(h: *mut c_void, prop: *const i8, val: u32) -> i32;
-    pub fn cmsIT8SetPropertyMulti(h: *mut c_void, key: *const i8, subkey: *const i8, val: *const i8) -> i32;
+    pub fn cmsIT8SetPropertyMulti(
+        h: *mut c_void,
+        key: *const i8,
+        subkey: *const i8,
+        val: *const i8,
+    ) -> i32;
     pub fn cmsIT8SetPropertyUncooked(h: *mut c_void, key: *const i8, val: *const i8) -> i32;
     pub fn cmsIT8GetPropertyDbl(h: *mut c_void, prop: *const i8) -> f64;
     pub fn cmsIT8EnumProperties(h: *mut c_void, names: *mut *mut *mut i8) -> u32;
-    pub fn cmsIT8EnumPropertyMulti(h: *mut c_void, prop: *const i8, names: *mut *mut *mut i8) -> u32;
+    pub fn cmsIT8EnumPropertyMulti(
+        h: *mut c_void,
+        prop: *const i8,
+        names: *mut *mut *mut i8,
+    ) -> u32;
     pub fn cmsIT8GetDataRowCol(h: *mut c_void, row: i32, col: i32) -> *const i8;
     pub fn cmsIT8TableCount(h: *mut c_void) -> u32;
     pub fn cmsIT8GetDataRowColDbl(h: *mut c_void, row: i32, col: i32) -> f64;
     pub fn cmsIT8SetDataRowCol(h: *mut c_void, row: i32, col: i32, val: *const i8) -> i32;
     pub fn cmsIT8SetDataRowColDbl(h: *mut c_void, row: i32, col: i32, val: f64) -> i32;
     pub fn cmsIT8GetDataDbl(h: *mut c_void, patch: *const i8, sample: *const i8) -> f64;
-    pub fn cmsIT8SetData(h: *mut c_void, patch: *const i8, sample: *const i8, val: *const i8) -> i32;
+    pub fn cmsIT8SetData(
+        h: *mut c_void,
+        patch: *const i8,
+        sample: *const i8,
+        val: *const i8,
+    ) -> i32;
     pub fn cmsIT8SetDataDbl(h: *mut c_void, patch: *const i8, sample: *const i8, val: f64) -> i32;
     pub fn cmsIT8FindDataFormat(h: *mut c_void, sample: *const i8) -> i32;
     pub fn cmsIT8SetDataFormat(h: *mut c_void, n: i32, sample: *const i8) -> i32;
     pub fn cmsIT8EnumDataFormat(h: *mut c_void, names: *mut *mut *mut i8) -> i32;
     pub fn cmsIT8GetPatchName(h: *mut c_void, n_patch: i32, buffer: *mut i8) -> *const i8;
     pub fn cmsIT8GetPatchByName(h: *mut c_void, patch: *const i8) -> i32;
-    pub fn cmsIT8SetTableByLabel(h: *mut c_void, set: *const i8, field: *const i8, expected: *const i8) -> i32;
+    pub fn cmsIT8SetTableByLabel(
+        h: *mut c_void,
+        set: *const i8,
+        field: *const i8,
+        expected: *const i8,
+    ) -> i32;
     pub fn cmsIT8SetIndexColumn(h: *mut c_void, sample: *const i8) -> i32;
     pub fn cmsIT8DefineDblFormat(h: *mut c_void, formatter: *const i8);
     pub fn cmsIT8SetTable(h: *mut c_void, n_table: u32) -> i32;
@@ -686,7 +775,12 @@ unsafe extern "C" {
     pub fn cmsCreateDeviceLinkFromCubeFile(path: *const i8) -> *mut c_void;
     // --- black point / sampling ---
     pub fn cmsDetectBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
-    pub fn cmsDetectDestinationBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
+    pub fn cmsDetectDestinationBlackPoint(
+        bp: *mut c_void,
+        prof: *mut c_void,
+        intent: u32,
+        flags: u32,
+    ) -> i32;
     pub fn cmsDetectTAC(prof: *mut c_void) -> f64;
     pub fn cmsDesaturateLab(lab: *mut c_void, amax: f64, amin: f64, bmax: f64, bmin: f64) -> i32;
     // --- profile info (cmsio1) ---
@@ -696,24 +790,124 @@ unsafe extern "C" {
     pub fn _cmsReadOutputLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     pub fn _cmsReadDevicelinkLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     // --- virtual profile builders (cmsvirt) ---
-    pub fn cmsCreateGrayProfile(white_point: *const c_void, transfer: *mut ToneCurve) -> *mut c_void;
-    pub fn cmsCreateRGBProfile(white_point: *const c_void, primaries: *const c_void, transfer: *const *mut c_void) -> *mut c_void;
-    pub fn cmsCreateLinearizationDeviceLink(color_space: u32, transfer: *const *mut c_void) -> *mut c_void;
+    pub fn cmsCreateGrayProfile(
+        white_point: *const c_void,
+        transfer: *mut ToneCurve,
+    ) -> *mut c_void;
+    pub fn cmsCreateRGBProfile(
+        white_point: *const c_void,
+        primaries: *const c_void,
+        transfer: *const *mut c_void,
+    ) -> *mut c_void;
+    pub fn cmsCreateLinearizationDeviceLink(
+        color_space: u32,
+        transfer: *const *mut c_void,
+    ) -> *mut c_void;
     pub fn cmsCreateInkLimitingDeviceLink(color_space: u32, limit: f64) -> *mut c_void;
-    pub fn cmsCreateBCHSWabstractProfile(n_lut_points: u32, bright: f64, contrast: f64, hue: f64, saturation: f64, temp_src: u32, temp_dest: u32) -> *mut c_void;
-    pub fn cmsCreateLinearizationDeviceLinkTHR(ctx: *mut c_void, color_space: u32, transfer: *const *mut ToneCurve) -> *mut c_void;
-    pub fn cmsCreateInkLimitingDeviceLinkTHR(ctx: *mut c_void, color_space: u32, limit: f64) -> *mut c_void;
+    pub fn cmsCreateBCHSWabstractProfile(
+        n_lut_points: u32,
+        bright: f64,
+        contrast: f64,
+        hue: f64,
+        saturation: f64,
+        temp_src: u32,
+        temp_dest: u32,
+    ) -> *mut c_void;
+    pub fn cmsCreateLinearizationDeviceLinkTHR(
+        ctx: *mut c_void,
+        color_space: u32,
+        transfer: *const *mut ToneCurve,
+    ) -> *mut c_void;
+    pub fn cmsCreateInkLimitingDeviceLinkTHR(
+        ctx: *mut c_void,
+        color_space: u32,
+        limit: f64,
+    ) -> *mut c_void;
     pub fn cmsTransform2DeviceLink(t: *mut c_void, version: f64, flags: u32) -> *mut c_void;
     // --- transforms, extended surface ---
-    pub fn cmsCreateExtendedTransform(ctx: *mut c_void, n_profiles: u32, profs: *mut *mut c_void, bpc: *mut i32, intents: *mut u32, adaptation: *mut f64, gamut: *mut c_void, gamut_pos: u32, in_fmt: u32, out_fmt: u32, flags: u32) -> *mut c_void;
-    pub fn cmsCreateMultiprofileTransform(profs: *mut *mut c_void, n_profiles: i32, in_fmt: u32, out_fmt: u32, intent: u32, flags: u32) -> *mut c_void;
-    pub fn cmsCreateProofingTransform(input: *mut c_void, in_fmt: u32, output: *mut c_void, out_fmt: u32, proof: *mut c_void, intent: u32, proofing_intent: u32, flags: u32) -> *mut c_void;
-    pub fn cmsCreateTransformTHR(ctx: *mut c_void, input: *mut c_void, input_format: u32, output: *mut c_void, output_format: u32, intent: u32, flags: u32) -> *mut c_void;
-    pub fn cmsCreateMultiprofileTransformTHR(ctx: *mut c_void, profs: *mut *mut c_void, n_profiles: i32, in_fmt: u32, out_fmt: u32, intent: u32, flags: u32) -> *mut c_void;
-    pub fn cmsCreateProofingTransformTHR(ctx: *mut c_void, input: *mut c_void, in_fmt: u32, output: *mut c_void, out_fmt: u32, proof: *mut c_void, intent: u32, proofing_intent: u32, flags: u32) -> *mut c_void;
-    pub fn cmsOpenProfileFromStreamTHR(ctx: *mut c_void, stream: *mut c_void, access: *const i8) -> *mut c_void;
-    pub fn cmsDoTransformStride(t: *mut c_void, input: *const c_void, output: *mut c_void, size: u32, stride: u32);
-    pub fn cmsDoTransformLineStride(t: *mut c_void, input: *const c_void, output: *mut c_void, ppl: u32, lines: u32, bpl_in: u32, bpl_out: u32, bpp_in: u32, bpp_out: u32);
+    pub fn cmsCreateExtendedTransform(
+        ctx: *mut c_void,
+        n_profiles: u32,
+        profs: *mut *mut c_void,
+        bpc: *mut i32,
+        intents: *mut u32,
+        adaptation: *mut f64,
+        gamut: *mut c_void,
+        gamut_pos: u32,
+        in_fmt: u32,
+        out_fmt: u32,
+        flags: u32,
+    ) -> *mut c_void;
+    pub fn cmsCreateMultiprofileTransform(
+        profs: *mut *mut c_void,
+        n_profiles: i32,
+        in_fmt: u32,
+        out_fmt: u32,
+        intent: u32,
+        flags: u32,
+    ) -> *mut c_void;
+    pub fn cmsCreateProofingTransform(
+        input: *mut c_void,
+        in_fmt: u32,
+        output: *mut c_void,
+        out_fmt: u32,
+        proof: *mut c_void,
+        intent: u32,
+        proofing_intent: u32,
+        flags: u32,
+    ) -> *mut c_void;
+    pub fn cmsCreateTransformTHR(
+        ctx: *mut c_void,
+        input: *mut c_void,
+        input_format: u32,
+        output: *mut c_void,
+        output_format: u32,
+        intent: u32,
+        flags: u32,
+    ) -> *mut c_void;
+    pub fn cmsCreateMultiprofileTransformTHR(
+        ctx: *mut c_void,
+        profs: *mut *mut c_void,
+        n_profiles: i32,
+        in_fmt: u32,
+        out_fmt: u32,
+        intent: u32,
+        flags: u32,
+    ) -> *mut c_void;
+    pub fn cmsCreateProofingTransformTHR(
+        ctx: *mut c_void,
+        input: *mut c_void,
+        in_fmt: u32,
+        output: *mut c_void,
+        out_fmt: u32,
+        proof: *mut c_void,
+        intent: u32,
+        proofing_intent: u32,
+        flags: u32,
+    ) -> *mut c_void;
+    pub fn cmsOpenProfileFromStreamTHR(
+        ctx: *mut c_void,
+        stream: *mut c_void,
+        access: *const i8,
+    ) -> *mut c_void;
+    pub fn cmsDoTransformStride(
+        t: *mut c_void,
+        input: *const c_void,
+        output: *mut c_void,
+        size: u32,
+        stride: u32,
+    );
+    pub fn cmsDoTransformLineStride(
+        t: *mut c_void,
+        input: *const c_void,
+        output: *mut c_void,
+        ppl: u32,
+        lines: u32,
+        bpl_in: u32,
+        bpl_out: u32,
+        bpp_in: u32,
+        bpp_out: u32,
+    );
     pub fn cmsChangeBuffersFormat(t: *mut c_void, in_fmt: u32, out_fmt: u32) -> i32;
     pub fn cmsGetTransformInputFormat(t: *mut c_void) -> u32;
     pub fn cmsGetTransformOutputFormat(t: *mut c_void) -> u32;
@@ -772,23 +966,51 @@ unsafe extern "C" {
     pub fn cmsPlugin(plugin: *mut c_void) -> i32;
     pub fn cmsPluginTHR(ctx: *mut c_void, plugin: *mut c_void) -> i32;
 
-    pub fn cmsCreateDeviceLinkFromCubeFileTHR(ctx: *mut c_void, file_name: *const i8) -> *mut c_void;
+    pub fn cmsCreateDeviceLinkFromCubeFileTHR(
+        ctx: *mut c_void,
+        file_name: *const i8,
+    ) -> *mut c_void;
     pub fn cmsDetectRGBProfileGamma(prof: *mut c_void, threshold: f64) -> f64;
     pub fn cmsDictNextEntry(e: *const c_void) -> *const c_void;
-    pub fn cmsFormatterForColorspaceOfProfile(prof: *mut c_void, n_bytes: u32, is_float: i32) -> u32;
+    pub fn cmsFormatterForColorspaceOfProfile(
+        prof: *mut c_void,
+        n_bytes: u32,
+        is_float: i32,
+    ) -> u32;
     pub fn cmsFormatterForPCSOfProfile(prof: *mut c_void, n_bytes: u32, is_float: i32) -> u32;
     pub fn cmsFreeToneCurveTriple(curve: *const *mut c_void);
     pub fn cmsGetHeaderCMM(prof: *mut c_void) -> u32;
     pub fn cmsGetPipelineContextID(lut: Handle) -> *mut c_void;
     pub fn cmsGetStageContextID(mpe: Handle) -> *mut c_void;
     pub fn cmsGetTransformPipeline(t: *mut c_void) -> *mut c_void;
-    pub fn cmsGetPostScriptColorResource(ctx: *mut c_void, ty: u32, prof: *mut c_void, intent: u32, flags: u32, io: *mut c_void) -> u32;
-    pub fn cmsGetSupportedIntentsTHR(ctx: *mut c_void, n_max: u32, codes: *mut u32, descriptions: *mut *mut i8) -> u32;
+    pub fn cmsGetPostScriptColorResource(
+        ctx: *mut c_void,
+        ty: u32,
+        prof: *mut c_void,
+        intent: u32,
+        flags: u32,
+        io: *mut c_void,
+    ) -> u32;
+    pub fn cmsGetSupportedIntentsTHR(
+        ctx: *mut c_void,
+        n_max: u32,
+        codes: *mut u32,
+        descriptions: *mut *mut i8,
+    ) -> u32;
     pub fn cmsGetToneCurveSegment(n: i32, t: *const ToneCurve) -> *const c_void;
-    pub fn cmsOpenProfileFromFileTHR(ctx: *mut c_void, profile: *const i8, access: *const i8) -> *mut c_void;
+    pub fn cmsOpenProfileFromFileTHR(
+        ctx: *mut c_void,
+        profile: *const i8,
+        access: *const i8,
+    ) -> *mut c_void;
     pub fn cmsOpenProfileFromStream(stream: *mut c_void, access: *const i8) -> *mut c_void;
-    pub fn cmsOpenProfileFromIOhandler2THR(ctx: *mut c_void, io: *mut c_void, write: i32) -> *mut c_void;
-    pub fn cmsOpenProfileFromMemTHR(ctx: *mut c_void, ptr: *const c_void, size: u32) -> *mut c_void;
+    pub fn cmsOpenProfileFromIOhandler2THR(
+        ctx: *mut c_void,
+        io: *mut c_void,
+        write: i32,
+    ) -> *mut c_void;
+    pub fn cmsOpenProfileFromMemTHR(ctx: *mut c_void, ptr: *const c_void, size: u32)
+    -> *mut c_void;
     pub fn cmsSaveProfileToStream(prof: *mut c_void, stream: *mut c_void) -> i32;
     pub fn cmsPipelineCheckAndRetreiveStages(lut: Handle, n: u32, ...) -> i32;
     pub fn cmsPipelineGetPtrToLastStage(lut: Handle) -> Handle;
@@ -800,7 +1022,11 @@ unsafe extern "C" {
     pub fn _cmsSetTransformUserData(t: *mut c_void, ptr: *mut c_void, free_fn: *mut c_void);
     pub fn _cmsGetTransformUserData(t: *mut c_void) -> *mut c_void;
     pub fn _cmsGetTransformFormatters16(t: *mut c_void, from_in: *mut c_void, to_out: *mut c_void);
-    pub fn _cmsGetTransformFormattersFloat(t: *mut c_void, from_in: *mut c_void, to_out: *mut c_void);
+    pub fn _cmsGetTransformFormattersFloat(
+        t: *mut c_void,
+        from_in: *mut c_void,
+        to_out: *mut c_void,
+    );
     pub fn _cmsGetTransformFlags(t: *mut c_void) -> u32;
     pub fn _cmsGetTransformWorker(t: *mut c_void) -> *mut c_void;
     pub fn _cmsGetTransformMaxWorkers(t: *mut c_void) -> i32;
@@ -809,7 +1035,15 @@ unsafe extern "C" {
     pub fn _cmsGetProfileUserData(p: *mut c_void) -> *mut c_void;
     pub fn _cmsReadProfileSequence(p: *mut c_void) -> *mut c_void;
     pub fn _cmsSetHeaderCMM(p: *mut c_void, cmm: u32);
-    pub fn _cmsDefaultICCintents(ctx: *mut c_void, n: u32, intents: *const u32, profs: *const *mut c_void, bpc: *const i32, adapt: *const f64, flags: u32) -> *mut c_void;
+    pub fn _cmsDefaultICCintents(
+        ctx: *mut c_void,
+        n: u32,
+        intents: *const u32,
+        profs: *const *mut c_void,
+        bpc: *const i32,
+        adapt: *const f64,
+        flags: u32,
+    ) -> *mut c_void;
 }
 
 // Canonical-math interposition: symbols named exactly like the libm
@@ -854,6 +1088,9 @@ pub mod math_abi {
     #[unsafe(no_mangle)]
     pub extern "C" fn sincos(x: f64, s: *mut f64, c: *mut f64) {
         let (sv, cv) = libm::sincos(x);
-        unsafe { *s = sv; *c = cv };
+        unsafe {
+            *s = sv;
+            *c = cv
+        };
     }
 }

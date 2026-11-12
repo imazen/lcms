@@ -22,7 +22,7 @@ use lcms::profile::{self, IccProfile};
 use lcms::types::{CieXyz, INTENT_PERCEPTUAL};
 use lcms::virt;
 use lcms::xform::{self, Transform};
-use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
+use std::ffi::{CStr, c_char, c_int, c_uint, c_void};
 use std::ptr;
 
 type Handle = *mut c_void;
@@ -31,7 +31,8 @@ type Handle = *mut c_void;
 // helpers: box <-> raw handle
 // ---------------------------------------------------------------------------
 fn prof_to_handle(p: Option<Box<IccProfile>>) -> Handle {
-    p.map(|b| Box::into_raw(b) as Handle).unwrap_or(ptr::null_mut())
+    p.map(|b| Box::into_raw(b) as Handle)
+        .unwrap_or(ptr::null_mut())
 }
 fn prof_ref<'a>(h: Handle) -> Option<&'a mut IccProfile> {
     if h.is_null() {
@@ -40,7 +41,8 @@ fn prof_ref<'a>(h: Handle) -> Option<&'a mut IccProfile> {
     Some(unsafe { &mut *(h as *mut IccProfile) })
 }
 fn xform_to_handle(t: Option<Box<Transform>>) -> Handle {
-    t.map(|b| Box::into_raw(b) as Handle).unwrap_or(ptr::null_mut())
+    t.map(|b| Box::into_raw(b) as Handle)
+        .unwrap_or(ptr::null_mut())
 }
 fn xform_ref<'a>(h: Handle) -> Option<&'a mut Transform> {
     if h.is_null() {
@@ -253,11 +255,7 @@ pub extern "C" fn cmsCreateNULLProfile() -> Handle {
 pub extern "C" fn cmsCreateGrayProfile(wp: *const c_void, trc: *mut c_void) -> Handle {
     let wp = unsafe { xyy_from(wp) };
     let curve = unsafe { curve_from(trc) };
-    prof_to_handle(virt::create_gray_profile(
-        None,
-        wp.as_ref(),
-        curve.as_ref(),
-    ))
+    prof_to_handle(virt::create_gray_profile(None, wp.as_ref(), curve.as_ref()))
 }
 /// `cmsCreateLinearizationDeviceLink` — `trc` may be NULL
 #[unsafe(no_mangle)]
@@ -277,9 +275,7 @@ pub extern "C" fn cmsCreateRGBProfile(
     let wp = unsafe { xyy_from(wp) };
     let prim = unsafe { prim3_from(prim) };
     let owned = unsafe { curves3_from(trc) };
-    let refs: Option<[&lcms::gamma::ToneCurve; 3]> = owned
-        .as_ref()
-        .map(|v| [&v[0], &v[1], &v[2]]);
+    let refs: Option<[&lcms::gamma::ToneCurve; 3]> = owned.as_ref().map(|v| [&v[0], &v[1], &v[2]]);
     prof_to_handle(virt::create_rgb_profile(
         None,
         wp.as_ref(),
@@ -309,10 +305,7 @@ unsafe fn curve_from(t: *mut c_void) -> Option<lcms::gamma::ToneCurve> {
 unsafe fn curves3_from(t: *const *mut c_void) -> Option<Vec<lcms::gamma::ToneCurve>> {
     unsafe { curves_n_from(t, 3) }
 }
-unsafe fn curves_n_from(
-    t: *const *mut c_void,
-    n: usize,
-) -> Option<Vec<lcms::gamma::ToneCurve>> {
+unsafe fn curves_n_from(t: *const *mut c_void, n: usize) -> Option<Vec<lcms::gamma::ToneCurve>> {
     if t.is_null() {
         return None;
     }
@@ -383,11 +376,7 @@ pub extern "C" fn cmsBuildParametricToneCurve(
 }
 /// `cmsBuildTabulatedToneCurve16`
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsBuildTabulatedToneCurve16(
-    ctx: Handle,
-    n: c_int,
-    tab: *const u16,
-) -> Handle {
+pub extern "C" fn cmsBuildTabulatedToneCurve16(ctx: Handle, n: c_int, tab: *const u16) -> Handle {
     if tab.is_null() || n <= 0 {
         return ptr::null_mut();
     }
@@ -414,7 +403,8 @@ pub extern "C" fn cmsEvalToneCurve16(curve: Handle, v: u16) -> u16 {
             }
         }
     }
-    let Some(c) = curve_rust(curve) else { return 0 }; c.eval16(v)
+    let Some(c) = curve_rust(curve) else { return 0 };
+    c.eval16(v)
 }
 /// `cmsEvalToneCurveFloat` — C dispatch: `nSegments==0` → u16→Lerp16→/65535;
 /// segmented curves → `EvalSegmentedFn` (plugin `SegInterp`/`Evals` apply).
@@ -520,19 +510,22 @@ pub extern "C" fn cmsReadTag(h: Handle, sig: c_uint) -> Handle {
     match obj {
         TagObject::Xyz(x) => Box::into_raw(Box::new(*x)) as Handle,
         TagObject::Chromaticity(x) => Box::into_raw(Box::new(*x)) as Handle,
-        TagObject::Text(m) | TagObject::TextDescription(m) | TagObject::Mlu(m)
+        TagObject::Text(m)
+        | TagObject::TextDescription(m)
+        | TagObject::Mlu(m)
         | TagObject::CrdInfo(m) => Box::into_raw(Box::new(m.clone())) as Handle,
         TagObject::Curve(t) | TagObject::ParametricCurve(t) => {
-                rust_to_tc(ptr::null_mut(), t.clone())
-            }
+            rust_to_tc(ptr::null_mut(), t.clone())
+        }
         TagObject::NamedColor(l) | TagObject::ColorantTable(l) => {
             Box::into_raw(Box::new(l.clone())) as Handle
         }
         TagObject::Foreign(f) => f.ptr as Handle,
-        TagObject::Lut8(p) | TagObject::Lut16(p) | TagObject::LutA2B(p)
-        | TagObject::LutB2A(p) | TagObject::Mpe(p) => {
-            Box::into_raw(Box::new(p.clone())) as Handle
-        }
+        TagObject::Lut8(p)
+        | TagObject::Lut16(p)
+        | TagObject::LutA2B(p)
+        | TagObject::LutB2A(p)
+        | TagObject::Mpe(p) => Box::into_raw(Box::new(p.clone())) as Handle,
         TagObject::MpeElem(s) => Box::into_raw(Box::new(s.clone())) as Handle,
         TagObject::Signature(s) => Box::into_raw(Box::new(*s)) as Handle,
         TagObject::ColorantOrder(c) => Box::into_raw(Box::new(*c)) as Handle,
@@ -845,9 +838,7 @@ fn rust_to_cseq(d: &named::ProfileSeqDesc) -> Handle {
 
 unsafe fn read_cdata(data: *const c_void) -> Option<lcms::tagtypes::IccData> {
     let h = unsafe { &*(data as *const CData) };
-    let bytes = unsafe {
-        std::slice::from_raw_parts((data as *const u8).add(8), h.len as usize)
-    };
+    let bytes = unsafe { std::slice::from_raw_parts((data as *const u8).add(8), h.len as usize) };
     Some(lcms::tagtypes::IccData {
         len: h.len,
         flag: h.flag,
@@ -986,7 +977,9 @@ pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_
             || s == t::SigBlueColorantTag
             || s == t::SigLuminanceTag =>
         {
-            Some(TagObject::Xyz(unsafe { *(data as *const lcms::types::CieXyz) }))
+            Some(TagObject::Xyz(unsafe {
+                *(data as *const lcms::types::CieXyz)
+            }))
         }
         s if s == t::SigChromaticityTag => Some(TagObject::Chromaticity(unsafe {
             *(data as *const lcms::types::CiexyYTriple)
@@ -1119,11 +1112,9 @@ pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_
         }
         s if s == t::SigVcgtTag => {
             let arr = unsafe { &*(data as *const [Handle; 3]) };
-            let (Some(a), Some(b), Some(cc)) = (
-                curve_rust(arr[0]),
-                curve_rust(arr[1]),
-                curve_rust(arr[2]),
-            ) else {
+            let (Some(a), Some(b), Some(cc)) =
+                (curve_rust(arr[0]), curve_rust(arr[1]), curve_rust(arr[2]))
+            else {
                 return 0;
             };
             Some(TagObject::Vcgt(lcms::tagtypes::VcgtData::Curves([
@@ -1131,17 +1122,13 @@ pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_
             ])))
         }
         s if s == t::SigMetaTag => cdict_to_dict(data as Handle).map(TagObject::Dictionary),
-        s if s == t::SigcicpTag => {
-            Some(TagObject::VideoSignal(cvideo_to_vs(unsafe {
-                &*(data as *const CVideo)
-            })))
-        }
+        s if s == t::SigcicpTag => Some(TagObject::VideoSignal(cvideo_to_vs(unsafe {
+            &*(data as *const CVideo)
+        }))),
         s if s == t::SigMHC2Tag => Some(TagObject::Mhc2(unsafe {
             read_cmhc2(&*(data as *const CMhc2))
         })),
-        s if is_mlu_tag(s) => {
-            mlu_ref(data as Handle).map(|m| TagObject::Mlu(m.clone()))
-        }
+        s if is_mlu_tag(s) => mlu_ref(data as Handle).map(|m| TagObject::Mlu(m.clone())),
         s => {
             // Plugin-registered tag signature — marshal per the descriptor's
             // first supported type: foreign handler → raw ptr; otherwise the
@@ -1152,16 +1139,14 @@ pub extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void) -> c_
             };
             let typ = desc.supported_types.first().copied().unwrap_or(0);
             match lcms::tagtypes::get_tag_type_handler(ctx, typ) {
-                Some(h) if h.foreign != 0 => Some(TagObject::Foreign(
-                    lcms::tagtypes::ForeignTag {
-                        ptr: data as usize,
-                        cbox: 0, // stamped by cms_write_tag after decide_type
-                    },
-                )),
+                Some(h) if h.foreign != 0 => Some(TagObject::Foreign(lcms::tagtypes::ForeignTag {
+                    ptr: data as usize,
+                    cbox: 0, // stamped by cms_write_tag after decide_type
+                })),
                 _ => match typ {
-                    lcms::signatures::tagtype::SigUInt32ArrayType => Some(
-                        TagObject::UInt32(vec![unsafe { *(data as *const u32) }]),
-                    ),
+                    lcms::signatures::tagtype::SigUInt32ArrayType => {
+                        Some(TagObject::UInt32(vec![unsafe { *(data as *const u32) }]))
+                    }
                     _ => None,
                 },
             }
@@ -1243,16 +1228,7 @@ fn create_transform_ctx(
         .map(|c| c.c_xform_factories.clone())
         .unwrap_or_default();
     let t = xform_to_handle(xform::create_extended_transform(
-        ctx,
-        &mut profs,
-        &mut bpc,
-        &intents,
-        &adapt,
-        None,
-        0,
-        in_fmt,
-        out_fmt,
-        flags,
+        ctx, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, flags,
     ));
     for b in profs {
         std::mem::forget(b);
@@ -1272,13 +1248,13 @@ fn apply_xform_factories(factories: &[(usize, usize)], t: Handle) {
         return;
     };
     type Factory = unsafe extern "C" fn(
-        *mut usize,        // _cmsTransformFn* xform
-        *mut *mut c_void,  // void** UserData
-        *mut usize,        // _cmsFreeUserDataFn* FreePrivateDataFn
-        *mut *mut c_void,  // cmsPipeline** Lut
-        *mut u32,          // InputFormat
-        *mut u32,          // OutputFormat
-        *mut u32,          // dwFlags
+        *mut usize,       // _cmsTransformFn* xform
+        *mut *mut c_void, // void** UserData
+        *mut usize,       // _cmsFreeUserDataFn* FreePrivateDataFn
+        *mut *mut c_void, // cmsPipeline** Lut
+        *mut u32,         // InputFormat
+        *mut u32,         // OutputFormat
+        *mut u32,         // dwFlags
     ) -> c_int;
     for &(fp, _ctx) in factories.iter().rev() {
         if fp == 0 {
@@ -1354,16 +1330,7 @@ pub extern "C" fn cmsCreateMultiprofileTransform(
     let ctx = profs[0].ctx.clone();
     let adapt = vec![xform::get_adaptation_state(ctx.as_ref()); n];
     let t = xform_to_handle(xform::create_extended_transform(
-        ctx,
-        &mut profs,
-        &mut bpc,
-        &intents,
-        &adapt,
-        None,
-        0,
-        in_fmt,
-        out_fmt,
-        flags,
+        ctx, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, flags,
     ));
     for b in profs {
         std::mem::forget(b);
@@ -1388,12 +1355,7 @@ pub extern "C" fn cmsDeleteTransform(h: Handle) {
 }
 /// `cmsDoTransform` — contiguous n pixels
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsDoTransform(
-    h: Handle,
-    input: *const c_void,
-    output: *mut c_void,
-    n: c_uint,
-) {
+pub extern "C" fn cmsDoTransform(h: Handle, input: *const c_void, output: *mut c_void, n: c_uint) {
     let Some(t) = xform_ref(h) else {
         return;
     };
@@ -1656,10 +1618,15 @@ fn tc_to_rust(c: &CmsToneCurve) -> Option<lcms::gamma::ToneCurve> {
                     sampled_points: if s.sampled_points.is_null() || s.n_grid_points == 0 {
                         None
                     } else {
-                        Some(unsafe {
-                            std::slice::from_raw_parts(s.sampled_points, s.n_grid_points as usize)
-                        }
-                        .to_vec())
+                        Some(
+                            unsafe {
+                                std::slice::from_raw_parts(
+                                    s.sampled_points,
+                                    s.n_grid_points as usize,
+                                )
+                            }
+                            .to_vec(),
+                        )
                     },
                 })
                 .collect::<Vec<_>>(),
@@ -1728,25 +1695,24 @@ fn rust_to_tc(ctx: Handle, tc: lcms::gamma::ToneCurve) -> Handle {
     let seg_interp = if n_segments == 0 {
         ptr::null_mut()
     } else {
-        let arr: Vec<*mut CmsInterpParams> = unsafe {
-            std::slice::from_raw_parts(segments, n_segments as usize)
-        }
-        .iter()
-        .map(|s| {
-                if s.r#type == 0 && s.n_grid_points > 0 {
-                    make_cparams(
-                        ctx,
-                        &[s.n_grid_points],
-                        1,
-                        1,
-                        s.sampled_points as *const c_void,
-                        1, // CMS_LERP_FLAGS_FLOAT
-                    ) as *mut CmsInterpParams
-                } else {
-                    ptr::null_mut()
-                }
-            })
-            .collect();
+        let arr: Vec<*mut CmsInterpParams> =
+            unsafe { std::slice::from_raw_parts(segments, n_segments as usize) }
+                .iter()
+                .map(|s| {
+                    if s.r#type == 0 && s.n_grid_points > 0 {
+                        make_cparams(
+                            ctx,
+                            &[s.n_grid_points],
+                            1,
+                            1,
+                            s.sampled_points as *const c_void,
+                            1, // CMS_LERP_FLAGS_FLOAT
+                        ) as *mut CmsInterpParams
+                    } else {
+                        ptr::null_mut()
+                    }
+                })
+                .collect();
         Box::into_raw(arr.into_boxed_slice()) as *mut *mut CmsInterpParams
     };
     // `p->Evals` — resolved evaluator per non-sampled segment: plugin
@@ -1754,21 +1720,19 @@ fn rust_to_tc(ctx: Handle, tc: lcms::gamma::ToneCurve) -> Handle {
     let evals = if n_segments == 0 {
         ptr::null_mut()
     } else {
-        let arr: Vec<usize> = unsafe {
-            std::slice::from_raw_parts(segments, n_segments as usize)
-        }
-        .iter()
-        .map(|s| {
-            if s.r#type == 0 {
-                return 0usize;
-            }
-            if let Some(ev) = parametric_eval_for(ctx, s.r#type) {
-                ev
-            } else {
-                eval_parametric_c as usize
-            }
-        })
-        .collect();
+        let arr: Vec<usize> = unsafe { std::slice::from_raw_parts(segments, n_segments as usize) }
+            .iter()
+            .map(|s| {
+                if s.r#type == 0 {
+                    return 0usize;
+                }
+                if let Some(ev) = parametric_eval_for(ctx, s.r#type) {
+                    ev
+                } else {
+                    eval_parametric_c as usize
+                }
+            })
+            .collect();
         Box::into_raw(arr.into_boxed_slice()) as *mut usize
     };
     Box::into_raw(Box::new(CmsToneCurve {
@@ -1905,10 +1869,12 @@ pub extern "C" fn cmsBuildSegmentedToneCurve(
                     && s.n_grid_points > 0
                     && !s.sampled_points.is_null()
                 {
-                    Some(unsafe {
-                        std::slice::from_raw_parts(s.sampled_points, s.n_grid_points as usize)
-                    }
-                    .to_vec())
+                    Some(
+                        unsafe {
+                            std::slice::from_raw_parts(s.sampled_points, s.n_grid_points as usize)
+                        }
+                        .to_vec(),
+                    )
                 } else {
                     None
                 },
@@ -1994,15 +1960,21 @@ pub extern "C" fn cmsSmoothToneCurve(curve: Handle, lambda: f64) -> c_int {
     if curve.is_null() {
         return 0;
     }
-    let Some(mut c) = curve_rust(curve) else { return 0 };
+    let Some(mut c) = curve_rust(curve) else {
+        return 0;
+    };
     if lcms::gamma::smooth_tone_curve(None, &mut c, lambda) {
         if let Some(cc) = tc_ref(curve) {
             if !cc.table16.is_null() && cc.n_entries == c.table16.len() as u32 {
-                unsafe { std::ptr::copy_nonoverlapping(c.table16.as_ptr(), cc.table16, c.table16.len()) };
+                unsafe {
+                    std::ptr::copy_nonoverlapping(c.table16.as_ptr(), cc.table16, c.table16.len())
+                };
             }
         }
         1
-    } else { 0 }
+    } else {
+        0
+    }
 }
 
 /// `cmsJoinToneCurve`
@@ -2057,8 +2029,16 @@ pub extern "C" fn cmsDeltaE(lab1: *const CmsLab, lab2: *const CmsLab) -> f64 {
         return 0.0;
     }
     let (l1, l2) = unsafe { (&*lab1, &*lab2) };
-    let lab1 = lcms::types::CieLab { L: l1.l, a: l1.a, b: l1.b };
-    let lab2 = lcms::types::CieLab { L: l2.l, a: l2.a, b: l2.b };
+    let lab1 = lcms::types::CieLab {
+        L: l1.l,
+        a: l1.a,
+        b: l1.b,
+    };
+    let lab2 = lcms::types::CieLab {
+        L: l2.l,
+        a: l2.a,
+        b: l2.b,
+    };
     lcms::pcs::delta_e(&lab1, &lab2)
 }
 
@@ -2081,7 +2061,11 @@ pub extern "C" fn cmsD50_xyY() -> *const lcms::types::CiexyY {
 
 fn cielab(l: *const CmsLab) -> lcms::types::CieLab {
     let l = unsafe { &*l };
-    lcms::types::CieLab { L: l.l, a: l.a, b: l.b }
+    lcms::types::CieLab {
+        L: l.l,
+        a: l.a,
+        b: l.b,
+    }
 }
 
 /// `cmsCIE94DeltaE`
@@ -2095,12 +2079,7 @@ pub extern "C" fn cmsCIE94DeltaE(lab1: *const CmsLab, lab2: *const CmsLab) -> f6
 
 /// `cmsCMCdeltaE`
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsCMCdeltaE(
-    lab1: *const CmsLab,
-    lab2: *const CmsLab,
-    l: f64,
-    c: f64,
-) -> f64 {
+pub extern "C" fn cmsCMCdeltaE(lab1: *const CmsLab, lab2: *const CmsLab, l: f64, c: f64) -> f64 {
     if lab1.is_null() || lab2.is_null() {
         return 0.0;
     }
@@ -2121,7 +2100,6 @@ pub extern "C" fn cmsCIE2000DeltaE(
     }
     lcms::pcs::cie2000_delta_e(&cielab(lab1), &cielab(lab2), kl, kc, kh)
 }
-
 
 // ---------------------------------------------------------------------------
 // half/fixed conversions, tone-curve introspection, misc
@@ -2293,8 +2271,12 @@ pub extern "C" fn cmsMLUsetASCII(
         return 0;
     };
     let s = unsafe { cstr(s) }.unwrap_or_default();
-    named::mlu_set_ascii(m, &unsafe { code2(lang) }, &unsafe { code2(cntry) }, s.as_bytes())
-        as c_int
+    named::mlu_set_ascii(
+        m,
+        &unsafe { code2(lang) },
+        &unsafe { code2(cntry) },
+        s.as_bytes(),
+    ) as c_int
 }
 /// `cmsMLUsetUTF8`
 #[unsafe(no_mangle)]
@@ -2308,8 +2290,12 @@ pub extern "C" fn cmsMLUsetUTF8(
         return 0;
     };
     let s = unsafe { cstr(s) }.unwrap_or_default();
-    named::mlu_set_utf8(m, &unsafe { code2(lang) }, &unsafe { code2(cntry) }, s.as_bytes())
-        as c_int
+    named::mlu_set_utf8(
+        m,
+        &unsafe { code2(lang) },
+        &unsafe { code2(cntry) },
+        s.as_bytes(),
+    ) as c_int
 }
 /// `cmsMLUsetWide`
 #[unsafe(no_mangle)]
@@ -2400,7 +2386,9 @@ pub extern "C" fn cmsMLUgetWide(
 /// `cmsMLUtranslationsCount`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsMLUtranslationsCount(mlu: Handle) -> c_uint {
-    mlu_ref(mlu).map(|m| named::mlu_translations_count(m)).unwrap_or(0)
+    mlu_ref(mlu)
+        .map(|m| named::mlu_translations_count(m))
+        .unwrap_or(0)
 }
 
 /// `cmsAllocNamedColorList`
@@ -2442,7 +2430,9 @@ pub extern "C" fn cmsFreeNamedColorList(list: Handle) {
 /// `cmsNamedColorCount`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsNamedColorCount(list: Handle) -> c_uint {
-    ncl_ref(list).map(|l| named::named_color_count(l)).unwrap_or(0)
+    ncl_ref(list)
+        .map(|l| named::named_color_count(l))
+        .unwrap_or(0)
 }
 /// `cmsAppendNamedColor`
 #[unsafe(no_mangle)]
@@ -2513,9 +2503,7 @@ pub extern "C" fn cmsFreeProfileSequenceDescription(d: Handle) {
     }
     let c = unsafe { Box::from_raw(d as *mut CSeq) };
     if !c.seq.is_null() {
-        let arr = unsafe {
-            Box::from_raw(std::ptr::slice_from_raw_parts_mut(c.seq, c.n as usize))
-        };
+        let arr = unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(c.seq, c.n as usize)) };
         for e in arr.iter() {
             cmsMLUfree(e.manufacturer);
             cmsMLUfree(e.model);
@@ -2639,7 +2627,11 @@ pub extern "C" fn cmsLab2XYZ(wp: *const CieXyz, xyz: *mut CieXyz, lab: *const Ci
     if xyz.is_null() || lab.is_null() {
         return;
     }
-    let w = if wp.is_null() { None } else { Some(unsafe { &*wp }) };
+    let w = if wp.is_null() {
+        None
+    } else {
+        Some(unsafe { &*wp })
+    };
     unsafe { *xyz = lcms::pcs::lab2xyz(w, &*lab) };
 }
 /// `cmsXYZ2Lab`
@@ -2648,7 +2640,11 @@ pub extern "C" fn cmsXYZ2Lab(wp: *const CieXyz, lab: *mut CieLab, xyz: *const Ci
     if lab.is_null() || xyz.is_null() {
         return;
     }
-    let w = if wp.is_null() { None } else { Some(unsafe { &*wp }) };
+    let w = if wp.is_null() {
+        None
+    } else {
+        Some(unsafe { &*wp })
+    };
     unsafe { *lab = lcms::pcs::xyz2lab(w, &*xyz) };
 }
 /// `cmsFloat2LabEncoded` — `[u16;3]` out
@@ -2675,7 +2671,13 @@ pub extern "C" fn cmsLabEncoded2Float(lab: *mut CieLab, w_lab: *const u16) {
     if lab.is_null() || w_lab.is_null() {
         return;
     }
-    let w = unsafe { [w_lab.add(0).read(), w_lab.add(1).read(), w_lab.add(2).read()] };
+    let w = unsafe {
+        [
+            w_lab.add(0).read(),
+            w_lab.add(1).read(),
+            w_lab.add(2).read(),
+        ]
+    };
     unsafe { *lab = lcms::pcs::lab_encoded2float(w) };
 }
 /// `cmsLabEncoded2FloatV2`
@@ -2684,7 +2686,13 @@ pub extern "C" fn cmsLabEncoded2FloatV2(lab: *mut CieLab, w_lab: *const u16) {
     if lab.is_null() || w_lab.is_null() {
         return;
     }
-    let w = unsafe { [w_lab.add(0).read(), w_lab.add(1).read(), w_lab.add(2).read()] };
+    let w = unsafe {
+        [
+            w_lab.add(0).read(),
+            w_lab.add(1).read(),
+            w_lab.add(2).read(),
+        ]
+    };
     unsafe { *lab = lcms::pcs::lab_encoded2float_v2(w) };
 }
 /// `cmsFloat2XYZEncoded`
@@ -2702,14 +2710,19 @@ pub extern "C" fn cmsXYZEncoded2Float(xyz: *mut CieXyz, w_xyz: *const u16) {
     if xyz.is_null() || w_xyz.is_null() {
         return;
     }
-    let w = unsafe { [w_xyz.add(0).read(), w_xyz.add(1).read(), w_xyz.add(2).read()] };
+    let w = unsafe {
+        [
+            w_xyz.add(0).read(),
+            w_xyz.add(1).read(),
+            w_xyz.add(2).read(),
+        ]
+    };
     unsafe { *xyz = lcms::pcs::xyz_encoded2float(w) };
 }
 
 // ---------------------------------------------------------------------------
 // context, adaptation/alarm, tags, profile metadata, interp params
 // ---------------------------------------------------------------------------
-
 
 /// `cmsCreateContext` — wraps `lcms::context::create_context` (global ctx →
 /// non-null boxed Context; upstream returns a heap `cmsContext`)
@@ -2749,7 +2762,11 @@ pub extern "C" fn cmsDupContext(src: Handle, user_data: *mut c_void) -> Handle {
     let fns = mem_fns_of(src);
     // C: _cmsMalloc(ContextID, sizeof(ctx)) — via src's mem-handler
     let raw = unsafe {
-        mem_alloc_with(&fns, src, std::mem::size_of::<lcms::context::Context>() as c_uint)
+        mem_alloc_with(
+            &fns,
+            src,
+            std::mem::size_of::<lcms::context::Context>() as c_uint,
+        )
     };
     if raw.is_null() {
         return ptr::null_mut();
@@ -2808,7 +2825,11 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                 let f = unsafe { (*(p as *const CmsPluginInterpolation)).interpolators_factory };
                 if f != 0 {
                     ensure_foreign_hooks();
-                    unsafe { (*(ctx as *mut lcms::context::Context)).interp_factories.push(f) };
+                    unsafe {
+                        (*(ctx as *mut lcms::context::Context))
+                            .interp_factories
+                            .push(f)
+                    };
                 }
             }
             PLUGIN_PARAMETRIC_SIG => {
@@ -2816,10 +2837,7 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                 if h.evaluator != 0 && h.n_functions > 0 {
                     let n = (h.n_functions as usize).min(20);
                     let set = lcms::context::CParametricSet {
-                        function_types: h.function_types[..n]
-                            .iter()
-                            .map(|&t| t as i32)
-                            .collect(),
+                        function_types: h.function_types[..n].iter().map(|&t| t as i32).collect(),
                         parameter_count: h.parameter_count[..n].to_vec(),
                         evaluator: h.evaluator,
                     };
@@ -2851,7 +2869,11 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                 let f = unsafe { (*(p as *const CmsPluginFormatters)).formatters_factory };
                 if f != 0 {
                     ensure_foreign_hooks();
-                    unsafe { (*(ctx as *mut lcms::context::Context)).formatter_factories.push(f) };
+                    unsafe {
+                        (*(ctx as *mut lcms::context::Context))
+                            .formatter_factories
+                            .push(f)
+                    };
                 }
             }
             PLUGIN_TAGTYPE_SIG => {
@@ -2882,7 +2904,9 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                 let t = unsafe { &*(p as *const CmsPluginTag) };
                 let n = (t.descriptor.n_supported_types as usize).min(20);
                 let types: &'static [u32] = Box::leak(
-                    t.descriptor.supported_types[..n].to_vec().into_boxed_slice(),
+                    t.descriptor.supported_types[..n]
+                        .to_vec()
+                        .into_boxed_slice(),
                 );
                 unsafe {
                     (*(ctx as *mut lcms::context::Context))
@@ -2912,12 +2936,9 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                     icc_version: 0,
                 })) as *mut CTagTypeHandler as usize;
                 unsafe {
-                    (*(ctx as *mut lcms::context::Context))
-                        .mpe_handlers
-                        .push(lcms::tagtypes::foreign_mpe_elem_handler(
-                            t.handler.signature,
-                            cbox,
-                        ))
+                    (*(ctx as *mut lcms::context::Context)).mpe_handlers.push(
+                        lcms::tagtypes::foreign_mpe_elem_handler(t.handler.signature, cbox),
+                    )
                 };
             }
             PLUGIN_TRANSFORM_SIG => {
@@ -2936,7 +2957,10 @@ fn plugin_thr_register(ctx: Handle, mut p: *const CmsPluginBase) -> bool {
                 if h.link != 0 {
                     unsafe {
                         (*(ctx as *mut lcms::context::Context)).c_intents.push(
-                            lcms::context::CIntentSet { intent: h.intent, link: h.link },
+                            lcms::context::CIntentSet {
+                                intent: h.intent,
+                                link: h.link,
+                            },
                         )
                     };
                 }
@@ -3025,7 +3049,11 @@ pub extern "C" fn cmsWriteRawTag(h: Handle, sig: c_uint, buf: *const u8, size: c
 /// `cmsIsIntentSupported`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsIsIntentSupported(h: Handle, intent: c_uint, dir: c_int) -> c_int {
-    hdr(h, |p| lcms::io1::is_intent_supported(p, intent, dir) as c_int, 0)
+    hdr(
+        h,
+        |p| lcms::io1::is_intent_supported(p, intent, dir) as c_int,
+        0,
+    )
 }
 
 /// `cmsFLAGS_GRIDPOINTS` — `#define`-level helper
@@ -3041,7 +3069,10 @@ pub extern "C" fn cmsFLAGS_GRIDPOINTS(n: c_uint) -> c_uint {
 /// `cmsDetectTAC` — max ink coverage % for a CMYK profile
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsDetectTAC(h: Handle) -> f64 {
-    match prof_ref(h) { Some(p) => lcms::cnvrt::dbg_detect_tac(p), None => 0.0 }
+    match prof_ref(h) {
+        Some(p) => lcms::cnvrt::dbg_detect_tac(p),
+        None => 0.0,
+    }
 }
 /// `cmsEstimateTAC` — alias of `cmsDetectTAC` in this port
 #[unsafe(no_mangle)]
@@ -3158,7 +3189,9 @@ pub extern "C" fn cmsCreateRGBProfileTHR(
 /// `cmsCreate_sRGBProfileTHR`
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsCreate_sRGBProfileTHR(ctx: Handle) -> Handle {
-    prof_to_handle(lcms::virt::create_srgb_profile(ctx_ref(ctx).map(|c| c.clone())))
+    prof_to_handle(lcms::virt::create_srgb_profile(
+        ctx_ref(ctx).map(|c| c.clone()),
+    ))
 }
 /// `cmsCreateXYZProfileTHR`
 #[unsafe(no_mangle)]
@@ -3337,11 +3370,12 @@ pub extern "C" fn cmsCreateProfilePlaceholder(ctx: Handle) -> Handle {
 }
 /// `cmsCreateInkLimitingDeviceLink`/`THR` — CMYK ink-limit devlink
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsCreateInkLimitingDeviceLink(
-    color_space: c_uint,
-    limit: f64,
-) -> Handle {
-    prof_to_handle(virt::create_ink_limiting_device_link(None, color_space, limit))
+pub extern "C" fn cmsCreateInkLimitingDeviceLink(color_space: c_uint, limit: f64) -> Handle {
+    prof_to_handle(virt::create_ink_limiting_device_link(
+        None,
+        color_space,
+        limit,
+    ))
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsCreateInkLimitingDeviceLinkTHR(
@@ -3349,7 +3383,8 @@ pub extern "C" fn cmsCreateInkLimitingDeviceLinkTHR(
     color_space: c_uint,
     limit: f64,
 ) -> Handle {
-    let _ = ctx; cmsCreateInkLimitingDeviceLink(color_space, limit)
+    let _ = ctx;
+    cmsCreateInkLimitingDeviceLink(color_space, limit)
 }
 /// `cmsCreateLinearizationDeviceLink`/`THR`
 #[unsafe(no_mangle)]
@@ -3398,7 +3433,12 @@ pub extern "C" fn cmsCreateProofingTransform(
         unsafe { Box::from_raw(o) },
     ];
     let mut bpc = [flags & lcms::types::FLAGS_BLACKPOINTCOMPENSATION != 0; 4];
-    let intents = [intent, intent, 1 /*INTENT_RELATIVE_COLORIMETRIC*/, proof_intent];
+    let intents = [
+        intent,
+        intent,
+        1, /*INTENT_RELATIVE_COLORIMETRIC*/
+        proof_intent,
+    ];
     let adapt = [xform::get_adaptation_state(i.ctx.as_ref()); 4];
     let t = xform_to_handle(xform::create_extended_transform(
         None,
@@ -3430,7 +3470,16 @@ pub extern "C" fn cmsCreateProofingTransformTHR(
     proof_intent: c_uint,
     flags: c_uint,
 ) -> Handle {
-    cmsCreateProofingTransform(input, in_fmt, output, out_fmt, proof, intent, proof_intent, flags)
+    cmsCreateProofingTransform(
+        input,
+        in_fmt,
+        output,
+        out_fmt,
+        proof,
+        intent,
+        proof_intent,
+        flags,
+    )
 }
 /// `cmsSetDeviceClass`
 #[unsafe(no_mangle)]
@@ -3506,11 +3555,7 @@ fn rebuild_params<'a>(p: &'a CmsInterpParams) -> Option<lcms::intrp::InterpParam
 }
 /// `_cmsInterpFn16` trampoline — rebuilds the Rust params from the C layout
 /// and re-derives the same kernel `compute_interp_params_ex` chose.
-unsafe extern "C" fn lerp16_c(
-    input: *const u16,
-    output: *mut u16,
-    p: *const CmsInterpParams,
-) {
+unsafe extern "C" fn lerp16_c(input: *const u16, output: *mut u16, p: *const CmsInterpParams) {
     let Some(rp) = rebuild_params(unsafe { &*p }) else {
         return;
     };
@@ -3518,11 +3563,7 @@ unsafe extern "C" fn lerp16_c(
     let o = unsafe { std::slice::from_raw_parts_mut(output, rp.n_outputs as usize) };
     rp.eval16(i, o);
 }
-unsafe extern "C" fn lerp_float_c(
-    input: *const f32,
-    output: *mut f32,
-    p: *const CmsInterpParams,
-) {
+unsafe extern "C" fn lerp_float_c(input: *const f32, output: *mut f32, p: *const CmsInterpParams) {
     let Some(rp) = rebuild_params(unsafe { &*p }) else {
         return;
     };
@@ -3740,7 +3781,13 @@ pub extern "C" fn cmsGetPostScriptCRD(
     let n = lcms::ps2::get_post_script_crd(None, p, intent, flags, &mut io);
     if n > 0 {
         if let lcms::io::IoStream::Mem(m) = &io.stream {
-            unsafe { std::ptr::copy_nonoverlapping(m.block.as_ptr(), buf as *mut u8, (n as usize).min(size as usize)) };
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    m.block.as_ptr(),
+                    buf as *mut u8,
+                    (n as usize).min(size as usize),
+                )
+            };
         }
     }
     n
@@ -3770,7 +3817,13 @@ pub extern "C" fn cmsGetPostScriptCSA(
     let n = lcms::ps2::get_post_script_csa(None, p, intent, flags, &mut io);
     if n > 0 {
         if let lcms::io::IoStream::Mem(m) = &io.stream {
-            unsafe { std::ptr::copy_nonoverlapping(m.block.as_ptr(), buf as *mut u8, (n as usize).min(size as usize)) };
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    m.block.as_ptr(),
+                    buf as *mut u8,
+                    (n as usize).min(size as usize),
+                )
+            };
         }
     }
     n
@@ -3833,7 +3886,12 @@ unsafe extern "C" fn def_realloc(ctx: Handle, p: *mut c_void, n: c_uint) -> *mut
     if p.is_null() {
         return unsafe { def_malloc(ctx, n) };
     }
-    let base = unsafe { realloc((p as *mut u8).sub(MEM_HDR) as *mut c_void, n as usize + MEM_HDR) };
+    let base = unsafe {
+        realloc(
+            (p as *mut u8).sub(MEM_HDR) as *mut c_void,
+            n as usize + MEM_HDR,
+        )
+    };
     if base.is_null() {
         return base;
     }
@@ -3851,9 +3909,7 @@ unsafe extern "C" fn def_malloczero(ctx: Handle, size: c_uint) -> *mut c_void {
 }
 unsafe extern "C" fn def_calloc(ctx: Handle, num: c_uint, size: c_uint) -> *mut c_void {
     let total = num as u64 * size as u64;
-    if total == 0
-        || (size != 0 && num as u64 >= u32::MAX as u64 / size as u64)
-        || total > MAX_ALLOC
+    if total == 0 || (size != 0 && num as u64 >= u32::MAX as u64 / size as u64) || total > MAX_ALLOC
     {
         return ptr::null_mut();
     }
@@ -3942,8 +3998,7 @@ fn foreign_kernel_float(input: &[f32], output: &mut [f32], p: &lcms::intrp::CmsI
 /// `f64 (*)(cmsInt32Number Type, const cmsFloat64Number Params[10],
 /// cmsFloat64Number R)`.
 fn parametric_eval_hook(ep: usize, ty: i32, params: &[f64; 10], r: f64) -> f64 {
-    let f: unsafe extern "C" fn(i32, *const f64, f64) -> f64 =
-        unsafe { std::mem::transmute(ep) };
+    let f: unsafe extern "C" fn(i32, *const f64, f64) -> f64 = unsafe { std::mem::transmute(ep) };
     unsafe { f(ty, params.as_ptr(), r) }
 }
 fn ensure_foreign_hooks() {
@@ -3989,8 +4044,7 @@ fn stage_box(ptr: usize) -> Option<Box<lcms::lut::Stage>> {
     if ptr == 0 {
         return None;
     }
-    Some(unsafe { *Box::from_raw(ptr as *mut lcms::lut::Stage) })
-        .map(Box::new)
+    Some(unsafe { *Box::from_raw(ptr as *mut lcms::lut::Stage) }).map(Box::new)
 }
 
 // ---------------------------------------------------------------------------
@@ -4011,13 +4065,13 @@ struct CmsPluginTransform {
 struct CTransform {
     input_format: u32,
     output_format: u32,
-    xform: usize,            // _cmsTransform2Fn
-    from_input: usize,       // cmsFormatter16
+    xform: usize,      // _cmsTransform2Fn
+    from_input: usize, // cmsFormatter16
     to_output: usize,
     from_input_float: usize, // cmsFormatterFloat
     to_output_float: usize,
-    cache: [u16; 32],        // _cmsCACHE: CacheIn[16]+CacheOut[16]
-    lut: *mut c_void,        // cmsPipeline*
+    cache: [u16; 32], // _cmsCACHE: CacheIn[16]+CacheOut[16]
+    lut: *mut c_void, // cmsPipeline*
     gamut_check: *mut c_void,
     input_colorant: *mut c_void, // cmsNAMEDCOLORLIST*
     output_colorant: *mut c_void,
@@ -4025,15 +4079,15 @@ struct CTransform {
     exit_color_space: u32,
     entry_white_point: [f64; 3],
     exit_white_point: [f64; 3],
-    sequence: *mut c_void,   // cmsSEQ*
+    sequence: *mut c_void, // cmsSEQ*
     dw_original_flags: u32,
     adaptation_state: f64,
     rendering_intent: u32,
     context_id: Handle,
     user_data: *mut c_void,
-    free_user_data: usize,   // _cmsFreeUserDataFn
-    old_xform: usize,        // _cmsTransformFn (legacy worker)
-    worker: usize,           // _cmsTransform2Fn
+    free_user_data: usize, // _cmsFreeUserDataFn
+    old_xform: usize,      // _cmsTransformFn (legacy worker)
+    worker: usize,         // _cmsTransform2Fn
     max_workers: i32,
     worker_flags: u32,
 }
@@ -4060,8 +4114,16 @@ fn ctransform_view(t: &lcms::xform::Transform) -> CTransform {
         output_colorant: ptr::null_mut(),
         entry_color_space: t.entry_color_space,
         exit_color_space: t.exit_color_space,
-        entry_white_point: [t.entry_white_point.X, t.entry_white_point.Y, t.entry_white_point.Z],
-        exit_white_point: [t.exit_white_point.X, t.exit_white_point.Y, t.exit_white_point.Z],
+        entry_white_point: [
+            t.entry_white_point.X,
+            t.entry_white_point.Y,
+            t.entry_white_point.Z,
+        ],
+        exit_white_point: [
+            t.exit_white_point.X,
+            t.exit_white_point.Y,
+            t.exit_white_point.Z,
+        ],
         sequence: ptr::null_mut(),
         dw_original_flags: t.dw_flags,
         adaptation_state: 1.0,
@@ -4095,8 +4157,7 @@ fn foreign_xform_invoke(
     if fx.old_xform == 0 {
         return;
     }
-    type OldFn =
-        unsafe extern "C" fn(*mut CTransform, *const c_void, *mut c_void, u32, u32);
+    type OldFn = unsafe extern "C" fn(*mut CTransform, *const c_void, *mut c_void, u32, u32);
     let f: OldFn = unsafe { std::mem::transmute(fx.old_xform) };
     let mut ct = ctransform_view(t);
     let line_in = if bpl_in != 0 { bpl_in } else { bpp_in };
@@ -4128,12 +4189,7 @@ struct CIohandler {
     write: usize,
 }
 
-unsafe extern "C" fn cio_read(
-    io: *mut CIohandler,
-    buf: *mut c_void,
-    size: u32,
-    count: u32,
-) -> u32 {
+unsafe extern "C" fn cio_read(io: *mut CIohandler, buf: *mut c_void, size: u32, count: u32) -> u32 {
     let ioh = unsafe { &mut *((*io).stream as *mut lcms::io::IoHandler) };
     let n = (size as usize).saturating_mul(count as usize);
     let slice = unsafe { std::slice::from_raw_parts_mut(buf as *mut u8, n) };
@@ -4163,11 +4219,7 @@ static CIO_LIVE: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<
 
 /// Build a `CIohandler` over `io` (a `*mut lcms::io::IoHandler`), register it
 /// in `CIO_LIVE`, run `f`, unregister.
-fn with_cio<R>(
-    io: usize,
-    ctx_handle: usize,
-    f: impl FnOnce(&mut CIohandler) -> R,
-) -> R {
+fn with_cio<R>(io: usize, ctx_handle: usize, f: impl FnOnce(&mut CIohandler) -> R) -> R {
     let ioh = io as *mut lcms::io::IoHandler;
     let mut shim = CIohandler {
         stream: ioh as *mut c_void,
@@ -4264,7 +4316,8 @@ fn tagtype_read(cbox: usize, icc_version: u32, io: usize, n_items: usize, size: 
     }
     let mut local = ctt_local(cbox, icc_version);
     with_cio(io, local.context_id as usize, |shim| {
-        type F = unsafe extern "C" fn(*mut CTagTypeHandler, *mut CIohandler, *mut u32, u32) -> Handle;
+        type F =
+            unsafe extern "C" fn(*mut CTagTypeHandler, *mut CIohandler, *mut u32, u32) -> Handle;
         let f: F = unsafe { std::mem::transmute(cb) };
         unsafe { f(&mut local, shim, n_items as *mut u32, size as u32) as usize }
     })
@@ -4432,8 +4485,13 @@ fn intent_link_hook(
     flags: u32,
 ) -> Option<Box<lcms::lut::Pipeline>> {
     let f: IntentFnC = unsafe { std::mem::transmute(link) };
-    let ctx_h = ctx.map(|c| c as *const _ as Handle).unwrap_or(ptr::null_mut());
-    let profs: Vec<Handle> = profiles.iter_mut().map(|p| p.as_mut() as *mut _ as Handle).collect();
+    let ctx_h = ctx
+        .map(|c| c as *const _ as Handle)
+        .unwrap_or(ptr::null_mut());
+    let profs: Vec<Handle> = profiles
+        .iter_mut()
+        .map(|p| p.as_mut() as *mut _ as Handle)
+        .collect();
     let bpcs: Vec<c_int> = bpc.iter().map(|&b| b as c_int).collect();
     let h = unsafe {
         f(
@@ -4462,14 +4520,28 @@ fn fmt_factory_hook(cfn: usize, ty: u32, dir: u32, flags: u32) -> usize {
 type Formatter16C = unsafe extern "C" fn(*mut c_void, *mut u16, *mut u8, u32) -> *mut u8;
 fn fmt_kernel16(cfn: usize, w: &mut [u16], a: &[u8], stride: u32) -> usize {
     let f: Formatter16C = unsafe { std::mem::transmute(cfn) };
-    let ret = unsafe { f(ptr::null_mut(), w.as_mut_ptr(), a.as_ptr() as *mut u8, stride) };
+    let ret = unsafe {
+        f(
+            ptr::null_mut(),
+            w.as_mut_ptr(),
+            a.as_ptr() as *mut u8,
+            stride,
+        )
+    };
     (ret as usize).saturating_sub(a.as_ptr() as usize)
 }
 /// `cmsFormatterFloat` C call.
 type FormatterFloatC = unsafe extern "C" fn(*mut c_void, *mut f32, *mut u8, u32) -> *mut u8;
 fn fmt_kernelf32(cfn: usize, w: &mut [f32], a: &[u8], stride: u32) -> usize {
     let f: FormatterFloatC = unsafe { std::mem::transmute(cfn) };
-    let ret = unsafe { f(ptr::null_mut(), w.as_mut_ptr(), a.as_ptr() as *mut u8, stride) };
+    let ret = unsafe {
+        f(
+            ptr::null_mut(),
+            w.as_mut_ptr(),
+            a.as_ptr() as *mut u8,
+            stride,
+        )
+    };
     (ret as usize).saturating_sub(a.as_ptr() as usize)
 }
 /// `cmsParametricCurveEvaluator` C signature
@@ -4544,11 +4616,23 @@ fn install_mem_fns(plugin: *const CmsPluginMemHandler) -> [usize; 6] {
     let h = unsafe { &*plugin };
     [
         h.malloc_ptr,
-        if h.malloc_zero_ptr != 0 { h.malloc_zero_ptr } else { default_mem_fns()[1] },
+        if h.malloc_zero_ptr != 0 {
+            h.malloc_zero_ptr
+        } else {
+            default_mem_fns()[1]
+        },
         h.free_ptr,
         h.realloc_ptr,
-        if h.calloc_ptr != 0 { h.calloc_ptr } else { default_mem_fns()[4] },
-        if h.dup_ptr != 0 { h.dup_ptr } else { default_mem_fns()[5] },
+        if h.calloc_ptr != 0 {
+            h.calloc_ptr
+        } else {
+            default_mem_fns()[4]
+        },
+        if h.dup_ptr != 0 {
+            h.dup_ptr
+        } else {
+            default_mem_fns()[5]
+        },
     ]
 }
 
@@ -4781,9 +4865,7 @@ unsafe extern "C" fn fmt16_unpack(
         output_format: o,
         stride,
     };
-    if let lcms::pack::Formatter::Unpack16(f) =
-        lcms::pack::get_stock_input_formatter(i, 0)
-    {
+    if let lcms::pack::Formatter::Unpack16(f) = lcms::pack::get_stock_input_formatter(i, 0) {
         let mut w = [0u16; lcms::xform::MAX_CHANNELS];
         let buf = unsafe { std::slice::from_raw_parts(buffer, FMT_BUF_LEN) };
         let c = f(&pi, &mut w, buf, stride);
@@ -4806,10 +4888,9 @@ unsafe extern "C" fn fmt16_pack(
         output_format: o,
         stride,
     };
-    if let lcms::pack::Formatter::Pack16(f) =
-        lcms::pack::get_stock_output_formatter(o, 0)
-    {
-        let w: &[u16; lcms::xform::MAX_CHANNELS] = unsafe { &*(values as *const [u16; lcms::xform::MAX_CHANNELS]) };
+    if let lcms::pack::Formatter::Pack16(f) = lcms::pack::get_stock_output_formatter(o, 0) {
+        let w: &[u16; lcms::xform::MAX_CHANNELS] =
+            unsafe { &*(values as *const [u16; lcms::xform::MAX_CHANNELS]) };
         let buf = unsafe { std::slice::from_raw_parts_mut(buffer, FMT_BUF_LEN) };
         let c = f(&pi, w, buf, stride);
         unsafe { buffer.add(c) }
@@ -4830,15 +4911,11 @@ unsafe extern "C" fn fmt_float_unpack(
         output_format: o,
         stride,
     };
-    if let lcms::pack::Formatter::UnpackF32(f) =
-        lcms::pack::get_stock_input_formatter(i, 1)
-    {
+    if let lcms::pack::Formatter::UnpackF32(f) = lcms::pack::get_stock_input_formatter(i, 1) {
         let mut w = [0.0f32; lcms::xform::MAX_CHANNELS];
         let buf = unsafe { std::slice::from_raw_parts(buffer, FMT_BUF_LEN) };
         let c = f(&pi, &mut w, buf, stride);
-        unsafe {
-            std::ptr::copy_nonoverlapping(w.as_ptr(), values, lcms::xform::MAX_CHANNELS)
-        };
+        unsafe { std::ptr::copy_nonoverlapping(w.as_ptr(), values, lcms::xform::MAX_CHANNELS) };
         unsafe { buffer.add(c) }
     } else {
         buffer
@@ -4857,10 +4934,9 @@ unsafe extern "C" fn fmt_float_pack(
         output_format: o,
         stride,
     };
-    if let lcms::pack::Formatter::PackF32(f) =
-        lcms::pack::get_stock_output_formatter(o, 1)
-    {
-        let w: &[f32; lcms::xform::MAX_CHANNELS] = unsafe { &*(values as *const [f32; lcms::xform::MAX_CHANNELS]) };
+    if let lcms::pack::Formatter::PackF32(f) = lcms::pack::get_stock_output_formatter(o, 1) {
+        let w: &[f32; lcms::xform::MAX_CHANNELS] =
+            unsafe { &*(values as *const [f32; lcms::xform::MAX_CHANNELS]) };
         let buf = unsafe { std::slice::from_raw_parts_mut(buffer, FMT_BUF_LEN) };
         let c = f(&pi, w, buf, stride);
         unsafe { buffer.add(c) }
@@ -4872,12 +4948,7 @@ unsafe extern "C" fn fmt_float_pack(
 /// The trampolines decode the type from the transform's format fields, so a
 /// single fn ptr per (direction, precision) suffices.
 #[unsafe(no_mangle)]
-pub extern "C" fn _cmsGetFormatter(
-    ctx: Handle,
-    ty: c_uint,
-    dir: c_int,
-    flags: c_uint,
-) -> usize {
+pub extern "C" fn _cmsGetFormatter(ctx: Handle, ty: c_uint, dir: c_int, flags: c_uint) -> usize {
     // C consults ctx-registered `cmsFormattersFactory` plugins first — first
     // factory to return a non-NULL `cmsFormatter` wins (`_cmsGetFormatter`).
     if let Some(cctx) = unsafe { cctx(ctx) } {
@@ -4960,11 +5031,7 @@ pub extern "C" fn cmsPipelineDup(h: Handle) -> Handle {
         .unwrap_or(ptr::null_mut())
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsPipelineEval16(
-    input: *const u16,
-    output: *mut u16,
-    lut: Handle,
-) {
+pub extern "C" fn cmsPipelineEval16(input: *const u16, output: *mut u16, lut: Handle) {
     let Some(p) = pipe_ref(lut) else {
         return;
     };
@@ -4973,11 +5040,7 @@ pub extern "C" fn cmsPipelineEval16(
     p.eval16(i, o);
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsPipelineEvalFloat(
-    input: *const f32,
-    output: *mut f32,
-    lut: Handle,
-) {
+pub extern "C" fn cmsPipelineEvalFloat(input: *const f32, output: *mut f32, lut: Handle) {
     let Some(p) = pipe_ref(lut) else {
         return;
     };
@@ -5186,10 +5249,7 @@ pub extern "C" fn cmsStageAllocCLutFloat(
         None
     } else {
         Some(unsafe {
-            std::slice::from_raw_parts(
-                table,
-                out_c as usize * (grid as usize).pow(in_c),
-            )
+            std::slice::from_raw_parts(table, out_c as usize * (grid as usize).pow(in_c))
         })
     };
     lcms::lut::stage_alloc_clut_float(unsafe { cctx(ctx) }, grid, in_c, out_c, t)
@@ -5207,9 +5267,8 @@ pub extern "C" fn cmsStageSampleCLut16bit(
     let (Some(s), Some(f)) = (stage_ref(stage), sampler) else {
         return 0;
     };
-    let mut cl = |i: &[u16], o: &mut [u16]| -> i32 {
-        unsafe { f(i.as_ptr(), o.as_mut_ptr(), cargo) }
-    };
+    let mut cl =
+        |i: &[u16], o: &mut [u16]| -> i32 { unsafe { f(i.as_ptr(), o.as_mut_ptr(), cargo) } };
     lcms::lut::stage_sample_clut16bit(s, &mut cl, flags) as c_int
 }
 type SamplerFloatC = unsafe extern "C" fn(*const f32, *mut f32, *mut c_void) -> c_int;
@@ -5223,9 +5282,8 @@ pub extern "C" fn cmsStageSampleCLutFloat(
     let (Some(s), Some(f)) = (stage_ref(stage), sampler) else {
         return 0;
     };
-    let mut cl = |i: &[f32], o: &mut [f32]| -> i32 {
-        unsafe { f(i.as_ptr(), o.as_mut_ptr(), cargo) }
-    };
+    let mut cl =
+        |i: &[f32], o: &mut [f32]| -> i32 { unsafe { f(i.as_ptr(), o.as_mut_ptr(), cargo) } };
     lcms::lut::stage_sample_clut_float(s, &mut cl, flags) as c_int
 }
 
@@ -5378,11 +5436,7 @@ pub extern "C" fn cmsIT8Free(h: Handle) {
     }
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsIT8LoadFromMem(
-    _ctx: Handle,
-    data: *const c_void,
-    size: c_uint,
-) -> Handle {
+pub extern "C" fn cmsIT8LoadFromMem(_ctx: Handle, data: *const c_void, size: c_uint) -> Handle {
     if data.is_null() || size == 0 {
         return ptr::null_mut();
     }
@@ -5421,7 +5475,10 @@ pub extern "C" fn cmsIT8SetPropertyStr(h: Handle, key: *const c_char, val: *cons
     let Some(it) = it8_ref(h) else {
         return 0;
     };
-    let (k, v) = (unsafe { cstr(key) }.unwrap_or_default(), unsafe { cstr(val) }.unwrap_or_default());
+    let (k, v) = (
+        unsafe { cstr(key) }.unwrap_or_default(),
+        unsafe { cstr(val) }.unwrap_or_default(),
+    );
     it.set_property_str(&k, &v) as c_int
 }
 #[unsafe(no_mangle)]
@@ -5441,11 +5498,18 @@ pub extern "C" fn cmsIT8SetPropertyHex(h: Handle, key: *const c_char, val: u32) 
     it.set_property_hex(&k, val) as c_int
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsIT8SetPropertyUncooked(h: Handle, key: *const c_char, val: *const c_char) -> c_int {
+pub extern "C" fn cmsIT8SetPropertyUncooked(
+    h: Handle,
+    key: *const c_char,
+    val: *const c_char,
+) -> c_int {
     let Some(it) = it8_ref(h) else {
         return 0;
     };
-    let (k, v) = (unsafe { cstr(key) }.unwrap_or_default(), unsafe { cstr(val) }.unwrap_or_default());
+    let (k, v) = (
+        unsafe { cstr(key) }.unwrap_or_default(),
+        unsafe { cstr(val) }.unwrap_or_default(),
+    );
     it.set_property_uncooked(&k, &v) as c_int
 }
 #[unsafe(no_mangle)]
@@ -5481,12 +5545,7 @@ pub extern "C" fn cmsIT8SetDataRowCol(
     it.set_data_row_col(row as usize, col as usize, &v) as c_int
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsIT8SetDataRowColDbl(
-    h: Handle,
-    row: c_int,
-    col: c_int,
-    val: f64,
-) -> c_int {
+pub extern "C" fn cmsIT8SetDataRowColDbl(h: Handle, row: c_int, col: c_int, val: f64) -> c_int {
     let Some(it) = it8_ref(h) else {
         return 0;
     };
@@ -5497,7 +5556,10 @@ pub extern "C" fn cmsIT8GetDataDbl(h: Handle, patch: *const c_char, sample: *con
     let Some(it) = it8_ref(h) else {
         return 0.0;
     };
-    let (p, s) = (unsafe { cstr(patch) }.unwrap_or_default(), unsafe { cstr(sample) }.unwrap_or_default());
+    let (p, s) = (
+        unsafe { cstr(patch) }.unwrap_or_default(),
+        unsafe { cstr(sample) }.unwrap_or_default(),
+    );
     it.get_data_dbl(&p, &s)
 }
 #[unsafe(no_mangle)]
@@ -5630,14 +5692,8 @@ pub extern "C" fn _cmsDefaultICCintents(
         unsafe { std::slice::from_raw_parts(intents, n_profiles as usize) }.to_vec()
     };
     let adapts = vec![1.0f64; profs.len()];
-    let r = lcms::cnvrt::dbg_default_icc_intents(
-        None,
-        &mut profs,
-        &intent_vec,
-        &mut bpc,
-        &adapts,
-        0,
-    );
+    let r =
+        lcms::cnvrt::dbg_default_icc_intents(None, &mut profs, &intent_vec, &mut bpc, &adapts, 0);
     for b in profs {
         std::mem::forget(b);
     }
@@ -5756,14 +5812,21 @@ fn c_log_trampoline(ctx: &lcms::context::Context, code: i32, text: &str) {
     let f = *C_LOG_FN.lock().unwrap();
     if let Some(f) = f {
         let cs = std::ffi::CString::new(text).unwrap_or_default();
-        unsafe { f(ctx as *const lcms::context::Context as Handle, code as c_uint, cs.as_ptr()) };
+        unsafe {
+            f(
+                ctx as *const lcms::context::Context as Handle,
+                code as c_uint,
+                cs.as_ptr(),
+            )
+        };
     }
 }
 /// `cmsSetLogErrorHandler` — NULL-context handler → lcms global hook
 #[unsafe(no_mangle)]
 pub extern "C" fn cmsSetLogErrorHandlerFn(f: Option<CLogFn>) {
     *C_LOG_FN.lock().unwrap() = f;
-    *lcms::err::GLOBAL_LOG_HOOK.lock().unwrap() = f.map(|_| c_log_trampoline as lcms::context::LogErrorHandler);
+    *lcms::err::GLOBAL_LOG_HOOK.lock().unwrap() =
+        f.map(|_| c_log_trampoline as lcms::context::LogErrorHandler);
 }
 /// `cmsSetLogErrorHandlerTHR` — handler on the given boxed context
 #[unsafe(no_mangle)]
@@ -5801,11 +5864,7 @@ pub extern "C" fn cmsPluginTHR(ctx: Handle, plugins: *const c_void) -> c_int {
 }
 /// `cmsTransform2DeviceLink` — bakes a transform into a devicelink profile.
 #[unsafe(no_mangle)]
-pub extern "C" fn cmsTransform2DeviceLink(
-    h: Handle,
-    version: f64,
-    flags: c_uint,
-) -> Handle {
+pub extern "C" fn cmsTransform2DeviceLink(h: Handle, version: f64, flags: c_uint) -> Handle {
     let Some(t) = xform_ref(h) else {
         return ptr::null_mut();
     };

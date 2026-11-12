@@ -62,30 +62,58 @@ pub enum Interpolation {
 /// `fn_addr_eq` chain per pixel. `Other` → indirect call like C.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum KernelKind {
-    Eval4, Tetra3, Trilinear, Bilinear, Eval1, LinLerp1D, Other16,
-    Eval4F, Tetra3F, TrilinearF, BilinearF, Eval1F, LinLerp1DF, OtherF,
+    Eval4,
+    Tetra3,
+    Trilinear,
+    Bilinear,
+    Eval1,
+    LinLerp1D,
+    Other16,
+    Eval4F,
+    Tetra3F,
+    TrilinearF,
+    BilinearF,
+    Eval1F,
+    LinLerp1DF,
+    OtherF,
 }
 
 pub(crate) fn kernel_kind(interp: Interpolation) -> KernelKind {
     use std::ptr::fn_addr_eq;
     match interp {
         Interpolation::Lerp16(f) => {
-            if fn_addr_eq(f, eval4_inputs as InterpFn16) { KernelKind::Eval4 }
-            else if fn_addr_eq(f, tetrahedral_interp16 as InterpFn16) { KernelKind::Tetra3 }
-            else if fn_addr_eq(f, trilinear_interp16 as InterpFn16) { KernelKind::Trilinear }
-            else if fn_addr_eq(f, bilinear_interp16 as InterpFn16) { KernelKind::Bilinear }
-            else if fn_addr_eq(f, eval1_input as InterpFn16) { KernelKind::Eval1 }
-            else if fn_addr_eq(f, lin_lerp_1d as InterpFn16) { KernelKind::LinLerp1D }
-            else { KernelKind::Other16 }
+            if fn_addr_eq(f, eval4_inputs as InterpFn16) {
+                KernelKind::Eval4
+            } else if fn_addr_eq(f, tetrahedral_interp16 as InterpFn16) {
+                KernelKind::Tetra3
+            } else if fn_addr_eq(f, trilinear_interp16 as InterpFn16) {
+                KernelKind::Trilinear
+            } else if fn_addr_eq(f, bilinear_interp16 as InterpFn16) {
+                KernelKind::Bilinear
+            } else if fn_addr_eq(f, eval1_input as InterpFn16) {
+                KernelKind::Eval1
+            } else if fn_addr_eq(f, lin_lerp_1d as InterpFn16) {
+                KernelKind::LinLerp1D
+            } else {
+                KernelKind::Other16
+            }
         }
         Interpolation::LerpFloat(f) => {
-            if fn_addr_eq(f, eval4_inputs_float as InterpFnFloat) { KernelKind::Eval4F }
-            else if fn_addr_eq(f, tetrahedral_interp_float as InterpFnFloat) { KernelKind::Tetra3F }
-            else if fn_addr_eq(f, trilinear_interp_float as InterpFnFloat) { KernelKind::TrilinearF }
-            else if fn_addr_eq(f, bilinear_interp_float as InterpFnFloat) { KernelKind::BilinearF }
-            else if fn_addr_eq(f, eval1_input_float as InterpFnFloat) { KernelKind::Eval1F }
-            else if fn_addr_eq(f, lin_lerp_1d_float as InterpFnFloat) { KernelKind::LinLerp1DF }
-            else { KernelKind::OtherF }
+            if fn_addr_eq(f, eval4_inputs_float as InterpFnFloat) {
+                KernelKind::Eval4F
+            } else if fn_addr_eq(f, tetrahedral_interp_float as InterpFnFloat) {
+                KernelKind::Tetra3F
+            } else if fn_addr_eq(f, trilinear_interp_float as InterpFnFloat) {
+                KernelKind::TrilinearF
+            } else if fn_addr_eq(f, bilinear_interp_float as InterpFnFloat) {
+                KernelKind::BilinearF
+            } else if fn_addr_eq(f, eval1_input_float as InterpFnFloat) {
+                KernelKind::Eval1F
+            } else if fn_addr_eq(f, lin_lerp_1d_float as InterpFnFloat) {
+                KernelKind::LinLerp1DF
+            } else {
+                KernelKind::OtherF
+            }
         }
     }
 }
@@ -119,10 +147,11 @@ pub(crate) fn foreign_hooks() -> Option<ForeignHooks> {
 /// once per process, so per-pixel kernel dispatch costs a load.
 #[inline]
 pub(crate) fn x64v3_cached() -> Option<archmage::X64V3Token> {
-    if std::env::var_os("LCMS_DISABLE_V3").is_some() { return None; }
+    if std::env::var_os("LCMS_DISABLE_V3").is_some() {
+        return None;
+    }
     use archmage::SimdToken;
-    static TOK: std::sync::OnceLock<Option<archmage::X64V3Token>> =
-        std::sync::OnceLock::new();
+    static TOK: std::sync::OnceLock<Option<archmage::X64V3Token>> = std::sync::OnceLock::new();
     *TOK.get_or_init(archmage::X64V3Token::summon)
 }
 
@@ -188,8 +217,7 @@ impl<'a> InterpParams<'a> {
         match self.kernel {
             KernelKind::Eval4 => {
                 // 4-in/4-out eval4 → SIMD kernel (bit-exact lane math).
-                if self.n_inputs == 4 && self.n_outputs == 4 && output.len() >= 4
-                {
+                if self.n_inputs == 4 && self.n_outputs == 4 && output.len() >= 4 {
                     #[cfg(target_arch = "x86_64")]
                     if let Some(t) = x64v3_cached() {
                         return eval16_eval4_v3(t, input, output, self);
@@ -398,7 +426,7 @@ pub fn compute_interp_params_ex<'a>(
         opta: [0; MAX_INPUT_DIMENSIONS],
         table,
         interpolation: Interpolation::Lerp16(|_, _, _| {}),
-            kernel: kernel_kind(Interpolation::Lerp16(|_, _, _| {})),
+        kernel: kernel_kind(Interpolation::Lerp16(|_, _, _| {})),
         foreign: None,
     };
 
@@ -554,11 +582,7 @@ pub(crate) fn eval1_input(input: &[u16], output: &mut [u16], p: &InterpParams) {
         let output = &mut output[..n];
 
         for out_chan in 0..n {
-            output[out_chan] = linear_interp(
-                rk as i32,
-                d0[out_chan] as i32,
-                d1[out_chan] as i32,
-            );
+            output[out_chan] = linear_interp(rk as i32, d0[out_chan] as i32, d1[out_chan] as i32);
         }
     }
 }
@@ -685,8 +709,7 @@ pub(crate) fn bilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPar
     let d01 = w(x0i + y1);
     let d10 = w(x1 + y0i);
     let d11 = w(x1 + y1);
-    let lerp =
-        |a: i32, l: i32, h: i32| (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16;
+    let lerp = |a: i32, l: i32, h: i32| (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16;
     for out_chan in 0..n {
         let dx0 = lerp(rx, d00[out_chan] as i32, d10[out_chan] as i32) as i32;
         let dx1 = lerp(rx, d01[out_chan] as i32, d11[out_chan] as i32) as i32;
@@ -819,9 +842,7 @@ pub(crate) fn trilinear_interp16(input: &[u16], output: &mut [u16], p: &InterpPa
     let d101 = w(x1 + y0i + z1);
     let d110 = w(x1 + y1 + z0i);
     let d111 = w(x1 + y1 + z1);
-    let lerp = |a: i32, l: i32, h: i32| {
-        (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16
-    };
+    let lerp = |a: i32, l: i32, h: i32| (l + round_fixed_to_int((h - l).wrapping_mul(a))) as u16;
     for out_chan in 0..n {
         let dx00 = lerp(rx, d000[out_chan] as i32, d100[out_chan] as i32) as i32;
         let dx01 = lerp(rx, d001[out_chan] as i32, d101[out_chan] as i32) as i32;
@@ -1191,8 +1212,7 @@ pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
             let rest = mul_add($c3, rz, mul_add($c2, ry, mul_add($c1, rx, [0x8001; 4])));
             for oi in 0..3 {
                 let r = rest[oi];
-                out[oi] =
-                    ($c0[oi] as u16).wrapping_add((r.wrapping_add(r >> 16) >> 16) as u16);
+                out[oi] = ($c0[oi] as u16).wrapping_add((r.wrapping_add(r >> 16) >> 16) as u16);
             }
         }};
     }
@@ -1353,12 +1373,7 @@ pub(crate) fn eval16_eval4_v3(
     output: &mut [u16],
     p: &InterpParams,
 ) {
-    let v = eval4_i32x4(
-        token,
-        [input[0], input[1], input[2], input[3]],
-        4,
-        p,
-    );
+    let v = eval4_i32x4(token, [input[0], input[1], input[2], input[3]], 4, p);
     output[..4].copy_from_slice(&v);
 }
 
@@ -1523,7 +1538,7 @@ pub(crate) fn eval4_f32x4<T: magetypes::simd::backends::F32x4Backend>(
         opta: p.opta,
         table: InterpTable::F32(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
-            kernel: p.kernel,
+        kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..3].copy_from_slice(&p.domain[1..4]);
@@ -1616,17 +1631,33 @@ pub(crate) fn eval4_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     let rz = fixed_rest_to_int(fz);
 
     let k0i = (p.opta[3] as i32).wrapping_mul(k0);
-    let k1 =
-        k0i + if vin[0] == 0xFFFF { 0 } else { p.opta[3] as i32 };
+    let k1 = k0i
+        + if vin[0] == 0xFFFF {
+            0
+        } else {
+            p.opta[3] as i32
+        };
     let x0i = (p.opta[2] as i32).wrapping_mul(x0);
-    let x1 =
-        x0i + if vin[1] == 0xFFFF { 0 } else { p.opta[2] as i32 };
+    let x1 = x0i
+        + if vin[1] == 0xFFFF {
+            0
+        } else {
+            p.opta[2] as i32
+        };
     let y0i = (p.opta[1] as i32).wrapping_mul(y0);
-    let y1 =
-        y0i + if vin[2] == 0xFFFF { 0 } else { p.opta[1] as i32 };
+    let y1 = y0i
+        + if vin[2] == 0xFFFF {
+            0
+        } else {
+            p.opta[1] as i32
+        };
     let z0i = (p.opta[0] as i32).wrapping_mul(z0);
-    let z1 =
-        z0i + if vin[3] == 0xFFFF { 0 } else { p.opta[0] as i32 };
+    let z1 = z0i
+        + if vin[3] == 0xFFFF {
+            0
+        } else {
+            p.opta[0] as i32
+        };
 
     let rxv = magetypes::simd::generic::i32x4::<T>::splat_t(token, rx);
     let ryv = magetypes::simd::generic::i32x4::<T>::splat_t(token, ry);
@@ -1744,13 +1775,25 @@ pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
 
     let x0i = (p.opta[2] as i32).wrapping_mul(x0);
     let x1 = x0i
-        + if vin[0] == 0xFFFF { 0 } else { p.opta[2] as i32 };
+        + if vin[0] == 0xFFFF {
+            0
+        } else {
+            p.opta[2] as i32
+        };
     let y0i = (p.opta[1] as i32).wrapping_mul(y0);
     let y1 = y0i
-        + if vin[1] == 0xFFFF { 0 } else { p.opta[1] as i32 };
+        + if vin[1] == 0xFFFF {
+            0
+        } else {
+            p.opta[1] as i32
+        };
     let z0i = (p.opta[0] as i32).wrapping_mul(z0);
     let z1 = z0i
-        + if vin[2] == 0xFFFF { 0 } else { p.opta[0] as i32 };
+        + if vin[2] == 0xFFFF {
+            0
+        } else {
+            p.opta[0] as i32
+        };
 
     let max_off = x1.wrapping_add(y1).wrapping_add(z1);
     let cell = lut_table;
@@ -1760,11 +1803,7 @@ pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     let w = |off: i32| {
         magetypes::simd::generic::i32x4::<T>::from_array_t(
             token,
-            lanes_u64(corner_u64(
-                cell,
-                ((off.min(max_off)) as usize).min(m),
-                last,
-            )),
+            lanes_u64(corner_u64(cell, ((off.min(max_off)) as usize).min(m), last)),
         )
     };
 
@@ -1780,8 +1819,7 @@ pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     type L<T> = magetypes::simd::generic::i32x4<T>;
     let half = L::<T>::splat_t(token, 0x8000);
     let mask = L::<T>::splat_t(token, 0xffff);
-    let lerp =
-        |a: L<T>, l: L<T>, h: L<T>| (l + ((h - l) * a + half).shr_arithmetic::<16>()) & mask;
+    let lerp = |a: L<T>, l: L<T>, h: L<T>| (l + ((h - l) * a + half).shr_arithmetic::<16>()) & mask;
 
     let dx00 = lerp(L::<T>::splat_t(token, rx), d000, d100);
     let dx01 = lerp(L::<T>::splat_t(token, rx), d001, d101);
@@ -1944,10 +1982,18 @@ pub(crate) fn bilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
 
     let x0i = (p.opta[1] as i32).wrapping_mul(x0);
     let x1 = x0i
-        + if vin[0] == 0xFFFF { 0 } else { p.opta[1] as i32 };
+        + if vin[0] == 0xFFFF {
+            0
+        } else {
+            p.opta[1] as i32
+        };
     let y0i = (p.opta[0] as i32).wrapping_mul(y0);
     let y1 = y0i
-        + if vin[1] == 0xFFFF { 0 } else { p.opta[0] as i32 };
+        + if vin[1] == 0xFFFF {
+            0
+        } else {
+            p.opta[0] as i32
+        };
 
     let cell = lut_table;
     let n = p.n_outputs as usize;
@@ -1968,8 +2014,7 @@ pub(crate) fn bilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     type L<T> = magetypes::simd::generic::i32x4<T>;
     let half = L::<T>::splat_t(token, 0x8000);
     let mask = L::<T>::splat_t(token, 0xffff);
-    let lerp =
-        |a: L<T>, l: L<T>, h: L<T>| (l + ((h - l) * a + half).shr_arithmetic::<16>()) & mask;
+    let lerp = |a: L<T>, l: L<T>, h: L<T>| (l + ((h - l) * a + half).shr_arithmetic::<16>()) & mask;
 
     let dx0 = lerp(L::<T>::splat_t(token, rx), d00, d10);
     let dx1 = lerp(L::<T>::splat_t(token, rx), d01, d11);
@@ -2004,13 +2049,25 @@ pub(crate) fn trilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
 
     let x0i = (p.opta[2] as i32).wrapping_mul(x0);
     let x1 = x0i
-        + if fclamp(input[0]) >= 1.0 { 0 } else { p.opta[2] as i32 };
+        + if fclamp(input[0]) >= 1.0 {
+            0
+        } else {
+            p.opta[2] as i32
+        };
     let y0i = (p.opta[1] as i32).wrapping_mul(y0);
     let y1 = y0i
-        + if fclamp(input[1]) >= 1.0 { 0 } else { p.opta[1] as i32 };
+        + if fclamp(input[1]) >= 1.0 {
+            0
+        } else {
+            p.opta[1] as i32
+        };
     let z0i = (p.opta[0] as i32).wrapping_mul(z0);
     let z1 = z0i
-        + if fclamp(input[2]) >= 1.0 { 0 } else { p.opta[0] as i32 };
+        + if fclamp(input[2]) >= 1.0 {
+            0
+        } else {
+            p.opta[0] as i32
+        };
 
     let n = p.n_outputs as usize;
     let m = lut_table.len() - n;
@@ -2066,10 +2123,18 @@ pub(crate) fn bilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
 
     let x0i = (p.opta[1] as i32).wrapping_mul(x0);
     let x1 = x0i
-        + if fclamp(input[0]) >= 1.0 { 0 } else { p.opta[1] as i32 };
+        + if fclamp(input[0]) >= 1.0 {
+            0
+        } else {
+            p.opta[1] as i32
+        };
     let y0i = (p.opta[0] as i32).wrapping_mul(y0);
     let y1 = y0i
-        + if fclamp(input[1]) >= 1.0 { 0 } else { p.opta[0] as i32 };
+        + if fclamp(input[1]) >= 1.0 {
+            0
+        } else {
+            p.opta[0] as i32
+        };
 
     let n = p.n_outputs as usize;
     let m = lut_table.len() - n;
@@ -2107,12 +2172,7 @@ pub(crate) fn evalflt_trilinear_v3(
     n_outputs: usize,
     p: &InterpParams,
 ) {
-    let v = trilinear_f32x4(
-        token,
-        &[input[0], input[1], input[2]],
-        n_outputs,
-        p,
-    );
+    let v = trilinear_f32x4(token, &[input[0], input[1], input[2]], n_outputs, p);
     output[..n_outputs].copy_from_slice(&v[..n_outputs]);
 }
 
@@ -2150,12 +2210,7 @@ pub(crate) fn eval16_trilinear_v3(
     p: &InterpParams,
 ) {
     let n_out = p.n_outputs as usize;
-    let v = trilinear_i32x4(
-        token,
-        [input[0], input[1], input[2]],
-        n_out,
-        p,
-    );
+    let v = trilinear_i32x4(token, [input[0], input[1], input[2]], n_out, p);
     output[..n_out].copy_from_slice(&v[..n_out]);
 }
 
@@ -2292,30 +2347,96 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
 
         if rx >= ry {
             if ry >= rz {
-                arm(cell, d_x, d_x + d_y, max_off, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
-                    (t1 - c0, t2 - t1, t3 - t2)
-                });
+                arm(
+                    cell,
+                    d_x,
+                    d_x + d_y,
+                    max_off,
+                    max_off,
+                    rx,
+                    ry,
+                    rz,
+                    n_outputs,
+                    out,
+                    prev_rk,
+                    |c0, t1, t2, t3| (t1 - c0, t2 - t1, t3 - t2),
+                );
             } else if rz >= rx {
-                arm(cell, d_x + d_z, max_off, d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
-                    (t1 - t3, t2 - t1, t3 - c0)
-                });
+                arm(
+                    cell,
+                    d_x + d_z,
+                    max_off,
+                    d_z,
+                    max_off,
+                    rx,
+                    ry,
+                    rz,
+                    n_outputs,
+                    out,
+                    prev_rk,
+                    |c0, t1, t2, t3| (t1 - t3, t2 - t1, t3 - c0),
+                );
             } else {
-                arm(cell, d_x, max_off, d_x + d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
-                    (t1 - c0, t2 - t3, t3 - t1)
-                });
+                arm(
+                    cell,
+                    d_x,
+                    max_off,
+                    d_x + d_z,
+                    max_off,
+                    rx,
+                    ry,
+                    rz,
+                    n_outputs,
+                    out,
+                    prev_rk,
+                    |c0, t1, t2, t3| (t1 - c0, t2 - t3, t3 - t1),
+                );
             }
         } else if rx >= rz {
-            arm(cell, d_x + d_y, d_y, max_off, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
-                (t1 - t2, t2 - c0, t3 - t1)
-            });
+            arm(
+                cell,
+                d_x + d_y,
+                d_y,
+                max_off,
+                max_off,
+                rx,
+                ry,
+                rz,
+                n_outputs,
+                out,
+                prev_rk,
+                |c0, t1, t2, t3| (t1 - t2, t2 - c0, t3 - t1),
+            );
         } else if ry >= rz {
-            arm(cell, max_off, d_y, d_y + d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
-                (t1 - t3, t2 - c0, t3 - t2)
-            });
+            arm(
+                cell,
+                max_off,
+                d_y,
+                d_y + d_z,
+                max_off,
+                rx,
+                ry,
+                rz,
+                n_outputs,
+                out,
+                prev_rk,
+                |c0, t1, t2, t3| (t1 - t3, t2 - c0, t3 - t2),
+            );
         } else {
-            arm(cell, max_off, d_y + d_z, d_z, max_off, rx, ry, rz, n_outputs, out, prev_rk, |c0, t1, t2, t3| {
-                (t1 - t2, t2 - t3, t3 - c0)
-            });
+            arm(
+                cell,
+                max_off,
+                d_y + d_z,
+                d_z,
+                max_off,
+                rx,
+                ry,
+                rz,
+                n_outputs,
+                out,
+                prev_rk,
+                |c0, t1, t2, t3| (t1 - t2, t2 - t3, t3 - c0),
+            );
         }
     }
 
@@ -2324,7 +2445,19 @@ pub(crate) fn eval4_inputs(input: &[u16], output: &mut [u16], p: &InterpParams) 
         lut_table, k0i, x0i, x1, y0i, y1, z0i, z1, rx, ry, rz, n_outputs, &mut tmp1, None,
     );
     tetra16(
-        lut_table, k1, x0i, x1, y0i, y1, z0i, z1, rx, ry, rz, n_outputs, output,
+        lut_table,
+        k1,
+        x0i,
+        x1,
+        y0i,
+        y1,
+        z0i,
+        z1,
+        rx,
+        ry,
+        rz,
+        n_outputs,
+        output,
         Some((&tmp1, rk)),
     );
 }
@@ -2361,7 +2494,7 @@ pub(crate) fn eval4_inputs_float(input: &[f32], output: &mut [f32], p: &InterpPa
         opta: p.opta,
         table: InterpTable::F32(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
-            kernel: p.kernel,
+        kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..3].copy_from_slice(&p.domain[1..4]);
@@ -2405,7 +2538,7 @@ fn eval_chain16(input: &[u16], output: &mut [u16], p: &InterpParams, n: usize) {
         opta: p.opta,
         table: InterpTable::U16(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
-            kernel: p.kernel,
+        kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..nm].copy_from_slice(&p.domain[1..=nm]);
@@ -2449,7 +2582,7 @@ fn eval_chain_float(input: &[f32], output: &mut [f32], p: &InterpParams, n: usiz
         opta: p.opta,
         table: InterpTable::F32(&lut_table[k0i as usize..]),
         interpolation: p.interpolation,
-            kernel: p.kernel,
+        kernel: p.kernel,
         foreign: None,
     };
     p1.domain[..nm].copy_from_slice(&p.domain[1..=nm]);
@@ -2670,9 +2803,7 @@ mod tests {
             domain: [n - 1; 15],
             opta: [3, 3 * n, 3 * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             table: InterpTable::F32(&tab),
-            interpolation: Interpolation::LerpFloat(
-                tetrahedral_interp_float as InterpFnFloat,
-            ),
+            interpolation: Interpolation::LerpFloat(tetrahedral_interp_float as InterpFnFloat),
             foreign: None,
             kernel: KernelKind::Tetra3F,
         };
@@ -2709,10 +2840,7 @@ mod tests {
                 for y in 0..n {
                     for x in 0..n {
                         for c in 0..4u32 {
-                            tab.push(
-                                ((x * 3 + y * 5 + z * 7 + k * 11 + c * 13) as f32)
-                                    / 8192.0,
-                            );
+                            tab.push(((x * 3 + y * 5 + z * 7 + k * 11 + c * 13) as f32) / 8192.0);
                         }
                     }
                 }
@@ -2724,11 +2852,25 @@ mod tests {
             n_outputs: 4,
             n_samples: [n; 15],
             domain: [n - 1; 15],
-            opta: [4, 4 * n, 4 * n * n, 4 * n * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            opta: [
+                4,
+                4 * n,
+                4 * n * n,
+                4 * n * n * n,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ],
             table: InterpTable::F32(&tab),
-            interpolation: Interpolation::LerpFloat(
-                eval4_inputs_float as InterpFnFloat,
-            ),
+            interpolation: Interpolation::LerpFloat(eval4_inputs_float as InterpFnFloat),
             foreign: None,
             kernel: KernelKind::Eval4F,
         };
@@ -2766,8 +2908,9 @@ mod tests {
             for y in 0..n {
                 for x in 0..n {
                     for c in 0..3u32 {
-                        tab.push((((x * 3 + y * 5 + z * 7 + c * 11) * 15) as u16)
-                            .wrapping_add(c as u16));
+                        tab.push(
+                            (((x * 3 + y * 5 + z * 7 + c * 11) * 15) as u16).wrapping_add(c as u16),
+                        );
                     }
                 }
             }
@@ -2780,9 +2923,7 @@ mod tests {
             domain: [n - 1; 15],
             opta: [3, 3 * n, 3 * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             table: InterpTable::U16(&tab),
-            interpolation: Interpolation::Lerp16(
-                trilinear_interp16 as InterpFn16,
-            ),
+            interpolation: Interpolation::Lerp16(trilinear_interp16 as InterpFn16),
             foreign: None,
             kernel: KernelKind::Trilinear,
         };
@@ -2816,8 +2957,7 @@ mod tests {
         for y in 0..n {
             for x in 0..n {
                 for c in 0..3u32 {
-                    tab.push((((x * 5 + y * 7 + c * 11) * 23) as u16)
-                        .wrapping_add(c as u16));
+                    tab.push((((x * 5 + y * 7 + c * 11) * 23) as u16).wrapping_add(c as u16));
                 }
             }
         }
@@ -2829,9 +2969,7 @@ mod tests {
             domain: [n - 1; 15],
             opta: [3, 3 * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             table: InterpTable::U16(&tab),
-            interpolation: Interpolation::Lerp16(
-                bilinear_interp16 as InterpFn16,
-            ),
+            interpolation: Interpolation::Lerp16(bilinear_interp16 as InterpFn16),
             foreign: None,
             kernel: KernelKind::Bilinear,
         };
@@ -2840,10 +2978,7 @@ mod tests {
         };
         let mut diffs = 0u64;
         for i in 0..200000u32 {
-            let f = [
-                ((i * 37) % 65536) as u16,
-                ((i * 71 + 13) % 65536) as u16,
-            ];
+            let f = [((i * 37) % 65536) as u16, ((i * 71 + 13) % 65536) as u16];
             let mut o1 = [0u16; 4];
             bilinear_interp16(&f, &mut o1, &p);
             let o2 = bilinear_i32x4(tok, f, 3, &p);
@@ -2879,9 +3014,7 @@ mod tests {
             domain: [n - 1; 15],
             opta: [3, 3 * n, 3 * n * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             table: InterpTable::F32(&tab),
-            interpolation: Interpolation::LerpFloat(
-                trilinear_interp_float as InterpFnFloat,
-            ),
+            interpolation: Interpolation::LerpFloat(trilinear_interp_float as InterpFnFloat),
             foreign: None,
             kernel: KernelKind::TrilinearF,
         };
@@ -2889,9 +3022,7 @@ mod tests {
         let p2 = InterpParams {
             n_inputs: 2,
             opta: [3, 3 * n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            interpolation: Interpolation::LerpFloat(
-                bilinear_interp_float as InterpFnFloat,
-            ),
+            interpolation: Interpolation::LerpFloat(bilinear_interp_float as InterpFnFloat),
             kernel: KernelKind::BilinearF,
             ..p3.clone()
         };
@@ -2952,9 +3083,7 @@ mod tests {
         };
         let pf = InterpParams {
             table: InterpTable::F32(&tabf),
-            interpolation: Interpolation::LerpFloat(
-                eval1_input_float as InterpFnFloat,
-            ),
+            interpolation: Interpolation::LerpFloat(eval1_input_float as InterpFnFloat),
             ..p16.clone()
         };
         let Some(tok) = x64v3_cached() else {
@@ -2996,13 +3125,21 @@ mod vertex_probe {
         for i in 0..tab.len() {
             tab[i] = ((i * 97) % 65536) as u16;
         }
-        tab[0] = 0; tab[1] = 14607; tab[2] = 49958;
+        tab[0] = 0;
+        tab[1] = 14607;
+        tab[2] = 49958;
         let mut ns = [1u32; MAX_INPUT_DIMENSIONS];
         let mut dom = [0u32; MAX_INPUT_DIMENSIONS];
         let mut opta = [0u32; MAX_INPUT_DIMENSIONS];
-        ns[0] = n as u32; ns[1] = n as u32; ns[2] = n as u32;
-        dom[0] = (n - 1) as u32; dom[1] = (n - 1) as u32; dom[2] = (n - 1) as u32;
-        opta[0] = 3; opta[1] = (n * 3) as u32; opta[2] = (n * n * 3) as u32;
+        ns[0] = n as u32;
+        ns[1] = n as u32;
+        ns[2] = n as u32;
+        dom[0] = (n - 1) as u32;
+        dom[1] = (n - 1) as u32;
+        dom[2] = (n - 1) as u32;
+        opta[0] = 3;
+        opta[1] = (n * 3) as u32;
+        opta[2] = (n * n * 3) as u32;
         let p = InterpParams {
             dw_flags: 0,
             n_inputs: 3,

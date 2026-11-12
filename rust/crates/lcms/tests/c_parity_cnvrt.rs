@@ -3,13 +3,15 @@
 //! accept/reject on both sides.
 
 use lcms::{profile, virt, xform};
-use std::ffi::c_void;
 use lcms_cref as c;
+use std::ffi::c_void;
 
 fn corpus() -> Vec<Vec<u8>> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
-    let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap()
-        .filter_map(|e| e.ok()).map(|e| e.path())
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -29,15 +31,19 @@ fn format_colorspace_check() {
     let profiles: Vec<(Vec<u8>, &str)> = {
         let mut v = Vec::new();
         if let Ok(d) = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sRGB_v4_ICC_preference.icc")) {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../sRGB_v4_ICC_preference.icc"),
+        ) {
             v.push((d, "srgb_v4"));
         }
         if let Ok(d) = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../labv4lcms2.icc")) {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../labv4lcms2.icc"),
+        ) {
             v.push((d, "labv4"));
         }
         if let Ok(d) = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../linlcms2.icc")) {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../linlcms2.icc"),
+        ) {
             v.push((d, "lin"));
         }
         v
@@ -66,12 +72,19 @@ fn format_colorspace_check() {
                 let mut rp2 = profile::open_profile_from_mem(None, data).unwrap();
                 let mut ps = vec![rp, rp2];
                 xform::create_extended_transform(
-                    None, &mut ps, &mut bpc, &intents, &adapt, None, 0,
-                    in_fmt, in_fmt, 0)
+                    None, &mut ps, &mut bpc, &intents, &adapt, None, 0, in_fmt, in_fmt, 0,
+                )
             };
-            assert_eq!(c_h.is_null(), r_t.is_none(),
-                "{name} fmt{in_fmt:#x} presence");
-            unsafe { if !c_h.is_null() { c::cmsDeleteTransform(c_h) } };
+            assert_eq!(
+                c_h.is_null(),
+                r_t.is_none(),
+                "{name} fmt{in_fmt:#x} presence"
+            );
+            unsafe {
+                if !c_h.is_null() {
+                    c::cmsDeleteTransform(c_h)
+                }
+            };
         }
     }
 }
@@ -100,11 +113,16 @@ fn virtual_transform_combos() {
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let r_t = xform::create_extended_transform(
-                None, &mut rp, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, out_fmt, 0);
-            assert_eq!(ct.is_null(), r_t.is_none(),
-                "virt {in_fmt:#x}->{out_fmt:#x}");
-            if !ct.is_null() { c::cmsDeleteTransform(ct) };
+                None, &mut rp, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
+            assert_eq!(
+                ct.is_null(),
+                r_t.is_none(),
+                "virt {in_fmt:#x}->{out_fmt:#x}"
+            );
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct)
+            };
         }
     }
 }
@@ -122,7 +140,10 @@ fn colorspace_chains() {
         ];
         let profiles: Vec<(*mut c_void, Option<Box<lcms::profile::IccProfile>>)> = vec![
             (c::cmsCreate_sRGBProfile(), virt::create_srgb_profile(None)),
-            (c::cmsCreateLab4Profile(std::ptr::null_mut()), virt::create_lab4_profile(None, None)),
+            (
+                c::cmsCreateLab4Profile(std::ptr::null_mut()),
+                virt::create_lab4_profile(None, None),
+            ),
             (c::cmsCreateXYZProfile(), virt::create_xyz_profile(None)),
         ];
         for (i, (ch1, _)) in profiles.iter().enumerate() {
@@ -131,27 +152,38 @@ fn colorspace_chains() {
                     for &(out_fmt, _) in &fmts[..3] {
                         let ct = c::cmsCreateTransform(*ch1, in_fmt, *ch2, out_fmt, 0, 0);
                         let mut ps = vec![
-                            match i { 0 => virt::create_srgb_profile(None).unwrap(),
-                                      1 => virt::create_lab4_profile(None, None).unwrap(),
-                                      _ => virt::create_xyz_profile(None).unwrap() },
-                            match j { 0 => virt::create_srgb_profile(None).unwrap(),
-                                      1 => virt::create_lab4_profile(None, None).unwrap(),
-                                      _ => virt::create_xyz_profile(None).unwrap() },
+                            match i {
+                                0 => virt::create_srgb_profile(None).unwrap(),
+                                1 => virt::create_lab4_profile(None, None).unwrap(),
+                                _ => virt::create_xyz_profile(None).unwrap(),
+                            },
+                            match j {
+                                0 => virt::create_srgb_profile(None).unwrap(),
+                                1 => virt::create_lab4_profile(None, None).unwrap(),
+                                _ => virt::create_xyz_profile(None).unwrap(),
+                            },
                         ];
                         let mut bpc = [false; 2];
                         let intents = [0u32; 2];
                         let adapt = [1.0f64; 2];
                         let rt = xform::create_extended_transform(
-                            None, &mut ps, &mut bpc, &intents, &adapt,
-                            None, 0, in_fmt, out_fmt, 0);
-                        assert_eq!(ct.is_null(), rt.is_none(),
-                            "chain {i}->{j} {in_fmt:#x}->{out_fmt:#x}");
-                        if !ct.is_null() { c::cmsDeleteTransform(ct) }
+                            None, &mut ps, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+                        );
+                        assert_eq!(
+                            ct.is_null(),
+                            rt.is_none(),
+                            "chain {i}->{j} {in_fmt:#x}->{out_fmt:#x}"
+                        );
+                        if !ct.is_null() {
+                            c::cmsDeleteTransform(ct)
+                        }
                     }
                 }
             }
         }
-        for (ch, _) in profiles { let _ = c::cmsCloseProfile(ch); }
+        for (ch, _) in profiles {
+            let _ = c::cmsCloseProfile(ch);
+        }
     }
 }
 
@@ -178,21 +210,21 @@ fn intent_link_matrix() {
             let intents = [intent; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                fi, fo, 0);
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "intent{intent}");
             if !ct.is_null() && rt.is_some() {
                 let mut rt = rt.unwrap();
                 let inp = [0x1234u16, 0x5678, 0x9abc];
-                let inb: Vec<u8> = inp.iter()
-                    .flat_map(|v| v.to_be_bytes()).collect();
+                let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
                 let mut co = [0u16; 3];
                 let mut ro = vec![0u8; 6];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 rt.do_transform(&inb, &mut ro, 1);
-                let ro16: Vec<u16> = ro.chunks_exact(2)
-                    .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                let ro16: Vec<u16> = ro
+                    .chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                    .collect();
                 assert_eq!(co, ro16[..3], "intent{intent} eval");
                 c::cmsDeleteTransform(ct);
             }
@@ -223,21 +255,21 @@ fn null_profile_link() {
         let intents = [0u32; 2];
         let adapt = [1.0f64; 2];
         let rt = xform::create_extended_transform(
-            None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-            fi, fo, 0);
+            None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, 0,
+        );
         assert_eq!(ct.is_null(), rt.is_none(), "null profile xform");
         if !ct.is_null() && rt.is_some() {
             let mut rt = rt.unwrap();
             let inp = [0x1234u16, 0x5678, 0x9abc];
-            let inb: Vec<u8> = inp.iter()
-                .flat_map(|v| v.to_be_bytes()).collect();
+            let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
             let mut co = [0u16; 4];
             let mut ro = vec![0u8; 8];
-            c::cmsDoTransform(ct, inp.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             rt.do_transform(&inb, &mut ro, 1);
-            let ro16: Vec<u16> = ro.chunks_exact(2)
-                .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+            let ro16: Vec<u16> = ro
+                .chunks_exact(2)
+                .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                .collect();
             assert_eq!(&co[..ro16.len()], &ro16[..], "null profile eval");
             c::cmsDeleteTransform(ct);
         }
@@ -252,35 +284,38 @@ fn multiprofile_transform() {
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         for n in [2i32, 3, 4] {
-            let mut c_profs: Vec<*mut c_void> = (0..n)
-                .map(|_| c::cmsCreate_sRGBProfile()).collect();
-            let ct = c::cmsCreateMultiprofileTransform(
-                c_profs.as_mut_ptr(), n, in_fmt, out_fmt, 0, 0);
+            let mut c_profs: Vec<*mut c_void> =
+                (0..n).map(|_| c::cmsCreate_sRGBProfile()).collect();
+            let ct =
+                c::cmsCreateMultiprofileTransform(c_profs.as_mut_ptr(), n, in_fmt, out_fmt, 0, 0);
             let mut ps: Vec<_> = (0..n)
-                .map(|_| virt::create_srgb_profile(None).unwrap()).collect();
+                .map(|_| virt::create_srgb_profile(None).unwrap())
+                .collect();
             let mut bpc = vec![false; n as usize];
             let intents = vec![0u32; n as usize];
             let adapt = vec![1.0f64; n as usize];
             let rt = xform::create_extended_transform(
-                None, &mut ps, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, out_fmt, 0);
+                None, &mut ps, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "n{n}");
             if !ct.is_null() && rt.is_some() {
                 let mut rt = rt.unwrap();
                 let inp = [0x1234u16, 0x5678, 0x9abc];
-                let inb: Vec<u8> = inp.iter()
-                    .flat_map(|v| v.to_be_bytes()).collect();
+                let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
                 let mut co = [0u16; 3];
                 let mut ro = vec![0u8; 6];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 rt.do_transform(&inb, &mut ro, 1);
-                let ro16: Vec<u16> = ro.chunks_exact(2)
-                    .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                let ro16: Vec<u16> = ro
+                    .chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                    .collect();
                 assert_eq!(co, ro16[..3], "n{n} eval");
                 c::cmsDeleteTransform(ct);
             }
-            for h in c_profs { let _ = c::cmsCloseProfile(h); }
+            for h in c_profs {
+                let _ = c::cmsCloseProfile(h);
+            }
         }
     }
 }
@@ -306,29 +341,34 @@ fn mixed_class_chains() {
             let mut c_profs: Vec<*mut c_void> = Vec::new();
             for k in &kinds[..n as usize] {
                 c_profs.push(match k {
-                    1 => c::cmsCreate_sRGBProfile(), // matrix-shaper
+                    1 => c::cmsCreate_sRGBProfile(),                    // matrix-shaper
                     2 => c::cmsCreateLab4Profile(std::ptr::null_mut()), // LUT
-                    _ => c::cmsCreateNULLProfile(), // devicelink
+                    _ => c::cmsCreateNULLProfile(),                     // devicelink
                 });
             }
-            let ct = c::cmsCreateMultiprofileTransform(
-                c_profs.as_mut_ptr(), n, in_fmt, out_fmt, 0, 0);
-            let mut ps: Vec<_> = kinds[..n as usize].iter().map(|k| {
-                match k {
+            let ct =
+                c::cmsCreateMultiprofileTransform(c_profs.as_mut_ptr(), n, in_fmt, out_fmt, 0, 0);
+            let mut ps: Vec<_> = kinds[..n as usize]
+                .iter()
+                .map(|k| match k {
                     1 => virt::create_srgb_profile(None).unwrap(),
                     2 => virt::create_lab4_profile(None, None).unwrap(),
                     _ => virt::create_null_profile(None).unwrap(),
-                }
-            }).collect();
+                })
+                .collect();
             let mut bpc = vec![false; n as usize];
             let intents = vec![0u32; n as usize];
             let adapt = vec![1.0f64; n as usize];
             let rt = xform::create_extended_transform(
-                None, &mut ps, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, out_fmt, 0);
+                None, &mut ps, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
-            for h in c_profs { let _ = c::cmsCloseProfile(h); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
+            for h in c_profs {
+                let _ = c::cmsCloseProfile(h);
+            }
         }
     }
 }
@@ -340,35 +380,33 @@ fn colorspace_mismatch_reject() {
     unsafe {
         // PT codes: 4=RGB, 10=Lab, 3=XYZ, 1=Gray, 6=CMYK
         for (name, pt, prof_colorspace_ok) in [
-            ("lab-on-srgb", 10u32, false),   // Lab format on sRGB → reject
-            ("xyz-on-srgb", 3, false),       // XYZ format on sRGB → reject
+            ("lab-on-srgb", 10u32, false), // Lab format on sRGB → reject
+            ("xyz-on-srgb", 3, false),     // XYZ format on sRGB → reject
             ("gray-on-srgb", 1, false),
             ("cmyk-on-srgb", 6, false),
-            ("rgb-on-srgb", 4, true),        // matches
+            ("rgb-on-srgb", 4, true), // matches
         ] {
             let in_fmt = (pt << 16) | (3 << 3) | 2;
             let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
             let hi = c::cmsCreate_sRGBProfile();
             let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            assert_eq!(ct.is_null(), !prof_colorspace_ok,
-                "{name} C reject");
+            assert_eq!(ct.is_null(), !prof_colorspace_ok, "{name} C reject");
             let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None)
-                .unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, out_fmt, 0);
-            assert_eq!(rt.is_none(), !prof_colorspace_ok,
-                "{name} rust reject");
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
+            assert_eq!(rt.is_none(), !prof_colorspace_ok, "{name} rust reject");
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
     }
 }
@@ -384,44 +422,41 @@ fn intent_link_internals() {
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         // absolute colorimetric — different link branch
         for intent in [0u32, 1, 2, 3] {
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
-                intent, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, intent, 0);
             let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None)
-                .unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [intent; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt,
-                None, 0, in_fmt, out_fmt, 0);
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "intent {intent}");
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000];
-                let inb: Vec<u8> = inp.iter()
-                    .flat_map(|v| v.to_ne_bytes()).collect();
+                let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_ne_bytes()).collect();
                 let mut co = [0u16; 3];
                 let mut ro = vec![0u8; 6];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 let mut rt2 = rt.unwrap();
                 rt2.do_transform(&inb, &mut ro, 1);
-                let ro16: Vec<u16> = ro.chunks_exact(2)
+                let ro16: Vec<u16> = ro
+                    .chunks_exact(2)
                     .map(|b| u16::from_ne_bytes([b[0], b[1]]))
                     .collect();
-                assert_eq!(co, ro16.as_slice(),
-                    "intent {intent} eval");
+                assert_eq!(co, ro16.as_slice(), "intent {intent} eval");
                 c::cmsDeleteTransform(ct);
             }
         }
         // devicelink in the middle of a chain
         let dl = c::cmsCreateNULLProfile();
         let mut profs = [hi, dl, ho];
-        let ct2 = c::cmsCreateMultiprofileTransform(
-            profs.as_mut_ptr(), 3, in_fmt, out_fmt, 0, 0);
+        let ct2 = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 3, in_fmt, out_fmt, 0, 0);
         eprintln!("dl-mid chain null={}", ct2.is_null());
-        if !ct2.is_null() { c::cmsDeleteTransform(ct2); }
+        if !ct2.is_null() {
+            c::cmsDeleteTransform(ct2);
+        }
         let _ = c::cmsCloseProfile(dl);
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -438,8 +473,15 @@ fn unusual_class_chains() {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let nullp = c::cmsCreateNULLProfile();
         let bchsw = c::cmsCreateBCHSWabstractProfileTHR(
-            std::ptr::null_mut(), 17, 0.0, 0.0, 0.0, 1.0,
-            std::ptr::null(), std::ptr::null());
+            std::ptr::null_mut(),
+            17,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            std::ptr::null(),
+            std::ptr::null(),
+        );
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         // 3-profile chains with unusual class in the middle/end
@@ -451,14 +493,12 @@ fn unusual_class_chains() {
         ] {
             let (p1, p2, p3, ifmt, ofmt) = chain;
             let mut profs = [p1, p2, p3];
-            let ct = c::cmsCreateMultiprofileTransform(
-                profs.as_mut_ptr(), 3, ifmt, ofmt, 0, 0);
+            let ct = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 3, ifmt, ofmt, 0, 0);
             eprintln!("{name} null={}", ct.is_null());
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000];
                 let mut co = [0u16; 3];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -479,20 +519,17 @@ fn devicelink_transform() {
         let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
-            0, 0);
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
         let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
         c::cmsDeleteTransform(ct);
         if !dl.is_null() {
             let in_fmt2: u32 = (4 << 16) | (3 << 3) | 2;
-            let ct2 = c::cmsCreateTransform(dl, in_fmt2, dl,
-                in_fmt2, 0, 0);
+            let ct2 = c::cmsCreateTransform(dl, in_fmt2, dl, in_fmt2, 0, 0);
             eprintln!("dl->dl transform null={}", ct2.is_null());
             if !ct2.is_null() {
                 let inp = [30000u16, 40000, 50000];
                 let mut co = [0u16; 3];
-                c::cmsDoTransform(ct2, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct2, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct2);
             }
             c::cmsCloseProfile(dl);
@@ -514,23 +551,27 @@ fn four_profile_chains() {
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         for (name, chain) in [
-            ("srgb+lab4+xyz+srgb",
-             (srgb, lab4, xyz, srgb, in_fmt, in_fmt)),
-            ("srgb+null+lab4+srgb",
-             (srgb, nullp, lab4, srgb, in_fmt, in_fmt)),
-            ("lab4+srgb+xyz+lab4",
-             (lab4, srgb, xyz, lab4, lab_fmt, lab_fmt)),
+            (
+                "srgb+lab4+xyz+srgb",
+                (srgb, lab4, xyz, srgb, in_fmt, in_fmt),
+            ),
+            (
+                "srgb+null+lab4+srgb",
+                (srgb, nullp, lab4, srgb, in_fmt, in_fmt),
+            ),
+            (
+                "lab4+srgb+xyz+lab4",
+                (lab4, srgb, xyz, lab4, lab_fmt, lab_fmt),
+            ),
         ] {
             let (p1, p2, p3, p4, ifmt, ofmt) = chain;
             let mut profs = [p1, p2, p3, p4];
-            let ct = c::cmsCreateMultiprofileTransform(
-                profs.as_mut_ptr(), 4, ifmt, ofmt, 0, 0);
+            let ct = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 4, ifmt, ofmt, 0, 0);
             eprintln!("{name} null={}", ct.is_null());
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000];
                 let mut co = [0u16; 3];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -550,31 +591,30 @@ fn mab_lut_reader() {
         let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
-            0, 0);
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
         let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
         c::cmsDeleteTransform(ct);
-        if dl.is_null() { return; }
+        if dl.is_null() {
+            return;
+        }
         // save + reload — the devicelink's A2B0 is now a stored
         // mAB tag; a transform reads it back through the LUT
         // reader
         let mut cn = 0u32;
         c::cmsSaveProfileToMem(dl, std::ptr::null_mut(), &mut cn);
         let mut cbuf = vec![0u8; cn as usize];
-        c::cmsSaveProfileToMem(dl, cbuf.as_mut_ptr() as *mut _,
-            &mut cn);
+        c::cmsSaveProfileToMem(dl, cbuf.as_mut_ptr() as *mut _, &mut cn);
         let dl2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
         // transform through the reloaded devicelink — reads the
         // mAB into a real pipeline
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let ct2 = c::cmsCreateMultiprofileTransform(
-            [dl2, lab4].as_mut_ptr(), 2, in_fmt, out_fmt, 0, 0);
+        let ct2 =
+            c::cmsCreateMultiprofileTransform([dl2, lab4].as_mut_ptr(), 2, in_fmt, out_fmt, 0, 0);
         eprintln!("mab transform null={}", ct2.is_null());
         if !ct2.is_null() {
             let inp = [30000u16, 40000, 50000];
             let mut co = [0u16; 3];
-            c::cmsDoTransform(ct2, inp.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct2, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             eprintln!("eval={:?}", co);
             c::cmsDeleteTransform(ct2);
         }
@@ -613,11 +653,12 @@ fn optimizer_pipelines() {
             ("lab2->lab4", (lab2, lab_fmt, lab4, lab_fmt)),
         ] {
             let ct = c::cmsCreateTransform(i, ifmt, o, ofmt, 0, 0);
-            if ct.is_null() { continue; }
+            if ct.is_null() {
+                continue;
+            }
             let inp = [30000u16, 40000, 50000];
             let mut co = [0u16; 3];
-            c::cmsDoTransform(ct, inp.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             c::cmsDeleteTransform(ct);
         }
         let _ = c::cmsCloseProfile(srgb);
@@ -638,33 +679,38 @@ fn mixed_chains() {
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         let ab = c::cmsCreateBCHSWabstractProfileTHR(
-            std::ptr::null_mut(), 17, 1.5, 30.0, 0.8,
-            4.3, std::ptr::null(), std::ptr::null());
+            std::ptr::null_mut(),
+            17,
+            1.5,
+            30.0,
+            0.8,
+            4.3,
+            std::ptr::null(),
+            std::ptr::null(),
+        );
         // mixed chains — different profile combinations
         for (name, profs) in [
-            ("srgb+ab+srgb",
-             vec![srgb, ab, srgb]),
-            ("srgb+lab4+ab+srgb",
-             vec![srgb, lab4, ab, srgb]),
-            ("ab+srgb+lab4",
-             vec![ab, srgb, lab4]),
-            ("srgb+ab+lab4",
-             vec![srgb, ab, lab4]),
-            ("lab4+ab+srgb",
-             vec![lab4, ab, srgb]),
-            ("srgb+srgb+ab",
-             vec![srgb, srgb, ab]),
+            ("srgb+ab+srgb", vec![srgb, ab, srgb]),
+            ("srgb+lab4+ab+srgb", vec![srgb, lab4, ab, srgb]),
+            ("ab+srgb+lab4", vec![ab, srgb, lab4]),
+            ("srgb+ab+lab4", vec![srgb, ab, lab4]),
+            ("lab4+ab+srgb", vec![lab4, ab, srgb]),
+            ("srgb+srgb+ab", vec![srgb, srgb, ab]),
         ] {
             let mut p = profs;
             let ct = c::cmsCreateMultiprofileTransform(
-                p.as_mut_ptr(), p.len() as i32,
-                in_fmt, in_fmt, 0, 0);
+                p.as_mut_ptr(),
+                p.len() as i32,
+                in_fmt,
+                in_fmt,
+                0,
+                0,
+            );
             eprintln!("{name} null={}", ct.is_null());
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000];
                 let mut co = [0u16; 3];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -681,34 +727,34 @@ fn proofing_links() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let cmyk = c::cmsCreateInkLimitingDeviceLink(
-            0x434D594B, 300.0);
+        let cmyk = c::cmsCreateInkLimitingDeviceLink(0x434D594B, 300.0);
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         let cmyk_fmt: u32 = (6 << 16) | (4 << 3) | 2;
         // proofing transforms — the gamut-check machinery
         for (name, (i, ifmt, o, ofmt, prf, intents)) in [
-            ("srgb->lab4-cmyk",
-             (srgb, in_fmt, lab4, lab_fmt, cmyk,
-              [0u32, 0])),
-            ("lab4->srgb-cmyk",
-             (lab4, lab_fmt, srgb, in_fmt, cmyk,
-              [0u32, 0])),
-            ("srgb->srgb-cmyk",
-             (srgb, in_fmt, srgb, in_fmt, cmyk,
-              [0u32, 0])),
+            (
+                "srgb->lab4-cmyk",
+                (srgb, in_fmt, lab4, lab_fmt, cmyk, [0u32, 0]),
+            ),
+            (
+                "lab4->srgb-cmyk",
+                (lab4, lab_fmt, srgb, in_fmt, cmyk, [0u32, 0]),
+            ),
+            (
+                "srgb->srgb-cmyk",
+                (srgb, in_fmt, srgb, in_fmt, cmyk, [0u32, 0]),
+            ),
         ] {
-            let (pi, pifmt, po, pofmt, proof, intents) =
-                (i, ifmt, o, ofmt, prf, intents);
+            let (pi, pifmt, po, pofmt, proof, intents) = (i, ifmt, o, ofmt, prf, intents);
             let ct = c::cmsCreateProofingTransform(
-                pi, pifmt, po, pofmt, proof,
-                intents[0], intents[1], 0);
+                pi, pifmt, po, pofmt, proof, intents[0], intents[1], 0,
+            );
             eprintln!("{name} null={}", ct.is_null());
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000];
                 let mut co = [0u16; 4];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -724,22 +770,18 @@ fn proofing_links() {
 fn stored_lut_evals() {
     unsafe {
         for data in corpus() {
-            let h = c::cmsOpenProfileFromMem(
-                data.as_ptr() as _, data.len() as u32);
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             // transform through the profile's stored LUT — the
             // actual LUT evaluator on real serialized data
             let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
             let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-            let lab4 = c::cmsCreateLab4Profile(
-                std::ptr::null_mut());
-            let ct = c::cmsCreateTransform(h, in_fmt, lab4,
-                lab_fmt, 0, 0);
+            let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(h, in_fmt, lab4, lab_fmt, 0, 0);
             let _ = c::cmsCloseProfile(lab4);
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000];
                 let mut co = [0u16; 3];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
             c::cmsCloseProfile(h);
@@ -753,21 +795,17 @@ fn stored_lut_evals() {
 fn stored_type_lut_readers() {
     unsafe {
         for data in corpus() {
-            let h = c::cmsOpenProfileFromMem(
-                data.as_ptr() as _, data.len() as u32);
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             // transform through the profile's stored LUT — the
             // LUT-reader dispatch on whatever type was stored
             let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
-            let lab4 = c::cmsCreateLab4Profile(
-                std::ptr::null_mut());
+            let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
             let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-            let ct = c::cmsCreateTransform(h, in_fmt, lab4,
-                lab_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(h, in_fmt, lab4, lab_fmt, 0, 0);
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000];
                 let mut out = [0u16; 3];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
             let _ = c::cmsCloseProfile(lab4);
@@ -785,8 +823,7 @@ fn intent_direction_combos() {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        let gray = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, g);
         for (name, hi, ho, intent) in [
             ("srgb-lab-0", srgb, lab4, 0u32),
             ("srgb-lab-1", srgb, lab4, 1),
@@ -801,10 +838,11 @@ fn intent_direction_combos() {
         ] {
             let in_fmt: u32 = (0 << 16) | (3 << 3) | 2;
             let out_fmt: u32 = (0 << 16) | (3 << 3) | 2;
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
-                out_fmt, intent, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, intent, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(srgb);
         let _ = c::cmsCloseProfile(lab4);

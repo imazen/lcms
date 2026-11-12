@@ -1270,7 +1270,6 @@ impl Pipeline {
         self.save_as_8bits = on;
         prev
     }
-
 }
 parity_impl! {
 impl Pipeline {

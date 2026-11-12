@@ -11,13 +11,19 @@ fn cube_devicelink() {
     // cmsCreateDeviceLinkFromCubeFile rejects it ("Extra symbols
     // found"); Rust must reject identically (parity, was accept-all
     // before the binary-search/unknown-symbol fix).
-    let ch = unsafe { c::cmsCreateDeviceLinkFromCubeFile(
-        b"/tmp/test.cube\0".as_ptr() as *const i8) };
-    let rp = It8::create_device_link_from_cube_file(
-        None, "/tmp/test.cube");
-    assert_eq!(ch.is_null(), rp.is_none(),
-        "trailing-symbol cube reject parity");
-    unsafe { if !ch.is_null() { c::cmsCloseProfile(ch); } }
+    let ch =
+        unsafe { c::cmsCreateDeviceLinkFromCubeFile(b"/tmp/test.cube\0".as_ptr() as *const i8) };
+    let rp = It8::create_device_link_from_cube_file(None, "/tmp/test.cube");
+    assert_eq!(
+        ch.is_null(),
+        rp.is_none(),
+        "trailing-symbol cube reject parity"
+    );
+    unsafe {
+        if !ch.is_null() {
+            c::cmsCloseProfile(ch);
+        }
+    }
     // well-formed cube — build + eval both sides
     let path = "/tmp/ok.cube";
     std::fs::write(path,

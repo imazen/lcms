@@ -32,31 +32,42 @@ fn it8_property_matrix() {
         ] {
             assert_eq!(
                 c::cmsIT8SetPropertyStr(ch, cs8(prop), cs8(val)) != 0,
-                rh.set_property_str(prop, val), "set prop {prop}");
+                rh.set_property_str(prop, val),
+                "set prop {prop}"
+            );
         }
-        for (prop, val) in [("LUMINANCE_XYZ", 0.9642f64),
-                            ("WHITE_POINT", 1.0)] {
+        for (prop, val) in [("LUMINANCE_XYZ", 0.9642f64), ("WHITE_POINT", 1.0)] {
             assert_eq!(
                 c::cmsIT8SetPropertyDbl(ch, cs8(prop), val) != 0,
-                rh.set_property_dbl(prop, val), "set dbl {prop}");
+                rh.set_property_dbl(prop, val),
+                "set dbl {prop}"
+            );
         }
         for (prop, val) in [("PANTONE", 0x1234u32), ("COLOR", 0xABCD)] {
             assert_eq!(
                 c::cmsIT8SetPropertyHex(ch, cs8(prop), val) != 0,
-                rh.set_property_hex(prop, val), "set hex {prop}");
+                rh.set_property_hex(prop, val),
+                "set hex {prop}"
+            );
         }
         assert_eq!(
             c::cmsIT8SetPropertyMulti(ch, cs8("M"), cs8("en"), cs8("hello")) != 0,
-            rh.set_property_multi("M", "en", "hello"), "set multi");
+            rh.set_property_multi("M", "en", "hello"),
+            "set multi"
+        );
         assert_eq!(
             c::cmsIT8SetPropertyUncooked(ch, cs8("RAW"), cs8("  x  ")) != 0,
-            rh.set_property_uncooked("RAW", "  x  "), "set uncooked");
+            rh.set_property_uncooked("RAW", "  x  "),
+            "set uncooked"
+        );
         // get-property parity
         // C's GetProperty only exposes dbl/hex-set simple properties —
         // reserved/uncooked/multi props live in separate stores
         for prop in ["LUMINANCE_XYZ", "PANTONE"] {
             let cp = c::cmsIT8GetProperty(ch, cs8(prop));
-            let cstr = if cp.is_null() { String::new() } else {
+            let cstr = if cp.is_null() {
+                String::new()
+            } else {
                 std::ffi::CStr::from_ptr(cp).to_string_lossy().into_owned()
             };
             let rstr = rh.get_property(prop).unwrap_or_default();
@@ -78,14 +89,21 @@ fn it8_data_matrix() {
         let mut rh = cgats::It8::alloc(None);
         // data format set + find
         for (i, sample) in ["RGB_R", "RGB_G", "RGB_B", "LAB_L", "LAB_A"]
-            .iter().enumerate() {
+            .iter()
+            .enumerate()
+        {
             assert_eq!(
                 c::cmsIT8SetDataFormat(ch, i as i32, cs8(sample)) != 0,
-                rh.set_data_format_export(i, sample), "set fmt {sample}");
+                rh.set_data_format_export(i, sample),
+                "set fmt {sample}"
+            );
         }
         for sample in ["RGB_R", "LAB_A", "MISSING"] {
-            assert_eq!(c::cmsIT8FindDataFormat(ch, cs8(sample)),
-                rh.find_data_format(sample), "find fmt {sample}");
+            assert_eq!(
+                c::cmsIT8FindDataFormat(ch, cs8(sample)),
+                rh.find_data_format(sample),
+                "find fmt {sample}"
+            );
         }
         // enum data format — count parity
         let mut cslot: *mut *mut i8 = std::ptr::null_mut();
@@ -105,7 +123,9 @@ fn it8_data_matrix() {
         }
         // patch name/by-name parity on a table with patches
         let pn = c::cmsIT8GetPatchName(ch, 0, std::ptr::null_mut());
-        let cpn = if pn.is_null() { String::new() } else {
+        let cpn = if pn.is_null() {
+            String::new()
+        } else {
             std::ffi::CStr::from_ptr(pn).to_string_lossy().into_owned()
         };
         let rpn = rh.get_patch_name(0).unwrap_or_default();

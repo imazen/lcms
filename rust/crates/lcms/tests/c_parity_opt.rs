@@ -2,17 +2,19 @@
 //! FLAGS_NOOPTIMIZE — the optimizer's pipeline-reduction paths must
 //! produce identical output on both sides.
 
-use std::ffi::c_void;
-use std::sync::Mutex;
 use lcms::{profile, types::*, virt, xform};
 use lcms_cref as c;
+use std::ffi::c_void;
+use std::sync::Mutex;
 
 static CTX_LOCK: Mutex<()> = Mutex::new(());
 
 fn corpus() -> Vec<Vec<u8>> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
-    let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap()
-        .filter_map(|e| e.ok()).map(|e| e.path())
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -21,9 +23,9 @@ fn corpus() -> Vec<Vec<u8>> {
 
 #[test]
 fn optimizer_on_off() {
-    let srgb = std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../aRGBlcms2.icc")
-    ).unwrap();
+    let srgb =
+        std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../aRGBlcms2.icc"))
+            .unwrap();
     let mut seed = 0x1234u64;
     for flags in [0u32, FLAGS_NOOPTIMIZE] {
         for (i, data) in corpus().iter().enumerate() {
@@ -31,7 +33,9 @@ fn optimizer_on_off() {
                 // profile -> sRGB transform
                 let ct = unsafe {
                     let h1 = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
-                    if h1.is_null() { continue; }
+                    if h1.is_null() {
+                        continue;
+                    }
                     let h2 = c::cmsOpenProfileFromMem(data2.as_ptr() as _, data2.len() as u32);
                     let cs_in = c::cmsGetColorSpace(h1) | 3 << 3 | 1;
                     let cs_out = c::cmsGetColorSpace(h2) | 3 << 3 | 1;
@@ -51,16 +55,23 @@ fn optimizer_on_off() {
                 let rt = xform::create_extended_transform(
                     None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, flags,
                 );
-                assert_eq!(ct.is_null(), rt.is_none(),
-                    "profile {i} flags {flags:#x} presence");
-                if ct.is_null() || rt.is_none() { continue; }
+                assert_eq!(
+                    ct.is_null(),
+                    rt.is_none(),
+                    "profile {i} flags {flags:#x} presence"
+                );
+                if ct.is_null() || rt.is_none() {
+                    continue;
+                }
                 let mut rt = rt.unwrap();
                 let n_in = ((fi >> 3) & 15) as usize;
                 let n_out = ((fo >> 3) & 15) as usize;
-                let inp: Vec<u8> = (0..16 * n_in).map(|_| {
-                    seed = seed.wrapping_mul(0x9e3779b97f4a7c15) ^ (seed >> 33);
-                    (seed >> 48) as u8
-                }).collect();
+                let inp: Vec<u8> = (0..16 * n_in)
+                    .map(|_| {
+                        seed = seed.wrapping_mul(0x9e3779b97f4a7c15) ^ (seed >> 33);
+                        (seed >> 48) as u8
+                    })
+                    .collect();
                 let mut co = vec![0u8; 16 * n_out];
                 let mut ro = vec![0u8; 16 * n_out];
                 unsafe { c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as _, 16) };
@@ -72,7 +83,6 @@ fn optimizer_on_off() {
     }
 }
 
-
 /// Optimizer internals: transforms whose links trigger each optimizer
 /// branch — sRGB->sRGB, sRGB->lab4, lab4->sRGB — NOOPTIMIZE off vs on.
 #[test]
@@ -82,22 +92,32 @@ fn optimizer_branch_matrix() {
             for flags in [0u32, FLAGS_NOOPTIMIZE] {
                 let h1 = if name == "lab4->srgb" {
                     c::cmsCreateLab4Profile(std::ptr::null_mut())
-                } else { c::cmsCreate_sRGBProfile() };
+                } else {
+                    c::cmsCreate_sRGBProfile()
+                };
                 let h2 = if name == "srgb->lab4" {
                     c::cmsCreateLab4Profile(std::ptr::null_mut())
-                } else { c::cmsCreate_sRGBProfile() };
+                } else {
+                    c::cmsCreate_sRGBProfile()
+                };
                 let cs_in = c::cmsGetColorSpace(h1) | 3 << 3 | 1;
                 let cs_out = c::cmsGetColorSpace(h2) | 3 << 3 | 1;
                 let ct = c::cmsCreateTransform(h1, cs_in, h2, cs_out, 0, flags);
                 let _ = c::cmsCloseProfile(h1);
                 let _ = c::cmsCloseProfile(h2);
                 let (mut rp1, mut rp2) = match name {
-                    "srgb->srgb" => (virt::create_srgb_profile(None).unwrap(),
-                                     virt::create_srgb_profile(None).unwrap()),
-                    "srgb->lab4" => (virt::create_srgb_profile(None).unwrap(),
-                                     virt::create_lab4_profile(None, None).unwrap()),
-                    _ => (virt::create_lab4_profile(None, None).unwrap(),
-                          virt::create_srgb_profile(None).unwrap()),
+                    "srgb->srgb" => (
+                        virt::create_srgb_profile(None).unwrap(),
+                        virt::create_srgb_profile(None).unwrap(),
+                    ),
+                    "srgb->lab4" => (
+                        virt::create_srgb_profile(None).unwrap(),
+                        virt::create_lab4_profile(None, None).unwrap(),
+                    ),
+                    _ => (
+                        virt::create_lab4_profile(None, None).unwrap(),
+                        virt::create_srgb_profile(None).unwrap(),
+                    ),
                 };
                 let fi = rp1.color_space | 3 << 3 | 1;
                 let fo = rp2.color_space | 3 << 3 | 1;
@@ -106,21 +126,21 @@ fn optimizer_branch_matrix() {
                 let intents = [0u32; 2];
                 let adapt = [1.0f64; 2];
                 let rt = xform::create_extended_transform(
-                    None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                    fi, fo, flags);
+                    None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, flags,
+                );
                 assert_eq!(ct.is_null(), rt.is_none(), "{name} f{flags:#x}");
                 if !ct.is_null() && rt.is_some() {
                     let mut rt = rt.unwrap();
                     let inp = [0x1234u16, 0x5678, 0x9abc];
-                    let inb: Vec<u8> = inp.iter()
-                        .flat_map(|v| v.to_be_bytes()).collect();
+                    let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
                     let mut co = [0u16; 3];
                     let mut ro = vec![0u8; 6];
-                    c::cmsDoTransform(ct, inp.as_ptr() as _,
-                        co.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                     rt.do_transform(&inb, &mut ro, 1);
-                    let ro16: Vec<u16> = ro.chunks_exact(2)
-                        .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                    let ro16: Vec<u16> = ro
+                        .chunks_exact(2)
+                        .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                        .collect();
                     assert_eq!(co, ro16[..3], "{name} f{flags:#x} eval");
                     c::cmsDeleteTransform(ct);
                 }
@@ -140,50 +160,74 @@ fn opt_matrix_shaper_shapes() {
         // devicelink profile carrying that pipeline shape
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut cc = [g; 3];
-        let mat: [f64; 9] = [0.4,0.3,0.3, 0.2,0.6,0.2, 0.1,0.1,0.8];
-        let mat2: [f64; 9] = [1.1,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,0.9];
+        let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        let mat2: [f64; 9] = [1.1, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.9];
         for (name, n_stages) in [("m3", 3u8), ("m4", 4u8)] {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-            c::cmsPipelineInsertStage(p, 1,
-                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
-            c::cmsPipelineInsertStage(p, 1,
-                c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
-                    mat.as_ptr(), std::ptr::null()));
+            c::cmsPipelineInsertStage(
+                p,
+                1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()),
+            );
+            c::cmsPipelineInsertStage(
+                p,
+                1,
+                c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3, mat.as_ptr(), std::ptr::null()),
+            );
             if n_stages == 4 {
-                c::cmsPipelineInsertStage(p, 1,
-                    c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
-                        mat2.as_ptr(), std::ptr::null()));
+                c::cmsPipelineInsertStage(
+                    p,
+                    1,
+                    c::cmsStageAllocMatrix(
+                        std::ptr::null_mut(),
+                        3,
+                        3,
+                        mat2.as_ptr(),
+                        std::ptr::null(),
+                    ),
+                );
             }
-            c::cmsPipelineInsertStage(p, 1,
-                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+            c::cmsPipelineInsertStage(
+                p,
+                1,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()),
+            );
             let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(prof, 0x6c696e6b); // 'link'
-            c::cmsSetColorSpace(prof, 0x52474220);  // 'RGB '
-            c::cmsSetPCS(prof, 0x4C616220);          // 'Lab '
+            c::cmsSetColorSpace(prof, 0x52474220); // 'RGB '
+            c::cmsSetPCS(prof, 0x4C616220); // 'Lab '
             c::cmsWriteTag(prof, 0x41324230, p as *const _); // A2B0
             // devicelink alone IS the transform
-            let t = c::cmsCreateTransform(prof, 0x00ff04,
-                prof, 0x00ff04, 0, 0);
+            let t = c::cmsCreateTransform(prof, 0x00ff04, prof, 0x00ff04, 0, 0);
             eprintln!("{name}: t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
             c::cmsPipelineFree(p);
         }
         // JoiningCurves — profile with two adjacent curve sets
         let p2 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p2, 1,
-            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
-        c::cmsPipelineInsertStage(p2, 1,
-            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p2,
+            1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()),
+        );
+        c::cmsPipelineInsertStage(
+            p2,
+            1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, cc.as_ptr()),
+        );
         let prof2 = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof2, 0x6c696e6b);
         c::cmsSetColorSpace(prof2, 0x52474220);
         c::cmsSetPCS(prof2, 0x4C616220);
         c::cmsWriteTag(prof2, 0x41324230, p2 as *const _);
-        let t2 = c::cmsCreateTransform(prof2, 0x00ff04,
-            prof2, 0x00ff04, 0, 0);
+        let t2 = c::cmsCreateTransform(prof2, 0x00ff04, prof2, 0x00ff04, 0, 0);
         eprintln!("jc: t={}", !t2.is_null());
-        if !t2.is_null() { c::cmsDeleteTransform(t2); }
+        if !t2.is_null() {
+            c::cmsDeleteTransform(t2);
+        }
         c::cmsCloseProfile(prof2);
         c::cmsPipelineFree(p2);
     }
@@ -196,15 +240,21 @@ fn opt_matrix_shaper_shapes() {
 #[test]
 fn opt_shape_sweep() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let mut profs: Vec<*mut std::ffi::c_void> = Vec::new();
-        for f in ["lcms2cmyk.icc", "graylcms2.icc", "labv2lcms2.icc",
-                  "sRGB3.icc", "labv4lcms2.icc", "linlcms2.icc"] {
+        for f in [
+            "lcms2cmyk.icc",
+            "graylcms2.icc",
+            "labv2lcms2.icc",
+            "sRGB3.icc",
+            "labv4lcms2.icc",
+            "linlcms2.icc",
+        ] {
             if let Ok(d) = std::fs::read(dir.join(f)) {
-                let p = c::cmsOpenProfileFromMem(
-                    d.as_ptr() as *const _, d.len() as u32);
-                if !p.is_null() { profs.push(p); }
+                let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+                if !p.is_null() {
+                    profs.push(p);
+                }
             }
         }
         let srgb = c::cmsCreate_sRGBProfile();
@@ -224,7 +274,9 @@ fn opt_shape_sweep() {
         let flags = [0u32, 0x1000, 0x2000, 0x0001, 0x4000];
         for &a in &profs {
             for &b in &profs {
-                if a == b { continue; }
+                if a == b {
+                    continue;
+                }
                 let fa = fmt_of(a);
                 let fb = fmt_of(b);
                 for &fl in &flags {
@@ -237,14 +289,20 @@ fn opt_shape_sweep() {
                         let cho = ((fb >> 3) & 15) as usize;
                         let byo = (fb & 7) as usize;
                         let mut out = vec![0u8; (n as usize) * cho * byo];
-                        c::cmsDoTransform(t, inp.as_ptr() as *const _,
-                            out.as_mut_ptr() as *mut _, n);
+                        c::cmsDoTransform(
+                            t,
+                            inp.as_ptr() as *const _,
+                            out.as_mut_ptr() as *mut _,
+                            n,
+                        );
                         c::cmsDeleteTransform(t);
                     }
                 }
             }
         }
-        for p in profs { c::cmsCloseProfile(p); }
+        for p in profs {
+            c::cmsCloseProfile(p);
+        }
     }
 }
 
@@ -254,13 +312,11 @@ fn opt_shape_sweep() {
 #[test]
 fn opt_resample_linearize() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let srgb = c::cmsCreate_sRGBProfile();
         let mut cmyk = std::ptr::null_mut();
         if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
-            cmyk = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
+            cmyk = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
         }
         let rgb8 = (4u32 << 16) | (3 << 3) | 1;
         let cmyk8 = (6u32 << 16) | (4 << 3) | 1;
@@ -273,14 +329,12 @@ fn opt_resample_linearize() {
                 (rgb16, cmyk8, 0u32, "u16->u8"),
                 (rgb8, cmyk8, 0x2000, "u8-lowres"),
             ] {
-                let t = c::cmsCreateTransform(srgb, inf, cmyk,
-                    of, 0, fl);
+                let t = c::cmsCreateTransform(srgb, inf, cmyk, of, 0, fl);
                 eprintln!("opt {name} t={}", !t.is_null());
                 if !t.is_null() {
                     let ib = [100u8; 16];
                     let mut ob = [0u8; 16];
-                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
             }
@@ -290,7 +344,9 @@ fn opt_resample_linearize() {
         let srgb2 = c::cmsCreate_sRGBProfile();
         let t = c::cmsCreateTransform(srgb, rgb8, srgb2, rgb8, 0, 0);
         eprintln!("rgb->rgb t={}", !t.is_null());
-        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !t.is_null() {
+            c::cmsDeleteTransform(t);
+        }
         c::cmsCloseProfile(srgb2);
         c::cmsCloseProfile(srgb);
     }
@@ -320,8 +376,7 @@ fn optimized_evaluators() {
             if !t.is_null() {
                 let ib = [0x80u8; 8];
                 let mut ob = [0u8; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 eprintln!("{name} ok");
                 c::cmsDeleteTransform(t);
             }
@@ -338,27 +393,34 @@ fn optimized_evaluators() {
 fn optimizer_internals() {
     let _g = CTX_LOCK.lock().unwrap();
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let r8 = (4u32 << 16) | (3 << 3) | 1;
         // corpus CLUT profiles + flag combos hit the optimizers
-        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "aRGBlcms2.icc",
-                  "lcms2link.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "lcms2cmyk.icc",
+            "sRGBlcms2.icc",
+            "aRGBlcms2.icc",
+            "lcms2link.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for (flags, name) in [
-                (0u32, "default"), (0x00000001, "nobpc"),
-                (0x00000200, "noresample"), (0x00000400, "nocache"),
+                (0u32, "default"),
+                (0x00000001, "nobpc"),
+                (0x00000200, "noresample"),
+                (0x00000400, "nocache"),
                 (0x00000040, "highresprecalc"),
             ] {
                 for (fmt, fn_) in [(r16, "16"), (r8, "8")] {
-                    let t = c::cmsCreateTransform(p, fmt, lab, l16,
-                        0, flags);
+                    let t = c::cmsCreateTransform(p, fmt, lab, l16, 0, flags);
                     if !t.is_null() {
                         c::cmsDeleteTransform(t);
                     }
@@ -377,21 +439,27 @@ fn optimizer_internals() {
 fn optimizer_internals2() {
     let _g = CTX_LOCK.lock().unwrap();
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc",
-                  "lcms2link.icc", "labv2lcms2.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "lcms2cmyk.icc",
+            "sRGBlcms2.icc",
+            "lcms2link.icc",
+            "labv2lcms2.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             let l16 = (10u32 << 16) | (3 << 3) | 2;
-            for flags in [0u32, 0x0002, 0x0040, 0x0400, 0x0200,
-                          0x0004, 0x0008, 0xffff] {
-                let t = c::cmsCreateTransform(lab, l16, p, l16,
-                    0, flags);
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+            for flags in [0u32, 0x0002, 0x0040, 0x0400, 0x0200, 0x0004, 0x0008, 0xffff] {
+                let t = c::cmsCreateTransform(lab, l16, p, l16, 0, flags);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             eprintln!("{f} done");
             c::cmsCloseProfile(p);
@@ -406,23 +474,33 @@ fn optimizer_internals2() {
 fn optimizer_internals3() {
     let _g = CTX_LOCK.lock().unwrap();
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lf32 = (10u32 << 16) | (3 << 3) | 4;
-        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "lcms2link.icc",
-                  "labv2lcms2.icc", "lcms2mxyz.icc", "lcms2mgray.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
-            for flags in [0u32, 0x0002, 0x0040, 0x0200, 0x0400,
-                          0x0001, 0x0100, 0x2000, 0x8000, 0xffff] {
+        for f in [
+            "lcms2cmyk.icc",
+            "sRGBlcms2.icc",
+            "lcms2link.icc",
+            "labv2lcms2.icc",
+            "lcms2mxyz.icc",
+            "lcms2mgray.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
+            for flags in [
+                0u32, 0x0002, 0x0040, 0x0200, 0x0400, 0x0001, 0x0100, 0x2000, 0x8000, 0xffff,
+            ] {
                 for ifmt in [l16, lf32] {
-                    let t = c::cmsCreateTransform(lab, ifmt, p, l16,
-                        0, flags);
-                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                    let t = c::cmsCreateTransform(lab, ifmt, p, l16, 0, flags);
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t);
+                    }
                 }
             }
             eprintln!("{f} done");
@@ -448,8 +526,14 @@ fn opt_eval_internals() {
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let g8 = (3u32 << 16) | (1 << 3) | 1;
         let g16 = (3u32 << 16) | (1 << 3) | 2;
-        let flags = [0x0002u32, 0x0040, 0x0200, 0x0002 | 0x0040,
-                     0x0002 | 0x0200, 0xffff];
+        let flags = [
+            0x0002u32,
+            0x0040,
+            0x0200,
+            0x0002 | 0x0040,
+            0x0002 | 0x0200,
+            0xffff,
+        ];
         for f in flags {
             for (inp, outp, if_, of_, name) in [
                 (srgb, lab, r8, l8, "rgb-lab-8"),
@@ -461,18 +545,25 @@ fn opt_eval_internals() {
                 (srgb, gray, r8, g8, "rgb-gray-8"),
                 (srgb, gray, r16, g16, "rgb-gray-16"),
             ] {
-                let t = c::cmsCreateTransform(inp, if_, outp, of_,
-                    0, f);
+                let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, f);
                 if !t.is_null() {
                     let ib8 = [0x40u8; 4];
                     let ib16 = [0x4000u16; 4];
                     let mut ob = [0u8; 8];
                     if if_ & 3 == 1 {
-                        c::cmsDoTransform(t, ib8.as_ptr() as *const _,
-                            ob.as_mut_ptr() as *mut _, 1);
+                        c::cmsDoTransform(
+                            t,
+                            ib8.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _,
+                            1,
+                        );
                     } else {
-                        c::cmsDoTransform(t, ib16.as_ptr() as *const _,
-                            ob.as_mut_ptr() as *mut _, 1);
+                        c::cmsDoTransform(
+                            t,
+                            ib16.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _,
+                            1,
+                        );
                     }
                     c::cmsDeleteTransform(t);
                 }
@@ -500,8 +591,14 @@ fn opt_float_eval_internals() {
         let rfl = (4u32 << 16) | (3 << 3) | 4 | fl;
         let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
         let gfl = (3u32 << 16) | (1 << 3) | 4 | fl;
-        for f in [0x0002u32, 0x0040, 0x0200, 0x0002 | 0x0040,
-                  0x0002 | 0x0200, 0xffff] {
+        for f in [
+            0x0002u32,
+            0x0040,
+            0x0200,
+            0x0002 | 0x0040,
+            0x0002 | 0x0200,
+            0xffff,
+        ] {
             for (inp, outp, if_, of_, name) in [
                 (srgb, lab, rfl, lfl, "rgb-lab"),
                 (lab, srgb, lfl, rfl, "lab-rgb"),
@@ -509,15 +606,18 @@ fn opt_float_eval_internals() {
                 (srgb, gray, rfl, gfl, "rgb-gray"),
                 (srgb, srgb, rfl, rfl, "rgb-rgb"),
             ] {
-                let t = c::cmsCreateTransform(inp, if_, outp, of_,
-                    0, f);
+                let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, f);
                 if !t.is_null() {
                     let ib = [0.5f32; 4];
                     let mut ob = [0.5f32; 4];
                     for v in [0.1f32, 0.5, 0.9] {
                         let mut inp_ = [v; 4];
-                        c::cmsDoTransform(t, inp_.as_ptr() as *const _,
-                            ob.as_mut_ptr() as *mut _, 1);
+                        c::cmsDoTransform(
+                            t,
+                            inp_.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _,
+                            1,
+                        );
                     }
                     c::cmsDeleteTransform(t);
                 }
@@ -540,11 +640,10 @@ fn opt_deep_arms() {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
-        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
-            .map(|d| c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32))
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc"))
+            .ok()
+            .map(|d| c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32))
             .unwrap_or(std::ptr::null_mut());
         let k8 = (6u32 << 16) | (4 << 3) | 1;
         // every format x every optimizer-relevant flag on
@@ -559,38 +658,47 @@ fn opt_deep_arms() {
             (10 << 16) | (3 << 3) | 4,
             (6 << 16) | (4 << 3) | 1,
         ] {
-            for flags in [0u32, 0x0100 /*PRELIN*/,
-                0x0200 /*NOCACHE*/, 0x0400 /*NOOPTIM*/,
-                0x0001, 0x0002, 0x0004,
-                0x0100 | 0x0001, 0x0100 | 0x0002] {
-                let t = c::cmsCreateTransform(srgb, fmt,
-                    lab, fmt, 0, flags);
-                let t2 = c::cmsCreateTransform(lab, fmt,
-                    srgb, fmt, 0, flags);
+            for flags in [
+                0u32,
+                0x0100, /*PRELIN*/
+                0x0200, /*NOCACHE*/
+                0x0400, /*NOOPTIM*/
+                0x0001,
+                0x0002,
+                0x0004,
+                0x0100 | 0x0001,
+                0x0100 | 0x0002,
+            ] {
+                let t = c::cmsCreateTransform(srgb, fmt, lab, fmt, 0, flags);
+                let t2 = c::cmsCreateTransform(lab, fmt, srgb, fmt, 0, flags);
                 if !t.is_null() {
-                    c::cmsDeleteTransform(t); }
+                    c::cmsDeleteTransform(t);
+                }
                 if !t2.is_null() {
-                    c::cmsDeleteTransform(t2); }
+                    c::cmsDeleteTransform(t2);
+                }
                 if !cmyk.is_null() {
-                    let t3 = c::cmsCreateTransform(cmyk, fmt,
-                        lab, fmt, 0, flags);
-                    let t4 = c::cmsCreateTransform(lab, fmt,
-                        cmyk, fmt, 0, flags);
-                    let t5 = c::cmsCreateTransform(cmyk, k8,
-                        cmyk, k8, 0, flags);
+                    let t3 = c::cmsCreateTransform(cmyk, fmt, lab, fmt, 0, flags);
+                    let t4 = c::cmsCreateTransform(lab, fmt, cmyk, fmt, 0, flags);
+                    let t5 = c::cmsCreateTransform(cmyk, k8, cmyk, k8, 0, flags);
                     if !t3.is_null() {
-                        c::cmsDeleteTransform(t3); }
+                        c::cmsDeleteTransform(t3);
+                    }
                     if !t4.is_null() {
-                        c::cmsDeleteTransform(t4); }
+                        c::cmsDeleteTransform(t4);
+                    }
                     if !t5.is_null() {
-                        c::cmsDeleteTransform(t5); }
+                        c::cmsDeleteTransform(t5);
+                    }
                 }
             }
             eprintln!("fmt {fmt:#x} done");
         }
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab);
-        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !cmyk.is_null() {
+            c::cmsCloseProfile(cmyk);
+        }
         c::cmsFreeToneCurve(g);
     }
 }

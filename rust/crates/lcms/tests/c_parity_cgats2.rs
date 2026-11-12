@@ -41,9 +41,7 @@ unsafe fn c_build() -> *mut std::ffi::c_void {
     let patches = ["A1", "A2", "B1", "B2"];
     for (i, p) in patches.iter().enumerate() {
         assert!(c::cmsIT8SetData(h, cstr(p), cstr("SAMPLE_ID"), cstr(p)) != 0);
-        assert!(
-            c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64) != 0
-        );
+        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64) != 0);
         assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_A"), 0.5 - i as f64) != 0);
         assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_B"), -2.0 + i as f64) != 0);
     }
@@ -241,7 +239,10 @@ fn writer_malformed() {
     for (name, text) in [
         ("not-it8", "hello world"),
         ("bad-sheet", "CGATS.99\n"),
-        ("truncated", "CGATS.17\nNUMBER_OF_FORMATS\nBEGIN_DATA_FORMAT\nSAMPLE"),
+        (
+            "truncated",
+            "CGATS.17\nNUMBER_OF_FORMATS\nBEGIN_DATA_FORMAT\nSAMPLE",
+        ),
         ("bad-data", "CGATS.17\nBEGIN_DATA\n1 2\n"),
     ] {
         let ch = unsafe {
@@ -255,8 +256,7 @@ fn writer_malformed() {
             !ch.is_null(),
             r.is_some()
         );
-        if !ch.is_null() {
-        }
+        if !ch.is_null() {}
     }
 }
 
@@ -285,7 +285,11 @@ fn multitables_and_enums() {
         let c_fmt: Vec<String> = (0..cd)
             .map(|i| c_getstr(*df.offset(i as isize)).unwrap_or_default())
             .collect();
-        let r_fmt: Vec<String> = it8.enum_data_format().into_iter().map(|s| s.to_string()).collect();
+        let r_fmt: Vec<String> = it8
+            .enum_data_format()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(c_fmt, r_fmt, "enum data format");
 
         // multi-property getter
@@ -314,12 +318,7 @@ fn multitables_and_enums() {
         assert_eq!(cs, rs, "save after dbl format");
 
         // multi-table: add a second table via SetTableByLabel on both
-        let ct = c::cmsIT8SetTableByLabel(
-            ch,
-            cstr("DATA"),
-            cstr("SAMPLE_ID"),
-            std::ptr::null(),
-        );
+        let ct = c::cmsIT8SetTableByLabel(ch, cstr("DATA"), cstr("SAMPLE_ID"), std::ptr::null());
         let rt = it8.set_table_by_label("DATA", "SAMPLE_ID", "");
         assert_eq!(ct, rt, "set table by label");
     }
@@ -331,45 +330,60 @@ fn multitables_and_enums() {
 fn it8_parser_shapes() {
     unsafe {
         for (name, doc) in [
-            ("multi-table",
-             "CGATS.17\nTABLE 1\nNUMBER_OF_FIELDS 2\n\
+            (
+                "multi-table",
+                "CGATS.17\nTABLE 1\nNUMBER_OF_FIELDS 2\n\
               BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\nBEGIN_DATA\n1 2\nEND_DATA\n\
               TABLE 2\nNUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nC\n\
               END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n9\n\
-              END_DATA\n"),
-            ("quoted-prop",
-             "CGATS.17\nORIGINATOR \"quoted origin\"\n\
+              END_DATA\n",
+            ),
+            (
+                "quoted-prop",
+                "CGATS.17\nORIGINATOR \"quoted origin\"\n\
               NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\n\
               END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1\n\
-              END_DATA\n"),
-            ("long-vals",
-             "CGATS.17\nNUMBER_OF_FIELDS 3\nBEGIN_DATA_FORMAT\nA B C\n\
+              END_DATA\n",
+            ),
+            (
+                "long-vals",
+                "CGATS.17\nNUMBER_OF_FIELDS 3\nBEGIN_DATA_FORMAT\nA B C\n\
               END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n\
-              123456789 0.000001 -9999\nEND_DATA\n"),
-            ("sci-notation",
-             "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\n\
+              123456789 0.000001 -9999\nEND_DATA\n",
+            ),
+            (
+                "sci-notation",
+                "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA B\n\
               END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n\
-              1e-3 2E5\nEND_DATA\n"),
-            ("mixed-tabs",
-             "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA\tB\n\
+              1e-3 2E5\nEND_DATA\n",
+            ),
+            (
+                "mixed-tabs",
+                "CGATS.17\nNUMBER_OF_FIELDS 2\nBEGIN_DATA_FORMAT\nA\tB\n\
               END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1\t2\n\
-              END_DATA\n"),
-            ("crlf",
-             "CGATS.17\r\nNUMBER_OF_FIELDS 2\r\nBEGIN_DATA_FORMAT\r\n\
+              END_DATA\n",
+            ),
+            (
+                "crlf",
+                "CGATS.17\r\nNUMBER_OF_FIELDS 2\r\nBEGIN_DATA_FORMAT\r\n\
               A B\r\nEND_DATA_FORMAT\r\nNUMBER_OF_SETS 1\r\n\
-              BEGIN_DATA\r\n1 2\r\nEND_DATA\r\n"),
-            ("escaped-prop",
-             "CGATS.17\nORIGINATOR \\\"escaped\\\"\n\
+              BEGIN_DATA\r\n1 2\r\nEND_DATA\r\n",
+            ),
+            (
+                "escaped-prop",
+                "CGATS.17\nORIGINATOR \\\"escaped\\\"\n\
               NUMBER_OF_FIELDS 1\nBEGIN_DATA_FORMAT\nA\n\
               END_DATA_FORMAT\nNUMBER_OF_SETS 1\nBEGIN_DATA\n1\n\
-              END_DATA\n"),
+              END_DATA\n",
+            ),
         ] {
             let mut err = 0;
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
                 doc.as_ptr() as *const std::ffi::c_void,
-                doc.len() as u32);
+                doc.len() as u32,
+            );
             eprintln!("{name} it8={}", !it8.is_null());
             if !it8.is_null() {
                 c::cmsIT8Free(it8);
@@ -388,28 +402,25 @@ fn it8_get_set_machinery() {
                     NUMBER_OF_FIELDS 3\n\
                     BEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\n\
                     NUMBER_OF_SETS 2\n\
-                    BEGIN_DATA\n1 2 3\n4 5 6\nEND_DATA\n".to_vec();
-        let it8 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as _, doc.len() as u32);
-        if it8.is_null() { return; }
+                    BEGIN_DATA\n1 2 3\n4 5 6\nEND_DATA\n"
+            .to_vec();
+        let it8 = c::cmsIT8LoadFromMem(std::ptr::null_mut(), doc.as_ptr() as _, doc.len() as u32);
+        if it8.is_null() {
+            return;
+        }
         // property getters on the loaded doc
-        let p1 = c::cmsIT8GetPropertyDbl(it8,
-            b"NUMBER_OF_FIELDS\0".as_ptr() as _);
-        let p2 = c::cmsIT8GetPropertyDbl(it8,
-            b"NUMBER_OF_SETS\0".as_ptr() as _);
-        let p3 = c::cmsIT8GetProperty(it8,
-            b"ORIGINATOR\0".as_ptr() as _);
+        let p1 = c::cmsIT8GetPropertyDbl(it8, b"NUMBER_OF_FIELDS\0".as_ptr() as _);
+        let p2 = c::cmsIT8GetPropertyDbl(it8, b"NUMBER_OF_SETS\0".as_ptr() as _);
+        let p3 = c::cmsIT8GetProperty(it8, b"ORIGINATOR\0".as_ptr() as _);
         // data access — the cell machinery
-        let d = c::cmsIT8GetDataDbl(it8,
-            b"A\0".as_ptr() as _,
-            b"1\0".as_ptr() as _);
+        let d = c::cmsIT8GetDataDbl(it8, b"A\0".as_ptr() as _, b"1\0".as_ptr() as _);
         // set/get round-trip — the property machinery
-        c::cmsIT8SetPropertyDbl(it8,
-            b"CUSTOM_PROP\0".as_ptr() as _, 42.5);
-        let cp = c::cmsIT8GetPropertyDbl(it8,
-            b"CUSTOM_PROP\0".as_ptr() as _);
-        eprintln!("fields={p1} sets={p2} orig={:?} a0={d} custom={cp}",
-            if p3.is_null() { "null" } else { "set" });
+        c::cmsIT8SetPropertyDbl(it8, b"CUSTOM_PROP\0".as_ptr() as _, 42.5);
+        let cp = c::cmsIT8GetPropertyDbl(it8, b"CUSTOM_PROP\0".as_ptr() as _);
+        eprintln!(
+            "fields={p1} sets={p2} orig={:?} a0={d} custom={cp}",
+            if p3.is_null() { "null" } else { "set" }
+        );
         c::cmsIT8Free(it8);
     }
 }
@@ -422,21 +433,15 @@ fn it8_table_enum() {
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
         // set a sheet type + data formats — the table machinery
         c::cmsIT8SetSheetType(it8, b"TEST\0".as_ptr() as _);
-        for fmt in [b"FIELD_A\0" as &[u8], b"FIELD_B\0",
-                    b"FIELD_C\0"] {
-            let _ = c::cmsIT8SetDataFormat(it8, 0,
-                fmt.as_ptr() as _);
+        for fmt in [b"FIELD_A\0" as &[u8], b"FIELD_B\0", b"FIELD_C\0"] {
+            let _ = c::cmsIT8SetDataFormat(it8, 0, fmt.as_ptr() as _);
         }
         // enum the data formats — the out-param version
         let mut names: *mut *mut i8 = std::ptr::null_mut();
         let n = c::cmsIT8EnumDataFormat(it8, &mut names);
         // set data + read it back — the cell machinery
-        c::cmsIT8SetDataDbl(it8,
-            b"P1\0".as_ptr() as _,
-            b"FIELD_A\0".as_ptr() as _, 1.5);
-        let d = c::cmsIT8GetDataDbl(it8,
-            b"P1\0".as_ptr() as _,
-            b"FIELD_A\0".as_ptr() as _);
+        c::cmsIT8SetDataDbl(it8, b"P1\0".as_ptr() as _, b"FIELD_A\0".as_ptr() as _, 1.5);
+        let d = c::cmsIT8GetDataDbl(it8, b"P1\0".as_ptr() as _, b"FIELD_A\0".as_ptr() as _);
         // row/col access — the row machinery
         let rc = c::cmsIT8GetDataRowCol(it8, 0, 0);
         eprintln!("enum={n} data={d} rc={}", rc.is_null());
@@ -452,27 +457,44 @@ fn it8_writer_arms() {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
         let ps = |x: &str| format!("{x}\0").as_ptr() as *const i8;
         // leak the CStrings (test scope)
-        let keep: Vec<_> = ["NUMBER_OF_SETS", "NUMBER_OF_FIELDS",
-            "ORIGINATOR", "coverage", "SOME_DBL", "MLANG", "enUS",
-            "multi", "SAMPLE_ID", "LAB_L", "LAB_A", "LAB_B", "p0",
-            "p1", "p2"].iter().map(|x| format!("{x}\0")).collect();
-        let g = |x: &str| keep.iter().find(|k|
-            k.trim_end_matches('\0') == x).unwrap().as_ptr() as *const i8;
+        let keep: Vec<_> = [
+            "NUMBER_OF_SETS",
+            "NUMBER_OF_FIELDS",
+            "ORIGINATOR",
+            "coverage",
+            "SOME_DBL",
+            "MLANG",
+            "enUS",
+            "multi",
+            "SAMPLE_ID",
+            "LAB_L",
+            "LAB_A",
+            "LAB_B",
+            "p0",
+            "p1",
+            "p2",
+        ]
+        .iter()
+        .map(|x| format!("{x}\0"))
+        .collect();
+        let g = |x: &str| {
+            keep.iter()
+                .find(|k| k.trim_end_matches('\0') == x)
+                .unwrap()
+                .as_ptr() as *const i8
+        };
         c::cmsIT8SetPropertyDbl(h, g("NUMBER_OF_SETS"), 3.0);
         c::cmsIT8SetPropertyDbl(h, g("NUMBER_OF_FIELDS"), 4.0);
         c::cmsIT8SetPropertyStr(h, g("ORIGINATOR"), g("coverage"));
         c::cmsIT8SetPropertyDbl(h, g("SOME_DBL"), 42.5);
         c::cmsIT8SetPropertyMulti(h, g("MLANG"), g("enUS"), g("multi"));
-        for (i, fmt) in ["SAMPLE_ID", "LAB_L", "LAB_A", "LAB_B"]
-            .iter().enumerate() {
+        for (i, fmt) in ["SAMPLE_ID", "LAB_L", "LAB_A", "LAB_B"].iter().enumerate() {
             c::cmsIT8SetDataFormat(h, i as i32, g(fmt));
         }
         for row in 0..3i32 {
-            c::cmsIT8SetDataDbl(h,
-                g(&format!("p{row}")), g("SAMPLE_ID"), row as f64);
+            c::cmsIT8SetDataDbl(h, g(&format!("p{row}")), g("SAMPLE_ID"), row as f64);
             for col in 0..4i32 {
-                c::cmsIT8SetDataRowColDbl(h, row, col,
-                    (row * 10 + col) as f64);
+                c::cmsIT8SetDataRowColDbl(h, row, col, (row * 10 + col) as f64);
             }
         }
         let mut buf = vec![0u8; 1 << 20];
@@ -490,11 +512,29 @@ fn it8_writer_arms() {
 fn it8_api_bodies() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
-        let keep: Vec<_> = ["CGATS.17", "comment here", "PROP", "42",
-            "SAMPLE_ID", "v1", "p0", "multi-k", "multi-v", "HEXPROP",
-            "uncooked", "fmt"].iter().map(|x| format!("{x}\0")).collect();
-        let k = |x: &str| keep.iter().find(|s|
-            s.trim_end_matches('\0') == x).unwrap().as_ptr() as *const i8;
+        let keep: Vec<_> = [
+            "CGATS.17",
+            "comment here",
+            "PROP",
+            "42",
+            "SAMPLE_ID",
+            "v1",
+            "p0",
+            "multi-k",
+            "multi-v",
+            "HEXPROP",
+            "uncooked",
+            "fmt",
+        ]
+        .iter()
+        .map(|x| format!("{x}\0"))
+        .collect();
+        let k = |x: &str| {
+            keep.iter()
+                .find(|s| s.trim_end_matches('\0') == x)
+                .unwrap()
+                .as_ptr() as *const i8
+        };
         // sheet type + comment
         c::cmsIT8SetSheetType(h, k("CGATS.17"));
         let st = c::cmsIT8GetSheetType(h);
@@ -509,9 +549,11 @@ fn it8_api_bodies() {
         let pv = c::cmsIT8GetProperty(h, k("PROP"));
         let pd = c::cmsIT8GetPropertyDbl(h, k("PROP"));
         let pm = c::cmsIT8GetPropertyMulti(h, k("multi-k"), k("multi-v"));
-        eprintln!("prop={:?} dbl={pd} multi={:?}",
+        eprintln!(
+            "prop={:?} dbl={pd} multi={:?}",
             std::ffi::CStr::from_ptr(pv),
-            std::ffi::CStr::from_ptr(pm));
+            std::ffi::CStr::from_ptr(pm)
+        );
         // data format enum
         let mut names: *mut *mut i8 = std::ptr::null_mut();
         let nf = c::cmsIT8EnumDataFormat(h, &mut names);
@@ -550,8 +592,11 @@ fn it8_parse_arms() {
              BEGIN_DATA\na1 5\nEND_DATA\n",
         ];
         for (i, doc) in docs.iter().enumerate() {
-            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let h = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("doc{i} load={}", !h.is_null());
             if !h.is_null() {
                 let v = c::cmsIT8GetDataRowColDbl(h, 0, 1);
@@ -568,17 +613,21 @@ fn it8_parse_arms() {
 fn cgats_type_detection() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
-        let keep: Vec<String> = ["P1","P2","P3","P4","SF","DF",
-            "SAMPLE_ID","V1","p0"]
-            .iter().map(|x| format!("{x}\0")).collect();
-        let k = |x: &str| keep.iter().find(|s|
-            s.trim_end_matches('\0') == x).unwrap().as_ptr() as *const i8;
+        let keep: Vec<String> = ["P1", "P2", "P3", "P4", "SF", "DF", "SAMPLE_ID", "V1", "p0"]
+            .iter()
+            .map(|x| format!("{x}\0"))
+            .collect();
+        let k = |x: &str| {
+            keep.iter()
+                .find(|s| s.trim_end_matches('\0') == x)
+                .unwrap()
+                .as_ptr() as *const i8
+        };
         // SetProperty parses the value to detect type
         c::cmsIT8SetPropertyDbl(h, k("P1"), 1.5);
         c::cmsIT8SetPropertyHex(h, k("P2"), 0xABCD);
         c::cmsIT8SetPropertyStr(h, k("P3"), b"str\0".as_ptr() as *const i8);
-        c::cmsIT8SetPropertyUncooked(h, k("P4"),
-            b"raw data\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyUncooked(h, k("P4"), b"raw data\0".as_ptr() as *const i8);
         // data-format + data-set
         c::cmsIT8SetDataFormat(h, 0, k("SAMPLE_ID"));
         c::cmsIT8SetDataFormat(h, 1, k("V1"));
@@ -599,29 +648,47 @@ fn it8_writer_internals() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
         // populate header + data
-        c::cmsIT8SetPropertyStr(h, b"ORIGINATOR\0".as_ptr() as *const i8,
-            b"lcms\0".as_ptr() as *const i8);
-        c::cmsIT8SetPropertyStr(h, b"CREATED\0".as_ptr() as *const i8,
-            b"2024\0".as_ptr() as *const i8);
-        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8,
-            2.0);
-        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_SETS\0".as_ptr() as *const i8,
-            2.0);
+        c::cmsIT8SetPropertyStr(
+            h,
+            b"ORIGINATOR\0".as_ptr() as *const i8,
+            b"lcms\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetPropertyStr(
+            h,
+            b"CREATED\0".as_ptr() as *const i8,
+            b"2024\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8, 2.0);
+        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_SETS\0".as_ptr() as *const i8, 2.0);
         c::cmsIT8SetSheetType(h, b"CGATS.5\0".as_ptr() as *const i8);
         c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
         c::cmsIT8SetDataFormat(h, 1, b"VAL\0".as_ptr() as *const i8);
-        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
-            b"ID\0".as_ptr() as *const i8, b"r1\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataDbl(h, b"r1\0".as_ptr() as *const i8,
-            b"VAL\0".as_ptr() as *const i8, 42.0);
+        c::cmsIT8SetData(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"ID\0".as_ptr() as *const i8,
+            b"r1\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetDataDbl(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"VAL\0".as_ptr() as *const i8,
+            42.0,
+        );
         // write to memory -> the writer bodies
         let mut buf = vec![0u8; 1 << 16];
         let mut n = buf.len() as u32;
         let s = c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
         eprintln!("it8write s={s} n={n}");
         if s != 0 {
-            eprintln!("{}", std::str::from_utf8(&buf[..n as usize])
-                .unwrap_or("?").chars().take(80).collect::<String>());
+            eprintln!(
+                "{}",
+                std::str::from_utf8(&buf[..n as usize])
+                    .unwrap_or("?")
+                    .chars()
+                    .take(80)
+                    .collect::<String>()
+            );
         }
         c::cmsIT8Free(h);
     }
@@ -642,8 +709,8 @@ fn it8_parser_arms() {
             "CGATS.5\nNUM\tBER_OF_FIELDS\t1\nBEG\nV\n7\nEND\n".as_bytes(),
         ];
         for (i, d) in docs.iter().enumerate() {
-            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                d.as_ptr() as *const _, d.len() as u32);
+            let h =
+                c::cmsIT8LoadFromMem(std::ptr::null_mut(), d.as_ptr() as *const _, d.len() as u32);
             eprintln!("doc{i} load={}", !h.is_null());
             if !h.is_null() {
                 let n = c::cmsIT8EnumDataFormat(h, std::ptr::null_mut());
@@ -671,7 +738,8 @@ END_DATA_FORMAT
 BEGIN_DATA
 0x1F 1.5e-3 -2.4E+2 7
 "str val" +INF -INF 0b101
-END_DATA"#.as_bytes(),
+END_DATA"#
+                .as_bytes(),
             // multi-table + comments + blank lines
             r#"CGATS.17
 # leading comment
@@ -693,7 +761,8 @@ B
 END_DATA_FORMAT
 BEGIN_DATA
 2
-END_DATA"#.as_bytes(),
+END_DATA"#
+                .as_bytes(),
             // symbol/keyword forms + semicolon comments
             r#"IT8
 KEYWORD with spaces
@@ -706,16 +775,19 @@ X
 END_DATA_FORMAT
 BEGIN_DATA
 9.99
-END_DATA"#.as_bytes(),
+END_DATA"#
+                .as_bytes(),
             // malformed docs (reject arms)
             "CGATS.17\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\n".as_bytes(),
             "not a cgats doc at all".as_bytes(),
         ];
         for (i, d) in docs.iter().enumerate() {
-            let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                d.as_ptr() as *const _, d.len() as u32);
+            let h =
+                c::cmsIT8LoadFromMem(std::ptr::null_mut(), d.as_ptr() as *const _, d.len() as u32);
             eprintln!("doc{i} load={}", !h.is_null());
-            if !h.is_null() { c::cmsIT8Free(h); }
+            if !h.is_null() {
+                c::cmsIT8Free(h);
+            }
         }
     }
 }
@@ -732,32 +804,60 @@ fn it8_data_arms2() {
         c::cmsIT8SetDataFormat(h, 2, b"NUM\0".as_ptr() as *const i8);
         c::cmsIT8SetDataFormat(h, 3, b"STR\0".as_ptr() as *const i8);
         // SetData variants — string/dbl/uncooked/hex
-        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
-            b"ID\0".as_ptr() as *const i8, b"r1\0".as_ptr() as *const i8);
-        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
-            b"HEX\0".as_ptr() as *const i8, b"0xAB\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataDbl(h, b"r1\0".as_ptr() as *const i8,
-            b"NUM\0".as_ptr() as *const i8, 1.5);
-        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
-            b"STR\0".as_ptr() as *const i8, b"str\0".as_ptr() as *const i8);
+        c::cmsIT8SetData(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"ID\0".as_ptr() as *const i8,
+            b"r1\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetData(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"HEX\0".as_ptr() as *const i8,
+            b"0xAB\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetDataDbl(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"NUM\0".as_ptr() as *const i8,
+            1.5,
+        );
+        c::cmsIT8SetData(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"STR\0".as_ptr() as *const i8,
+            b"str\0".as_ptr() as *const i8,
+        );
         // GetData variants
-        let hx = c::cmsIT8GetData(h, b"r1\0".as_ptr() as *const i8,
-            b"HEX\0".as_ptr() as *const i8);
-        let d = c::cmsIT8GetDataDbl(h, b"r1\0".as_ptr() as *const i8,
-            b"NUM\0".as_ptr() as *const i8);
+        let hx = c::cmsIT8GetData(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"HEX\0".as_ptr() as *const i8,
+        );
+        let d = c::cmsIT8GetDataDbl(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"NUM\0".as_ptr() as *const i8,
+        );
         // Enum data formats + rowcol access
         let mut names = [std::ptr::null_mut(); 8];
         let nf = c::cmsIT8EnumDataFormat(h, names.as_mut_ptr());
         let rc = c::cmsIT8GetDataRowCol(h, 0, 2);
         let rcd = c::cmsIT8GetDataRowColDbl(h, 0, 2);
         // property arms
-        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8,
-            0xFF);
-        c::cmsIT8SetPropertyUncooked(h, b"PU\0".as_ptr() as *const i8,
-            b"raw\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8, 0xFF);
+        c::cmsIT8SetPropertyUncooked(
+            h,
+            b"PU\0".as_ptr() as *const i8,
+            b"raw\0".as_ptr() as *const i8,
+        );
         let pv = c::cmsIT8GetProperty(h, b"PHEX\0".as_ptr() as *const i8);
-        eprintln!("hex={} num={d} nf={nf} rc={:?} rcd={rcd} pv={:?}",
-            hx.is_null(), rc, pv);
+        eprintln!(
+            "hex={} num={d} nf={nf} rc={:?} rcd={rcd} pv={:?}",
+            hx.is_null(),
+            rc,
+            pv
+        );
         c::cmsIT8Free(h);
     }
 }
@@ -769,10 +869,12 @@ fn cube_parse_arms() {
     unsafe {
         let dir = std::env::temp_dir();
         let rows = |n: usize| -> String {
-            (0..n).map(|i| {
-                let v = i as f64 / (n - 1) as f64;
-                format!("{v:.6} {v:.6} {v:.6}\n")
-            }).collect()
+            (0..n)
+                .map(|i| {
+                    let v = i as f64 / (n - 1) as f64;
+                    format!("{v:.6} {v:.6} {v:.6}\n")
+                })
+                .collect()
         };
         let clut = |n: usize| -> String {
             let mut s = String::new();
@@ -784,16 +886,23 @@ fn cube_parse_arms() {
         };
         let cases = [
             // full: title + domain + shaper + clut
-            format!("TITLE \"full\"\nDOMAIN_MIN 0 0 0\n\
+            format!(
+                "TITLE \"full\"\nDOMAIN_MIN 0 0 0\n\
                      DOMAIN_MAX 1 1 1\nLUT_1D_SIZE 4\n\
-                     LUT_3D_SIZE 2\n{}{}", rows(4), clut(2)),
+                     LUT_3D_SIZE 2\n{}{}",
+                rows(4),
+                clut(2)
+            ),
             // shaper only
             format!("LUT_1D_SIZE 3\n{}", rows(3)),
             // clut only
             format!("LUT_3D_SIZE 2\n{}", clut(2)),
             // input ranges (valid 0..1)
-            format!("LUT_1D_INPUT_RANGE 0 1\nLUT_3D_INPUT_RANGE 0 1\n\
-                     LUT_3D_SIZE 2\n{}", clut(2)),
+            format!(
+                "LUT_1D_INPUT_RANGE 0 1\nLUT_3D_INPUT_RANGE 0 1\n\
+                     LUT_3D_SIZE 2\n{}",
+                clut(2)
+            ),
             // video-range keywords reject
             "LUT_IN_VIDEO_RANGE\nLUT_3D_SIZE 2\n".to_string(),
             "LUT_OUT_VIDEO_RANGE\nLUT_3D_SIZE 2\n".to_string(),
@@ -805,17 +914,21 @@ fn cube_parse_arms() {
             "LUT_3D_SIZE 1\n".to_string(),
             "LUT_3D_SIZE 66\n".to_string(),
             // comments + title forms
-            format!("# comment\nTITLE no-quotes\n\
-                     LUT_3D_SIZE 2\n{}", clut(2)),
+            format!(
+                "# comment\nTITLE no-quotes\n\
+                     LUT_3D_SIZE 2\n{}",
+                clut(2)
+            ),
         ];
         for (i, doc) in cases.iter().enumerate() {
             let path = dir.join(format!("cube_arm_{i}.cube"));
             std::fs::write(&path, doc).unwrap();
-            let cpath = std::ffi::CString::new(
-                path.to_str().unwrap()).unwrap();
+            let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
             let p = c::cmsCreateDeviceLinkFromCubeFile(cpath.as_ptr());
             eprintln!("cube{i} dl={}", !p.is_null());
-            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
             let _ = std::fs::remove_file(&path);
         }
     }
@@ -829,44 +942,63 @@ fn it8_writer_modes() {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
         c::cmsIT8SetSheetType(h, b"CGATS.17\0".as_ptr() as *const i8);
         c::cmsIT8SetComment(h, b"a comment\0".as_ptr() as *const i8);
-        c::cmsIT8SetPropertyStr(h, b"PSTR\0".as_ptr() as *const i8,
-            b"str val\0".as_ptr() as *const i8);
-        c::cmsIT8SetPropertyDbl(h, b"PDBL\0".as_ptr() as *const i8,
-            1.5);
-        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8,
-            0xABCD);
-        c::cmsIT8SetPropertyMulti(h, b"PMULTI\0".as_ptr() as *const i8,
+        c::cmsIT8SetPropertyStr(
+            h,
+            b"PSTR\0".as_ptr() as *const i8,
+            b"str val\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetPropertyDbl(h, b"PDBL\0".as_ptr() as *const i8, 1.5);
+        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8, 0xABCD);
+        c::cmsIT8SetPropertyMulti(
+            h,
+            b"PMULTI\0".as_ptr() as *const i8,
             b"sub\0".as_ptr() as *const i8,
-            b"val\0".as_ptr() as *const i8);
-        c::cmsIT8SetPropertyUncooked(h, b"PUNC\0".as_ptr() as *const i8,
-            b"0b1011\0".as_ptr() as *const i8);
+            b"val\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetPropertyUncooked(
+            h,
+            b"PUNC\0".as_ptr() as *const i8,
+            b"0b1011\0".as_ptr() as *const i8,
+        );
         c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
         c::cmsIT8SetDataFormat(h, 1, b"V\0".as_ptr() as *const i8);
-        c::cmsIT8SetData(h, b"r1\0".as_ptr() as *const i8,
-            b"ID\0".as_ptr() as *const i8, b"r1\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataDbl(h, b"r1\0".as_ptr() as *const i8,
-            b"V\0".as_ptr() as *const i8, 0.25);
+        c::cmsIT8SetData(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"ID\0".as_ptr() as *const i8,
+            b"r1\0".as_ptr() as *const i8,
+        );
+        c::cmsIT8SetDataDbl(
+            h,
+            b"r1\0".as_ptr() as *const i8,
+            b"V\0".as_ptr() as *const i8,
+            0.25,
+        );
         let mut buf = vec![0u8; 1 << 16];
         let mut n = buf.len() as u32;
-        let s = c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _,
-            &mut n);
+        let s = c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
         eprintln!("save={s} n={n}");
         if s != 0 {
-            let txt = std::str::from_utf8(&buf[..n as usize])
-                .unwrap_or("");
+            let txt = std::str::from_utf8(&buf[..n as usize]).unwrap_or("");
             eprintln!("---\n{txt}\n---");
-            let h2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                buf.as_ptr() as *const _, n);
+            let h2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(), buf.as_ptr() as *const _, n);
             eprintln!("reparse={}", !h2.is_null());
-            if !h2.is_null() { c::cmsIT8Free(h2); }
+            if !h2.is_null() {
+                c::cmsIT8Free(h2);
+            }
         }
         c::cmsIT8Free(h);
         // $INCLUDE directive — lexer arm (file not found)
         let inc = b"CGATS.17\n$INCLUDE \"/nonexistent.it8\"\n";
-        let h3 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            inc.as_ptr() as *const _, inc.len() as u32);
+        let h3 = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            inc.as_ptr() as *const _,
+            inc.len() as u32,
+        );
         eprintln!("include={}", !h3.is_null());
-        if !h3.is_null() { c::cmsIT8Free(h3); }
+        if !h3.is_null() {
+            c::cmsIT8Free(h3);
+        }
     }
 }
 
@@ -885,10 +1017,15 @@ fn it8_table_api_arms() {
             NUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
             BEGIN_DATA_FORMAT\nK W\nEND_DATA_FORMAT\n\
             BEGIN_DATA\nx 9\nEND_DATA\n";
-        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let h = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         eprintln!("load={}", !h.is_null());
-        if h.is_null() { return; }
+        if h.is_null() {
+            return;
+        }
         let nt = c::cmsIT8TableCount(h);
         eprintln!("tables={nt}");
         // table switch
@@ -897,9 +1034,12 @@ fn it8_table_api_arms() {
         let pn = c::cmsIT8GetPatchByName(h, b"b\0".as_ptr() as *const i8);
         eprintln!("patch_b={pn}");
         let _ = c::cmsIT8SetTable(h, 1);
-        let stl = c::cmsIT8SetTableByLabel(h,
-            b"K\0".as_ptr() as *const i8, b"W\0".as_ptr() as *const i8,
-            std::ptr::null());
+        let stl = c::cmsIT8SetTableByLabel(
+            h,
+            b"K\0".as_ptr() as *const i8,
+            b"W\0".as_ptr() as *const i8,
+            std::ptr::null(),
+        );
         eprintln!("setbylabel={stl}");
         // index column + rowcol ops
         let _ = c::cmsIT8SetTable(h, 0);
@@ -916,8 +1056,7 @@ fn it8_table_api_arms() {
         c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
         eprintln!("save-n={n}");
         // property getters
-        let _ = c::cmsIT8SetPropertyDbl(h,
-            b"PD\0".as_ptr() as *const i8, 2.5);
+        let _ = c::cmsIT8SetPropertyDbl(h, b"PD\0".as_ptr() as *const i8, 2.5);
         let pd = c::cmsIT8GetPropertyDbl(h, b"PD\0".as_ptr() as *const i8);
         eprintln!("propdbl={pd}");
         c::cmsIT8Free(h);
@@ -942,25 +1081,29 @@ fn it8_deep_arms() {
             KEY2 \"quoted val\"\n\
             KEY3 0xAB\n\
             KEY4 -1.5\n";
-        let h = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let h = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         eprintln!("load={}", !h.is_null());
         if !h.is_null() {
             let mut names = [std::ptr::null_mut(); 8];
             let nf = c::cmsIT8EnumDataFormat(h, names.as_mut_ptr());
             eprintln!("nf={nf}");
 
-            let pn = c::cmsIT8GetPatchByName(h,
-                b"2\0".as_ptr() as *const i8);
+            let pn = c::cmsIT8GetPatchByName(h, b"2\0".as_ptr() as *const i8);
             eprintln!("patch={pn}");
-            let v = c::cmsIT8GetData(h, b"1\0".as_ptr() as *const i8,
-                b"S\0".as_ptr() as *const i8);
+            let v = c::cmsIT8GetData(
+                h,
+                b"1\0".as_ptr() as *const i8,
+                b"S\0".as_ptr() as *const i8,
+            );
             eprintln!("data={:?}", v);
             let mut buf = vec![0u8; 1 << 16];
             let mut n = buf.len() as u32;
             c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
-            let txt = std::str::from_utf8(&buf[..n as usize])
-                .unwrap_or("");
+            let txt = std::str::from_utf8(&buf[..n as usize]).unwrap_or("");
             eprintln!("saved:\n{txt}");
             c::cmsIT8Free(h);
         }
@@ -970,15 +1113,22 @@ fn it8_deep_arms() {
             b"CGATS.17\nNUMBER_OF_SETS -1\n".as_slice(),
             b"CGATS.17\nBEGIN_DATA\n1\nEND_DATA\n".as_slice(),
             b"CGATS.17\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA\nEND_DATA\n".as_slice(),
-        ].iter().enumerate() {
-            let h2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+        ]
+        .iter()
+        .enumerate()
+        {
+            let h2 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("mal{i} load={}", !h2.is_null());
-            if !h2.is_null() { c::cmsIT8Free(h2); }
+            if !h2.is_null() {
+                c::cmsIT8Free(h2);
+            }
         }
     }
 }
-
 
 /// cmscgats header/data deep arms — KEYWORD/DATA_FORMAT_ID
 /// directives, WRITE_PAIR values, quoted vs uncooked props.
@@ -1005,19 +1155,23 @@ fn it8_header_arms() {
             ("IT8FILE\nP1 \"café ☕\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".as_bytes(), "utf8-str"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 if name == "for-pair" {
                     // WRITE_PAIR arm — SetPropertyMulti writes the
                     // pair form which HeaderSection then parses
-                    c::cmsIT8SetPropertyMulti(p,
+                    c::cmsIT8SetPropertyMulti(
+                        p,
                         b"PAIR\0".as_ptr() as *const _,
                         b"k1\0".as_ptr() as *const _,
-                        b"v1\0".as_ptr() as *const _);
-                    let v = c::cmsIT8GetProperty(p,
-                        b"PAIR\0".as_ptr() as *const _);
+                        b"v1\0".as_ptr() as *const _,
+                    );
+                    let v = c::cmsIT8GetProperty(p, b"PAIR\0".as_ptr() as *const _);
                     eprintln!("  pair-val={}", !v.is_null());
                 }
                 let _nt = c::cmsIT8TableCount(p);
@@ -1066,8 +1220,11 @@ fn it8_data_arms3() {
             (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\tB\nEND_DATA_FORMAT\nBEGIN_DATA\n1\t\t  2\nEND_DATA\n".to_vec(), "tab-delims"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 let nt = c::cmsIT8TableCount(p);
@@ -1105,8 +1262,11 @@ fn it8_deep_arms2() {
             ("IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 \"café\"\n2 \"☕\"\nEND_DATA\n".as_bytes(), "utf8-data"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 let nt = c::cmsIT8TableCount(p);
@@ -1121,15 +1281,17 @@ fn it8_deep_arms2() {
         if !p.is_null() {
             let mut buf = vec![0u8; 1 << 20];
             let mut n = buf.len() as u32;
-            let s = c::cmsIT8SaveToMem(p,
-                buf.as_mut_ptr() as *mut _, &mut n);
+            let s = c::cmsIT8SaveToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
             eprintln!("it8-save={s} n={n}");
             let rp = if s != 0 {
-                c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                    buf.as_ptr() as *const _, n)
-            } else { std::ptr::null_mut() };
+                c::cmsIT8LoadFromMem(std::ptr::null_mut(), buf.as_ptr() as *const _, n)
+            } else {
+                std::ptr::null_mut()
+            };
             eprintln!("it8-reload={}", !rp.is_null());
-            if !rp.is_null() { c::cmsIT8Free(rp); }
+            if !rp.is_null() {
+                c::cmsIT8Free(rp);
+            }
             c::cmsIT8Free(p);
         }
     }
@@ -1168,12 +1330,17 @@ fn it8_deep_arms3() {
             (b"IT8FILE\n\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "bare-data"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 let nt = c::cmsIT8TableCount(p);
-                if nt > 1 { eprintln!("  tables={nt}"); }
+                if nt > 1 {
+                    eprintln!("  tables={nt}");
+                }
                 c::cmsIT8Free(p);
             }
         }
@@ -1187,8 +1354,11 @@ fn it8_deep_arms4() {
     unsafe {
         // writer modes on a multi-table doc
         let doc = b"IT8FILE\nKEYWORD \"K\"\nDATA_FORMAT_ID \"D\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n5\nEND_DATA\n";
-        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let p = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         if !p.is_null() {
             // table API: TableCount/SetTable/GetPatchByName/
             // DefineDblFormat/SetDataRowCol
@@ -1199,8 +1369,7 @@ fn it8_deep_arms4() {
             }
             let mut buf = vec![0u8; 1 << 20];
             let mut n = buf.len() as u32;
-            let s = c::cmsIT8SaveToMem(p,
-                buf.as_mut_ptr() as *mut _, &mut n);
+            let s = c::cmsIT8SaveToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
             eprintln!("save={s}");
             // write with different enum values
             c::cmsIT8DefineDblFormat(p, b"%.12g\0".as_ptr() as *const _);
@@ -1261,8 +1430,11 @@ fn it8_parse_arms2() {
             (b"IT8FILE\nDATA_IDENTIFIER \"id\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 0\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n", "dataid-nod"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 let nt = c::cmsIT8TableCount(p);
@@ -1300,8 +1472,11 @@ fn it8_deep_arms5() {
             (b"IT8FILE\nNUMBER_OF_FIELDS 9999\nNUMBER_OF_SETS 9999\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n", "huge-count"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1317,8 +1492,11 @@ fn it8_deep_arms6() {
     unsafe {
         // every property enum value through GetProperty
         let doc = b"IT8FILE\nORIGINATOR \"o\"\nDESCRIPTOR \"d\"\nCREATED \"c\"\nMANUFACTURER \"m\"\nPROD_DATE \"p\"\nSERIAL \"s\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n";
-        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let p = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         if !p.is_null() {
             for (prop, name) in [
                 (b"ORIGINATOR\0".as_ptr() as *const _, "orig"),
@@ -1347,8 +1525,11 @@ fn it8_deep_arms6() {
         }
         // multi-sheet table navigation + SheetType
         let doc2 = b"IT8FILE\nDATA_IDENTIFIER \"sheet1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"sheet2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"sheet3\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n3\nEND_DATA\n";
-        let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc2.as_ptr() as *const _, doc2.len() as u32);
+        let p2 = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc2.as_ptr() as *const _,
+            doc2.len() as u32,
+        );
         if !p2.is_null() {
             let nt = c::cmsIT8TableCount(p2);
             eprintln!("3sheet tables={nt}");
@@ -1404,8 +1585,11 @@ fn it8_deep_arms7() {
             (b"IT8FILE\nP1 \"a\\\"b\\\"c\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "nested-esc"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1459,8 +1643,11 @@ fn it8_deep_arms8() {
             (b"IT8FILE\nP1 \"unterminated\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "unterm-str"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1475,28 +1662,28 @@ fn it8_deep_arms8() {
 fn it8_deep_arms9() {
     unsafe {
         let doc = b"IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 4\nBEGIN_DATA_FORMAT\nSAMPLE_ID L A\nEND_DATA_FORMAT\nBEGIN_DATA\n1 50 0\n2 60 10\n3 70 -10\n4 80 5\nEND_DATA\n";
-        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let p = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         if !p.is_null() {
             // SetDataRowCol / GetDataRowCol for every cell
             for r in 0..4i32 {
                 for c_ in 0..3i32 {
                     let v = c::cmsIT8GetDataRowCol(p, r, c_);
-                    eprintln!("data[{r}][{c_}]={}",
-                        !v.is_null());
+                    eprintln!("data[{r}][{c_}]={}", !v.is_null());
                     let _ = v;
                 }
             }
             // SetDataRowCol writes
-            let ok = c::cmsIT8SetDataRowCol(p, 0, 0,
-                b"99\0".as_ptr() as *const _);
+            let ok = c::cmsIT8SetDataRowCol(p, 0, 0, b"99\0".as_ptr() as *const _);
             eprintln!("setdata={ok}");
-            let ok2 = c::cmsIT8SetDataRowCol(p, -1, 0,
-                b"bad\0".as_ptr() as *const _);
+            let ok2 = c::cmsIT8SetDataRowCol(p, -1, 0, b"bad\0".as_ptr() as *const _);
             eprintln!("setdata-neg={ok2}");
             // GetDataDbl on numeric cells
-            let d = c::cmsIT8GetDataDbl(p, b"L\0".as_ptr() as *const _,
-                b"1\0".as_ptr() as *const _);
+            let d =
+                c::cmsIT8GetDataDbl(p, b"L\0".as_ptr() as *const _, b"1\0".as_ptr() as *const _);
             eprintln!("getdbldbl={d}");
             // property enum + get on all
             let mut names: *mut *mut i8 = std::ptr::null_mut();
@@ -1505,31 +1692,37 @@ fn it8_deep_arms9() {
             // save + reload
             let mut buf = vec![0u8; 1 << 20];
             let mut n = buf.len() as u32;
-            let s = c::cmsIT8SaveToMem(p,
-                buf.as_mut_ptr() as *mut _, &mut n);
+            let s = c::cmsIT8SaveToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
             eprintln!("save={s}");
             let rp = if s != 0 {
-                c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                    buf.as_ptr() as *const _, n)
-            } else { std::ptr::null_mut() };
+                c::cmsIT8LoadFromMem(std::ptr::null_mut(), buf.as_ptr() as *const _, n)
+            } else {
+                std::ptr::null_mut()
+            };
             eprintln!("reload={}", !rp.is_null());
-            if !rp.is_null() { c::cmsIT8Free(rp); }
+            if !rp.is_null() {
+                c::cmsIT8Free(rp);
+            }
             c::cmsIT8Free(p);
         }
         // multi-table with data — GetPatchByName/DataByName
         let doc2 = b"IT8FILE\nDATA_IDENTIFIER \"tab1\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"tab2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n5\nEND_DATA\n";
-        let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc2.as_ptr() as *const _, doc2.len() as u32);
+        let p2 = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc2.as_ptr() as *const _,
+            doc2.len() as u32,
+        );
         if !p2.is_null() {
             // SetTableByLabel on each sheet
-            let ok = c::cmsIT8SetTableByLabel(p2,
+            let ok = c::cmsIT8SetTableByLabel(
+                p2,
                 b"A\0".as_ptr() as *const _,
                 b"1\0".as_ptr() as *const _,
-                b"\0".as_ptr() as *const _);
+                b"\0".as_ptr() as *const _,
+            );
             eprintln!("settab={ok}");
-            let d = c::cmsIT8GetDataDbl(p2,
-                b"A\0".as_ptr() as *const _,
-                b"1\0".as_ptr() as *const _);
+            let d =
+                c::cmsIT8GetDataDbl(p2, b"A\0".as_ptr() as *const _, b"1\0".as_ptr() as *const _);
             eprintln!("getdata={d}");
             c::cmsIT8Free(p2);
         }
@@ -1543,8 +1736,11 @@ fn it8_deep_arms10() {
     unsafe {
         // save to file → BuildAbsolutePath/WriteHeader arms
         let doc = b"IT8FILE\nKEYWORD \"K\"\nORIGINATOR \"o\"\nDESCRIPTOR \"d\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n";
-        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let p = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         if !p.is_null() {
             let tmp = std::env::temp_dir().join("it8_test.icc");
             let path = tmp.to_str().unwrap();
@@ -1552,25 +1748,27 @@ fn it8_deep_arms10() {
             let s = c::cmsIT8SaveToFile(p, cpath.as_ptr());
             eprintln!("savefile={s}");
             // reload from file
-            let rp = c::cmsIT8LoadFromFile(std::ptr::null_mut(),
-                cpath.as_ptr());
+            let rp = c::cmsIT8LoadFromFile(std::ptr::null_mut(), cpath.as_ptr());
             eprintln!("loadfile={}", !rp.is_null());
-            if !rp.is_null() { c::cmsIT8Free(rp); }
+            if !rp.is_null() {
+                c::cmsIT8Free(rp);
+            }
             let _ = std::fs::remove_file(&tmp);
             c::cmsIT8Free(p);
         }
         // multi-sheet save+load round-trip
         let doc2 = b"IT8FILE\nDATA_IDENTIFIER \"s1\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\nIT8FILE\nDATA_IDENTIFIER \"s2\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\nBEGIN_DATA\n2\nEND_DATA\n";
-        let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc2.as_ptr() as *const _, doc2.len() as u32);
+        let p2 = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc2.as_ptr() as *const _,
+            doc2.len() as u32,
+        );
         if !p2.is_null() {
             let tmp = std::env::temp_dir().join("it8_multi.icc");
-            let cpath = std::ffi::CString::new(
-                tmp.to_str().unwrap()).unwrap();
+            let cpath = std::ffi::CString::new(tmp.to_str().unwrap()).unwrap();
             let s = c::cmsIT8SaveToFile(p2, cpath.as_ptr());
             eprintln!("multi-save={s}");
-            let rp = c::cmsIT8LoadFromFile(std::ptr::null_mut(),
-                cpath.as_ptr());
+            let rp = c::cmsIT8LoadFromFile(std::ptr::null_mut(), cpath.as_ptr());
             if !rp.is_null() {
                 let nt = c::cmsIT8TableCount(rp);
                 eprintln!("multi-load tables={nt}");
@@ -1610,8 +1808,11 @@ fn it8_deep_arms11() {
             (b"IT8FILE\nNUMBER_OF_FIELDS +2\nNUMBER_OF_SETS +3\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\n5 6\nEND_DATA\n".to_vec(), "plus-counts"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1654,8 +1855,11 @@ fn it8_deep_arms12() {
             (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 4\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n-1 +1\n.5 -.5\n1e-3 +1e3\n0xFF -0x1F\nEND_DATA\n".to_vec(), "signed-data"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1691,8 +1895,11 @@ fn it8_deep_arms13() {
             (b"IT8FILE\nP1 007\nP2 0x007\nP3 00.7\nP4 0.007\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "lz-nums"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1733,8 +1940,11 @@ fn it8_deep_arms14() {
             (b"IT8FILE\nnumber_of_fields 1\nNumber_Of_Sets 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "lowcase-kw"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1767,8 +1977,11 @@ fn it8_deep_arms15() {
             (b"IT8FILE\nNUMBER_OF_FIELDS 5\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nF1 F_2 F-3 F.4 F:5\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3 4 5\nEND_DATA\n".to_vec(), "field-names"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1805,8 +2018,11 @@ fn it8_deep_arms16() {
             (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n\"IT8FILE\" \"BEGIN_DATA\"\n\"END_DATA\" \"NUMBER_OF_FIELDS\"\nEND_DATA\n".to_vec(), "quoted-kw"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1872,8 +2088,11 @@ fn it8_deep_arms17() {
             (b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n\"a b\" \"c d\"\n\"e f\" \"g h\"\nEND_DATA\n".to_vec(), "ws-str"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1910,8 +2129,11 @@ fn it8_deep_arms18() {
             (b"IT8FILE".to_vec(), "eof-sig"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1952,8 +2174,11 @@ fn it8_deep_arms19() {
             (b"IT8FILE\nP1 \"a\"\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 3\nP2 \"b\"\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nP3 \"c\"\nBEGIN_DATA\n1 2\n3 4\n5 6\nEND_DATA\nP4 \"d\"\nIT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\nBEGIN_DATA\n7\nEND_DATA\n".to_vec(), "mixed-all"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -1999,8 +2224,11 @@ fn it8_deep_arms20() {
                 v }, "64-fields"),
         ];
         for (doc, name) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} parse={}", !p.is_null());
             if !p.is_null() {
                 c::cmsIT8Free(p);
@@ -2070,13 +2298,15 @@ fn it8_insymbol_arms() {
             (base.to_vec(), "base"),
         ];
         for (doc, name) in &docs {
-            let it8 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let it8 = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             let ok = !it8.is_null();
             let mut n = 0i32;
             if ok {
-                n = c::cmsIT8EnumDataFormat(it8,
-                    std::ptr::null_mut());
+                n = c::cmsIT8EnumDataFormat(it8, std::ptr::null_mut());
                 c::cmsIT8Free(it8);
             }
             eprintln!("{name} ok={ok} nfmt={n}");
@@ -2091,7 +2321,8 @@ fn it8_header_pair_arms() {
     unsafe {
         let tail = b"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
             BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-            BEGIN_DATA\n1\nEND_DATA\n".to_vec();
+            BEGIN_DATA\n1\nEND_DATA\n"
+            .to_vec();
         let doc = |props: &str| -> Vec<u8> {
             let mut d = b"IT8FILE\n".to_vec();
             d.extend_from_slice(props.as_bytes());
@@ -2099,44 +2330,46 @@ fn it8_header_pair_arms() {
             d
         };
         let variants: Vec<(Vec<u8>, &str)> = vec![
-            (doc("WEIGHTING_FUNCTION \"observer;10deg\""),
-                "wf-pair"),
-            (doc("WEIGHTING_FUNCTION \"observer;10deg;\
-                illuminant;D65\""), "wf-2pairs"),
-            (doc("COMPUTATIONAL_PARAMETER \"method;CIE15\""),
-                "cp-pair"),
-            (doc("WEIGHTING_FUNCTION \"observer\""),
-                "wf-nopair"),
+            (doc("WEIGHTING_FUNCTION \"observer;10deg\""), "wf-pair"),
+            (
+                doc("WEIGHTING_FUNCTION \"observer;10deg;\
+                illuminant;D65\""),
+                "wf-2pairs",
+            ),
+            (doc("COMPUTATIONAL_PARAMETER \"method;CIE15\""), "cp-pair"),
+            (doc("WEIGHTING_FUNCTION \"observer\""), "wf-nopair"),
             (doc("WEIGHTING_FUNCTION 42"), "wf-nonstring"),
             (doc("WEIGHTING_FUNCTION \";\""), "wf-empty"),
-            (doc("WEIGHTING_FUNCTION \"a;;b\""),
-                "wf-empty-val"),
-            (doc("WEIGHTING_FUNCTION \"a;b;c\""),
-                "wf-odd"),
-            (doc("NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+            (doc("WEIGHTING_FUNCTION \"a;;b\""), "wf-empty-val"),
+            (doc("WEIGHTING_FUNCTION \"a;b;c\""), "wf-odd"),
+            (
+                doc("NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
                 WEIGHTING_FUNCTION \"x;y\"\nORIGINATOR \"o\""),
-                "wf-mid"),
+                "wf-mid",
+            ),
         ];
         for (d, name) in &variants {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                d.as_ptr() as *const _, d.len() as u32);
+            let p =
+                c::cmsIT8LoadFromMem(std::ptr::null_mut(), d.as_ptr() as *const _, d.len() as u32);
             let ok = !p.is_null();
             eprintln!("{name} ok={ok}");
             if ok {
                 // round-trip via SetPropertyMulti + save
-                c::cmsIT8SetPropertyMulti(p,
+                c::cmsIT8SetPropertyMulti(
+                    p,
                     "WEIGHTING_FUNCTION\0".as_ptr() as *const i8,
                     "observer\0".as_ptr() as *const i8,
-                    "2deg\0".as_ptr() as *const i8);
+                    "2deg\0".as_ptr() as *const i8,
+                );
                 let mut buf = vec![0u8; 1 << 16];
                 let mut n = buf.len() as u32;
-                let sv = c::cmsIT8SaveToMem(p,
-                    buf.as_mut_ptr() as *mut _, &mut n);
+                let sv = c::cmsIT8SaveToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
                 if sv != 0 {
-                    let p2 = c::cmsIT8LoadFromMem(
-                        std::ptr::null_mut(),
-                        buf.as_ptr() as *const _, n);
-                    if !p2.is_null() { c::cmsIT8Free(p2); }
+                    let p2 =
+                        c::cmsIT8LoadFromMem(std::ptr::null_mut(), buf.as_ptr() as *const _, n);
+                    if !p2.is_null() {
+                        c::cmsIT8Free(p2);
+                    }
                 }
                 c::cmsIT8Free(p);
             }
@@ -2154,40 +2387,62 @@ fn cube_parse_arms2() {
             f.push(format!("devin_cube_{}.cube", std::process::id()));
             let mut path = f.clone();
             path.set_file_name(format!(
-                "devin_cube_{}_{:x}.cube", std::process::id(),
-                body.len() ^ (body.as_ptr() as usize & 0xffff)));
+                "devin_cube_{}_{:x}.cube",
+                std::process::id(),
+                body.len() ^ (body.as_ptr() as usize & 0xffff)
+            ));
             std::fs::write(&path, body).unwrap();
             path
         };
         let variants: Vec<(String, &str)> = vec![
             // full 1D shaper + 3D LUT
-            ("TITLE \"full\"\nLUT_1D_SIZE 2\nLUT_3D_SIZE 2\n\
+            (
+                "TITLE \"full\"\nLUT_1D_SIZE 2\nLUT_3D_SIZE 2\n\
               DOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n\
               0 0 0\n1 1 1\n\
               0 0 0\n1 0 0\n0 1 0\n0 0 1\n1 1 0\n1 0 1\n0 1 1\n\
-              1 1 1\n".into(), "full"),
+              1 1 1\n"
+                    .into(),
+                "full",
+            ),
             // 1D shaper only
             ("LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".into(), "1d-only"),
             // 3D LUT only
-            ("LUT_3D_SIZE 2\n\
+            (
+                "LUT_3D_SIZE 2\n\
               0 0 0\n1 0 0\n0 1 0\n0 0 1\n\
-              1 1 0\n1 0 1\n0 1 1\n1 1 1\n".into(), "3d-only"),
+              1 1 0\n1 0 1\n0 1 1\n1 1 1\n"
+                    .into(),
+                "3d-only",
+            ),
             // shaper 2 + lut 2 + non-default domain
-            ("TITLE \"dom\"\nLUT_1D_SIZE 2\nLUT_3D_SIZE 2\n\
+            (
+                "TITLE \"dom\"\nLUT_1D_SIZE 2\nLUT_3D_SIZE 2\n\
               DOMAIN_MIN -0.5 -0.5 -0.5\nDOMAIN_MAX 0.9 0.9 0.9\n\
               0 0 0\n1 1 1\n\
               0 0 0\n1 0 0\n0 1 0\n0 0 1\n\
-              1 1 0\n1 0 1\n0 1 1\n1 1 1\n".into(), "domain"),
+              1 1 0\n1 0 1\n0 1 1\n1 1 1\n"
+                    .into(),
+                "domain",
+            ),
             // out-of-range sizes
             ("LUT_1D_SIZE 1\n".into(), "s1d-too-small"),
             ("LUT_1D_SIZE 70000\n".into(), "s1d-too-big"),
             ("LUT_3D_SIZE 1\n".into(), "s3d-too-small"),
             ("LUT_3D_SIZE 66\n".into(), "s3d-too-big"),
             // input-range not 0..1 → reject
-            ("LUT_1D_SIZE 2\nLUT_1D_INPUT_RANGE 0 2\n\
-              0 0 0\n1 1 1\n".into(), "rng1d"),
-            ("LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0.5 1\n\
-              0 0 0\n".into(), "rng3d"),
+            (
+                "LUT_1D_SIZE 2\nLUT_1D_INPUT_RANGE 0 2\n\
+              0 0 0\n1 1 1\n"
+                    .into(),
+                "rng1d",
+            ),
+            (
+                "LUT_3D_SIZE 2\nLUT_3D_INPUT_RANGE 0.5 1\n\
+              0 0 0\n"
+                    .into(),
+                "rng3d",
+            ),
             // video range → unsupported
             ("LUT_IN_VIDEO_RANGE 0 1\n".into(), "vin"),
             ("LUT_OUT_VIDEO_RANGE 0 1\n".into(), "vout"),
@@ -2195,25 +2450,23 @@ fn cube_parse_arms2() {
             ("LUT_1D_SIZE 2\n0 0\n".into(), "row-short"),
             ("LUT_1D_SIZE 2\n0 0 0\n".into(), "rows-few"),
             // extra tokens → extra-symbols reject
-            ("LUT_1D_SIZE 2\n0 0 0\n1 1 1\ngarbage\n".into(),
-                "extra"),
+            ("LUT_1D_SIZE 2\n0 0 0\n1 1 1\ngarbage\n".into(), "extra"),
             // title + eoln-only + empty
-            ("TITLE \"t\"\n\n\nLUT_1D_SIZE 2\n0 0 0\n1 1 1\n"
-                .into(), "title-eol"),
+            (
+                "TITLE \"t\"\n\n\nLUT_1D_SIZE 2\n0 0 0\n1 1 1\n".into(),
+                "title-eol",
+            ),
             ("".into(), "empty"),
         ];
         for (body, name) in &variants {
             let path = mk(body);
-            let cstr = std::ffi::CString::new(
-                path.to_str().unwrap()).unwrap();
-            let p = c::cmsCreateDeviceLinkFromCubeFile(
-                cstr.as_ptr());
+            let cstr = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+            let p = c::cmsCreateDeviceLinkFromCubeFile(cstr.as_ptr());
             eprintln!("{name} prof={}", !p.is_null());
             if !p.is_null() {
                 let mut buf = vec![0u8; 1 << 20];
                 let mut n = buf.len() as u32;
-                let s = c::cmsSaveProfileToMem(p,
-                    buf.as_mut_ptr() as *mut _, &mut n);
+                let s = c::cmsSaveProfileToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
                 eprintln!("{name} save={s}");
                 c::cmsCloseProfile(p);
             }
@@ -2248,16 +2501,23 @@ fn it8_parsefloat_arms() {
             ("inf", "inf"),
         ];
         for (tok, name) in &forms {
-            let doc = format!("IT8FILE\nNUMBER_OF_FIELDS 1\n\
+            let doc = format!(
+                "IT8FILE\nNUMBER_OF_FIELDS 1\n\
                 NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\n\
-                END_DATA_FORMAT\nBEGIN_DATA\n{tok}\nEND_DATA\n");
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+                END_DATA_FORMAT\nBEGIN_DATA\n{tok}\nEND_DATA\n"
+            );
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name}({tok}) ok={}", !p.is_null());
             if !p.is_null() {
-                let v = c::cmsIT8GetDataDbl(p,
+                let v = c::cmsIT8GetDataDbl(
+                    p,
                     b"A\0".as_ptr() as *const i8,
-                    b"A\0".as_ptr() as *const i8);
+                    b"A\0".as_ptr() as *const i8,
+                );
                 eprintln!("  val={v}");
                 c::cmsIT8Free(p);
             }
@@ -2271,10 +2531,13 @@ fn it8_parsefloat_arms() {
 #[test]
 fn insymbol_edge_arms() {
     unsafe {
-        let base = |body: &str| format!(
-            "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+        let base = |body: &str| {
+            format!(
+                "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
             BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-            BEGIN_DATA\n{body}\nEND_DATA\n");
+            BEGIN_DATA\n{body}\nEND_DATA\n"
+            )
+        };
         let docs: Vec<(String, &str)> = vec![
             (base("5 # comment"), "hash-comment"),
             (base("'sq str'"), "sq-string"),
@@ -2310,10 +2573,15 @@ fn insymbol_edge_arms() {
             (base("5\r6\r7"), "multi-cr"),
         ];
         for (doc, name) in &docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} ok={}", !p.is_null());
-            if !p.is_null() { c::cmsIT8Free(p); }
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
         }
     }
 }
@@ -2324,15 +2592,22 @@ fn insymbol_edge_arms() {
 #[test]
 fn header_arms2() {
     unsafe {
-        let wrap = |hdr: &str| format!(
-            "IT8FILE\n{hdr}NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+        let wrap = |hdr: &str| {
+            format!(
+                "IT8FILE\n{hdr}NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
             BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-            BEGIN_DATA\n5\nEND_DATA\n");
+            BEGIN_DATA\n5\nEND_DATA\n"
+            )
+        };
         let docs: Vec<(String, &str)> = vec![
-            (wrap("#KEYWORD CUSTOMKEY\nCUSTOMKEY \"val\"\n"),
-                "keyword-decl"),
-            (wrap("#DATA_FORMAT_IDENTIFIER SAMPLEID\n"),
-                "datafmt-id-decl"),
+            (
+                wrap("#KEYWORD CUSTOMKEY\nCUSTOMKEY \"val\"\n"),
+                "keyword-decl",
+            ),
+            (
+                wrap("#DATA_FORMAT_IDENTIFIER SAMPLEID\n"),
+                "datafmt-id-decl",
+            ),
             (wrap("ORIGINATOR \"quoted value\"\n"), "quoted-val"),
             (wrap("ORIGINATOR unquoted\n"), "unquoted-val"),
             (wrap("ORIGINATOR 42\n"), "num-val"),
@@ -2340,8 +2615,7 @@ fn header_arms2() {
             (wrap("INSTRUMENTATION \"a\" \"b\"\n"), "two-strs"),
             (wrap("WEIGHTING_FUNCTION \"w=1\"\n"), "wfpair-str"),
             (wrap("WEIGHTING_FUNCTION 42\n"), "wfpair-nonstr"),
-            (wrap("WEIGHTING_FUNCTION badident\n"),
-                "wfpair-ident"),
+            (wrap("WEIGHTING_FUNCTION badident\n"), "wfpair-ident"),
             (wrap("\n\nORIGINATOR \"v\"\n\n"), "blank-lines"),
             (wrap("ORIGINATOR \"v\"\n# comment\n"), "comment"),
             (wrap("5 badtok\n"), "num-token"),
@@ -2355,14 +2629,15 @@ fn header_arms2() {
             (wrap("MYKEY\t\"tabbed\"\n"), "tab-sep"),
         ];
         for (doc, name) in &docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} ok={}", !p.is_null());
             if !p.is_null() {
-                let v = c::cmsIT8GetProperty(
-                    p, b"ORIGINATOR\0".as_ptr() as *const i8);
-                let v2 = c::cmsIT8GetProperty(
-                    p, b"CUSTOMKEY\0".as_ptr() as *const i8);
+                let v = c::cmsIT8GetProperty(p, b"ORIGINATOR\0".as_ptr() as *const i8);
+                let v2 = c::cmsIT8GetProperty(p, b"CUSTOMKEY\0".as_ptr() as *const i8);
                 eprintln!("  orig={v:?} cust={v2:?}");
                 c::cmsIT8Free(p);
             }
@@ -2380,22 +2655,26 @@ fn it8_table_by_label_arms() {
             IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
             BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
             BEGIN_DATA\n6\nEND_DATA\n";
-        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let p = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         eprintln!("load={}", !p.is_null());
         if !p.is_null() {
             for (set, field, exp, name) in [
-                (b"A\0" as &[u8], b"A\0" as &[u8],
-                    b"A\0" as &[u8], "a-a"),
+                (b"A\0" as &[u8], b"A\0" as &[u8], b"A\0" as &[u8], "a-a"),
                 (b"set0\0", b"A\0", b"A\0", "set0-a"),
                 (b"\0", b"A\0", b"A\0", "empty"),
                 (b"set0\0", b"\0", b"\0", "empty-field"),
                 (b"no\0", b"no\0", b"no\0", "miss"),
             ] {
-                let r = c::cmsIT8SetTableByLabel(p,
+                let r = c::cmsIT8SetTableByLabel(
+                    p,
                     set.as_ptr() as *const i8,
                     field.as_ptr() as *const i8,
-                    exp.as_ptr() as *const i8);
+                    exp.as_ptr() as *const i8,
+                );
                 eprintln!("{name}={r}");
             }
             let r = c::cmsIT8SetTable(p, 1);
@@ -2412,69 +2691,98 @@ fn it8_table_by_label_arms() {
 #[test]
 fn it8_struct_arms() {
     let docs: &[(&str, &str)] = &[
-        ("it8file basic",
-         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+        (
+            "it8file basic",
+            "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1 2\nEND_DATA\n"),
-        ("it8multi 2-tables",
-         "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n1 2\nEND_DATA\n",
+        ),
+        (
+            "it8multi 2-tables",
+            "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
           BEGIN_DATA\n1\nEND_DATA\n\
           IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n2\nEND_DATA\n"),
-        ("cgats.17",
-         "CGATS.17\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n2\nEND_DATA\n",
+        ),
+        (
+            "cgats.17",
+            "CGATS.17\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1\nEND_DATA\n"),
-        ("it8/2",
-         "IT8/2\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n1\nEND_DATA\n",
+        ),
+        (
+            "it8/2",
+            "IT8/2\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1\nEND_DATA\n"),
-        ("props-mix",
-         "IT8FILE\nORIGINATOR \"o\"\nPROD_DATE \"2024\"\n\
+          BEGIN_DATA\n1\nEND_DATA\n",
+        ),
+        (
+            "props-mix",
+            "IT8FILE\nORIGINATOR \"o\"\nPROD_DATE \"2024\"\n\
           NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1\nEND_DATA\n"),
+          BEGIN_DATA\n1\nEND_DATA\n",
+        ),
         ("hdr-only", "IT8FILE\n"),
-        ("unterminated-data",
-         "IT8FILE\nNUMBER_OF_FIELDS 1\n\
+        (
+            "unterminated-data",
+            "IT8FILE\nNUMBER_OF_FIELDS 1\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1\n"),
-        ("nested-bad",
-         "IT8FILE\nBEGIN_DATA_FORMAT\nBEGIN_DATA_FORMAT\n"),
+          BEGIN_DATA\n1\n",
+        ),
+        (
+            "nested-bad",
+            "IT8FILE\nBEGIN_DATA_FORMAT\nBEGIN_DATA_FORMAT\n",
+        ),
         ("bad-header", "NOTIT8\nfoo\n"),
-        ("weird-props",
-         "IT8FILE\n#COMMENT comment\nP1 = v1\nP2=v2\n\
+        (
+            "weird-props",
+            "IT8FILE\n#COMMENT comment\nP1 = v1\nP2=v2\n\
           NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1\nEND_DATA\n"),
-        ("strings",
-         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\n\
+          BEGIN_DATA\n1\nEND_DATA\n",
+        ),
+        (
+            "strings",
+            "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\n\
           BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
           BEGIN_DATA\n\"quoted\" unquoted\n\"with\\\\esc\" \\\"lit\\\"\n\
-          END_DATA\n"),
-        ("empty-rows",
-         "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 3\n\
+          END_DATA\n",
+        ),
+        (
+            "empty-rows",
+            "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 3\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n\n\n1\nEND_DATA\n"),
-        ("many-props",
-         "IT8FILE\nP1 1\nP2 2\nP3 3\nP4 4\nP5 5\n\
+          BEGIN_DATA\n\n\n1\nEND_DATA\n",
+        ),
+        (
+            "many-props",
+            "IT8FILE\nP1 1\nP2 2\nP3 3\nP4 4\nP5 5\n\
           NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1\nEND_DATA\n"),
-        ("quoted-labels",
-         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n1\nEND_DATA\n",
+        ),
+        (
+            "quoted-labels",
+            "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\n\"col one\" \"col two\"\n\
-          END_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n"),
-        ("no-data-section",
-         "IT8FILE\nNUMBER_OF_FIELDS 1\n\
-          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n"),
+          END_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n",
+        ),
+        (
+            "no-data-section",
+            "IT8FILE\nNUMBER_OF_FIELDS 1\n\
+          BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n",
+        ),
     ];
     unsafe {
         for (name, doc) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} load={}", !p.is_null());
             if !p.is_null() {
                 let n = c::cmsIT8GetDataRowCol(p, 0, 0);
@@ -2490,26 +2798,33 @@ fn it8_struct_arms() {
 #[test]
 fn it8_cookptr_arms() {
     let docs: &[(&str, &str)] = &[
-        ("label-ref",
-         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+        (
+            "label-ref",
+            "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA LABEL\nEND_DATA_FORMAT\n\
           BEGIN_DATA\n1 \"t2\"\nEND_DATA\n\
           IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n2\nEND_DATA\n"),
-        ("dollar-ref",
-         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n2\nEND_DATA\n",
+        ),
+        (
+            "dollar-ref",
+            "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA $REF\nEND_DATA_FORMAT\n\
           BEGIN_DATA\n1 \"t2\"\nEND_DATA\n\
           IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nB\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n2\nEND_DATA\n"),
-        ("sample-id",
-         "IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
+          BEGIN_DATA\n2\nEND_DATA\n",
+        ),
+        (
+            "sample-id",
+            "IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
           BEGIN_DATA_FORMAT\nSAMPLE_ID A B\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1 \"a\" 5\n2 \"b\" 6\nEND_DATA\n"),
-        ("multi-ref",
-         "IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
+          BEGIN_DATA\n1 \"a\" 5\n2 \"b\" 6\nEND_DATA\n",
+        ),
+        (
+            "multi-ref",
+            "IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
           BEGIN_DATA_FORMAT\nA LABEL $NEXT\nEND_DATA_FORMAT\n\
           BEGIN_DATA\n1 \"t2\" \"t3\"\n2 \"t3\" \"t2\"\nEND_DATA\n\
           IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
@@ -2517,24 +2832,31 @@ fn it8_cookptr_arms() {
           BEGIN_DATA\n5\nEND_DATA\n\
           IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nC\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n6\nEND_DATA\n"),
-        ("self-ref",
-         "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n6\nEND_DATA\n",
+        ),
+        (
+            "self-ref",
+            "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 1\n\
           BEGIN_DATA_FORMAT\nA LABEL\nEND_DATA_FORMAT\n\
-          BEGIN_DATA\n1 \"t1\"\nEND_DATA\n"),
-        ("nodataformat",
-         "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
-          BEGIN_DATA\n1\nEND_DATA\n"),
+          BEGIN_DATA\n1 \"t1\"\nEND_DATA\n",
+        ),
+        (
+            "nodataformat",
+            "IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
+          BEGIN_DATA\n1\nEND_DATA\n",
+        ),
     ];
     unsafe {
         for (name, doc) in docs {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} load={}", !p.is_null());
             if !p.is_null() {
                 let n = c::cmsIT8SetTable(p, 0);
-                let p0 = c::cmsIT8GetPatchByName(p,
-                    b"1\0".as_ptr() as *const i8);
+                let p0 = c::cmsIT8GetPatchByName(p, b"1\0".as_ptr() as *const i8);
                 let d = c::cmsIT8GetDataRowCol(p, 0, 1);
                 eprintln!("  tbl={n} patch={p0} d={d:?}");
                 c::cmsIT8Free(p);
@@ -2551,14 +2873,21 @@ fn it8_setdata_arms() {
         let doc = "IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\n\
             BEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\n\
             BEGIN_DATA\n1 2\n3 4\nEND_DATA\n";
-        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let p = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         eprintln!("load={}", !p.is_null());
         if !p.is_null() {
             // SetData patch/field/row forms
             for (patch, field, val, name) in [
-                (b"1\0" as &[u8], b"A\0" as &[u8],
-                    b"10\0" as &[u8], "patch1-A"),
+                (
+                    b"1\0" as &[u8],
+                    b"A\0" as &[u8],
+                    b"10\0" as &[u8],
+                    "patch1-A",
+                ),
                 (b"2\0", b"B\0", b"20\0", "patch2-B"),
                 (b"\0", b"A\0", b"x\0", "empty-patch"),
                 (b"1\0", b"\0", b"x\0", "empty-field"),
@@ -2566,25 +2895,31 @@ fn it8_setdata_arms() {
                 (b"9\0", b"A\0", b"x\0", "no-patch"),
                 (b"1\0", b"Z\0", b"x\0", "no-field"),
             ] {
-                let r = c::cmsIT8SetData(p,
+                let r = c::cmsIT8SetData(
+                    p,
                     patch.as_ptr() as *const i8,
                     field.as_ptr() as *const i8,
-                    val.as_ptr() as *const i8);
+                    val.as_ptr() as *const i8,
+                );
                 eprintln!("{name}={r}");
             }
             // row/col forms
-            let r = c::cmsIT8SetDataRowCol(p, 0, 0,
-                b"99\0".as_ptr() as *const i8);
+            let r = c::cmsIT8SetDataRowCol(p, 0, 0, b"99\0".as_ptr() as *const i8);
             let d = c::cmsIT8GetDataRowCol(p, 0, 0);
-            let r2 = c::cmsIT8SetDataRowCol(p, 9, 9,
-                b"x\0".as_ptr() as *const i8);
+            let r2 = c::cmsIT8SetDataRowCol(p, 9, 9, b"x\0".as_ptr() as *const i8);
             eprintln!("rowcol {r} d={d:?} far={r2}");
             // SetDataDbl
-            let rd = c::cmsIT8SetDataDbl(p, b"1\0".as_ptr()
-                as *const i8, b"A\0".as_ptr() as *const i8,
-                3.14159);
-            let dd = c::cmsIT8GetDataDbl(p, b"1\0".as_ptr()
-                as *const i8, b"A\0".as_ptr() as *const i8);
+            let rd = c::cmsIT8SetDataDbl(
+                p,
+                b"1\0".as_ptr() as *const i8,
+                b"A\0".as_ptr() as *const i8,
+                3.14159,
+            );
+            let dd = c::cmsIT8GetDataDbl(
+                p,
+                b"1\0".as_ptr() as *const i8,
+                b"A\0".as_ptr() as *const i8,
+            );
             eprintln!("dbl {rd}={dd}");
             c::cmsIT8Free(p);
         }
@@ -2600,70 +2935,72 @@ fn it8_api_arms() {
             NUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 2\n\
             BEGIN_DATA_FORMAT\nSAMPLE_ID L a\nEND_DATA_FORMAT\n\
             BEGIN_DATA\n1 50 10\n2 60 20\nEND_DATA\n";
-        let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+        let p = c::cmsIT8LoadFromMem(
+            std::ptr::null_mut(),
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         eprintln!("load={}", !p.is_null());
-        if p.is_null() { return; }
+        if p.is_null() {
+            return;
+        }
         // comment + properties
-        c::cmsIT8SetComment(p, b"new comment\0".as_ptr()
-            as *const i8);
+        c::cmsIT8SetComment(p, b"new comment\0".as_ptr() as *const i8);
         c::cmsIT8SetComment(p, b"\0".as_ptr() as *const i8);
         let mut names: *mut *mut i8 = std::ptr::null_mut();
         let np = c::cmsIT8EnumProperties(p, &mut names);
         let mut names2: *mut *mut i8 = std::ptr::null_mut();
-        let np2 = c::cmsIT8EnumPropertyMulti(p,
-            b"ORIGINATOR\0".as_ptr() as *const i8,
-            &mut names2);
+        let np2 = c::cmsIT8EnumPropertyMulti(p, b"ORIGINATOR\0".as_ptr() as *const i8, &mut names2);
         let mut names3: *mut *mut i8 = std::ptr::null_mut();
-        let np3 = c::cmsIT8EnumPropertyMulti(p,
-            b"NOPROP\0".as_ptr() as *const i8,
-            &mut names3);
+        let np3 = c::cmsIT8EnumPropertyMulti(p, b"NOPROP\0".as_ptr() as *const i8, &mut names3);
         eprintln!("enumprop={np} multi={np2}/{np3}             n={names:?}/{names2:?}");
         // data format — set/get via SetDataFormat + Enum
-        for (i, nm) in [(0i32, b"SAMPLE_ID\0" as &[u8]),
-            (1, b"L\0"), (2, b"a\0"), (3, b"b\0"),
-            (9, b"bad\0")] {
-            let r = c::cmsIT8SetDataFormat(p, i,
-                nm.as_ptr() as *const i8);
+        for (i, nm) in [
+            (0i32, b"SAMPLE_ID\0" as &[u8]),
+            (1, b"L\0"),
+            (2, b"a\0"),
+            (3, b"b\0"),
+            (9, b"bad\0"),
+        ] {
+            let r = c::cmsIT8SetDataFormat(p, i, nm.as_ptr() as *const i8);
             eprintln!("fmt{i}->{nm:?}={r}");
         }
         let mut fnames: *mut *mut i8 = std::ptr::null_mut();
         let ne = c::cmsIT8EnumDataFormat(p, &mut fnames);
         eprintln!("enumfmt={ne} n={fnames:?}");
         // patch queries
-        for name in [b"1\0" as &[u8], b"2\0", b"9\0",
-            b"\0"] {
-            let i = c::cmsIT8GetPatchByName(p,
-                name.as_ptr() as *const i8);
+        for name in [b"1\0" as &[u8], b"2\0", b"9\0", b"\0"] {
+            let i = c::cmsIT8GetPatchByName(p, name.as_ptr() as *const i8);
             eprintln!("patch {:?}={i}", name);
         }
         // data getters — dbl + rowcol forms
-        let d = c::cmsIT8GetDataDbl(p,
+        let d = c::cmsIT8GetDataDbl(
+            p,
             b"1\0".as_ptr() as *const i8,
-            b"L\0".as_ptr() as *const i8);
+            b"L\0".as_ptr() as *const i8,
+        );
         let d2 = c::cmsIT8GetDataRowColDbl(p, 0, 1);
         let s_ = c::cmsIT8GetDataRowCol(p, 0, 0);
         eprintln!("dbl={d} rc={d2} s={s_:?}");
         // save to mem
         let mut buf = vec![0u8; 1 << 20];
         let mut needed = 0u32;
-        let r = c::cmsIT8SaveToMem(p,
-            buf.as_mut_ptr() as *mut _, &mut needed);
+        let r = c::cmsIT8SaveToMem(p, buf.as_mut_ptr() as *mut _, &mut needed);
         let mut needed2 = 0u32;
-        let r2 = c::cmsIT8SaveToMem(p,
-            std::ptr::null_mut(), &mut needed2);
+        let r2 = c::cmsIT8SaveToMem(p, std::ptr::null_mut(), &mut needed2);
         eprintln!("save={r} needed={needed}/{needed2} null={r2}");
         // table navigation
-        let t0 = c::cmsIT8SetTableByLabel(p,
+        let t0 = c::cmsIT8SetTableByLabel(
+            p,
             b"IT8FILE\0".as_ptr() as *const i8,
-            std::ptr::null(), std::ptr::null());
+            std::ptr::null(),
+            std::ptr::null(),
+        );
         let tc = c::cmsIT8TableCount(p);
         let ts = c::cmsIT8SetTable(p, 0);
         let ts2 = c::cmsIT8SetTable(p, 99);
-        let si = c::cmsIT8SetIndexColumn(p,
-            b"SAMPLE_ID\0".as_ptr() as *const i8);
-        let si2 = c::cmsIT8SetIndexColumn(p,
-            b"bad\0".as_ptr() as *const i8);
+        let si = c::cmsIT8SetIndexColumn(p, b"SAMPLE_ID\0".as_ptr() as *const i8);
+        let si2 = c::cmsIT8SetIndexColumn(p, b"bad\0".as_ptr() as *const i8);
         eprintln!("tab={t0} cnt={tc} ts={ts}/{ts2} idx={si}/{si2}");
         c::cmsIT8Free(p);
     }
@@ -2684,9 +3021,9 @@ fn cgats_residual_arms() {
             "IT8FILE -.5e+10\nBEGIN_DATA\nEND_DATA\n",
             "IT8FILE 0x1f\nBEGIN_DATA\nEND_DATA\n",
             "IT8FILE a-b_c.d\nBEGIN_DATA\nEND_DATA\n",
-            "IT8FILE \x1a\nBEGIN_DATA\nEND_DATA\n",   // Ctrl-Z
+            "IT8FILE \x1a\nBEGIN_DATA\nEND_DATA\n", // Ctrl-Z
             "IT8FILE \r\nBEGIN_DATA\nEND_DATA\n",   // CRLF
-            "IT8FILE\n BEGIN_DATA\nEND_DATA\n",      // leading ws
+            "IT8FILE\n BEGIN_DATA\nEND_DATA\n",     // leading ws
             "IT8FILE\nBEGIN_DATA\rEND_DATA\n",      // CR alone
             "IT8FILE\nBEGIN_DATA\nEND_DATA\n\x00\u{80}",
             "IT8FILE\n$INCLUDE \"path\"\nBEGIN_DATA\nEND_DATA\n",
@@ -2694,31 +3031,43 @@ fn cgats_residual_arms() {
             "IT8FILE\n#KEYWORD \"v\"\nBEGIN_DATA\nEND_DATA\n",
             "IT8FILE\n#DATA_FORMAT_IDENTIFIER\nBEGIN_DATA\nEND_DATA\n",
             "IT8FILE\nUNDEFINED_KEYWORD\nBEGIN_DATA\nEND_DATA\n",
-            "IT8FILE\nORIGINATOR\nBEGIN_DATA\nEND_DATA\n",   // no value
+            "IT8FILE\nORIGINATOR\nBEGIN_DATA\nEND_DATA\n", // no value
             "IT8FILE\nORIGINATOR \nBEGIN_DATA\nEND_DATA\n",
             "IT8FILE\nNUMBER_OF_FIELDS\nBEGIN_DATA\nEND_DATA\n",
             "IT8FILE\nNUMBER_OF_SETS x\nBEGIN_DATA\nEND_DATA\n",
             "IT8FILE\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n",
         ] {
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("doc{}={}", doc.len(), !p.is_null());
-            if !p.is_null() { c::cmsIT8Free(p); }
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
         }
         // ParseFloatNumber residual — all float forms in
         //   data rows
-        for num in ["0", "1", "-1", "0.5", "-0.5", ".5", "5.",
-            "1e2", "1E2", "1e+2", "1e-2", "1.5e3", "-1.5e-3",
-            "1.", ".1", "1e", "1e+", "1e-", "1.5e", "inf",
-            "nan", "-inf", "1_0", "1,0", " 1", "1 ", "\t1",
-            "0x10", "010", "1a", "a1", "+1", "--1", "1..5"] {
-            let doc = format!("IT8FILE\nNUMBER_OF_FIELDS 1\n\
+        for num in [
+            "0", "1", "-1", "0.5", "-0.5", ".5", "5.", "1e2", "1E2", "1e+2", "1e-2", "1.5e3",
+            "-1.5e-3", "1.", ".1", "1e", "1e+", "1e-", "1.5e", "inf", "nan", "-inf", "1_0", "1,0",
+            " 1", "1 ", "\t1", "0x10", "010", "1a", "a1", "+1", "--1", "1..5",
+        ] {
+            let doc = format!(
+                "IT8FILE\nNUMBER_OF_FIELDS 1\n\
                 NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nSAMPLE_ID\n\
-                END_DATA_FORMAT\nBEGIN_DATA\n{num}\nEND_DATA\n");
-            let p = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+                END_DATA_FORMAT\nBEGIN_DATA\n{num}\nEND_DATA\n"
+            );
+            let p = c::cmsIT8LoadFromMem(
+                std::ptr::null_mut(),
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("num '{num}'={}", !p.is_null());
-            if !p.is_null() { c::cmsIT8Free(p); }
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
         }
     }
 }
@@ -2730,73 +3079,63 @@ fn it8_write_arms() {
     unsafe {
         for n in 0..3 {
             let p = c::cmsIT8Alloc(std::ptr::null_mut());
-            c::cmsIT8SetSheetType(p,
-                b"IT8.7/2\0".as_ptr() as *const i8);
+            c::cmsIT8SetSheetType(p, b"IT8.7/2\0".as_ptr() as *const i8);
             // all property types
-            c::cmsIT8SetPropertyStr(p, b"ORIGINATOR\0".as_ptr()
-                as *const i8, b"zen\0".as_ptr() as *const i8);
-            c::cmsIT8SetPropertyDbl(p, b"NUM\0".as_ptr()
-                as *const i8, 42.5);
-            c::cmsIT8SetPropertyHex(p, b"HEX\0".as_ptr()
-                as *const i8, 0xdead);
-            c::cmsIT8SetPropertyUncooked(p,
+            c::cmsIT8SetPropertyStr(
+                p,
+                b"ORIGINATOR\0".as_ptr() as *const i8,
+                b"zen\0".as_ptr() as *const i8,
+            );
+            c::cmsIT8SetPropertyDbl(p, b"NUM\0".as_ptr() as *const i8, 42.5);
+            c::cmsIT8SetPropertyHex(p, b"HEX\0".as_ptr() as *const i8, 0xdead);
+            c::cmsIT8SetPropertyUncooked(
+                p,
                 b"UNC\0".as_ptr() as *const i8,
-                b"raw $x y\0".as_ptr() as *const i8);
-            c::cmsIT8SetComment(p,
-                b"a comment\0".as_ptr() as *const i8);
-            c::cmsIT8SetPropertyMulti(p,
+                b"raw $x y\0".as_ptr() as *const i8,
+            );
+            c::cmsIT8SetComment(p, b"a comment\0".as_ptr() as *const i8);
+            c::cmsIT8SetPropertyMulti(
+                p,
                 b"MULTI\0".as_ptr() as *const i8,
                 b"sub1\0".as_ptr() as *const i8,
-                b"val1\0".as_ptr() as *const i8);
+                b"val1\0".as_ptr() as *const i8,
+            );
             // data format + rows
-            c::cmsIT8SetDataFormat(p, 0,
-                b"SAMPLE_ID\0".as_ptr() as *const i8);
-            c::cmsIT8SetDataFormat(p, 1,
-                b"LAB_L\0".as_ptr() as *const i8);
-            c::cmsIT8SetDataFormat(p, 2,
-                b"LAB_A\0".as_ptr() as *const i8);
-            c::cmsIT8SetDataFormat(p, 3,
-                b"LAB_B\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 0, b"SAMPLE_ID\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 1, b"LAB_L\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 2, b"LAB_A\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 3, b"LAB_B\0".as_ptr() as *const i8);
             let rows = (n + 1) * 4;
-            c::cmsIT8SetPropertyDbl(p,
-                b"NUMBER_OF_SETS\0".as_ptr() as *const i8,
-                rows as f64);
-            c::cmsIT8SetPropertyDbl(p,
-                b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8,
-                4.0);
+            c::cmsIT8SetPropertyDbl(p, b"NUMBER_OF_SETS\0".as_ptr() as *const i8, rows as f64);
+            c::cmsIT8SetPropertyDbl(p, b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8, 4.0);
             for i in 0..rows {
                 let nm = format!("n{i}\0");
-                c::cmsIT8SetDataRowCol(p, i as i32, 0,
-                    nm.as_ptr() as *const i8);
-                c::cmsIT8SetDataRowColDbl(p, i as i32, 1,
-                    50.0 + i as f64);
-                c::cmsIT8SetDataRowColDbl(p, i as i32, 2,
-                    i as f64 - 10.0);
-                c::cmsIT8SetDataRowColDbl(p, i as i32, 3,
-                    i as f64 + 5.0);
+                c::cmsIT8SetDataRowCol(p, i as i32, 0, nm.as_ptr() as *const i8);
+                c::cmsIT8SetDataRowColDbl(p, i as i32, 1, 50.0 + i as f64);
+                c::cmsIT8SetDataRowColDbl(p, i as i32, 2, i as f64 - 10.0);
+                c::cmsIT8SetDataRowColDbl(p, i as i32, 3, i as f64 + 5.0);
             }
             let mut buf = vec![0u8; 1 << 18];
             let mut sz = buf.len() as u32;
-            let s = c::cmsIT8SaveToMem(p,
-                buf.as_mut_ptr() as *mut _,
-                &mut sz);
+            let s = c::cmsIT8SaveToMem(p, buf.as_mut_ptr() as *mut _, &mut sz);
             eprintln!("it8 n{n} save={s} sz={sz}");
             // reload and re-enumerate
-            let rp = c::cmsIT8LoadFromMem(
-                std::ptr::null_mut(),
-                buf.as_ptr() as *const _, sz);
+            let rp = c::cmsIT8LoadFromMem(std::ptr::null_mut(), buf.as_ptr() as *const _, sz);
             if !rp.is_null() {
                 for name in [
                     b"ORIGINATOR\0".as_slice(),
-                    b"NUM\0", b"HEX\0", b"UNC\0",
-                    b"MULTI\0", b"nonexist\0"] {
-                    let v = c::cmsIT8GetProperty(rp,
-                        name.as_ptr() as *const i8);
-                    let d = c::cmsIT8GetPropertyDbl(rp,
-                        name.as_ptr() as *const i8);
-                    eprintln!("  {:?} v={v:?} d={d}",
-                        std::str::from_utf8(name)
-                            .unwrap_or("?"));
+                    b"NUM\0",
+                    b"HEX\0",
+                    b"UNC\0",
+                    b"MULTI\0",
+                    b"nonexist\0",
+                ] {
+                    let v = c::cmsIT8GetProperty(rp, name.as_ptr() as *const i8);
+                    let d = c::cmsIT8GetPropertyDbl(rp, name.as_ptr() as *const i8);
+                    eprintln!(
+                        "  {:?} v={v:?} d={d}",
+                        std::str::from_utf8(name).unwrap_or("?")
+                    );
                 }
                 c::cmsIT8Free(rp);
             }
@@ -2817,79 +3156,115 @@ fn cgats_errpath_arms() {
             ("IT8FILE\n", "hdr-only"),
             ("IT8FILE\nBEGIN_DATA\n", "no-end"),
             ("IT8FILE\nEND_DATA\n", "data-no-begin"),
-            ("IT8FILE\nBEGIN_DATA\nBEGIN_DATA\nEND_DATA\n",
-                "double-begin"),
-            ("IT8FILE\nBEGIN_DATA\nEND_DATA\nEND_DATA\n",
-                "double-end"),
-            ("IT8FILE\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n",
-                "fmt2data"),
-            ("IT8FILE\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
-                "fmt3data"),
-            ("IT8FILE\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n",
-                "short-row"),
-            ("IT8FILE\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
-                "long-row"),
-            ("IT8FILE\nNUMBER_OF_FIELDS 3\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\n4 5 6\nEND_DATA\n",
-                "nf2rows"),
-            ("IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
-                "ns1of3"),
-            ("IT8FILE\nORIGINATOR \"unclosed\nBEGIN_DATA\nEND_DATA\n",
-                "unclosed-str"),
-            ("IT8FILE\nORIGINATOR 'unclosed\nBEGIN_DATA\nEND_DATA\n",
-                "unclosed-sq"),
-            ("IT8FILE\nPROP val1 val2 val3\nBEGIN_DATA\nEND_DATA\n",
-                "multiword"),
-            ("IT8FILE\n0xZZ\nBEGIN_DATA\nEND_DATA\n",
-                "badhex"),
-            ("IT8FILE\n1.2.3\nBEGIN_DATA\nEND_DATA\n",
-                "badnum"),
-            ("IT8FILE\n@\x01\x02\nBEGIN_DATA\nEND_DATA\n",
-                "ctrl-chars"),
-            ("IT8FILE\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n",
-                "empty-fmt"),
-            ("IT8FILE\n$UNKNOWN_DIRECTIVE x\nBEGIN_DATA\nEND_DATA\n",
-                "unknown-dollar"),
-            ("IT8FILE\nDKEYWORD x\nBEGIN_DATA\nEND_DATA\n",
-                "unknown-dkey"),
-            ("IT8FILE\n#COMMENT y\nBEGIN_DATA\nEND_DATA\n",
-                "hash-comment"),
-            ("IT8FILE\nORIGINATOR\nMANUFACTURER\nBEGIN_DATA\nEND_DATA\n",
-                "empty-props"),
-            ("IT8FILE\nORIGINATOR  \"  spaces  \"\nBEGIN_DATA\nEND_DATA\n",
-                "space-str"),
-            ("IT8FILE\nORIGINATOR 'single'\nBEGIN_DATA\nEND_DATA\n",
-                "sq-str"),
-            ("IT8FILE\nORIGINATOR 1e999\nBEGIN_DATA\nEND_DATA\n",
-                "huge-exp"),
-            ("IT8FILE\nORIGINATOR 0.0e0\nBEGIN_DATA\nEND_DATA\n",
-                "zero-exp"),
-            ("IT8FILE\nORIGINATOR .5\nBEGIN_DATA\nEND_DATA\n",
-                "dot-lead"),
-            ("IT8FILE\nORIGINATOR 5.\nBEGIN_DATA\nEND_DATA\n",
-                "dot-trail"),
-            ("IT8FILE\nORIGINATOR -\nBEGIN_DATA\nEND_DATA\n",
-                "bare-minus"),
-            ("IT8FILE\nORIGINATOR +\nBEGIN_DATA\nEND_DATA\n",
-                "bare-plus"),
-            ("IT8FILE\nORIGINATOR e5\nBEGIN_DATA\nEND_DATA\n",
-                "bare-e"),
-            ("IT8FILE\nORIGINATOR 0x\nBEGIN_DATA\nEND_DATA\n",
-                "bare-0x"),
-            ("IT8FILE\n\tTAB\tsep\nBEGIN_DATA\nEND_DATA\n",
-                "tab-sep"),
-            ("IT8FILE\nORIGINATOR \x7f del\nBEGIN_DATA\nEND_DATA\n",
-                "del-char"),
-            ("IT8FILE\n\x0b vt\nBEGIN_DATA\nEND_DATA\n",
-                "vt-char"),
-            ("IT8FILE\n\x0c ff\nBEGIN_DATA\nEND_DATA\n",
-                "ff-char"),
+            (
+                "IT8FILE\nBEGIN_DATA\nBEGIN_DATA\nEND_DATA\n",
+                "double-begin",
+            ),
+            ("IT8FILE\nBEGIN_DATA\nEND_DATA\nEND_DATA\n", "double-end"),
+            (
+                "IT8FILE\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n",
+                "fmt2data",
+            ),
+            (
+                "IT8FILE\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
+                "fmt3data",
+            ),
+            (
+                "IT8FILE\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\nEND_DATA\n",
+                "short-row",
+            ),
+            (
+                "IT8FILE\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
+                "long-row",
+            ),
+            (
+                "IT8FILE\nNUMBER_OF_FIELDS 3\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\n4 5 6\nEND_DATA\n",
+                "nf2rows",
+            ),
+            (
+                "IT8FILE\nNUMBER_OF_FIELDS 3\nNUMBER_OF_SETS 3\nBEGIN_DATA_FORMAT\nA B C\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2 3\nEND_DATA\n",
+                "ns1of3",
+            ),
+            (
+                "IT8FILE\nORIGINATOR \"unclosed\nBEGIN_DATA\nEND_DATA\n",
+                "unclosed-str",
+            ),
+            (
+                "IT8FILE\nORIGINATOR 'unclosed\nBEGIN_DATA\nEND_DATA\n",
+                "unclosed-sq",
+            ),
+            (
+                "IT8FILE\nPROP val1 val2 val3\nBEGIN_DATA\nEND_DATA\n",
+                "multiword",
+            ),
+            ("IT8FILE\n0xZZ\nBEGIN_DATA\nEND_DATA\n", "badhex"),
+            ("IT8FILE\n1.2.3\nBEGIN_DATA\nEND_DATA\n", "badnum"),
+            ("IT8FILE\n@\x01\x02\nBEGIN_DATA\nEND_DATA\n", "ctrl-chars"),
+            (
+                "IT8FILE\nBEGIN_DATA_FORMAT\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n",
+                "empty-fmt",
+            ),
+            (
+                "IT8FILE\n$UNKNOWN_DIRECTIVE x\nBEGIN_DATA\nEND_DATA\n",
+                "unknown-dollar",
+            ),
+            (
+                "IT8FILE\nDKEYWORD x\nBEGIN_DATA\nEND_DATA\n",
+                "unknown-dkey",
+            ),
+            (
+                "IT8FILE\n#COMMENT y\nBEGIN_DATA\nEND_DATA\n",
+                "hash-comment",
+            ),
+            (
+                "IT8FILE\nORIGINATOR\nMANUFACTURER\nBEGIN_DATA\nEND_DATA\n",
+                "empty-props",
+            ),
+            (
+                "IT8FILE\nORIGINATOR  \"  spaces  \"\nBEGIN_DATA\nEND_DATA\n",
+                "space-str",
+            ),
+            (
+                "IT8FILE\nORIGINATOR 'single'\nBEGIN_DATA\nEND_DATA\n",
+                "sq-str",
+            ),
+            (
+                "IT8FILE\nORIGINATOR 1e999\nBEGIN_DATA\nEND_DATA\n",
+                "huge-exp",
+            ),
+            (
+                "IT8FILE\nORIGINATOR 0.0e0\nBEGIN_DATA\nEND_DATA\n",
+                "zero-exp",
+            ),
+            ("IT8FILE\nORIGINATOR .5\nBEGIN_DATA\nEND_DATA\n", "dot-lead"),
+            (
+                "IT8FILE\nORIGINATOR 5.\nBEGIN_DATA\nEND_DATA\n",
+                "dot-trail",
+            ),
+            (
+                "IT8FILE\nORIGINATOR -\nBEGIN_DATA\nEND_DATA\n",
+                "bare-minus",
+            ),
+            ("IT8FILE\nORIGINATOR +\nBEGIN_DATA\nEND_DATA\n", "bare-plus"),
+            ("IT8FILE\nORIGINATOR e5\nBEGIN_DATA\nEND_DATA\n", "bare-e"),
+            ("IT8FILE\nORIGINATOR 0x\nBEGIN_DATA\nEND_DATA\n", "bare-0x"),
+            ("IT8FILE\n\tTAB\tsep\nBEGIN_DATA\nEND_DATA\n", "tab-sep"),
+            (
+                "IT8FILE\nORIGINATOR \x7f del\nBEGIN_DATA\nEND_DATA\n",
+                "del-char",
+            ),
+            ("IT8FILE\n\x0b vt\nBEGIN_DATA\nEND_DATA\n", "vt-char"),
+            ("IT8FILE\n\x0c ff\nBEGIN_DATA\nEND_DATA\n", "ff-char"),
         ] {
             let p = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
                 doc.as_ptr() as *const _,
-                doc.len() as u32);
+                doc.len() as u32,
+            );
             eprintln!("{name}={}", !p.is_null());
-            if !p.is_null() { c::cmsIT8Free(p); }
+            if !p.is_null() {
+                c::cmsIT8Free(p);
+            }
         }
     }
 }
@@ -2900,8 +3275,7 @@ fn cgats_errpath_arms() {
 #[test]
 fn cgats_file_cube_arms() {
     unsafe {
-        let ctx = c::cmsCreateContext(
-            std::ptr::null_mut(), std::ptr::null_mut());
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         // write a valid IT8 doc, load from file, enum props
         let doc = b"IT8FILE\nORIGINATOR \"org\"\n\
             MANUFACTURER \"mfr\"\nNUMBER_OF_FIELDS 3\n\
@@ -2913,9 +3287,7 @@ fn cgats_file_cube_arms() {
             A B\nEND_DATA_FORMAT\nNUMBER_OF_SETS 1\n\
             BEGIN_DATA\n1 2\nEND_DATA\n\0";
         // mem load + table ops
-        let h = c::cmsIT8LoadFromMem(ctx,
-            doc.as_ptr() as *const _,
-            doc.len() as u32 - 1);
+        let h = c::cmsIT8LoadFromMem(ctx, doc.as_ptr() as *const _, doc.len() as u32 - 1);
         eprintln!("mem h={}", !h.is_null());
         if !h.is_null() {
             let nt = c::cmsIT8TableCount(h);
@@ -2932,41 +3304,33 @@ fn cgats_file_cube_arms() {
                 ("", "A", "", "byfield"),
                 ("", "", "A", "byexp"),
             ] {
-                let r = c::cmsIT8SetTableByLabel(h,
+                let r = c::cmsIT8SetTableByLabel(
+                    h,
                     format!("{set}\0").as_ptr() as *const _,
                     format!("{fld}\0").as_ptr() as *const _,
-                    format!("{exp}\0").as_ptr() as *const _);
+                    format!("{exp}\0").as_ptr() as *const _,
+                );
                 eprintln!("  lbl{name}={r}");
             }
             // save-to-file + load-from-file
-            for path in [
-                "/home/lilith/tmp/it8-a.txt",
-                "/home/lilith/tmp/it8-b.txt",
-            ] {
+            for path in ["/home/lilith/tmp/it8-a.txt", "/home/lilith/tmp/it8-b.txt"] {
                 let p2 = format!("{path}\0");
-                let s = c::cmsIT8SaveToFile(h,
-                    p2.as_ptr() as *const _);
-                let h2 = c::cmsIT8LoadFromFile(ctx,
-                    p2.as_ptr() as *const _);
-                eprintln!("save={s} file h={}",
-                    !h2.is_null());
+                let s = c::cmsIT8SaveToFile(h, p2.as_ptr() as *const _);
+                let h2 = c::cmsIT8LoadFromFile(ctx, p2.as_ptr() as *const _);
+                eprintln!("save={s} file h={}", !h2.is_null());
                 if !h2.is_null() {
-                    c::cmsIT8Free(h2); }
+                    c::cmsIT8Free(h2);
+                }
                 std::fs::remove_file(path).ok();
             }
             // load failures
-            for path in [
-                "/nonexistent-x/xx.it8",
-                "/dev/null",
-                "/proc/version",
-            ] {
+            for path in ["/nonexistent-x/xx.it8", "/dev/null", "/proc/version"] {
                 let p2 = format!("{path}\0");
-                let h3 = c::cmsIT8LoadFromFile(ctx,
-                    p2.as_ptr() as *const _);
-                eprintln!("load {path} h={}",
-                    !h3.is_null());
+                let h3 = c::cmsIT8LoadFromFile(ctx, p2.as_ptr() as *const _);
+                eprintln!("load {path} h={}", !h3.is_null());
                 if !h3.is_null() {
-                    c::cmsIT8Free(h3); }
+                    c::cmsIT8Free(h3);
+                }
             }
             c::cmsIT8Free(h);
         }
@@ -2980,22 +3344,30 @@ fn cgats_file_cube_arms() {
 #[test]
 fn cgats_cube_arms() {
     unsafe {
-        let ctx = c::cmsCreateContext(
-            std::ptr::null_mut(), std::ptr::null_mut());
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         // cube files: 1D LUT, 3D LUT, malformed variants
         for (content, name) in [
-            ("TITLE \"1d\"\nLUT_1D_SIZE 2\n\
-              0.0 0.0 0.0\n1.0 1.0 1.0\n", "lut1d"),
-            ("TITLE \"3d\"\nLUT_3D_SIZE 2\n\
+            (
+                "TITLE \"1d\"\nLUT_1D_SIZE 2\n\
+              0.0 0.0 0.0\n1.0 1.0 1.0\n",
+                "lut1d",
+            ),
+            (
+                "TITLE \"3d\"\nLUT_3D_SIZE 2\n\
               DOMAIN_MIN 0.0 0.0 0.0\n\
               DOMAIN_MAX 1.0 1.0 1.0\n\
               0.0 0.0 0.0\n0.0 0.0 1.0\n0.0 1.0 0.0\n\
               0.0 1.0 1.0\n1.0 0.0 0.0\n1.0 0.0 1.0\n\
-              1.0 1.0 0.0\n1.0 1.0 1.0\n", "lut3d"),
-            ("LUT_3D_SIZE 2\n\
+              1.0 1.0 0.0\n1.0 1.0 1.0\n",
+                "lut3d",
+            ),
+            (
+                "LUT_3D_SIZE 2\n\
               0.0 0.0 0.0\n0.0 0.0 1.0\n0.0 1.0 0.0\n\
               0.0 1.0 1.0\n1.0 0.0 0.0\n1.0 0.0 1.0\n\
-              1.0 1.0 0.0\n1.0 1.0 1.0\n", "lut3d-nodomain"),
+              1.0 1.0 0.0\n1.0 1.0 1.0\n",
+                "lut3d-nodomain",
+            ),
             ("LUT_1D_SIZE 2\n0.0 0.0 0.0\n", "trunc"),
             ("LUT_3D_SIZE 2\n0.0 0.0 0.0\n", "trunc3d"),
             ("GARBAGE\n1 2 3\n", "nocube"),
@@ -3003,43 +3375,46 @@ fn cgats_cube_arms() {
             ("LUT_1D_SIZE 0\n", "zero1d"),
             ("LUT_3D_SIZE 0\n", "zero3d"),
             ("LUT_1D_SIZE 2\nx y z\n0.0 0.0 0.0\n", "badnum"),
-            ("TITLE \"a\"\nLUT_1D_SIZE 2\n\
+            (
+                "TITLE \"a\"\nLUT_1D_SIZE 2\n\
               DOMAIN_MIN 0.5 0.5 0.5\n\
               DOMAIN_MAX 1.5 1.5 1.5\n\
-              0.0 0.0 0.0\n1.0 1.0 1.0\n", "dom"),
-            ("LUT_1D_SIZE 2\n\
-              1e-3 2E+2 -3.5\n.25 +.5 6.\n", "floatfmt"),
+              0.0 0.0 0.0\n1.0 1.0 1.0\n",
+                "dom",
+            ),
+            (
+                "LUT_1D_SIZE 2\n\
+              1e-3 2E+2 -3.5\n.25 +.5 6.\n",
+                "floatfmt",
+            ),
         ] {
-            let path = format!(
-                "/home/lilith/tmp/cube-{name}.cube");
+            let path = format!("/home/lilith/tmp/cube-{name}.cube");
             std::fs::write(&path, content).unwrap();
             let p2 = format!("{path}\0");
-            let dl = c::cmsCreateDeviceLinkFromCubeFileTHR(
-                ctx, p2.as_ptr() as *const _);
+            let dl = c::cmsCreateDeviceLinkFromCubeFileTHR(ctx, p2.as_ptr() as *const _);
             eprintln!("{name} dl={}", !dl.is_null());
             if !dl.is_null() {
-                c::cmsCloseProfile(dl); }
+                c::cmsCloseProfile(dl);
+            }
             std::fs::remove_file(&path).ok();
         }
         // nonexistent + dir
         let p2 = b"/nonexistent/xx.cube\0";
-        let dl = c::cmsCreateDeviceLinkFromCubeFileTHR(
-            ctx, p2.as_ptr() as *const _);
+        let dl = c::cmsCreateDeviceLinkFromCubeFileTHR(ctx, p2.as_ptr() as *const _);
         eprintln!("nofile dl={}", !dl.is_null());
         // EnumPropertyMulti on a multi-prop doc
         let doc = b"IT8FILE\nORIGINATOR \"o\"\n\
             KEYWORD k1\nKEYWORD k2\n\
             BEGIN_DATA\nEND_DATA\n\0";
-        let h = c::cmsIT8LoadFromMem(ctx,
-            doc.as_ptr() as *const _, doc.len() as u32 - 1);
+        let h = c::cmsIT8LoadFromMem(ctx, doc.as_ptr() as *const _, doc.len() as u32 - 1);
         if !h.is_null() {
-            for prop in ["ORIGINATOR", "KEYWORD",
-                "NONEXIST", ""] {
-                let mut names: *mut *mut i8 =
-                    std::ptr::null_mut();
-                let n = c::cmsIT8EnumPropertyMulti(h,
-                    format!("{prop}\0").as_ptr()
-                        as *const _, &mut names);
+            for prop in ["ORIGINATOR", "KEYWORD", "NONEXIST", ""] {
+                let mut names: *mut *mut i8 = std::ptr::null_mut();
+                let n = c::cmsIT8EnumPropertyMulti(
+                    h,
+                    format!("{prop}\0").as_ptr() as *const _,
+                    &mut names,
+                );
                 eprintln!("enum {prop} n={n}");
             }
             c::cmsIT8Free(h);
@@ -3054,11 +3429,11 @@ fn cgats_cube_arms() {
 #[test]
 fn cgats_lexer_arms() {
     unsafe {
-        let ctx = c::cmsCreateContext(
-            std::ptr::null_mut(), std::ptr::null_mut());
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         // every IT8 keyword + every number notation
         let docs: Vec<(&[u8], &str)> = vec![
-            (b"IT8FILE\nORIGINATOR x\nMANUFACTURER y\n\
+            (
+                b"IT8FILE\nORIGINATOR x\nMANUFACTURER y\n\
                 CREATEDATE z\nPROD_DATE 2024-01-01\n\
                 SERIAL 123\nMATERIAL m\nINSTRUMENTATION i\n\
                 MEASUREMENT_SOURCE s\nLABORATORY l\n\
@@ -3066,17 +3441,23 @@ fn cgats_lexer_arms() {
                 COMMENT c\nKEYWORD k\nBEGIN_DATA_FORMAT\n\
                 A\nEND_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n\
                 NUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\n\
-                \0", "all-kw"),
+                \0",
+                "all-kw",
+            ),
             // float notations in data
-            (b"IT8FILE\nNUMBER_OF_FIELDS 1\n\
+            (
+                b"IT8FILE\nNUMBER_OF_FIELDS 1\n\
                 BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
                 NUMBER_OF_SETS 20\nBEGIN_DATA\n\
                 0\n1\n-1\n+1\n.5\n5.\n-.5\n+.5\n\
                 1e0\n1E0\n1e+5\n1e-5\n1.5e3\n-2.5E-3\n\
                 0x10\n0xFF\n1.e5\n.5e-2\n1_000\ninf\n\
-                END_DATA\n\0", "floats"),
+                END_DATA\n\0",
+                "floats",
+            ),
             // hex data via DATA_FORMAT types
-            (b"IT8FILE\nNUMBER_OF_FIELDS 2\n\
+            (
+                b"IT8FILE\nNUMBER_OF_FIELDS 2\n\
                 BEGIN_DATA_FORMAT\nHEX DEC\n\
                 END_DATA_FORMAT\nNUMBER_OF_SETS 4\n\
                 BEGIN_DATA\n\
@@ -3084,39 +3465,54 @@ fn cgats_lexer_arms() {
                 0x0 0\n\
                 0XABCD 1\n\
                 0x1F.8 2\n\
-                END_DATA\n\0", "hexdata"),
+                END_DATA\n\0",
+                "hexdata",
+            ),
             // nested/special symbols
-            (b"IT8FILE\nORIGINATOR \"s\"\n\
+            (
+                b"IT8FILE\nORIGINATOR \"s\"\n\
                 BEGIN_DATA_FORMAT\n\"A-B.C_D/E\"\n\
                 END_DATA_FORMAT\nBEGIN_DATA\nEND_DATA\n\
-                \0", "specialfmt"),
-            (b"IT8FILE\nORIGINATOR o\n\
+                \0",
+                "specialfmt",
+            ),
+            (
+                b"IT8FILE\nORIGINATOR o\n\
                 BEGIN_DATA_FORMAT\n\
                 A\tB\tC\tD\tE\tF\tG\tH\n\
                 END_DATA_FORMAT\n\
                 NUMBER_OF_SETS 2\nBEGIN_DATA\n\
                 1 2 3 4 5 6 7 8\n\
                 9 10 11 12 13 14 15 16\n\
-                END_DATA\n\0", "wide"),
+                END_DATA\n\0",
+                "wide",
+            ),
             // case variants of keywords
-            (b"it8file\noriginator x\n\
+            (
+                b"it8file\noriginator x\n\
                 begin_data_format\nA\nend_data_format\n\
-                begin_data\nend_data\n\0", "lower"),
-            (b"It8File\nOriginator x\n\
+                begin_data\nend_data\n\0",
+                "lower",
+            ),
+            (
+                b"It8File\nOriginator x\n\
                 Begin_Data_Format\nA\nEnd_Data_Format\n\
-                Begin_Data\nEnd_Data\n\0", "mixed"),
+                Begin_Data\nEnd_Data\n\0",
+                "mixed",
+            ),
             // numbers with unusual spacing
-            (b"IT8FILE\nNUMBER_OF_FIELDS   3\n\
+            (
+                b"IT8FILE\nNUMBER_OF_FIELDS   3\n\
                 NUMBER_OF_SETS\t2\n\
                 BEGIN_DATA_FORMAT\n A  B  C\n\
                 END_DATA_FORMAT\nBEGIN_DATA\n\
                  1   2   3  \n4\t5\t6\n\
-                END_DATA\n\0", "spacing"),
+                END_DATA\n\0",
+                "spacing",
+            ),
         ];
         for (doc, name) in &docs {
-            let h = c::cmsIT8LoadFromMem(ctx,
-                doc.as_ptr() as *const _,
-                doc.len() as u32);
+            let h = c::cmsIT8LoadFromMem(ctx, doc.as_ptr() as *const _, doc.len() as u32);
             eprintln!("{name} h={}", !h.is_null());
             if !h.is_null() {
                 // probe data access → satob/decode paths
@@ -3125,11 +3521,9 @@ fn cgats_lexer_arms() {
                     c::cmsIT8SetTable(h, i);
                     for row in 0..4 {
                         for col in 0..4 {
-                            let v = c::cmsIT8GetDataRowCol(
-                                h, row, col);
+                            let v = c::cmsIT8GetDataRowCol(h, row, col);
                             let _ = v;
-                            let d = c::cmsIT8GetDataRowColDbl(
-                                h, row, col);
+                            let d = c::cmsIT8GetDataRowColDbl(h, row, col);
                             let _ = d;
                         }
                     }
@@ -3147,8 +3541,7 @@ fn cgats_lexer_arms() {
 #[test]
 fn cgats_num_bin_arms() {
     unsafe {
-        let ctx = c::cmsCreateContext(
-            std::ptr::null_mut(), std::ptr::null_mut());
+        let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         // doc with extreme-but-parseable numerics
         let doc = b"IT8FILE\nORIGINATOR o\n\
             NUMBER_OF_FIELDS 4\n\
@@ -3159,26 +3552,24 @@ fn cgats_num_bin_arms() {
             1e+0000000002 1e-0000000002 .5e9 -9e99\n\
             2147483647.9 -2147483648.9 1e999 1e-999\n\
             END_DATA\n\0";
-        let h = c::cmsIT8LoadFromMem(ctx,
-            doc.as_ptr() as *const _, doc.len() as u32 - 1);
+        let h = c::cmsIT8LoadFromMem(ctx, doc.as_ptr() as *const _, doc.len() as u32 - 1);
         eprintln!("h={}", !h.is_null());
         if !h.is_null() {
             // GetDataDbl on every cell incl missing
             for r in 0..8 {
                 for c_ in 0..6 {
-                    let d = c::cmsIT8GetDataRowColDbl(
-                        h, r, c_);
-                    let s = c::cmsIT8GetDataRowCol(h,
-                        r, c_);
+                    let d = c::cmsIT8GetDataRowColDbl(h, r, c_);
+                    let s = c::cmsIT8GetDataRowCol(h, r, c_);
                     if r < 2 && c_ < 4 {
-                        eprintln!("  [{r},{c_}] d={d} \
+                        eprintln!(
+                            "  [{r},{c_}] d={d} \
                             s={:?}",
                             if s.is_null() {
-                                "null".to_string() }
-                            else {
-                                std::ffi::CStr::from_ptr(
-                                    s).to_string_lossy()
-                                    .to_string() });
+                                "null".to_string()
+                            } else {
+                                std::ffi::CStr::from_ptr(s).to_string_lossy().to_string()
+                            }
+                        );
                     }
                 }
             }
@@ -3194,59 +3585,65 @@ fn cgats_num_bin_arms() {
                 (9, 0, "0b1111", "oobarow"),
                 (0, 9, "0b1111", "oobcol"),
             ] {
-                let r = c::cmsIT8SetDataRowCol(h, row, col,
-                    format!("{v}\0").as_ptr()
-                        as *const _);
+                let r = c::cmsIT8SetDataRowCol(h, row, col, format!("{v}\0").as_ptr() as *const _);
                 eprintln!("set {name} r={r}");
             }
             // save → satob on binary-valued cells
-            for path in [
-                "/home/lilith/tmp/cb-a.it8",
-            ] {
+            for path in ["/home/lilith/tmp/cb-a.it8"] {
                 let p2 = format!("{path}\0");
-                let s = c::cmsIT8SaveToFile(h,
-                    p2.as_ptr() as *const _);
-                let h2 = c::cmsIT8LoadFromFile(ctx,
-                    p2.as_ptr() as *const _);
+                let s = c::cmsIT8SaveToFile(h, p2.as_ptr() as *const _);
+                let h2 = c::cmsIT8LoadFromFile(ctx, p2.as_ptr() as *const _);
                 eprintln!("sv={s} rl={}", !h2.is_null());
                 if !h2.is_null() {
-                    c::cmsIT8Free(h2); }
+                    c::cmsIT8Free(h2);
+                }
                 std::fs::remove_file(path).ok();
             }
             // mem-save path
             let mut buf = vec![0u8; 1 << 16];
             let mut n = buf.len() as u32;
-            let sm = c::cmsIT8SaveToMem(h,
-                buf.as_mut_ptr() as *mut _, &mut n);
+            let sm = c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
             eprintln!("savemem={sm} n={n}");
             c::cmsIT8Free(h);
         }
         // .include directive docs
         for (doc2, name) in [
-            (b"IT8FILE\n.INCLUDE \"x.it8\"\n\
+            (
+                b"IT8FILE\n.INCLUDE \"x.it8\"\n\
                 BEGIN_DATA\nEND_DATA\n\0" as &[u8],
-                "include"),
-            (b"IT8FILE\n.include \"x.it8\"\n\
+                "include",
+            ),
+            (
+                b"IT8FILE\n.include \"x.it8\"\n\
                 BEGIN_DATA\nEND_DATA\n\0",
-                "include-low"),
-            (b"IT8FILE\nORIGINATOR 'unclosed\n\
+                "include-low",
+            ),
+            (
+                b"IT8FILE\nORIGINATOR 'unclosed\n\
                 BEGIN_DATA\nEND_DATA\n\0",
-                "unclosed-q"),
-            (b"IT8FILE\nORIGINATOR \"unclosed2\n\
+                "unclosed-q",
+            ),
+            (
+                b"IT8FILE\nORIGINATOR \"unclosed2\n\
                 BEGIN_DATA\nEND_DATA\n\0",
-                "unclosed-dq"),
-            (b"IT8FILE\nORIGINATOR \x00bin\n\
+                "unclosed-dq",
+            ),
+            (
+                b"IT8FILE\nORIGINATOR \x00bin\n\
                 BEGIN_DATA\nEND_DATA\n\0",
-                "bin-in-doc"),
-            (b"IT8FILE\n@weird !chars #here\n\
+                "bin-in-doc",
+            ),
+            (
+                b"IT8FILE\n@weird !chars #here\n\
                 BEGIN_DATA\nEND_DATA\n\0",
-                "weird-chars"),
+                "weird-chars",
+            ),
         ] {
-            let h2 = c::cmsIT8LoadFromMem(ctx,
-                doc2.as_ptr() as *const _,
-                doc2.len() as u32);
+            let h2 = c::cmsIT8LoadFromMem(ctx, doc2.as_ptr() as *const _, doc2.len() as u32);
             eprintln!("{name} h={}", !h2.is_null());
-            if !h2.is_null() { c::cmsIT8Free(h2); }
+            if !h2.is_null() {
+                c::cmsIT8Free(h2);
+            }
         }
         c::cmsDeleteContext(ctx);
     }
@@ -3259,73 +3656,89 @@ fn cgats_num_bin_arms() {
 fn cgats_label_pair_arms() {
     unsafe {
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
-        c::cmsIT8SetSheetType(it8,
-            b"CGATS.17\0".as_ptr() as *const _);
-        c::cmsIT8SetPropertyDbl(it8,
-            b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, 3.0);
-        c::cmsIT8SetPropertyDbl(it8,
-            b"NUMBER_OF_SETS\0".as_ptr() as *const _, 2.0);
+        c::cmsIT8SetSheetType(it8, b"CGATS.17\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyDbl(it8, b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, 3.0);
+        c::cmsIT8SetPropertyDbl(it8, b"NUMBER_OF_SETS\0".as_ptr() as *const _, 2.0);
         // declare data format columns incl LABEL, then
         //   write rows whose LABEL cell is
         //   "name nTable type" -> sscanf parse path
-        c::cmsIT8SetDataFormat(it8, 0,
-            b"SAMPLE_ID\0".as_ptr() as *const _);
-        c::cmsIT8SetDataFormat(it8, 1,
-            b"LABEL\0".as_ptr() as *const _);
-        c::cmsIT8SetDataFormat(it8, 2,
-            b"CMYK_C\0".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 0, b"SAMPLE_ID\0".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 1, b"LABEL\0".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 2, b"CMYK_C\0".as_ptr() as *const _);
         for (row, id, lbl) in [
             (0i32, b"R1\0".as_slice(), b"L1 0 SAMPLE\0".as_slice()),
             (1, b"R2\0".as_slice(), b"L2 1 OTHER\0".as_slice()),
         ] {
-            c::cmsIT8SetDataRowCol(it8, row, 0,
-                id.as_ptr() as *const _);
-            c::cmsIT8SetDataRowCol(it8, row, 1,
-                lbl.as_ptr() as *const _);
-            c::cmsIT8SetDataRowCol(it8, row, 2,
-                b"0.5\0".as_ptr() as *const _);
+            c::cmsIT8SetDataRowCol(it8, row, 0, id.as_ptr() as *const _);
+            c::cmsIT8SetDataRowCol(it8, row, 1, lbl.as_ptr() as *const _);
+            c::cmsIT8SetDataRowCol(it8, row, 2, b"0.5\0".as_ptr() as *const _);
         }
         // SetTableByLabel against the LABEL column
         // cSet = patch name (SAMPLE_ID), cField = data col
         for (set, fld, exp, name) in [
-            (b"R1\0".as_ptr(), b"LABEL\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(), "lbl-match"),
-            (b"R2\0".as_ptr(), b"LABEL\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(), "lbl-type-mis"),
-            (b"R1\0".as_ptr(), b"LABEL\0".as_ptr(),
-                b"\0".as_ptr(), "lbl-exp-empty"),
-            (b"R1\0".as_ptr(), b"\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(), "lbl-fld-empty"),
-            (b"R1\0".as_ptr(), std::ptr::null(),
-                b"SAMPLE\0".as_ptr(), "lbl-fld-null"),
-            (b"NOPE\0".as_ptr(), b"LABEL\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(), "lbl-no-patch"),
-            (b"R1\0".as_ptr(), b"CMYK_C\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(), "lbl-wrong-fld"),
+            (
+                b"R1\0".as_ptr(),
+                b"LABEL\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(),
+                "lbl-match",
+            ),
+            (
+                b"R2\0".as_ptr(),
+                b"LABEL\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(),
+                "lbl-type-mis",
+            ),
+            (
+                b"R1\0".as_ptr(),
+                b"LABEL\0".as_ptr(),
+                b"\0".as_ptr(),
+                "lbl-exp-empty",
+            ),
+            (
+                b"R1\0".as_ptr(),
+                b"\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(),
+                "lbl-fld-empty",
+            ),
+            (
+                b"R1\0".as_ptr(),
+                std::ptr::null(),
+                b"SAMPLE\0".as_ptr(),
+                "lbl-fld-null",
+            ),
+            (
+                b"NOPE\0".as_ptr(),
+                b"LABEL\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(),
+                "lbl-no-patch",
+            ),
+            (
+                b"R1\0".as_ptr(),
+                b"CMYK_C\0".as_ptr(),
+                b"SAMPLE\0".as_ptr(),
+                "lbl-wrong-fld",
+            ),
         ] {
-            let r = c::cmsIT8SetTableByLabel(it8,
-                set as *const _,
-                fld as *const _,
-                exp as *const _);
+            let r =
+                c::cmsIT8SetTableByLabel(it8, set as *const _, fld as *const _, exp as *const _);
             eprintln!("{name} r={r}");
         }
         // WRITE_PAIR: WEIGHTING_FUNCTION predefined pair
-        let r = c::cmsIT8SetPropertyMulti(it8,
+        let r = c::cmsIT8SetPropertyMulti(
+            it8,
             b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
             b"CIE_D65\0".as_ptr() as *const _,
-            b"0.5\0".as_ptr() as *const _);
+            b"0.5\0".as_ptr() as *const _,
+        );
         eprintln!("pair-prop r={r}");
         let mut buf = vec![0u8; 1 << 17];
         let mut n = buf.len() as u32;
-        let s = c::cmsIT8SaveToMem(it8,
-            buf.as_mut_ptr() as *mut _, &mut n);
+        let s = c::cmsIT8SaveToMem(it8, buf.as_mut_ptr() as *mut _, &mut n);
         eprintln!("save-mem={s} n={n}");
         if s != 0 {
-            let txt = String::from_utf8_lossy(
-                &buf[..n as usize]);
+            let txt = String::from_utf8_lossy(&buf[..n as usize]);
             for line in txt.lines() {
-                if line.contains("WEIGHT")
-                    || line.contains("LABEL") {
+                if line.contains("WEIGHT") || line.contains("LABEL") {
                     eprintln!("  out: {line}");
                 }
             }
@@ -3342,82 +3755,123 @@ fn cgats_symbol_arms() {
     unsafe {
         // '+'-signed + float-formatted data cells
         for (doc, name) in [
-            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+            (
+                b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-               +5\nEND_DATA\n\0".as_slice(), "plus"),
-            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               +5\nEND_DATA\n\0"
+                    .as_slice(),
+                "plus",
+            ),
+            (
+                b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-               +1.5e3\nEND_DATA\n\0".as_slice(), "plusf"),
-            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               +1.5e3\nEND_DATA\n\0"
+                    .as_slice(),
+                "plusf",
+            ),
+            (
+                b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-               -7\nEND_DATA\n\0".as_slice(), "minus"),
-            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               -7\nEND_DATA\n\0"
+                    .as_slice(),
+                "minus",
+            ),
+            (
+                b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-               1.25e-2\nEND_DATA\n\0".as_slice(), "float"),
-            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               1.25e-2\nEND_DATA\n\0"
+                    .as_slice(),
+                "float",
+            ),
+            (
+                b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-               0x1F\nEND_DATA\n\0".as_slice(), "hex"),
-            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+               0x1F\nEND_DATA\n\0"
+                    .as_slice(),
+                "hex",
+            ),
+            (
+                b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-               0b101\nEND_DATA\n\0".as_slice(), "bin"),
+               0b101\nEND_DATA\n\0"
+                    .as_slice(),
+                "bin",
+            ),
         ] {
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} it8={}", !it8.is_null());
             if !it8.is_null() {
-                let v = c::cmsIT8GetDataDbl(it8,
+                let v = c::cmsIT8GetDataDbl(
+                    it8,
                     b"0\0".as_ptr() as *const _,
-                    b"SAMPLE_ID\0".as_ptr() as *const _);
+                    b"SAMPLE_ID\0".as_ptr() as *const _,
+                );
                 eprintln!("  dbl={v}");
                 c::cmsIT8Free(it8);
             }
         }
         // #INCLUDE into a real file — open-success path
         let inc_path = b"/tmp/lcms_inc.it8\0";
-        std::fs::write("/tmp/lcms_inc.it8",
+        std::fs::write(
+            "/tmp/lcms_inc.it8",
             b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
               NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
               SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-              42\nEND_DATA\n").unwrap();
+              42\nEND_DATA\n",
+        )
+        .unwrap();
         let doc = b"#INCLUDE \"/tmp/lcms_inc.it8\"\n\0";
         let it8 = c::cmsIT8LoadFromMem(
             std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         eprintln!("include-real it8={}", !it8.is_null());
         if !it8.is_null() {
-            let v = c::cmsIT8GetDataDbl(it8,
+            let v = c::cmsIT8GetDataDbl(
+                it8,
                 b"0\0".as_ptr() as *const _,
-                b"SAMPLE_ID\0".as_ptr() as *const _);
+                b"SAMPLE_ID\0".as_ptr() as *const _,
+            );
             eprintln!("  inc-dbl={v}");
             c::cmsIT8Free(it8);
         }
         // nested includes → IncludeSP++ path
         for i in 0..12 {
-            let inner = format!(
-                "#INCLUDE \"/tmp/lcms_inc{}.it8\"\n", i);
+            let inner = format!("#INCLUDE \"/tmp/lcms_inc{}.it8\"\n", i);
             let this = format!(
                 "/tmp/lcms_inc{}.it8",
-                if i == 0 { "".into() }
-                else { format!("{}", i - 1) });
+                if i == 0 {
+                    "".into()
+                } else {
+                    format!("{}", i - 1)
+                }
+            );
             std::fs::write(&this, &inner).unwrap();
         }
         let doc2 = b"#INCLUDE \"/tmp/lcms_inc11.it8\"\n\0";
         let it8b = c::cmsIT8LoadFromMem(
             std::ptr::null_mut(),
-            doc2.as_ptr() as *const _, doc2.len() as u32);
+            doc2.as_ptr() as *const _,
+            doc2.len() as u32,
+        );
         eprintln!("include-deep it8={}", !it8b.is_null());
-        if !it8b.is_null() { c::cmsIT8Free(it8b); }
+        if !it8b.is_null() {
+            c::cmsIT8Free(it8b);
+        }
         let _ = std::fs::remove_file("/tmp/lcms_inc.it8");
         for i in 0..12 {
-            let _ = std::fs::remove_file(
-                format!("/tmp/lcms_inc{}.it8", i));
+            let _ = std::fs::remove_file(format!("/tmp/lcms_inc{}.it8", i));
         }
     }
 }
@@ -3431,13 +3885,18 @@ fn cgats_header_seq_arms() {
     unsafe {
         for (doc, name) in [
             // quoted sheet type -> SSTRING path
-            (b"\"CGATS.17\"\nNUMBER_OF_FIELDS 1\n\
+            (
+                b"\"CGATS.17\"\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
-               5\nEND_DATA\n\0".as_slice(), "quoted"),
+               5\nEND_DATA\n\0"
+                    .as_slice(),
+                "quoted",
+            ),
             // table out of sequence: 2 BEGIN_DATA_FORMAT
             //   sections beyond declared count
-            (b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
+            (
+                b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
                NUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\n\
                SAMPLE_ID\nEND_DATA_FORMAT\nBEGIN_DATA\n\
                5\nEND_DATA\n\
@@ -3540,47 +3999,57 @@ fn cgats_header_seq_arms() {
                BEGIN_DATA_FORMAT\nXT\nEND_DATA_FORMAT\n\
                BEGIN_DATA\n1\nEND_DATA\n\
                BEGIN_DATA_FORMAT\nXU\nEND_DATA_FORMAT\n\
-               BEGIN_DATA\n0\nEND_DATA\n\0".as_slice(),
-                "many-tables"),
+               BEGIN_DATA\n0\nEND_DATA\n\0"
+                    .as_slice(),
+                "many-tables",
+            ),
         ] {
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} it8={}", !it8.is_null());
             if !it8.is_null() {
-                c::cmsIT8Free(it8); }
+                c::cmsIT8Free(it8);
+            }
         }
         // newline in property value -> '# ' continuation
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
-        c::cmsIT8SetPropertyUncooked(it8,
+        c::cmsIT8SetPropertyUncooked(
+            it8,
             b"COMMENT\0".as_ptr() as *const _,
-            b"line1\nline2\nline3\0".as_ptr() as *const _);
+            b"line1\nline2\nline3\0".as_ptr() as *const _,
+        );
         // WRITE_PAIR prop for EnumPropertyMulti subkeys
-        c::cmsIT8SetPropertyMulti(it8,
+        c::cmsIT8SetPropertyMulti(
+            it8,
             b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
             b"CIE_D65\0".as_ptr() as *const _,
-            b"0.5\0".as_ptr() as *const _);
-        c::cmsIT8SetPropertyMulti(it8,
+            b"0.5\0".as_ptr() as *const _,
+        );
+        c::cmsIT8SetPropertyMulti(
+            it8,
             b"COMPUTATIONAL_PARAMETER\0".as_ptr() as *const _,
             b"MODE_A\0".as_ptr() as *const _,
-            b"1.0\0".as_ptr() as *const _);
+            b"1.0\0".as_ptr() as *const _,
+        );
         let mut buf = vec![0u8; 1 << 16];
         let mut n = buf.len() as u32;
-        c::cmsIT8SaveToMem(it8,
-            buf.as_mut_ptr() as *mut _, &mut n);
-        let txt = String::from_utf8_lossy(
-            &buf[..n as usize]);
+        c::cmsIT8SaveToMem(it8, buf.as_mut_ptr() as *mut _, &mut n);
+        let txt = String::from_utf8_lossy(&buf[..n as usize]);
         for line in txt.lines() {
-            if line.contains("COMMENT")
-                || line.starts_with("# ") {
+            if line.contains("COMMENT") || line.starts_with("# ") {
                 eprintln!("  out: {line}");
             }
         }
         // EnumPropertyMulti on the pair prop
         let mut names = [std::ptr::null_mut::<u8>(); 8];
-        let r = c::cmsIT8EnumPropertyMulti(it8,
+        let r = c::cmsIT8EnumPropertyMulti(
+            it8,
             b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
-            names.as_mut_ptr() as *mut _);
+            names.as_mut_ptr() as *mut _,
+        );
         eprintln!("enum-multi r={r}");
         c::cmsIT8Free(it8);
     }
@@ -3596,12 +4065,17 @@ fn cgats_cube2_arms() {
             let mut s = String::from(
                 "TITLE \"t\"\n\
                  DOMAIN_MIN 0 0 0\n\
-                 DOMAIN_MAX 1 1 1\n");
-            for e in extra { s.push_str(e); s.push('\n'); }
+                 DOMAIN_MAX 1 1 1\n",
+            );
+            for e in extra {
+                s.push_str(e);
+                s.push('\n');
+            }
             s.push_str(&format!("LUT_3D_SIZE {}\n", size));
             let n = size * size * size;
             for _ in 0..n {
-                s.push_str("0.1 0.2 0.3\n"); }
+                s.push_str("0.1 0.2 0.3\n");
+            }
             s.push('\0');
             s
         };
@@ -3609,47 +4083,57 @@ fn cgats_cube2_arms() {
             (mk(2, &[]), "s2"),
             (mk(17, &[]), "s17"),
             (mk(33, &[]), "s33"),
-            (mk(2, &["# comment line"]),
-                "comment"),
-            (mk(2, &["LUT_3D_SIZE 3",
-                     "LUT_1D_SIZE 16",
-                     "0.1 0.2 0.3",
-                     "0.4 0.5 0.6",
-                     "0.7 0.8 0.9"]),
-                "dup-size"),
-            (mk(2, &["LUT_3D_INPUT_RANGE 0.0 1.0"]),
-                "range"),
+            (mk(2, &["# comment line"]), "comment"),
+            (
+                mk(
+                    2,
+                    &[
+                        "LUT_3D_SIZE 3",
+                        "LUT_1D_SIZE 16",
+                        "0.1 0.2 0.3",
+                        "0.4 0.5 0.6",
+                        "0.7 0.8 0.9",
+                    ],
+                ),
+                "dup-size",
+            ),
+            (mk(2, &["LUT_3D_INPUT_RANGE 0.0 1.0"]), "range"),
             (mk(3, &["LUT_3D_SIZE 2"]), "conflict"),
-            (String::from(
-                "TITLE \"t\"\nLUT_3D_SIZE 9\n\
-                 0.1 0.2 0.3\n\0"), "trunc-data"),
-            (String::from(
-                "LUT_2D_SIZE 4\n\
-                 0.1 0.2 0.3\n\0"), "lut2d"),
-            (String::from(
-                "LUT_3D_SIZE\n\0"), "no-size"),
-            (String::from(
-                "GARBAGE_TOKEN 1 2 3\n\
+            (
+                String::from(
+                    "TITLE \"t\"\nLUT_3D_SIZE 9\n\
+                 0.1 0.2 0.3\n\0",
+                ),
+                "trunc-data",
+            ),
+            (
+                String::from(
+                    "LUT_2D_SIZE 4\n\
+                 0.1 0.2 0.3\n\0",
+                ),
+                "lut2d",
+            ),
+            (String::from("LUT_3D_SIZE\n\0"), "no-size"),
+            (
+                String::from(
+                    "GARBAGE_TOKEN 1 2 3\n\
                  LUT_3D_SIZE 2\n\
                  0.1 0.2 0.3 0.1 0.2 0.3\n\
                  0.1 0.2 0.3 0.1 0.2 0.3\n\
                  0.1 0.2 0.3 0.1 0.2 0.3\n\
-                 0.1 0.2 0.3 0.1 0.2 0.3\n\0"),
-                "garbage"),
+                 0.1 0.2 0.3 0.1 0.2 0.3\n\0",
+                ),
+                "garbage",
+            ),
         ] {
-            let path = format!(
-                "/tmp/lcms_cube_{}.cube", name);
-            std::fs::write(&path,
-                doc.trim_end_matches('\0')).unwrap();
-            let cpath = std::ffi::CString::new(
-                path.as_str()).unwrap();
-            let prof = c::cmsCreateDeviceLinkFromCubeFileTHR(
-                std::ptr::null_mut(),
-                cpath.as_ptr());
-            eprintln!("{name} prof={}",
-                !prof.is_null());
+            let path = format!("/tmp/lcms_cube_{}.cube", name);
+            std::fs::write(&path, doc.trim_end_matches('\0')).unwrap();
+            let cpath = std::ffi::CString::new(path.as_str()).unwrap();
+            let prof = c::cmsCreateDeviceLinkFromCubeFileTHR(std::ptr::null_mut(), cpath.as_ptr());
+            eprintln!("{name} prof={}", !prof.is_null());
             if !prof.is_null() {
-                c::cmsCloseProfile(prof); }
+                c::cmsCloseProfile(prof);
+            }
             let _ = std::fs::remove_file(&path);
         }
     }
@@ -3664,30 +4148,40 @@ fn cgats_insym2_arms() {
         // '+'-signed values in data rows + float/hex
         //   + num-followed-by-idchar
         for (doc, name) in [
-            ("CGATS.17\n\
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 3\n\
               BEGIN_DATA_FORMAT\n\
               A B C\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 2\n\
               BEGIN_DATA\n\
               +1 +2 +3\n\
-              4 5 6\nEND_DATA\n", "plus-rows"),
-            ("CGATS.17\n\
+              4 5 6\nEND_DATA\n",
+                "plus-rows",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 2\n\
               BEGIN_DATA_FORMAT\n\
               A B\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
               BEGIN_DATA\n\
-              + 1\nEND_DATA\n", "plus-space"),
-            ("CGATS.17\n\
+              + 1\nEND_DATA\n",
+                "plus-space",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 2\n\
               BEGIN_DATA_FORMAT\n\
               A B\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 2\n\
               BEGIN_DATA\n\
               1.5e3 2x\n\
-              4 5\nEND_DATA\n", "numid"),
-            ("CGATS.17\n\
+              4 5\nEND_DATA\n",
+                "numid",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 3\n\
               BEGIN_DATA_FORMAT\n\
               A B C\nEND_DATA_FORMAT\n\
@@ -3695,8 +4189,11 @@ fn cgats_insym2_arms() {
               BEGIN_DATA\n\
               0x1F 0b101 0o17\n\
               .5 5. 1e-2\n\
-              -1 -0x10 -.5\nEND_DATA\n", "forms"),
-            ("CGATS.17\n\
+              -1 -0x10 -.5\nEND_DATA\n",
+                "forms",
+            ),
+            (
+                "CGATS.17\n\
               ORIGINATOR \"o\"\n\
               CREATED \"d\"\n\
               NUMBER_OF_FIELDS 1\n\
@@ -3704,18 +4201,23 @@ fn cgats_insym2_arms() {
               A\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
               BEGIN_DATA\n\
-              1e9999\nEND_DATA\n", "bigexp"),
+              1e9999\nEND_DATA\n",
+                "bigexp",
+            ),
         ] {
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
                 doc.as_ptr() as *const _,
-                doc.len() as u32);
+                doc.len() as u32,
+            );
             eprintln!("{name} it8={}", !it8.is_null());
             if !it8.is_null() {
                 // GetData probes reach the numeric paths
-                let n = c::cmsIT8GetDataDbl(it8,
+                let n = c::cmsIT8GetDataDbl(
+                    it8,
                     "SAMPLE_ID\0".as_ptr() as *const _,
-                    "A\0".as_ptr() as *const _);
+                    "A\0".as_ptr() as *const _,
+                );
                 eprintln!("  dbl={n}");
                 c::cmsIT8Free(it8);
             }
@@ -3724,36 +4226,35 @@ fn cgats_insym2_arms() {
         //   MAXINCLUDE (upstream default 10)
         for depth in [1u32, 5, 12] {
             for d in 0..depth {
-                let f = format!(
-                    "/tmp/lcms_inc_{}_{}.txt", depth, d);
+                let f = format!("/tmp/lcms_inc_{}_{}.txt", depth, d);
                 let body = if d + 1 < depth {
-                    format!(
-                        "#INCLUDE \"lcms_inc_{}_{}.txt\"\n",
-                        depth, d + 1)
+                    format!("#INCLUDE \"lcms_inc_{}_{}.txt\"\n", depth, d + 1)
                 } else {
                     "NUMBER_OF_FIELDS 1\n\
                      BEGIN_DATA_FORMAT\n\
                      A\nEND_DATA_FORMAT\n\
                      NUMBER_OF_SETS 1\n\
-                     BEGIN_DATA\n42\nEND_DATA\n".to_string()
+                     BEGIN_DATA\n42\nEND_DATA\n"
+                        .to_string()
                 };
                 std::fs::write(&f, body).unwrap();
             }
             let doc = format!(
                 "CGATS.17\n\
                  #INCLUDE \"/tmp/lcms_inc_{}_0.txt\"\n",
-                depth);
+                depth
+            );
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
                 doc.as_ptr() as *const _,
-                doc.len() as u32);
-            eprintln!("inc-depth{depth} it8={}",
-                !it8.is_null());
+                doc.len() as u32,
+            );
+            eprintln!("inc-depth{depth} it8={}", !it8.is_null());
             if !it8.is_null() {
-                c::cmsIT8Free(it8); }
+                c::cmsIT8Free(it8);
+            }
             for d in 0..depth {
-                let _ = std::fs::remove_file(format!(
-                    "/tmp/lcms_inc_{}_{}.txt", depth, d));
+                let _ = std::fs::remove_file(format!("/tmp/lcms_inc_{}_{}.txt", depth, d));
             }
         }
     }
@@ -3769,26 +4270,26 @@ fn cgats_write_load_arms() {
         // build an IT8 doc, save to file + mem, reload
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
         eprintln!("it8={}", !it8.is_null());
-        if it8.is_null() { return; }
-        c::cmsIT8SetSheetType(it8,
-            "CGATS.17\0".as_ptr() as *const _);
-        c::cmsIT8SetPropertyStr(it8,
+        if it8.is_null() {
+            return;
+        }
+        c::cmsIT8SetSheetType(it8, "CGATS.17\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyStr(
+            it8,
             "ORIGINATOR\0".as_ptr() as *const _,
-            "lcms-test\0".as_ptr() as *const _);
-        c::cmsIT8SetPropertyStr(it8,
+            "lcms-test\0".as_ptr() as *const _,
+        );
+        c::cmsIT8SetPropertyStr(
+            it8,
             "CREATED\0".as_ptr() as *const _,
-            "2026-11-08\0".as_ptr() as *const _);
-        c::cmsIT8SetPropertyDbl(it8,
-            "DENSITY\0".as_ptr() as *const _, 1.5);
-        c::cmsIT8SetPropertyDbl(it8,
-            "WEIGHT\0".as_ptr() as *const _, 0.25);
-        c::cmsIT8SetComment(it8,
-            "comment line one\0".as_ptr() as *const _);
-        c::cmsIT8SetComment(it8,
-            "comment two\0".as_ptr() as *const _);
+            "2026-11-08\0".as_ptr() as *const _,
+        );
+        c::cmsIT8SetPropertyDbl(it8, "DENSITY\0".as_ptr() as *const _, 1.5);
+        c::cmsIT8SetPropertyDbl(it8, "WEIGHT\0".as_ptr() as *const _, 0.25);
+        c::cmsIT8SetComment(it8, "comment line one\0".as_ptr() as *const _);
+        c::cmsIT8SetComment(it8, "comment two\0".as_ptr() as *const _);
         // define a custom double format
-        c::cmsIT8DefineDblFormat(it8,
-            "%.12g\0".as_ptr() as *const _);
+        c::cmsIT8DefineDblFormat(it8, "%.12g\0".as_ptr() as *const _);
         // data format + sets
         let fmt: Vec<*const i8> = [
             "SAMPLE_ID\0".as_ptr() as *const _,
@@ -3796,59 +4297,56 @@ fn cgats_write_load_arms() {
             "RGB_G\0".as_ptr() as *const _,
             "RGB_B\0".as_ptr() as *const _,
             "LAB_L\0".as_ptr() as *const _,
-        ].to_vec();
+        ]
+        .to_vec();
         for (i, f) in fmt.iter().enumerate() {
-            let ok = c::cmsIT8SetDataFormat(it8,
-                i as i32, *f);
+            let ok = c::cmsIT8SetDataFormat(it8, i as i32, *f);
             eprintln!("  fmt[{i}] {ok}");
         }
         for p in 0..3u32 {
             let patch = format!("P{p}\0");
-            for (fld, v) in [("RGB_R", p as f64 + 0.1),
+            for (fld, v) in [
+                ("RGB_R", p as f64 + 0.1),
                 ("RGB_G", p as f64 + 0.2),
                 ("RGB_B", p as f64 + 0.3),
-                ("LAB_L", p as f64 * 33.0)] {
+                ("LAB_L", p as f64 * 33.0),
+            ] {
                 let f = format!("{fld}\0");
-                let _ = c::cmsIT8SetDataDbl(it8,
-                    patch.as_ptr() as *const _,
-                    f.as_ptr() as *const _, v);
+                let _ =
+                    c::cmsIT8SetDataDbl(it8, patch.as_ptr() as *const _, f.as_ptr() as *const _, v);
             }
         }
         // save to mem (size query then real)
         let mut need = 0u32;
-        c::cmsIT8SaveToMem(it8, std::ptr::null_mut(),
-            &mut need);
+        c::cmsIT8SaveToMem(it8, std::ptr::null_mut(), &mut need);
         eprintln!("mem-need={need}");
         let mut mbuf = vec![0u8; (need + 64) as usize];
         let mut n2 = mbuf.len() as u32;
-        let sv = c::cmsIT8SaveToMem(it8,
-            mbuf.as_mut_ptr() as *mut _, &mut n2);
+        let sv = c::cmsIT8SaveToMem(it8, mbuf.as_mut_ptr() as *mut _, &mut n2);
         eprintln!("mem-sv={sv} n2={n2}");
         // save to file + reload
-        let path = std::ffi::CString::new(
-            "/tmp/lcms_it8_wl.it8").unwrap();
+        let path = std::ffi::CString::new("/tmp/lcms_it8_wl.it8").unwrap();
         let sf = c::cmsIT8SaveToFile(it8, path.as_ptr());
         eprintln!("file-sv={sf}");
-        let it8b = c::cmsIT8LoadFromFile(
-            std::ptr::null_mut(), path.as_ptr());
+        let it8b = c::cmsIT8LoadFromFile(std::ptr::null_mut(), path.as_ptr());
         eprintln!("reload={}", !it8b.is_null());
         if !it8b.is_null() {
-            let v = c::cmsIT8GetDataDbl(it8b,
+            let v = c::cmsIT8GetDataDbl(
+                it8b,
                 "P1\0".as_ptr() as *const _,
-                "RGB_R\0".as_ptr() as *const _);
+                "RGB_R\0".as_ptr() as *const _,
+            );
             eprintln!("  reread RGB_R@P1={v}");
-            let t = c::cmsIT8EnumDataFormat(it8b,
-                std::ptr::null_mut());
+            let t = c::cmsIT8EnumDataFormat(it8b, std::ptr::null_mut());
             eprintln!("  enum-fmt={t}");
             c::cmsIT8Free(it8b);
         }
         // reload from mem
-        let it8c = c::cmsIT8LoadFromMem(
-            std::ptr::null_mut(),
-            mbuf.as_ptr() as *const _, n2);
+        let it8c = c::cmsIT8LoadFromMem(std::ptr::null_mut(), mbuf.as_ptr() as *const _, n2);
         eprintln!("mem-reload={}", !it8c.is_null());
         if !it8c.is_null() {
-            c::cmsIT8Free(it8c); }
+            c::cmsIT8Free(it8c);
+        }
         c::cmsIT8Free(it8);
         let _ = std::fs::remove_file("/tmp/lcms_it8_wl.it8");
     }
@@ -3873,46 +4371,56 @@ fn cgats_getdata_arms() {
             p2 5.0 6.0\nEND_DATA\n";
         let it8 = c::cmsIT8LoadFromMem(
             std::ptr::null_mut(),
-            doc.as_ptr() as *const _, doc.len() as u32);
+            doc.as_ptr() as *const _,
+            doc.len() as u32,
+        );
         eprintln!("it8={}", !it8.is_null());
-        if it8.is_null() { return; }
+        if it8.is_null() {
+            return;
+        }
         // property lookups
-        for key in ["ORIGINATOR\0", "NOPE\0",
-                    "CREATED\0"] {
-            let v = c::cmsIT8GetProperty(it8,
-                key.as_ptr() as *const _);
-            let s = if v.is_null() { "NULL".to_string() }
-                else { unsafe {
-                    std::ffi::CStr::from_ptr(v)
-                        .to_string_lossy().into_owned() } };
+        for key in ["ORIGINATOR\0", "NOPE\0", "CREATED\0"] {
+            let v = c::cmsIT8GetProperty(it8, key.as_ptr() as *const _);
+            let s = if v.is_null() {
+                "NULL".to_string()
+            } else {
+                unsafe { std::ffi::CStr::from_ptr(v).to_string_lossy().into_owned() }
+            };
             eprintln!("prop {key:?} = {s}");
         }
-        let dv = c::cmsIT8GetPropertyDbl(it8,
-            "NUMBER_OF_SETS\0".as_ptr() as *const _);
+        let dv = c::cmsIT8GetPropertyDbl(it8, "NUMBER_OF_SETS\0".as_ptr() as *const _);
         eprintln!("prop-dbl NS={dv}");
         // GetData patch/sample
         for (patch, sample) in [
-            ("p0\0", "R\0"), ("p1\0", "G\0"),
+            ("p0\0", "R\0"),
+            ("p1\0", "G\0"),
             ("p2\0", "SAMPLE_ID\0"),
-            ("nope\0", "R\0"), ("p0\0", "nope\0"),
+            ("nope\0", "R\0"),
+            ("p0\0", "nope\0"),
         ] {
-            let v = c::cmsIT8GetData(it8,
-                patch.as_ptr() as *const _,
-                sample.as_ptr() as *const _);
-            let vd = c::cmsIT8GetDataDbl(it8,
-                patch.as_ptr() as *const _,
-                sample.as_ptr() as *const _);
-            eprintln!("{patch:?}/{sample:?}: \
-                str={} dbl={vd}", !v.is_null());
+            let v = c::cmsIT8GetData(it8, patch.as_ptr() as *const _, sample.as_ptr() as *const _);
+            let vd =
+                c::cmsIT8GetDataDbl(it8, patch.as_ptr() as *const _, sample.as_ptr() as *const _);
+            eprintln!(
+                "{patch:?}/{sample:?}: \
+                str={} dbl={vd}",
+                !v.is_null()
+            );
         }
         // row/col accessors incl. OOB
-        for (r, c_) in [(0i32, 0), (1, 1), (2, 2),
-                        (-1, 0), (0, -1), (99, 0), (0, 99),
-                        (3, 3)] {
+        for (r, c_) in [
+            (0i32, 0),
+            (1, 1),
+            (2, 2),
+            (-1, 0),
+            (0, -1),
+            (99, 0),
+            (0, 99),
+            (3, 3),
+        ] {
             let s = c::cmsIT8GetDataRowCol(it8, r, c_);
             let d = c::cmsIT8GetDataRowColDbl(it8, r, c_);
-            eprintln!("rc({r},{c_}): str={} dbl={d}",
-                !s.is_null());
+            eprintln!("rc({r},{c_}): str={} dbl={d}", !s.is_null());
         }
         // SetData variants
         for (patch, sample, val) in [
@@ -3920,19 +4428,20 @@ fn cgats_getdata_arms() {
             ("p1\0", "G\0", "abc\0"),
             ("nope\0", "R\0", "1\0"),
         ] {
-            let ok = c::cmsIT8SetData(it8,
+            let ok = c::cmsIT8SetData(
+                it8,
                 patch.as_ptr() as *const _,
                 sample.as_ptr() as *const _,
-                val.as_ptr() as *const _);
-            eprintln!("set {patch:?}/{sample:?}={val:?} \
-                {ok}");
+                val.as_ptr() as *const _,
+            );
+            eprintln!(
+                "set {patch:?}/{sample:?}={val:?} \
+                {ok}"
+            );
         }
-        for (r, c_, v) in [(0i32, 0, "7.7\0"),
-                           (1, 1, "8.8\0"), (5, 5, "x\0")] {
-            let ok = c::cmsIT8SetDataRowCol(it8, r, c_,
-                v.as_ptr() as *const _);
-            let ok2 = c::cmsIT8SetDataRowColDbl(it8, r, c_,
-                9.9);
+        for (r, c_, v) in [(0i32, 0, "7.7\0"), (1, 1, "8.8\0"), (5, 5, "x\0")] {
+            let ok = c::cmsIT8SetDataRowCol(it8, r, c_, v.as_ptr() as *const _);
+            let ok2 = c::cmsIT8SetDataRowColDbl(it8, r, c_, 9.9);
             eprintln!("setrc({r},{c_}) {ok}/{ok2}");
         }
         c::cmsIT8Free(it8);
@@ -3947,39 +4456,54 @@ fn cgats_hdr_cube_arms() {
     unsafe {
         // malformed header/sheet/doc variants
         for (doc, name) in [
-            ("CGATS.17\n\
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 0\n\
               BEGIN_DATA_FORMAT\n\
               END_DATA_FORMAT\n\
               NUMBER_OF_SETS 0\n\
               BEGIN_DATA\n\
-              END_DATA\n", "empty-fields"),
-            ("NOTCGATS\n\
+              END_DATA\n",
+                "empty-fields",
+            ),
+            (
+                "NOTCGATS\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n",
-                "bad-magic"),
-            ("CGATS.17\n\
+                "bad-magic",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n",
-                "missing-arg"),
-            ("CGATS.17\n\
+                "missing-arg",
+            ),
+            (
+                "CGATS.17\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               BEGIN_DATA\n1\nEND_DATA\n",
-                "no-fields"),
-            ("CGATS.17\r\n\
+                "no-fields",
+            ),
+            (
+                "CGATS.17\r\n\
               NUMBER_OF_FIELDS 1\r\n\
               BEGIN_DATA_FORMAT\r\nA\r\n\
               END_DATA_FORMAT\r\n\
               NUMBER_OF_SETS 1\r\n\
               BEGIN_DATA\r\n1\r\nEND_DATA\r\n",
-                "crlf"),
-            ("CGATS.17\n\
+                "crlf",
+            ),
+            (
+                "CGATS.17\n\
               # comment only\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
-              BEGIN_DATA\n1\nEND_DATA\n", "comments"),
-            ("CGATS.17\n\
+              BEGIN_DATA\n1\nEND_DATA\n",
+                "comments",
+            ),
+            (
+                "CGATS.17\n\
               PROP_STR \"quoted value\"\n\
               PROP_INT 42\n\
               PROP_DBL 3.14\n\
@@ -3987,54 +4511,68 @@ fn cgats_hdr_cube_arms() {
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
-              BEGIN_DATA\n1\nEND_DATA\n", "props"),
-            ("CGATS.17\n\
+              BEGIN_DATA\n1\nEND_DATA\n",
+                "props",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 3\n\
               BEGIN_DATA_FORMAT\n\
               A B C\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 2\n\
               BEGIN_DATA\n\
-              1 2\nEND_DATA\n", "short-rows"),
-            ("CGATS.17\n\
+              1 2\nEND_DATA\n",
+                "short-rows",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 3\n\
               BEGIN_DATA\n\
-              1 2 3\nEND_DATA\n", "long-rows"),
+              1 2 3\nEND_DATA\n",
+                "long-rows",
+            ),
         ] {
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
-                doc.as_ptr() as *const _, doc.len() as u32);
+                doc.as_ptr() as *const _,
+                doc.len() as u32,
+            );
             eprintln!("{name} it8={}", !it8.is_null());
             if !it8.is_null() {
-                c::cmsIT8Free(it8); }
+                c::cmsIT8Free(it8);
+            }
         }
         // cube: more edge inputs via devicelink
         for (n, name) in [
-            (1u32, "s1"), (2, "s2"), (4, "s4"),
-            (9, "s9"), (33, "s33"), (255, "s255"),
+            (1u32, "s1"),
+            (2, "s2"),
+            (4, "s4"),
+            (9, "s9"),
+            (33, "s33"),
+            (255, "s255"),
         ] {
             let mut s = String::from(
                 "TITLE \"t\"\n\
                  DOMAIN_MIN 0 0 0\n\
                  DOMAIN_MAX 1 1 1\n\
-                 LUT_3D_SIZE ");
+                 LUT_3D_SIZE ",
+            );
             s.push_str(&format!("{n}\n"));
             let nn = n * n * n;
             for _ in 0..nn.min(8192) {
-                s.push_str("0.1 0.2 0.3\n"); }
+                s.push_str("0.1 0.2 0.3\n");
+            }
             s.push('\0');
             let path = format!("/tmp/lcms_cube2_{}.cube", n);
-            std::fs::write(&path, s.trim_end_matches('\0'))
-                .unwrap();
-            let cp = std::ffi::CString::new(
-                path.as_str()).unwrap();
-            let prof = c::cmsCreateDeviceLinkFromCubeFileTHR(
-                std::ptr::null_mut(), cp.as_ptr());
-            eprintln!("cube {name} prof={}",
-                !prof.is_null());
+            std::fs::write(&path, s.trim_end_matches('\0')).unwrap();
+            let cp = std::ffi::CString::new(path.as_str()).unwrap();
+            let prof = c::cmsCreateDeviceLinkFromCubeFileTHR(std::ptr::null_mut(), cp.as_ptr());
+            eprintln!("cube {name} prof={}", !prof.is_null());
             if !prof.is_null() {
-                c::cmsCloseProfile(prof); }
+                c::cmsCloseProfile(prof);
+            }
             let _ = std::fs::remove_file(&path);
         }
     }
@@ -4047,56 +4585,76 @@ fn cgats_hdr_cube_arms() {
 fn cgats_lexer2_arms() {
     unsafe {
         for (doc, name) in [
-            ("CGATS.17\n\
+            (
+                "CGATS.17\n\
               PROP \"a b c\"\n\
               PROP2 'single'\n\
               PROP3 \"esc\\\"ape\"\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
-              BEGIN_DATA\n1\nEND_DATA\n", "quotes"),
-            ("CGATS.17\n\
+              BEGIN_DATA\n1\nEND_DATA\n",
+                "quotes",
+            ),
+            (
+                "CGATS.17\n\
               UNDER_score dot.name dash-name\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
-              BEGIN_DATA\n1\nEND_DATA\n", "idents"),
-            ("CGATS.17\n\
+              BEGIN_DATA\n1\nEND_DATA\n",
+                "idents",
+            ),
+            (
+                "CGATS.17\n\
               N1 0x1F N2 0b101 N3 0o17\n\
               N4 .5 N5 5. N6 1e-2 N7 1E+3\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
-              BEGIN_DATA\n1\nEND_DATA\n", "numforms"),
-            ("CGATS.17\n\
+              BEGIN_DATA\n1\nEND_DATA\n",
+                "numforms",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 2\n\
               BEGIN_DATA_FORMAT\n\
               A B\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 2\n\
               BEGIN_DATA\n\
               \"q v\" 4\n\
-              5 6\nEND_DATA\n", "qdata"),
-            ("CGATS.17\n\
+              5 6\nEND_DATA\n",
+                "qdata",
+            ),
+            (
+                "CGATS.17\n\
               KEYWORD1\nKEYWORD2 val\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
-              BEGIN_DATA\n1\nEND_DATA\n", "kw"),
-            ("CGATS.17\n\
+              BEGIN_DATA\n1\nEND_DATA\n",
+                "kw",
+            ),
+            (
+                "CGATS.17\n\
               NUMBER_OF_FIELDS 1\n\
               BEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\n\
               NUMBER_OF_SETS 1\n\
               BEGIN_DATA\n\
               #inline comment\n\
-              1\nEND_DATA\n", "inline-comment"),
+              1\nEND_DATA\n",
+                "inline-comment",
+            ),
         ] {
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
                 doc.as_ptr() as *const _,
-                doc.len() as u32);
+                doc.len() as u32,
+            );
             eprintln!("{name} it8={}", !it8.is_null());
             if !it8.is_null() {
-                c::cmsIT8Free(it8); }
+                c::cmsIT8Free(it8);
+            }
         }
     }
 }
@@ -4110,47 +4668,52 @@ fn it8_data_arms() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
         eprintln!("alloc={}", !h.is_null());
-        if h.is_null() { return; }
+        if h.is_null() {
+            return;
+        }
         // setter variants
-        let r1 = c::cmsIT8SetSheetType(h,
-            b"CGATS.17\0".as_ptr() as *const _);
-        let r2 = c::cmsIT8SetComment(h,
-            b"a comment\0".as_ptr() as *const _);
-        let r3 = c::cmsIT8SetPropertyStr(h,
+        let r1 = c::cmsIT8SetSheetType(h, b"CGATS.17\0".as_ptr() as *const _);
+        let r2 = c::cmsIT8SetComment(h, b"a comment\0".as_ptr() as *const _);
+        let r3 = c::cmsIT8SetPropertyStr(
+            h,
             b"ORIGINATOR\0".as_ptr() as *const _,
-            b"Devin\0".as_ptr() as *const _);
-        let r4 = c::cmsIT8SetPropertyDbl(h,
-            b"NUMBER_OF_FIELDS\0".as_ptr() as *const _,
-            4.0);
-        let r5 = c::cmsIT8SetPropertyHex(h,
-            b"HEXVAL\0".as_ptr() as *const _,
-            0xDEADBEEF);
-        let r6 = c::cmsIT8SetPropertyUncooked(h,
+            b"Devin\0".as_ptr() as *const _,
+        );
+        let r4 = c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, 4.0);
+        let r5 = c::cmsIT8SetPropertyHex(h, b"HEXVAL\0".as_ptr() as *const _, 0xDEADBEEF);
+        let r6 = c::cmsIT8SetPropertyUncooked(
+            h,
             b"UNCOOKED\0".as_ptr() as *const _,
-            b"raw stuff ()[]\0".as_ptr() as *const _);
-        let r7 = c::cmsIT8SetPropertyMulti(h,
+            b"raw stuff ()[]\0".as_ptr() as *const _,
+        );
+        let r7 = c::cmsIT8SetPropertyMulti(
+            h,
             b"MULTI\0".as_ptr() as *const _,
             b"SUB\0".as_ptr() as *const _,
-            b"sub-val\0".as_ptr() as *const _);
-        eprintln!(
-            "set: {r1}{r2}{r3}{r4}{r5}{r6}{r7}");
+            b"sub-val\0".as_ptr() as *const _,
+        );
+        eprintln!("set: {r1}{r2}{r3}{r4}{r5}{r6}{r7}");
         // data format + data set/get
         for i in 0..4 {
             let f = format!("F{i}\0");
-            c::cmsIT8SetDataFormat(h, i,
-                f.as_ptr() as *const _); }
+            c::cmsIT8SetDataFormat(h, i, f.as_ptr() as *const _);
+        }
         // SetData via the public set-property on data fields
-        let d1 = c::cmsIT8SetData(h,
+        let d1 = c::cmsIT8SetData(
+            h,
             b"F0\0".as_ptr() as *const _,
             b"F1\0".as_ptr() as *const _,
-            b"42\0".as_ptr() as *const _);
+            b"42\0".as_ptr() as *const _,
+        );
         eprintln!("setdata={d1}");
         // save to memory (WriteHeader + WriteDataFormat +
         //   WriteData emit arms)
         let mut buf = [0u8; 1 << 16];
-        let r8 = c::cmsIT8SaveToMem(h,
+        let r8 = c::cmsIT8SaveToMem(
+            h,
             buf.as_mut_ptr() as *mut _,
-            &mut (buf.len() as u32) as *mut u32);
+            &mut (buf.len() as u32) as *mut u32,
+        );
         eprintln!("save={r8}");
         // multi-table
         let t0 = c::cmsIT8SetTable(h, 0);
@@ -4158,32 +4721,30 @@ fn it8_data_arms() {
         let t9 = c::cmsIT8SetTable(h, 99);
         eprintln!("tables: {t0} {t1} {t9}");
         // enumerate sheets/properties
-        let ns = c::cmsIT8EnumDataFormat(h,
-            std::ptr::null_mut());
+        let ns = c::cmsIT8EnumDataFormat(h, std::ptr::null_mut());
         eprintln!("enum-df={ns}");
         // GetData returns a C string ptr
-        let g = c::cmsIT8GetData(h,
+        let g = c::cmsIT8GetData(
+            h,
             b"F0\0".as_ptr() as *const _,
-            b"F1\0".as_ptr() as *const _);
+            b"F1\0".as_ptr() as *const _,
+        );
         eprintln!("getdata={}", !g.is_null());
         // row/col accessors + dbl variants
         let rc = c::cmsIT8GetDataRowCol(h, 0, 1);
         let rd = c::cmsIT8GetDataRowColDbl(h, 0, 1);
-        let s1 = c::cmsIT8SetDataRowCol(h, 0, 2,
-            b"7\0".as_ptr() as *const _);
+        let s1 = c::cmsIT8SetDataRowCol(h, 0, 2, b"7\0".as_ptr() as *const _);
         let s2 = c::cmsIT8SetDataRowColDbl(h, 1, 0, 3.5);
-        let s3 = c::cmsIT8SetDataDbl(h,
+        let s3 = c::cmsIT8SetDataDbl(
+            h,
             b"F0\0".as_ptr() as *const _,
-            b"F1\0".as_ptr() as *const _, 9.5);
-        let fd = c::cmsIT8FindDataFormat(h,
-            b"F2\0".as_ptr() as *const _);
-        eprintln!(
-            "rc={} rd={rd} s={s1}{s2}{s3} fd={fd}",
-            !rc.is_null());
+            b"F1\0".as_ptr() as *const _,
+            9.5,
+        );
+        let fd = c::cmsIT8FindDataFormat(h, b"F2\0".as_ptr() as *const _);
+        eprintln!("rc={} rd={rd} s={s1}{s2}{s3} fd={fd}", !rc.is_null());
         // bad-property / out-of-range arms
-        let r9 = c::cmsIT8SetPropertyStr(h,
-            std::ptr::null(),
-            b"val\0".as_ptr() as *const _);
+        let r9 = c::cmsIT8SetPropertyStr(h, std::ptr::null(), b"val\0".as_ptr() as *const _);
         eprintln!("null-prop={r9}");
         c::cmsIT8Free(h);
     }

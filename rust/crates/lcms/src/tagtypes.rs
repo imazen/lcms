@@ -169,10 +169,16 @@ impl Clone for ForeignTag {
         if let Some(h) = *crate::context::TAGTYPE_HOOKS.read().unwrap() {
             let dup = (h.dup)(self.cbox, self.ptr, 1);
             if dup != 0 {
-                return ForeignTag { ptr: dup, cbox: self.cbox };
+                return ForeignTag {
+                    ptr: dup,
+                    cbox: self.cbox,
+                };
             }
         }
-        ForeignTag { ptr: self.ptr, cbox: self.cbox }
+        ForeignTag {
+            ptr: self.ptr,
+            cbox: self.cbox,
+        }
     }
 }
 
@@ -447,7 +453,9 @@ fn type_xyz_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u3
 pub fn decide_xyz_type(_ver: f64, data: &TagObject) -> u32 {
     // Reject type-mismatched payloads — C's tag-descriptor table
     // validates the object against the sig's allowed types.
-    if !matches!(data, TagObject::Xyz(_)) { return 0 }
+    if !matches!(data, TagObject::Xyz(_)) {
+        return 0;
+    }
     tsig::SigXYZType
 }
 
@@ -746,9 +754,10 @@ fn type_text_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _n: u
 
 /// `DecideTextType`
 pub fn decide_text_type(ver: f64, data: &TagObject) -> u32 {
-    if !matches!(data,
-        TagObject::Mlu(_) | TagObject::Text(_) | TagObject::TextDescription(_))
-    {
+    if !matches!(
+        data,
+        TagObject::Mlu(_) | TagObject::Text(_) | TagObject::TextDescription(_)
+    ) {
         return 0;
     }
     if ver >= 4.0 {
@@ -930,9 +939,10 @@ pub fn decide_text_desc_type(ver: f64, data: &TagObject) -> u32 {
     // table validates the object's type against the sig's allowed
     // types; a non-text payload here returns 0 so is_type_supported
     // fails and cms_write_tag rejects the write.
-    if !matches!(data,
-        TagObject::Mlu(_) | TagObject::Text(_) | TagObject::TextDescription(_))
-    {
+    if !matches!(
+        data,
+        TagObject::Mlu(_) | TagObject::Text(_) | TagObject::TextDescription(_)
+    ) {
         return 0;
     }
     if ver >= 4.0 {
@@ -2134,8 +2144,7 @@ fn read_8bit_tables(io: &mut IoHandler, lut: &mut Pipeline, n_channels: u32) -> 
     let Some(stage) = stage_alloc_tone_curves(None, n_channels, Some(&refs)) else {
         return false;
     };
-    
-    
+
     lut.insert_stage(StageLoc::AtEnd, stage)
 }
 
@@ -2675,9 +2684,7 @@ fn read_clut(io: &mut IoHandler, offset: u32, in_ch: u32, out_ch: u32) -> Option
         }
         // `Arc::make_mut` swapped the table — re-point the prebuilt params.
         if let Some(p) = &mut d.params16 {
-            p.table = crate::intrp::InterpTable::U16Rc(
-                d.tab16.clone().unwrap_or_default(),
-            );
+            p.table = crate::intrp::InterpTable::U16Rc(d.tab16.clone().unwrap_or_default());
         }
     }
     Some(clut)
@@ -3513,9 +3520,7 @@ fn type_mpe_clut_read(
             }
         }
         if let Some(p) = &mut clut.params_f {
-            p.table = crate::intrp::InterpTable::F32Rc(
-                clut.tab_float.clone().unwrap_or_default(),
-            );
+            p.table = crate::intrp::InterpTable::F32Rc(clut.tab_float.clone().unwrap_or_default());
         }
     }
     *n_items = 1;
@@ -4261,13 +4266,9 @@ fn type_dictionary_read(
             None
         };
         let rc = match (&name_w, &value_w) {
-            (Some(n), Some(v)) => crate::named::dict_add_entry(
-                &mut dict,
-                n,
-                Some(v),
-                dn.as_ref(),
-                dv.as_ref(),
-            ),
+            (Some(n), Some(v)) => {
+                crate::named::dict_add_entry(&mut dict, n, Some(v), dn.as_ref(), dv.as_ref())
+            }
             _ => {
                 err::signal_error(None, ERROR_CORRUPTION_DETECTED, "Bad dictionary Name/Value");
                 false

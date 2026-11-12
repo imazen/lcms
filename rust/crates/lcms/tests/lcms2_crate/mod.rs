@@ -12,10 +12,13 @@ use lcms::lcms2::*;
 fn tags_read() {
     let prof = Profile::new_srgb();
     assert!(prof.read_tag(TagSignature::BToD0Tag).is_none());
-    assert_eq!(CIEXYZ::d50().X, match prof.read_tag(TagSignature::MediaWhitePointTag) {
-        Tag::CIEXYZ(xyz) => xyz.X,
-        _ => panic!(),
-    });
+    assert_eq!(
+        CIEXYZ::d50().X,
+        match prof.read_tag(TagSignature::MediaWhitePointTag) {
+            Tag::CIEXYZ(xyz) => xyz.X,
+            _ => panic!(),
+        }
+    );
 }
 
 // -- profile.rs::tags_write
@@ -27,22 +30,32 @@ fn tags_write() {
     mlu.set_text_ascii("Testing", Locale::new("en_GB"));
     assert!(p.write_tag(TagSignature::CopyrightTag, Tag::MLU(&mlu)));
 
-    let xyz = CIEXYZ { X: 1., Y: 2., Z: 3. };
+    let xyz = CIEXYZ {
+        X: 1.,
+        Y: 2.,
+        Z: 3.,
+    };
     assert!(p.write_tag(TagSignature::RedColorantTag, Tag::CIEXYZ(&xyz)));
 
     assert!(p.has_tag(TagSignature::CopyrightTag));
     assert!(p.has_tag(TagSignature::RedColorantTag));
     assert!(!p.has_tag(TagSignature::BlueColorantTag));
 
-    assert_eq!(&xyz, match p.read_tag(TagSignature::RedColorantTag) {
-        Tag::CIEXYZ(d) => d,
-        _ => panic!(),
-    });
+    assert_eq!(
+        &xyz,
+        match p.read_tag(TagSignature::RedColorantTag) {
+            Tag::CIEXYZ(d) => d,
+            _ => panic!(),
+        }
+    );
 
-    assert_eq!(Ok("Testing".to_owned()), match p.read_tag(TagSignature::CopyrightTag) {
-        Tag::MLU(mlu) => mlu.text(Locale::none()),
-        _ => panic!(),
-    });
+    assert_eq!(
+        Ok("Testing".to_owned()),
+        match p.read_tag(TagSignature::CopyrightTag) {
+            Tag::MLU(mlu) => mlu.text(Locale::none()),
+            _ => panic!(),
+        }
+    );
 }
 
 // -- profile.rs::setters
@@ -79,7 +92,8 @@ fn unwind_safety() {
     let profile = &Profile::new_xyz();
     std::panic::catch_unwind(|| {
         let _p = profile;
-    }).unwrap();
+    })
+    .unwrap();
 }
 
 // -- mlu.rs::mlu
@@ -105,7 +119,11 @@ fn mlu() {
 
 fn named() {
     let mut n = NamedColorList::new(10, 3, "hello", "world").unwrap();
-    assert!(n.append("yellow", [1, 2, 3], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]));
+    assert!(n.append(
+        "yellow",
+        [1, 2, 3],
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    ));
     assert_eq!(None, n.get(10000));
 
     let c = n.get(0).unwrap();
@@ -162,7 +180,10 @@ fn context() {
     c.unregister_plugins();
     assert!(crate::Profile::new_icc_context(&c, &[]).is_err());
 
-    assert!(c.supported_intents().contains_key(&Intent::RelativeColorimetric));
+    assert!(
+        c.supported_intents()
+            .contains_key(&Intent::RelativeColorimetric)
+    );
 
     let _ = GlobalContext::default();
 }
@@ -246,9 +267,8 @@ fn tone_curves_tag() {
             assert_eq!(a[0].estimated_entries(), b[0].estimated_entries());
             assert_eq!(a[1].estimated_entries(), b[1].estimated_entries());
             assert_eq!(a[2].estimated_entries(), b[2].estimated_entries());
-        },
+        }
         _ => panic!("bad tags"),
     }
     icc.icc().unwrap();
 }
-

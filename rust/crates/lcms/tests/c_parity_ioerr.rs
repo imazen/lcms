@@ -175,7 +175,12 @@ fn io1_getters_corpus() {
         }
         let r = r.unwrap();
         unsafe {
-            assert_eq!(c::cmsGetColorSpace(ch), r.color_space, "{}: cs", f.display());
+            assert_eq!(
+                c::cmsGetColorSpace(ch),
+                r.color_space,
+                "{}: cs",
+                f.display()
+            );
             assert_eq!(
                 c::cmsGetDeviceClass(ch),
                 r.device_class,
@@ -225,7 +230,9 @@ fn save_and_iohandler_roundtrip() {
     let r_bytes = lcms::profile::save_profile_to_mem(&mut rp).unwrap();
     assert_eq!(c_bytes.len(), r_bytes.len(), "file save length");
     for (i, (a, b)) in c_bytes.iter().zip(r_bytes.iter()).enumerate() {
-        if (24..36).contains(&i) { continue; } // created timestamp
+        if (24..36).contains(&i) {
+            continue;
+        } // created timestamp
         assert_eq!(a, b, "save byte @{i:#x}");
     }
     unsafe { c::cmsCloseProfile(cph) };
@@ -235,7 +242,11 @@ fn save_and_iohandler_roundtrip() {
     assert!(!c2.is_null());
     let mut rp2 = lcms::profile::open_profile_from_mem(None, &c_bytes).unwrap();
     unsafe {
-        assert_eq!(c::cmsGetTagCount(c2), rp2.tag_count as i32, "tag count on reopen");
+        assert_eq!(
+            c::cmsGetTagCount(c2),
+            rp2.tag_count as i32,
+            "tag count on reopen"
+        );
     }
     unsafe { c::cmsCloseProfile(c2) };
 
@@ -250,11 +261,15 @@ fn save_and_iohandler_roundtrip() {
         );
         assert!(!io_w.is_null(), "IOhandlerFromMem w");
         let p3 = c::cmsCreate_sRGBProfile();
-        assert!(c::cmsSaveProfileToIOhandler(p3, io_w) != 0, "save via iohandler");
+        assert!(
+            c::cmsSaveProfileToIOhandler(p3, io_w) != 0,
+            "save via iohandler"
+        );
         c::cmsCloseIOhandler(io_w);
         c::cmsCloseProfile(p3);
 
-        let io_r = c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), cs_c.as_ptr(), b"r\0".as_ptr());
+        let io_r =
+            c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), cs_c.as_ptr(), b"r\0".as_ptr());
         assert!(!io_r.is_null(), "IOhandlerFromFile r");
         let p4 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io_r);
         assert!(!p4.is_null(), "open via IOhandlerFromFile");
@@ -270,7 +285,9 @@ fn save_and_iohandler_roundtrip() {
 fn io1_lut_reader_eval() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
     let mut files: Vec<_> = std::fs::read_dir(&dir)
-        .unwrap().filter_map(|e| e.ok()).map(|e| e.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -278,23 +295,36 @@ fn io1_lut_reader_eval() {
         let name = f.file_name().unwrap().to_string_lossy();
         let data = std::fs::read(&f).unwrap();
         let ch = unsafe { c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32) };
-        if ch.is_null() { continue; }
+        if ch.is_null() {
+            continue;
+        }
         let mut rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
         for intent in 0..4u32 {
             for which in 0..3 {
                 let (cp, rpl) = unsafe {
                     match which {
-                        0 => (c::_cmsReadInputLUT(ch, intent),
-                              lcms::io1::read_input_lut(&mut rp, intent)),
-                        1 => (c::_cmsReadOutputLUT(ch, intent),
-                              lcms::io1::read_output_lut(&mut rp, intent)),
-                        _ => (c::_cmsReadDevicelinkLUT(ch, intent),
-                              lcms::io1::read_devicelink_lut(&mut rp, intent)),
+                        0 => (
+                            c::_cmsReadInputLUT(ch, intent),
+                            lcms::io1::read_input_lut(&mut rp, intent),
+                        ),
+                        1 => (
+                            c::_cmsReadOutputLUT(ch, intent),
+                            lcms::io1::read_output_lut(&mut rp, intent),
+                        ),
+                        _ => (
+                            c::_cmsReadDevicelinkLUT(ch, intent),
+                            lcms::io1::read_devicelink_lut(&mut rp, intent),
+                        ),
                     }
                 };
-                assert_eq!(cp.is_null(), rpl.is_none(),
-                    "{name} intent {intent} lut {which} presence");
-                if cp.is_null() || rpl.is_none() { continue; }
+                assert_eq!(
+                    cp.is_null(),
+                    rpl.is_none(),
+                    "{name} intent {intent} lut {which} presence"
+                );
+                if cp.is_null() || rpl.is_none() {
+                    continue;
+                }
                 let mut pipe = rpl.unwrap();
                 let n_in = unsafe { c::cmsPipelineInputChannels(cp as _) } as usize;
                 let n_out = unsafe { c::cmsPipelineOutputChannels(cp as _) } as usize;
@@ -302,10 +332,12 @@ fn io1_lut_reader_eval() {
                 assert_eq!(n_out, pipe.output_channels() as usize, "{name} out ch");
                 let mut seed = 0x1234u64;
                 for _ in 0..8 {
-                    let inp: Vec<u16> = (0..n_in).map(|_| {
-                        seed = seed.wrapping_mul(0x9e3779b97f4a7c15) ^ (seed >> 33);
-                        (seed >> 48) as u16
-                    }).collect();
+                    let inp: Vec<u16> = (0..n_in)
+                        .map(|_| {
+                            seed = seed.wrapping_mul(0x9e3779b97f4a7c15) ^ (seed >> 33);
+                            (seed >> 48) as u16
+                        })
+                        .collect();
                     let mut co = vec![0u16; n_out];
                     let mut ro = vec![0u16; n_out];
                     unsafe { c::cmsPipelineEval16(inp.as_ptr(), co.as_mut_ptr(), cp as _) };
@@ -325,7 +357,9 @@ fn io1_lut_reader_eval() {
 fn io1_header_getters() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
     let mut files: Vec<_> = std::fs::read_dir(&dir)
-        .unwrap().filter_map(|e| e.ok()).map(|e| e.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -333,7 +367,9 @@ fn io1_header_getters() {
         let name = f.file_name().unwrap().to_string_lossy();
         let data = std::fs::read(&f).unwrap();
         let ch = unsafe { c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32) };
-        if ch.is_null() { continue; }
+        if ch.is_null() {
+            continue;
+        }
         let rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
         unsafe {
             assert_eq!(c::cmsGetPCS(ch), rp.pcs, "{name} pcs");
@@ -371,7 +407,9 @@ fn io1_header_getters() {
 fn io1_intent_support() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
     let mut files: Vec<_> = std::fs::read_dir(&dir)
-        .unwrap().filter_map(|e| e.ok()).map(|e| e.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -379,7 +417,9 @@ fn io1_intent_support() {
         let name = f.file_name().unwrap().to_string_lossy();
         let data = std::fs::read(&f).unwrap();
         let ch = unsafe { c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32) };
-        if ch.is_null() { continue; }
+        if ch.is_null() {
+            continue;
+        }
         let mut rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
         for intent in 0..8u32 {
             for dir in 0..2u32 {
@@ -396,9 +436,9 @@ fn io1_intent_support() {
 /// read/write modes, seek/read/write/tell surface.
 #[test]
 fn iohandler_variants() {
-    let data = std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../linlcms2.icc"),
-    ).unwrap();
+    let data =
+        std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../linlcms2.icc"))
+            .unwrap();
     unsafe {
         // NULL-IOhandler save: dry-run size query
         let io_n = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
@@ -412,11 +452,20 @@ fn iohandler_variants() {
         // mem-IOhandler read mode: open existing profile bytes
         let mut buf = data.clone();
         let io_r = c::cmsOpenIOhandlerFromMem(
-            std::ptr::null_mut(), buf.as_mut_ptr(), buf.len() as u32, b"r\0".as_ptr());
+            std::ptr::null_mut(),
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            b"r\0".as_ptr(),
+        );
         assert!(!io_r.is_null(), "IOhandlerFromMem r");
         let p2 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io_r);
         assert!(!p2.is_null(), "open from mem iohandler");
-        assert_eq!(c::cmsGetTagCount(p2), lcms::profile::open_profile_from_mem(None, &data).unwrap().tag_count as i32);
+        assert_eq!(
+            c::cmsGetTagCount(p2),
+            lcms::profile::open_profile_from_mem(None, &data)
+                .unwrap()
+                .tag_count as i32
+        );
         c::cmsCloseProfile(p2);
     }
 }
@@ -433,13 +482,17 @@ fn truncated_open_matrix() {
         bytes.truncate(size as usize);
         let _ = c::cmsCloseProfile(h);
         // truncate at every 64-byte boundary + a few odd points
-        for cut in (0..=bytes.len()).step_by(64)
-            .chain([0usize, 1, 127, 128, 129, 255, 384]) {
+        for cut in (0..=bytes.len())
+            .step_by(64)
+            .chain([0usize, 1, 127, 128, 129, 255, 384])
+        {
             let sub = &bytes[..cut];
             let ch = c::cmsOpenProfileFromMem(sub.as_ptr() as _, cut as u32);
             let rp = profile::open_profile_from_mem(None, sub);
             assert_eq!(ch.is_null(), rp.is_none(), "cut {cut}");
-            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            if !ch.is_null() {
+                let _ = c::cmsCloseProfile(ch);
+            }
         }
     }
 }

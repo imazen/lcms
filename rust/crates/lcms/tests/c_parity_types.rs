@@ -68,11 +68,7 @@ fn raw_tag_reads() {
         assert!(!ch.is_null(), "{name}: C open");
         let mut rp = profile::open_profile_from_mem(None, &data).expect("rust open");
         let n_tags = unsafe { c::cmsGetTagCount(ch) };
-        assert_eq!(
-            n_tags as u32,
-            rp.tag_count,
-            "{name}: tag count"
-        );
+        assert_eq!(n_tags as u32, rp.tag_count, "{name}: tag count");
         for i in 0..n_tags {
             let sig = unsafe { c::cmsGetTagSignature(ch, i as u32) };
             // is-tag parity
@@ -106,17 +102,16 @@ fn raw_tag_write_roundtrip() {
         let n_tags = unsafe { c::cmsGetTagCount(ch) };
         for i in 0..n_tags {
             let sig = unsafe { c::cmsGetTagSignature(ch, i as u32) };
-            let Some(cb) = c_read_raw(ch, sig) else { continue };
+            let Some(cb) = c_read_raw(ch, sig) else {
+                continue;
+            };
             // write raw into both, read back
             let cw = unsafe { c::cmsWriteRawTag(ch, sig, cb.as_ptr() as _, cb.len() as u32) };
             let rw = profile::cms_write_raw_tag(&mut rp, sig, &cb);
             assert_eq!(cw != 0, rw, "{name}: write_raw status {sig:#010x}");
             let cback = c_read_raw(ch, sig);
             let rback = r_read_raw(&mut rp, sig);
-            assert_eq!(
-                cback, rback,
-                "{name}: raw roundtrip {sig:#010x}"
-            );
+            assert_eq!(cback, rback, "{name}: raw roundtrip {sig:#010x}");
         }
         unsafe { c::cmsCloseProfile(ch) };
     }
@@ -155,10 +150,7 @@ fn parsed_tag_resave() {
             if (24..36).contains(&off) {
                 continue; // created timestamp — nondeterministic
             }
-            assert_eq!(
-                c_out[off], r_out[off],
-                "{name}: resave byte @{off:#x}"
-            );
+            assert_eq!(c_out[off], r_out[off], "{name}: resave byte @{off:#x}");
         }
         assert_eq!(c_out.len(), r_out.len(), "{name}: resave length");
     }
@@ -174,7 +166,9 @@ fn built_profile_mpe_tags() {
         let mut cs = Vec::new();
         let mut rs = Vec::new();
         unsafe {
-            cs.push(c::cmsCreateBCHSWabstractProfile(24, 1.1, 1.2, 10.0, 0.8, 6500, 5000));
+            cs.push(c::cmsCreateBCHSWabstractProfile(
+                24, 1.1, 1.2, 10.0, 0.8, 6500, 5000,
+            ));
         }
         // linearization devicelink (CLUT16/mft2) via same gamma on both
         let c_g = unsafe { c::cmsBuildGamma(std::ptr::null_mut(), 1.8) };
@@ -192,7 +186,10 @@ fn built_profile_mpe_tags() {
                 350.0,
             ));
         }
-        rs.push(*virt::create_bchsw_abstract_profile(None, 24, 1.1, 1.2, 10.0, 0.8, 6500, 5000).unwrap());
+        rs.push(
+            *virt::create_bchsw_abstract_profile(None, 24, 1.1, 1.2, 10.0, 0.8, 6500, 5000)
+                .unwrap(),
+        );
         rs.push(*virt::create_linearization_device_link(None, 0x47524159, &[&r_g]).unwrap());
         rs.push(*virt::create_ink_limiting_device_link(None, 0x434D594B, 350.0).unwrap());
         (cs, rs)
@@ -219,7 +216,9 @@ fn built_profile_mpe_tags() {
         let r_out = profile::save_profile_to_mem(&mut rp).unwrap();
         assert_eq!(c_out.len(), r_out.len(), "built {idx} resave length");
         for (i, (a, b)) in c_out.iter().zip(r_out.iter()).enumerate() {
-            if (24..36).contains(&i) { continue; }
+            if (24..36).contains(&i) {
+                continue;
+            }
             assert_eq!(a, b, "built {idx} resave @{i:#x}");
         }
     }
@@ -242,13 +241,29 @@ fn exotic_tag_types() {
     unsafe {
         // ViewingConditionsType
         let c_vc = CIccViewingConditions {
-            illuminant: c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 },
-            surround: c::CieXyz { X: 0.5, Y: 0.5, Z: 0.5 },
+            illuminant: c::CieXyz {
+                X: 0.9642,
+                Y: 1.0,
+                Z: 0.8249,
+            },
+            surround: c::CieXyz {
+                X: 0.5,
+                Y: 0.5,
+                Z: 0.5,
+            },
             illuminant_type: 1,
         };
         let r_vc = lcms::tagtypes::IccViewingConditions {
-            illuminant_xyz: lcms::types::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 },
-            surround_xyz: lcms::types::CieXyz { X: 0.5, Y: 0.5, Z: 0.5 },
+            illuminant_xyz: lcms::types::CieXyz {
+                X: 0.9642,
+                Y: 1.0,
+                Z: 0.8249,
+            },
+            surround_xyz: lcms::types::CieXyz {
+                X: 0.5,
+                Y: 0.5,
+                Z: 0.5,
+            },
             illuminant_type: 1,
         };
         // write into a profile + read back — tag-type handler parity
@@ -256,7 +271,10 @@ fn exotic_tag_types() {
         let mut rp = lcms::virt::create_xyz_profile(None).unwrap();
         let c_ok = c::cmsWriteTag(ch, 0x76696577, &c_vc as *const _ as *const _);
         let r_ok = lcms::profile::cms_write_tag(
-            &mut rp, 0x76696577, Some(lcms::tagtypes::TagObject::ViewingConditions(r_vc)));
+            &mut rp,
+            0x76696577,
+            Some(lcms::tagtypes::TagObject::ViewingConditions(r_vc)),
+        );
         assert_eq!(c_ok != 0, r_ok, "write viewing");
         // read back on the C side + verify a resave round-trips
         let mut c_out = vec![0u8; 1 << 20];
@@ -265,8 +283,14 @@ fn exotic_tag_types() {
         c_out.truncate(size as usize);
         let mut r_out = lcms::profile::save_profile_to_mem(&mut rp).unwrap_or_default();
         // mask created (offset 24) + profile ID (offset 84..100)
-        for i in 0..12 { c_out.get_mut(24 + i).map(|b| *b = 0); r_out.get_mut(24 + i).map(|b| *b = 0); }
-        for i in 0..16 { c_out.get_mut(84 + i).map(|b| *b = 0); r_out.get_mut(84 + i).map(|b| *b = 0); }
+        for i in 0..12 {
+            c_out.get_mut(24 + i).map(|b| *b = 0);
+            r_out.get_mut(24 + i).map(|b| *b = 0);
+        }
+        for i in 0..16 {
+            c_out.get_mut(84 + i).map(|b| *b = 0);
+            r_out.get_mut(84 + i).map(|b| *b = 0);
+        }
         c_out.resize(r_out.len().max(c_out.len()), 0);
         r_out.resize(c_out.len(), 0);
         assert_eq!(c_out, r_out, "viewing resave");

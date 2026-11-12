@@ -912,9 +912,7 @@ fn find_combination<'a>(
 
 /// `CreateNamedColorDevicelink` — dump a named-color transform's list to a
 /// profile, evaluating each colorant through the transform
-fn create_named_color_devicelink(
-    xform: &mut crate::xform::Transform,
-) -> Option<Box<IccProfile>> {
+fn create_named_color_devicelink(xform: &mut crate::xform::Transform) -> Option<Box<IccProfile>> {
     let mut icc = create_profile_placeholder(xform.ctx.clone());
     icc.device_class = pc::SigNamedColorClass;
     icc.color_space = xform.exit_color_space;
@@ -945,7 +943,11 @@ fn create_named_color_devicelink(
             nc2.list[i as usize].device_colorant[j] = u16::from_le_bytes([b[0], b[1]]);
         }
     }
-    if !cms_write_tag(&mut icc, tags::SigNamedColor2Tag, Some(TagObject::NamedColor(nc2))) {
+    if !cms_write_tag(
+        &mut icc,
+        tags::SigNamedColor2Tag,
+        Some(TagObject::NamedColor(nc2)),
+    ) {
         return None;
     }
     Some(icc)
@@ -1078,9 +1080,10 @@ pub fn transform2_device_link(
                 &mut icc,
                 tags::SigColorantTableTag,
                 Some(TagObject::ColorantTable(clrt.clone())),
-            ) {
-                return None;
-            }
+            )
+        {
+            return None;
+        }
     }
     if let Some(clrt) = &xform.output_colorants {
         let tag = if device_class == pc::SigLinkClass {
@@ -1106,7 +1109,11 @@ pub fn transform2_device_link(
     } else {
         xform.exit_white_point
     };
-    if !cms_write_tag(&mut icc, tags::SigMediaWhitePointTag, Some(TagObject::Xyz(wp))) {
+    if !cms_write_tag(
+        &mut icc,
+        tags::SigMediaWhitePointTag,
+        Some(TagObject::Xyz(wp)),
+    ) {
         return None;
     }
 

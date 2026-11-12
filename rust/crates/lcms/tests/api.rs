@@ -121,7 +121,8 @@ fn placeholder_authoring() {
     p.set_header_intent(Intent::AbsoluteColorimetric);
     p.set_header_manufacturer(u32::from_be_bytes(*b"ACME"));
     p.set_info(InfoType::Description, "spot palette").unwrap();
-    p.write_tag(Tag::MEDIA_WHITE_POINT, TagData::Xyz(D50_XYZ)).unwrap();
+    p.write_tag(Tag::MEDIA_WHITE_POINT, TagData::Xyz(D50_XYZ))
+        .unwrap();
     let bytes = p.save().unwrap();
     let q = Profile::open(&bytes).unwrap();
     assert_eq!(q.device_class(), ProfileClass::NamedColor);
@@ -335,13 +336,15 @@ fn tag_read_write_roundtrip() {
         other => panic!("rTRC roundtrip: {other:?}"),
     }
     // signature + data + chromaticity
-    p.write_tag(Tag::TECHNOLOGY, TagData::Signature(0x6D6E7472)).unwrap();
+    p.write_tag(Tag::TECHNOLOGY, TagData::Signature(0x6D6E7472))
+        .unwrap();
     match p.get(Tag::TECHNOLOGY) {
         Some(TagValue::Signature(s)) => assert_eq!(s, 0x6D6E7472),
         other => panic!("tech: {other:?}"),
     }
     // Xyz write + read
-    p.write_tag(Tag::MEDIA_WHITE_POINT, TagData::Xyz(D50_XYZ)).unwrap();
+    p.write_tag(Tag::MEDIA_WHITE_POINT, TagData::Xyz(D50_XYZ))
+        .unwrap();
     assert_eq!(p.white_point().unwrap().Y, 1.0);
     // serialize + reopen keeps them
     let q = Profile::open(&p.save().unwrap()).unwrap();
@@ -361,7 +364,8 @@ fn tag_info_locales() {
         "{codes:?}"
     );
     let mut p = Profile::placeholder();
-    p.write_tag(Tag::PROFILE_DESCRIPTION, TagData::Mlu(mlu)).unwrap();
+    p.write_tag(Tag::PROFILE_DESCRIPTION, TagData::Mlu(mlu))
+        .unwrap();
     assert_eq!(
         p.info_in(InfoType::Description, Locale::new("de_DE"))
             .as_deref(),
@@ -388,7 +392,8 @@ fn named_colors_roundtrip() {
     let mut p = Profile::placeholder();
     p.set_color_space(ColorSpace::Named);
     p.set_device_class(ProfileClass::NamedColor);
-    p.write_tag(Tag::NAMED_COLOR2, TagData::NamedColors(list)).unwrap();
+    p.write_tag(Tag::NAMED_COLOR2, TagData::NamedColors(list))
+        .unwrap();
     let ncl = p.named_colors().unwrap();
     assert_eq!(ncl.len(), 2);
     assert!(!ncl.is_empty());
@@ -548,7 +553,10 @@ fn signature_types() {
     // Intent
     assert_eq!(Intent::default(), Intent::Perceptual);
     assert_eq!(Intent::from_u32(99), None);
-    assert_eq!(Intent::from_u32(14), Some(Intent::PreserveKPlaneRelativeColorimetric));
+    assert_eq!(
+        Intent::from_u32(14),
+        Some(Intent::PreserveKPlaneRelativeColorimetric)
+    );
     assert!(Intent::try_from(4).is_err());
     assert_eq!(Intent::ALL.len(), 4);
     assert_eq!(u32::from(Intent::Saturation), 2);
@@ -693,13 +701,25 @@ fn builtin_profiles_are_infallible_and_consts_match_c() {
     assert_eq!(srgb.color_space(), ColorSpace::Rgb);
     // D50 const is bit-identical to cmsD50_xyY()
     let d = D50;
-    assert_eq!((D50.x.to_bits(), D50.y.to_bits(), D50.Y.to_bits()), (d.x.to_bits(), d.y.to_bits(), d.Y.to_bits()));
+    assert_eq!(
+        (D50.x.to_bits(), D50.y.to_bits(), D50.Y.to_bits()),
+        (d.x.to_bits(), d.y.to_bits(), d.Y.to_bits())
+    );
     assert_eq!(D50_XYZ, D50_XYZ);
     // sRGB rebuilt from D65 + REC709_PRIMARIES + the sRGB curve matches the built-in
     let trc = ToneCurve::srgb();
     let rebuilt = Profile::rgb(&D65, &REC709_PRIMARIES, [&trc, &trc, &trc]).unwrap();
-    for t in [Tag::RED_COLORANT, Tag::GREEN_COLORANT, Tag::BLUE_COLORANT, Tag::MEDIA_WHITE_POINT] {
-        assert_eq!(rebuilt.get(t).and_then(|v| v.as_xyz()), srgb.get(t).and_then(|v| v.as_xyz()), "{t}");
+    for t in [
+        Tag::RED_COLORANT,
+        Tag::GREEN_COLORANT,
+        Tag::BLUE_COLORANT,
+        Tag::MEDIA_WHITE_POINT,
+    ] {
+        assert_eq!(
+            rebuilt.get(t).and_then(|v| v.as_xyz()),
+            srgb.get(t).and_then(|v| v.as_xyz()),
+            "{t}"
+        );
     }
 }
 
@@ -711,7 +731,10 @@ fn format_struct_consts() {
     assert!(Format::RGB_HALF.is_float());
     assert_eq!(Format::BGRA_8.total_channels(), 4);
     assert_eq!(format!("{:?}", Format::LAB_V2_16), "Format::LAB_V2_16");
-    assert_eq!(format!("{:?}", Format::RGB_8.planar()), "Format::RGB_8.planar()");
+    assert_eq!(
+        format!("{:?}", Format::RGB_8.planar()),
+        "Format::RGB_8.planar()"
+    );
     assert_eq!(format!("{:?}", Format::from_u32(0x1234)), "Format(0x1234)");
     // equality is code equality — no named-vs-raw split
     assert_eq!(Format::from_u32(Format::CMYK_16.code()), Format::CMYK_16);
@@ -722,7 +745,11 @@ fn stale_errors_are_not_blamed_on_later_failures() {
     let first = Profile::open(&[0u8; 64]).unwrap_err();
     let _ok = Profile::srgb();
     let e = ToneCurve::parametric(4, &[2.4]).unwrap_err();
-    assert_ne!(e.message(), first.message(), "a later failure must report its own message");
+    assert_ne!(
+        e.message(),
+        first.message(),
+        "a later failure must report its own message"
+    );
 }
 
 #[test]
@@ -750,15 +777,25 @@ fn write_tag_errors_and_remove_reports_presence() {
     assert!(p.remove_tag(Tag::GREEN_TRC));
     assert!(!p.remove_tag(Tag::GREEN_TRC));
     // From conversions
-    p.write_tag(Tag::MEDIA_BLACK_POINT, CieXyz { X: 0.0, Y: 0.0, Z: 0.0 }).unwrap();
-    p.write_tag(Tag::GRAY_TRC, ToneCurve::gamma(1.8).unwrap()).unwrap();
+    p.write_tag(
+        Tag::MEDIA_BLACK_POINT,
+        CieXyz {
+            X: 0.0,
+            Y: 0.0,
+            Z: 0.0,
+        },
+    )
+    .unwrap();
+    p.write_tag(Tag::GRAY_TRC, ToneCurve::gamma(1.8).unwrap())
+        .unwrap();
     assert!(matches!(p.get(Tag::GRAY_TRC), Some(TagValue::Curve(_))));
 }
 
 #[test]
 fn named_color_lookup_is_case_insensitive_like_c() {
     let mut list = NamedColorList::new(3, "", "").unwrap();
-    list.push("Warm Red", [0xffff, 0xc000, 0xa000], &[0xffff, 0, 0]).unwrap();
+    list.push("Warm Red", [0xffff, 0xc000, 0xa000], &[0xffff, 0, 0])
+        .unwrap();
     // ncl2 PCS values are ICC v2 Lab: L 0xff00 = 100, a/b 0x8000 = 0
     list.push("white", [0xff00, 0x8000, 0x8000], &[]).unwrap();
     assert!(list.push("bad", [0; 3], &[1, 2]).is_err());
@@ -771,7 +808,13 @@ fn named_color_lookup_is_case_insensitive_like_c() {
     assert_eq!(ncl.position("warm red"), Some(0));
     assert_eq!(ncl.entry(1).unwrap().colorant, vec![0, 0, 0]);
     // named-color index -> Lab through a plan
-    let plan = Plan::new(&p, &Profile::lab4(), Format::NAMED_COLOR_INDEX, Format::LAB_DBL).unwrap();
+    let plan = Plan::new(
+        &p,
+        &Profile::lab4(),
+        Format::NAMED_COLOR_INDEX,
+        Format::LAB_DBL,
+    )
+    .unwrap();
     let mut lab = [[0f64; 3]; 1];
     plan.transform_pixels(&[1u16], &mut lab);
     assert!((lab[0][0] - 100.0).abs() < 0.01, "{lab:?}");
@@ -789,7 +832,13 @@ fn tone_curve_failures_are_errors_not_copies() {
 
 #[test]
 fn every_run_style_gives_identical_pixels() {
-    let plan = Plan::new(&testbed("test5.icc"), &Profile::srgb(), Format::RGB_8, Format::RGB_8).unwrap();
+    let plan = Plan::new(
+        &testbed("test5.icc"),
+        &Profile::srgb(),
+        Format::RGB_8,
+        Format::RGB_8,
+    )
+    .unwrap();
     let n = 4096;
     let input: Vec<u8> = (0..n * 3).map(|i| (i * 7 % 251) as u8).collect();
     let mut want = vec![0u8; n * 3];
@@ -822,8 +871,15 @@ fn every_run_style_gives_identical_pixels() {
     let mut dst = vec![0xAAu8; so * h];
     plan.apply_strided(&mut plan.scratch(), &src, si, &mut dst, so, w, h);
     for y in 0..h {
-        assert_eq!(&dst[y * so..y * so + w * 3], &want[y * w * 3..(y + 1) * w * 3], "row {y}");
-        assert!(dst[y * so + w * 3..(y + 1) * so].iter().all(|&v| v == 0xAA), "padding row {y}");
+        assert_eq!(
+            &dst[y * so..y * so + w * 3],
+            &want[y * w * 3..(y + 1) * w * 3],
+            "row {y}"
+        );
+        assert!(
+            dst[y * so + w * 3..(y + 1) * so].iter().all(|&v| v == 0xAA),
+            "padding row {y}"
+        );
     }
 }
 
@@ -833,7 +889,9 @@ fn planar_strided_matches_interleaved() {
     let chunky = Plan::new(&sp, &dp, Format::RGB_8, Format::RGB_8).unwrap();
     let planar = Plan::new(&sp, &dp, Format::RGB_8.planar(), Format::RGB_8.planar()).unwrap();
     let (w, h, stride) = (13usize, 7usize, 16usize);
-    let px: Vec<[u8; 3]> = (0..w * h).map(|i| [(i * 3) as u8, (i * 5) as u8, (i * 11) as u8]).collect();
+    let px: Vec<[u8; 3]> = (0..w * h)
+        .map(|i| [(i * 3) as u8, (i * 5) as u8, (i * 11) as u8])
+        .collect();
     let mut want = vec![[0u8; 3]; w * h];
     chunky.transform_pixels(&px, &mut want);
     let mut src = vec![0u8; 3 * stride * h];
@@ -846,7 +904,11 @@ fn planar_strided_matches_interleaved() {
     planar.apply_strided(&mut planar.scratch(), &src, stride, &mut dst, stride, w, h);
     for (i, p) in want.iter().enumerate() {
         for c in 0..3 {
-            assert_eq!(dst[c * stride * h + (i / w) * stride + i % w], p[c], "pixel {i} ch {c}");
+            assert_eq!(
+                dst[c * stride * h + (i / w) * stride + i % w],
+                p[c],
+                "pixel {i} ch {c}"
+            );
         }
     }
 }
@@ -873,21 +935,56 @@ fn plan_options_and_black_point_compensation() {
     let (cmyk, srgb) = (testbed("test1.icc"), Profile::srgb());
     let rel = PlanOptions::new().intent(Intent::RelativeColorimetric);
     let plain = Plan::with_options(&cmyk, &srgb, Format::CMYK_8, Format::RGB_8, &rel).unwrap();
-    let bpc = Plan::with_options(&cmyk, &srgb, Format::CMYK_8, Format::RGB_8, &rel.black_point_compensation(true)).unwrap();
+    let bpc = Plan::with_options(
+        &cmyk,
+        &srgb,
+        Format::CMYK_8,
+        Format::RGB_8,
+        &rel.black_point_compensation(true),
+    )
+    .unwrap();
     let (mut a, mut b) = ([0u8; 3], [0u8; 3]);
     plain.transform(&[255; 4], &mut a);
     bpc.transform(&[255; 4], &mut b);
-    assert!(b.iter().map(|&v| v as u32).sum::<u32>() < a.iter().map(|&v| v as u32).sum::<u32>(), "BPC deepens press black: {a:?} vs {b:?}");
+    assert!(
+        b.iter().map(|&v| v as u32).sum::<u32>() < a.iter().map(|&v| v as u32).sum::<u32>(),
+        "BPC deepens press black: {a:?} vs {b:?}"
+    );
     // Plan::build with the flag is the same link
-    let via_flag = Plan::build(&cmyk, &srgb, Format::CMYK_8, Format::RGB_8, Intent::RelativeColorimetric, flags::BLACK_POINT_COMPENSATION).unwrap();
+    let via_flag = Plan::build(
+        &cmyk,
+        &srgb,
+        Format::CMYK_8,
+        Format::RGB_8,
+        Intent::RelativeColorimetric,
+        flags::BLACK_POINT_COMPENSATION,
+    )
+    .unwrap();
     let mut c = [0u8; 3];
     via_flag.transform(&[255; 4], &mut c);
     assert_eq!(b, c);
-    assert_eq!(PlanOptions::from(Intent::Saturation), PlanOptions::new().intent(Intent::Saturation));
+    assert_eq!(
+        PlanOptions::from(Intent::Saturation),
+        PlanOptions::new().intent(Intent::Saturation)
+    );
     // explicit adaptation state for absolute colorimetric
     let abs = PlanOptions::new().intent(Intent::AbsoluteColorimetric);
-    let full = Plan::with_options(&testbed("test5.icc"), &Profile::lab4(), Format::RGB_8, Format::LAB_DBL, &abs).unwrap();
-    let none = Plan::with_options(&testbed("test5.icc"), &Profile::lab4(), Format::RGB_8, Format::LAB_DBL, &abs.adaptation_state(0.0)).unwrap();
+    let full = Plan::with_options(
+        &testbed("test5.icc"),
+        &Profile::lab4(),
+        Format::RGB_8,
+        Format::LAB_DBL,
+        &abs,
+    )
+    .unwrap();
+    let none = Plan::with_options(
+        &testbed("test5.icc"),
+        &Profile::lab4(),
+        Format::RGB_8,
+        Format::LAB_DBL,
+        &abs.adaptation_state(0.0),
+    )
+    .unwrap();
     let (mut lf, mut ln) = ([[0f64; 3]], [[0f64; 3]]);
     full.transform_pixels(&[[255u8, 255, 255]], &mut lf);
     none.transform_pixels(&[[255u8, 255, 255]], &mut ln);
@@ -897,12 +994,32 @@ fn plan_options_and_black_point_compensation() {
 #[test]
 fn soft_proofing_simulates_the_press() {
     let (srgb, press) = (Profile::srgb(), testbed("test1.icc"));
-    let proof = Plan::new_proofing(&srgb, &srgb, &press, Format::RGB_8, Format::RGB_8, Intent::Perceptual, Intent::RelativeColorimetric, flags::SOFT_PROOFING).unwrap();
+    let proof = Plan::new_proofing(
+        &srgb,
+        &srgb,
+        &press,
+        Format::RGB_8,
+        Format::RGB_8,
+        Intent::Perceptual,
+        Intent::RelativeColorimetric,
+        flags::SOFT_PROOFING,
+    )
+    .unwrap();
     let mut out = [0u8; 3];
     proof.transform(&[0, 0, 255], &mut out);
     assert_ne!(out, [0, 0, 255], "pure sRGB blue is outside a press gamut");
     // without proofing flags C builds a plain transform
-    let plain = Plan::new_proofing(&srgb, &srgb, &press, Format::RGB_8, Format::RGB_8, Intent::Perceptual, Intent::RelativeColorimetric, 0).unwrap();
+    let plain = Plan::new_proofing(
+        &srgb,
+        &srgb,
+        &press,
+        Format::RGB_8,
+        Format::RGB_8,
+        Intent::Perceptual,
+        Intent::RelativeColorimetric,
+        0,
+    )
+    .unwrap();
     plain.transform(&[0, 0, 255], &mut out);
     assert_eq!(out, [0, 0, 255]);
 }
@@ -913,7 +1030,9 @@ fn shared_profile_builds_plans_on_many_threads() {
     let dst = Arc::new(Profile::lab4());
     let input: Vec<u8> = (0..=255u8).flat_map(|v| [v, 255 - v, v / 2]).collect();
     let mut want = vec![0u8; 256 * 6];
-    Plan::new(&src, &dst, Format::RGB_8, Format::LAB_16).unwrap().transform(&input, &mut want);
+    Plan::new(&src, &dst, Format::RGB_8, Format::LAB_16)
+        .unwrap()
+        .transform(&input, &mut want);
     std::thread::scope(|s| {
         for _ in 0..4 {
             let (src, dst, input, want) = (&src, &dst, &input, &want);
@@ -937,7 +1056,10 @@ fn pipeline_edit_and_iterate() {
     lut.push_front(Stage::identity(3)).unwrap();
     // a 4-channel stage can't follow a 3-channel output; a failed push
     // leaves the pipeline unchanged (C would keep the stage linked)
-    assert_eq!(lut.push(Stage::identity(4)).unwrap_err().kind(), ErrorKind::Range);
+    assert_eq!(
+        lut.push(Stage::identity(4)).unwrap_err().kind(),
+        ErrorKind::Range
+    );
     assert!(lut.push_front(Stage::identity(4)).is_err());
     assert_eq!(lut.stage_count(), 2);
     let gray = Pipeline::new(1, 1).unwrap();
@@ -948,7 +1070,10 @@ fn pipeline_edit_and_iterate() {
     let _ = kept.append(&g2);
     assert_eq!(kept.stage_count(), 2);
     let kinds: Vec<u32> = (&lut).into_iter().map(|s| s.stage_type()).collect();
-    assert_eq!(kinds, [Tag::new(*b"idn ").code(), Tag::new(*b"matf").code()]);
+    assert_eq!(
+        kinds,
+        [Tag::new(*b"idn ").code(), Tag::new(*b"matf").code()]
+    );
 
     let mut twice = lut.clone();
     twice.append(&lut).unwrap();
@@ -963,8 +1088,14 @@ fn pipeline_edit_and_iterate() {
         assert!((got - want).abs() < 1e-3, "{back:?}");
     }
 
-    assert_eq!(lut.pop().map(|s| s.stage_type()), Some(Tag::new(*b"matf").code()));
-    assert_eq!(lut.pop_front().map(|s| s.stage_type()), Some(Tag::new(*b"idn ").code()));
+    assert_eq!(
+        lut.pop().map(|s| s.stage_type()),
+        Some(Tag::new(*b"matf").code())
+    );
+    assert_eq!(
+        lut.pop_front().map(|s| s.stage_type()),
+        Some(Tag::new(*b"idn ").code())
+    );
     assert!(lut.pop().is_none());
     assert!(format!("{twice:?}").starts_with("Pipeline { input_channels: 3"));
 }
@@ -979,9 +1110,17 @@ fn mlu_locales_and_fallback() {
     assert_eq!(locales[1..], ["es_ES", "ja_JP"]);
     assert_eq!(m.get(Locale::new("ja_JP")).as_deref(), Some("こんにちは"));
     // ASCII view replaces what ASCII can't hold, like cmsMLUgetASCII
-    assert!(m.get_ascii(Locale::new("ja_JP")).unwrap().chars().all(|c| c == '?'));
+    assert!(
+        m.get_ascii(Locale::new("ja_JP"))
+            .unwrap()
+            .chars()
+            .all(|c| c == '?')
+    );
     // set_ascii refuses non-ASCII instead of storing mojibake
-    assert_eq!(m.set_ascii(Locale::new("fr_FR"), "été").unwrap_err().kind(), ErrorKind::Range);
+    assert_eq!(
+        m.set_ascii(Locale::new("fr_FR"), "été").unwrap_err().kind(),
+        ErrorKind::Range
+    );
     assert_eq!(m.len(), 3);
     assert!(Mlu::new().is_empty());
 }
@@ -1006,17 +1145,28 @@ fn dict_order_values_and_unicode() {
     p.write_tag(Tag::META, TagData::Dict(d.clone())).unwrap();
     let q = Profile::open(&p.save().unwrap()).unwrap();
     let back = q.get(Tag::META).and_then(|v| v.as_dict()).unwrap();
-    assert_eq!(back.iter().collect::<Vec<_>>(), d.iter().collect::<Vec<_>>());
+    assert_eq!(
+        back.iter().collect::<Vec<_>>(),
+        d.iter().collect::<Vec<_>>()
+    );
 }
 
 #[test]
 fn named_color_list_api() {
     let mut list = NamedColorList::new(2, "PMS ", " C").unwrap();
-    list.push("Red 032", [0x8000, 0xc000, 0x9000], &[0xffff, 0]).unwrap();
-    list.push("Blue 072", [0x3000, 0x8000, 0x2000], &[]).unwrap();
-    assert!(list.push("Bad", [0; 3], &[1, 2, 3]).is_err(), "wrong colorant count");
+    list.push("Red 032", [0x8000, 0xc000, 0x9000], &[0xffff, 0])
+        .unwrap();
+    list.push("Blue 072", [0x3000, 0x8000, 0x2000], &[])
+        .unwrap();
+    assert!(
+        list.push("Bad", [0; 3], &[1, 2, 3]).is_err(),
+        "wrong colorant count"
+    );
     assert_eq!((list.len(), list.colorant_count()), (2, 2));
-    assert_eq!((list.prefix().as_str(), list.suffix().as_str()), ("PMS ", " C"));
+    assert_eq!(
+        (list.prefix().as_str(), list.suffix().as_str()),
+        ("PMS ", " C")
+    );
     assert_eq!(list.position("BLUE 072"), Some(1));
     assert_eq!(list.entry(1).unwrap().colorant, [0, 0]);
     assert_eq!(list.entry(2), None);
@@ -1032,21 +1182,37 @@ fn tone_curve_parameters_and_smoothing() {
     let p = srgb.parameters().unwrap();
     assert_eq!(p.len(), 5);
     assert_eq!(p[0], 2.4);
-    assert_eq!(ToneCurve::gamma(1.8).unwrap().parameters(), Some(&[1.8][..]));
-    assert_eq!(ToneCurve::tabulated16(&[0, 0x8000, 0xffff]).unwrap().parameters(), None);
+    assert_eq!(
+        ToneCurve::gamma(1.8).unwrap().parameters(),
+        Some(&[1.8][..])
+    );
+    assert_eq!(
+        ToneCurve::tabulated16(&[0, 0x8000, 0xffff])
+            .unwrap()
+            .parameters(),
+        None
+    );
 
     // a 256-entry ramp with ±150 alternating noise steps backwards
     // (257 per entry); smoothing restores monotonicity, the original is
     // untouched
     let noisy: Vec<u16> = (0..256u32)
-        .map(|i| (i * 257).saturating_add_signed(if i % 2 == 0 { 150 } else { -150 }).min(65535) as u16)
+        .map(|i| {
+            (i * 257)
+                .saturating_add_signed(if i % 2 == 0 { 150 } else { -150 })
+                .min(65535) as u16
+        })
         .collect();
     let rough = ToneCurve::tabulated16(&noisy).unwrap();
     assert!(!rough.is_monotonic());
     let smooth = rough.smoothed(10.0).unwrap();
     assert!(smooth.is_monotonic());
     assert!(!rough.is_monotonic());
-    assert!((smooth.eval16(0x8000) as i32 - 0x8000).abs() < 400, "{}", smooth.eval16(0x8000));
+    assert!(
+        (smooth.eval16(0x8000) as i32 - 0x8000).abs() < 400,
+        "{}",
+        smooth.eval16(0x8000)
+    );
 }
 
 #[test]
@@ -1054,11 +1220,26 @@ fn device_link_records_profile_sequence() {
     // C records the chain in a device link only under KEEP_SEQUENCE
     let (srgb, lab) = (Profile::srgb(), Profile::lab4());
     let plain = Plan::new(&srgb, &lab, Format::RGB_8, Format::LAB_8).unwrap();
-    assert!(!plain.to_device_link(4.3).unwrap().has_tag(Tag::PROFILE_SEQUENCE_DESC));
-    let plan = Plan::build(&srgb, &lab, Format::RGB_8, Format::LAB_8, Intent::Perceptual, flags::KEEP_SEQUENCE)
-        .unwrap();
+    assert!(
+        !plain
+            .to_device_link(4.3)
+            .unwrap()
+            .has_tag(Tag::PROFILE_SEQUENCE_DESC)
+    );
+    let plan = Plan::build(
+        &srgb,
+        &lab,
+        Format::RGB_8,
+        Format::LAB_8,
+        Intent::Perceptual,
+        flags::KEEP_SEQUENCE,
+    )
+    .unwrap();
     let link = plan.to_device_link(4.3).unwrap();
-    let seq = link.get(Tag::PROFILE_SEQUENCE_DESC).and_then(|v| v.as_seq()).unwrap();
+    let seq = link
+        .get(Tag::PROFILE_SEQUENCE_DESC)
+        .and_then(|v| v.as_seq())
+        .unwrap();
     assert_eq!(seq.len(), 2);
     let desc: Vec<Option<String>> = seq
         .iter()
@@ -1070,12 +1251,24 @@ fn device_link_records_profile_sequence() {
 
 #[test]
 fn date_time_and_data_tags_roundtrip() {
-    let when = DateTimeNumber { year: 2026, month: 11, day: 10, hours: 23, minutes: 5, seconds: 59 };
+    let when = DateTimeNumber {
+        year: 2026,
+        month: 11,
+        day: 10,
+        hours: 23,
+        minutes: 5,
+        seconds: 59,
+    };
     let mut p = Profile::placeholder();
-    p.write_tag(Tag::CALIBRATION_DATE_TIME, TagData::DateTime(when)).unwrap();
+    p.write_tag(Tag::CALIBRATION_DATE_TIME, TagData::DateTime(when))
+        .unwrap();
     // `'data'`-typed payloads live in the PostScript tags ('data' itself
     // has no tag handler in lcms2)
-    p.write_tag(Tag::PS2_CSA, TagData::Data(IccData::binary(vec![0, 1, 2, 255]))).unwrap();
+    p.write_tag(
+        Tag::PS2_CSA,
+        TagData::Data(IccData::binary(vec![0, 1, 2, 255])),
+    )
+    .unwrap();
     let q = Profile::open(&p.save().unwrap()).unwrap();
     match q.get(Tag::CALIBRATION_DATE_TIME) {
         Some(TagValue::DateTime(d)) => assert_eq!(d, when),
@@ -1094,9 +1287,19 @@ fn date_time_and_data_tags_roundtrip() {
 fn inconsistent_plain_tag_data_is_an_error_not_a_panic() {
     let mut p = Profile::placeholder();
     // Screening: only 16 channel slots exist
-    let ch = ScreeningChannel { frequency: 60.0, angle: 45.0, spot_shape: 1 };
-    let mut sc = Screening { flag: 0, channels: [ch; 16], n_channels: 17 };
-    let e = p.write_tag(Tag::SCREENING, TagData::Screening(sc.clone())).unwrap_err();
+    let ch = ScreeningChannel {
+        frequency: 60.0,
+        angle: 45.0,
+        spot_shape: 1,
+    };
+    let mut sc = Screening {
+        flag: 0,
+        channels: [ch; 16],
+        n_channels: 17,
+    };
+    let e = p
+        .write_tag(Tag::SCREENING, TagData::Screening(sc.clone()))
+        .unwrap_err();
     assert_eq!(e.kind(), ErrorKind::Range);
     sc.n_channels = 2;
     p.write_tag(Tag::SCREENING, TagData::Screening(sc)).unwrap();
@@ -1114,7 +1317,10 @@ fn inconsistent_plain_tag_data_is_an_error_not_a_panic() {
     };
     let mut bad = good.clone();
     bad.green_curve.pop();
-    assert_eq!(p.write_tag(mhc2, TagData::Mhc2(bad)).unwrap_err().kind(), ErrorKind::Range);
+    assert_eq!(
+        p.write_tag(mhc2, TagData::Mhc2(bad)).unwrap_err().kind(),
+        ErrorKind::Range
+    );
     p.write_tag(mhc2, TagData::Mhc2(good)).unwrap();
 
     let q = Profile::open(&p.save().unwrap()).unwrap();

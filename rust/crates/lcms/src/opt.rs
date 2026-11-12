@@ -301,11 +301,7 @@ pub(crate) fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptDa
     // Zip keeps the Vec/channel bounds in the iterator (no per-channel
     // Vec check). Full-width 65536-entry tables index directly like C's
     // `Out[i] = Curves[i][In[i]]`; narrower tables scale (`*len >> 16`).
-    for (cur, (&v, out)) in c
-        .curves
-        .iter()
-        .zip(input.iter().zip(output.iter_mut()))
-    {
+    for (cur, (&v, out)) in c.curves.iter().zip(input.iter().zip(output.iter_mut())) {
         let cur = &cur[..];
         *out = if cur.len() == 0x10000 {
             cur[v as usize]
@@ -1232,9 +1228,10 @@ fn optimize_by_computing_linearization(
         return false;
     }
     if crate::pack::t_bytes(*input_format) != 1
-        && *dw_flags & crate::types::FLAGS_CLUT_PRE_LINEARIZATION == 0 {
-            return false;
-        }
+        && *dw_flags & crate::types::FLAGS_CLUT_PRE_LINEARIZATION == 0
+    {
+        return false;
+    }
     let color_space = crate::pcs::icc_color_space(crate::pack::t_colorspace(*input_format) as i32);
     let output_space =
         crate::pcs::icc_color_space(crate::pack::t_colorspace(*output_format) as i32);
@@ -1377,9 +1374,10 @@ fn optimize_by_computing_linearization(
         *dw_flags |= crate::types::FLAGS_NOWHITEONWHITEFIXUP;
     }
     if *dw_flags & crate::types::FLAGS_NOWHITEONWHITEFIXUP == 0
-        && !fix_white_misalignment(&mut optimized, color_space, output_space) {
-            return false;
-        }
+        && !fix_white_misalignment(&mut optimized, color_space, output_space)
+    {
+        return false;
+    }
     let clut_data = {
         let mut st = optimized.elements.as_deref();
         let mut found = None;
@@ -1621,8 +1619,10 @@ fn optimize_by_resampling(
             kernel: crate::intrp::kernel_kind(clut_data.interpolation),
             foreign: clut_data.foreign.clone(),
         };
-        let params_f = clut_data.tab_float.as_deref().map(|tab| {
-            crate::intrp::InterpParams {
+        let params_f = clut_data
+            .tab_float
+            .as_deref()
+            .map(|tab| crate::intrp::InterpParams {
                 dw_flags: clut_data.dw_flags,
                 n_inputs: clut_data.n_inputs,
                 n_outputs: clut_data.n_outputs,
@@ -1631,10 +1631,9 @@ fn optimize_by_resampling(
                 opta: clut_data.opta,
                 table: crate::intrp::InterpTable::F32Rc(std::sync::Arc::from(tab)),
                 interpolation: clut_data.interpolation,
-            kernel: crate::intrp::kernel_kind(clut_data.interpolation),
+                kernel: crate::intrp::kernel_kind(clut_data.interpolation),
                 foreign: clut_data.foreign.clone(),
-            }
-        });
+            });
         dest.opt_data = Some(OptData::ClutOnly(Box::new(ClutOnly {
             clut: clut_data,
             params16,

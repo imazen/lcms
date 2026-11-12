@@ -7,8 +7,10 @@ use std::ffi::c_void;
 
 fn corpus() -> Vec<Vec<u8>> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
-    let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap()
-        .filter_map(|e| e.ok()).map(|e| e.path())
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -26,8 +28,8 @@ fn desaturate_lab_grid() {
             let b = (((seed >> 16) as u16 % 200) as f64) - 100.0;
             let mut clab = c::CieLab { L: l, a, b };
             let mut rlab = CieLab { L: l, a, b };
-            let c_ok = c::cmsDesaturateLab(
-                &mut clab as *mut _ as *mut c_void, 80.0, -80.0, 80.0, -80.0);
+            let c_ok =
+                c::cmsDesaturateLab(&mut clab as *mut _ as *mut c_void, 80.0, -80.0, 80.0, -80.0);
             let r_ok = sm::desaturate_lab(&mut rlab, 80.0, -80.0, 80.0, -80.0);
             assert_eq!(c_ok != 0, r_ok, "desat {l},{a},{b}");
             assert_eq!(clab.L, rlab.L, "desat L");
@@ -46,8 +48,8 @@ fn detect_matrix() {
                 unsafe {
                     let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
                     let mut cbp = [0.0f64; 3];
-                    let c_ok = c::cmsDetectBlackPoint(
-                        cbp.as_mut_ptr() as *mut c_void, h, intent, flags);
+                    let c_ok =
+                        c::cmsDetectBlackPoint(cbp.as_mut_ptr() as *mut c_void, h, intent, flags);
                     let r_bp = sm::detect_black_point(&mut rp, intent, flags);
                     assert_eq!(c_ok != 0, r_bp.is_some(), "bp i{intent} f{flags:#x}");
                     if c_ok != 0 {
@@ -58,7 +60,11 @@ fn detect_matrix() {
                     }
                     let mut cbp2 = [0.0f64; 3];
                     let c_ok2 = c::cmsDetectDestinationBlackPoint(
-                        cbp2.as_mut_ptr() as *mut c_void, h, intent, flags);
+                        cbp2.as_mut_ptr() as *mut c_void,
+                        h,
+                        intent,
+                        flags,
+                    );
                     let r_bp2 = sm::detect_destination_black_point(&mut rp, intent, flags);
                     assert_eq!(c_ok2 != 0, r_bp2.is_some(), "dest bp");
                     if c_ok2 != 0 {
@@ -92,24 +98,29 @@ fn blackpoint_quadratic() {
         let dir = env!("CARGO_MANIFEST_DIR");
         for name in ["lcms2cmyk.icc", "graylcms2.icc"] {
             let path = format!("{dir}/../../{name}\0");
-            let h = c::cmsOpenProfileFromFile(
-                path.as_ptr() as *const i8, b"r\0".as_ptr());
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as *const i8, b"r\0".as_ptr());
             assert!(!h.is_null());
-            let mut rp = lcms::profile::open_profile_from_file(
-                None, &format!("{dir}/../../{name}"), "r").unwrap();
+            let mut rp =
+                lcms::profile::open_profile_from_file(None, &format!("{dir}/../../{name}"), "r")
+                    .unwrap();
             for intent in 0u32..4 {
                 let mut cbp = c::CieXyz::default();
-                let c_ok = c::cmsDetectBlackPoint(
-                    &mut cbp as *mut _ as *mut _, h, intent, 0);
+                let c_ok = c::cmsDetectBlackPoint(&mut cbp as *mut _ as *mut _, h, intent, 0);
                 let rbp = lcms::sm::detect_black_point(&mut rp, intent, 0);
-                assert_eq!(c_ok != 0, rbp.is_some(),
-                    "{name} i{intent} status");
+                assert_eq!(c_ok != 0, rbp.is_some(), "{name} i{intent} status");
                 if let Some(r) = rbp {
-                    assert!((cbp.X - r.X).abs() < 1e-9
-                        && (cbp.Y - r.Y).abs() < 1e-9
-                        && (cbp.Z - r.Z).abs() < 1e-9,
+                    assert!(
+                        (cbp.X - r.X).abs() < 1e-9
+                            && (cbp.Y - r.Y).abs() < 1e-9
+                            && (cbp.Z - r.Z).abs() < 1e-9,
                         "{name} i{intent} bp: C {},{},{} R {},{},{}",
-                        cbp.X, cbp.Y, cbp.Z, r.X, r.Y, r.Z);
+                        cbp.X,
+                        cbp.Y,
+                        cbp.Z,
+                        r.X,
+                        r.Y,
+                        r.Z
+                    );
                 }
             }
             c::cmsCloseProfile(h);

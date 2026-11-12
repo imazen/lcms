@@ -55,11 +55,7 @@ fn bytes_per(f: u32) -> usize {
             b // flt=4, dbl=0->8 handled above
         }
     } else {
-        if b == 0 {
-            2
-        } else {
-            b
-        }
+        if b == 0 { 2 } else { b }
     }
 }
 fn pixel_size(f: u32) -> usize {
@@ -71,7 +67,12 @@ fn pixel_size(f: u32) -> usize {
 fn c_xform(i: *mut c_void, fi: u32, o: *mut c_void, fo: u32) -> *mut c_void {
     unsafe { c::cmsCreateTransform(i, fi, o, fo, 0, 0) }
 }
-fn r_xform(i: &lcms::profile::IccProfile, fi: u32, o: &lcms::profile::IccProfile, fo: u32) -> Option<Box<xform::Transform>> {
+fn r_xform(
+    i: &lcms::profile::IccProfile,
+    fi: u32,
+    o: &lcms::profile::IccProfile,
+    fo: u32,
+) -> Option<Box<xform::Transform>> {
     let mut v: Vec<Box<lcms::profile::IccProfile>> = vec![Box::new(i.clone()), Box::new(o.clone())];
     let mut bpc = [false, false];
     let intents = [0u32; 2];
@@ -96,7 +97,12 @@ fn check(label: &str, cp: *mut c_void, rp: &lcms::profile::IccProfile, fi: u32, 
     let ct = c_xform(cp, fi, cp, fo);
     let rt = r_xform(rp, fi, rp, fo);
     if ct.is_null() || rt.is_none() {
-        assert!(ct.is_null() && rt.is_none(), "{label}: reject parity fi={fi:#x} fo={fo:#x} c={} r={}", !ct.is_null(), rt.is_some());
+        assert!(
+            ct.is_null() && rt.is_none(),
+            "{label}: reject parity fi={fi:#x} fo={fo:#x} c={} r={}",
+            !ct.is_null(),
+            rt.is_some()
+        );
         return;
     }
     let n = 16usize;
@@ -108,14 +114,25 @@ fn check(label: &str, cp: *mut c_void, rp: &lcms::profile::IccProfile, fi: u32, 
     // stay as-is — identical pre-fill keeps the compare honest.
     let mut co = vec![0xA5u8; out_sz];
     let mut ro = vec![0xA5u8; out_sz];
-    unsafe { c::cmsDoTransform(ct, inp.as_ptr() as *const c_void, co.as_mut_ptr() as *mut c_void, n as u32) };
+    unsafe {
+        c::cmsDoTransform(
+            ct,
+            inp.as_ptr() as *const c_void,
+            co.as_mut_ptr() as *mut c_void,
+            n as u32,
+        )
+    };
     rt.unwrap().do_transform(&inp, &mut ro, n as u32);
     let flt_out = fo & (1 << 22) != 0;
     if flt_out {
         // documented residual: C's float-eval gives sparse ±1-ulp values on
         // integer->float color lanes (c_parity_alpha) — bound to <=2 ulp
         let lanew = if fo & 7 == 0 { 8 } else { 4 };
-        for (i, (cb, rb)) in co.chunks_exact(lanew).zip(ro.chunks_exact(lanew)).enumerate() {
+        for (i, (cb, rb)) in co
+            .chunks_exact(lanew)
+            .zip(ro.chunks_exact(lanew))
+            .enumerate()
+        {
             let (cf, rf) = if lanew == 4 {
                 (
                     f32::from_bits(u32::from_le_bytes(cb.try_into().unwrap())) as f64,
@@ -131,10 +148,7 @@ fn check(label: &str, cp: *mut c_void, rp: &lcms::profile::IccProfile, fi: u32, 
             // finite lanes carry the pinned float-eval residual (<= ~4e-5 rel
             // / ~8e-6 abs — Lab roundtrip through the profile CLUTs).
             if !cf.is_finite() || !rf.is_finite() {
-                assert_eq!(
-                    cb, rb,
-                    "{label} fi={fi:#x} fo={fo:#x} lane {i} non-finite"
-                );
+                assert_eq!(cb, rb, "{label} fi={fi:#x} fo={fo:#x} lane {i} non-finite");
                 continue;
             }
             let tol = (5e-5 * cf.abs()).max(1e-5);
@@ -151,24 +165,24 @@ fn check(label: &str, cp: *mut c_void, rp: &lcms::profile::IccProfile, fi: u32, 
 
 fn sweep(pt: u32, ch: u32, cp: *mut c_void, rp: &lcms::profile::IccProfile, name: &str) {
     let fmts = [
-        f(pt, ch, 0, 1),  // u8
-        f(pt, ch, 0, 2),  // u16
-        f(pt, ch, 0, 0),  // u16 variant (bytes=0 = u16 default)
-        e16(f(pt, ch, 0, 2)), // u16 swapped
-        fl(f(pt, ch, 0, 4)),  // f32
-        fl(f(pt, ch, 0, 0)),  // f64
-        f(pt, ch, 1, 1),      // +1 extra u8
-        f(pt, ch, 1, 2),      // +1 extra u16
-        f(pt, ch, 2, 1),      // +2 extra u8
-        sf(f(pt, ch, 1, 1)),  // extra-first u8
-        sf(f(pt, ch, 1, 2)),  // extra-first u16
-        dw(f(pt, ch, 0, 1)),  // doswap u8
-        dw(f(pt, ch, 0, 2)),  // doswap u16
+        f(pt, ch, 0, 1),          // u8
+        f(pt, ch, 0, 2),          // u16
+        f(pt, ch, 0, 0),          // u16 variant (bytes=0 = u16 default)
+        e16(f(pt, ch, 0, 2)),     // u16 swapped
+        fl(f(pt, ch, 0, 4)),      // f32
+        fl(f(pt, ch, 0, 0)),      // f64
+        f(pt, ch, 1, 1),          // +1 extra u8
+        f(pt, ch, 1, 2),          // +1 extra u16
+        f(pt, ch, 2, 1),          // +2 extra u8
+        sf(f(pt, ch, 1, 1)),      // extra-first u8
+        sf(f(pt, ch, 1, 2)),      // extra-first u16
+        dw(f(pt, ch, 0, 1)),      // doswap u8
+        dw(f(pt, ch, 0, 2)),      // doswap u16
         dw(e16(f(pt, ch, 0, 2))), // doswap+endian16
-        pl(f(pt, ch, 0, 1)),  // planar u8
-        pl(f(pt, ch, 0, 2)),  // planar u16
-        pl(f(pt, ch, 1, 1)),  // planar +extra u8
-        fl(f(pt, ch, 1, 4)),  // flt +extra
+        pl(f(pt, ch, 0, 1)),      // planar u8
+        pl(f(pt, ch, 0, 2)),      // planar u16
+        pl(f(pt, ch, 1, 1)),      // planar +extra u8
+        fl(f(pt, ch, 1, 4)),      // flt +extra
     ];
     for &fi in &fmts {
         for &fo in &fmts {
@@ -212,7 +226,11 @@ fn pack_xyz() {
 fn pack_gray() {
     unsafe {
         let cg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let d50 = CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let d50 = CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
         let cp = c::cmsCreateGrayProfile(&d50 as *const _ as *const c_void, cg);
         let rg = gamma::build_gamma(None, 2.2).unwrap();
         let rp = virt::create_gray_profile(None, None, Some(&rg)).unwrap();
@@ -251,18 +269,11 @@ fn pack_mch() {
         ] {
             let ch = pt - 7; // MCH5=12 -> 5ch
             let curves: [*mut c::ToneCurve; 10] = [gamma; 10];
-            let cp = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(),
-                sig,
-                curves.as_ptr(),
-            );
+            let cp =
+                c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), sig, curves.as_ptr());
             let rg = gamma::build_gamma(None, 2.2).unwrap();
             let rc: Vec<&gamma::ToneCurve> = (0..ch).map(|_| &rg).collect();
-            let rgp = virt::create_linearization_device_link(
-                None,
-                sig,
-                &rc,
-            );
+            let rgp = virt::create_linearization_device_link(None, sig, &rc);
             if cp.is_null() || rgp.is_none() {
                 assert_eq!(cp.is_null(), rgp.is_none(), "mch{ch} devicelink create");
                 continue;
@@ -287,7 +298,11 @@ fn pack_packed() {
         ("565-dw", dw(PT_RGB << 16 | 6 << 3 | 2)),
         ("565-sw", e16(PT_RGB << 16 | 6 << 3 | 2)),
     ];
-    let std_rgb = &[f(PT_RGB, 3, 0, 2), f(PT_RGB, 3, 0, 1), fl(f(PT_RGB, 3, 0, 4))];
+    let std_rgb = &[
+        f(PT_RGB, 3, 0, 2),
+        f(PT_RGB, 3, 0, 1),
+        fl(f(PT_RGB, 3, 0, 4)),
+    ];
     for (name, pf) in packed {
         for &sf in std_rgb {
             check(&format!("packed {name}->std"), cp, &rp, *pf, sf);
@@ -306,9 +321,9 @@ fn pack_rejects() {
         f(PT_ANY, 3, 0, 1),
         f(PT_CMY, 3, 0, 1),
         f(PT_YUV, 3, 0, 1),
-        f(2, 3, 0, 1), // reserved PT
-        f(PT_RGB, 3, 0, 3), // BYTES=3 invalid
-        f(PT_RGB, 3, 0, 5), // BYTES=5 invalid
+        f(2, 3, 0, 1),          // reserved PT
+        f(PT_RGB, 3, 0, 3),     // BYTES=3 invalid
+        f(PT_RGB, 3, 0, 5),     // BYTES=5 invalid
         fl(f(PT_RGB, 3, 0, 2)), // FLOAT+BYTES=2 nonsensical
     ] {
         check("reject", cp, &rp, fmt, f(PT_RGB, 3, 0, 1));
@@ -331,30 +346,30 @@ fn packed_format_variants() {
         // The format's colorspace must match the profile.
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            c::cmsD50_xyY() as *const std::ffi::c_void, gg);
-        let rgb_fmt = |b: u32| (1 << 22) | (4 << 16)
-            | (3 << 3) | b;
-        let lab_fmt = |b: u32| (1 << 22) | (10 << 16)
-            | (3 << 3) | b;
+        let gray = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, gg);
+        let rgb_fmt = |b: u32| (1 << 22) | (4 << 16) | (3 << 3) | b;
+        let lab_fmt = |b: u32| (1 << 22) | (10 << 16) | (3 << 3) | b;
         for (name, in_fmt, out_fmt, p1, p2) in [
             ("rgb-dbl", rgb_fmt(0), rgb_fmt(0), hi, ho),
             ("rgb-flt", rgb_fmt(4), rgb_fmt(4), hi, ho),
             ("rgb-hlf", rgb_fmt(2), rgb_fmt(2), hi, ho),
-            ("rgb-8", (4 << 16) | (3 << 3) | 1,
-             (4 << 16) | (3 << 3) | 1, hi, ho),
+            (
+                "rgb-8",
+                (4 << 16) | (3 << 3) | 1,
+                (4 << 16) | (3 << 3) | 1,
+                hi,
+                ho,
+            ),
             ("lab-dbl", rgb_fmt(0), lab_fmt(0), hi, lab4),
             ("lab-flt", rgb_fmt(4), lab_fmt(4), hi, lab4),
             ("lab-hlf", rgb_fmt(2), lab_fmt(2), hi, lab4),
         ] {
-            let ct = c::cmsCreateTransform(p1, in_fmt, p2,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(p1, in_fmt, p2, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0.5f64, 0.4, 0.3];
                 let mut out = [0.0f64; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -374,31 +389,30 @@ fn format_modifier_variants() {
         let ho = c::cmsCreate_sRGBProfile();
         // modifier bits on the RGB float format
         for (name, fmt) in [
-            ("planar", (1 << 22) | (4 << 16) | (1 << 12)
-             | (3 << 3) | 4u32),
-            ("doswap", (1 << 22) | (4 << 16) | (1 << 10)
-             | (3 << 3) | 4),
-            ("swapfirst", (1 << 22) | (4 << 16) | (1 << 14)
-             | (3 << 3) | 4),
-            ("endian16", (1 << 22) | (4 << 16) | (1 << 11)
-             | (3 << 3) | 4),
-            ("extra1", (1 << 22) | (4 << 16) | (1 << 7)
-             | (3 << 3) | 4),
-            ("extra2", (1 << 22) | (4 << 16) | (2 << 7)
-             | (3 << 3) | 4),
-            ("flavor", (1 << 22) | (4 << 16) | (1 << 13)
-             | (3 << 3) | 4),
-            ("premul", (1 << 22) | (4 << 16) | (1 << 23)
-             | (1 << 7) | (3 << 3) | 4),
+            (
+                "planar",
+                (1 << 22) | (4 << 16) | (1 << 12) | (3 << 3) | 4u32,
+            ),
+            ("doswap", (1 << 22) | (4 << 16) | (1 << 10) | (3 << 3) | 4),
+            (
+                "swapfirst",
+                (1 << 22) | (4 << 16) | (1 << 14) | (3 << 3) | 4,
+            ),
+            ("endian16", (1 << 22) | (4 << 16) | (1 << 11) | (3 << 3) | 4),
+            ("extra1", (1 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 4),
+            ("extra2", (1 << 22) | (4 << 16) | (2 << 7) | (3 << 3) | 4),
+            ("flavor", (1 << 22) | (4 << 16) | (1 << 13) | (3 << 3) | 4),
+            (
+                "premul",
+                (1 << 22) | (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0.5f64, 0.4, 0.3, 1.0, 0.5, 0.4];
                 let mut out = [0.0f64; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -417,33 +431,67 @@ fn u16_format_modifiers() {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // u16 formats with modifiers — the u16-width packers
         for (name, fmt_in, fmt_out, p2) in [
-            ("u16-doswap", (4 << 16) | (1 << 10) | (3 << 3) | 2u32,
-             (4 << 16) | (1 << 10) | (3 << 3) | 2, ho),
-            ("u16-planar", (4 << 16) | (1 << 12) | (3 << 3) | 2,
-             (4 << 16) | (1 << 12) | (3 << 3) | 2, ho),
-            ("u16-swapfirst", (4 << 16) | (1 << 14) | (3 << 3) | 2,
-             (4 << 16) | (1 << 14) | (3 << 3) | 2, ho),
-            ("u16-endian16", (4 << 16) | (1 << 11) | (3 << 3) | 2,
-             (4 << 16) | (1 << 11) | (3 << 3) | 2, ho),
-            ("u16-extra1", (4 << 16) | (1 << 7) | (3 << 3) | 2,
-             (4 << 16) | (1 << 7) | (3 << 3) | 2, ho),
-            ("u16-flavor", (4 << 16) | (1 << 13) | (3 << 3) | 2,
-             (4 << 16) | (1 << 13) | (3 << 3) | 2, ho),
-            ("u16-8bit", (4 << 16) | (3 << 3) | 1,
-             (4 << 16) | (3 << 3) | 1, ho),
-            ("u16-lab", (4 << 16) | (3 << 3) | 2,
-             (10 << 16) | (3 << 3) | 2, lab4),
-            ("u16-xyz", (4 << 16) | (3 << 3) | 2,
-             (5 << 16) | (3 << 3) | 2, lab4),
+            (
+                "u16-doswap",
+                (4 << 16) | (1 << 10) | (3 << 3) | 2u32,
+                (4 << 16) | (1 << 10) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "u16-planar",
+                (4 << 16) | (1 << 12) | (3 << 3) | 2,
+                (4 << 16) | (1 << 12) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "u16-swapfirst",
+                (4 << 16) | (1 << 14) | (3 << 3) | 2,
+                (4 << 16) | (1 << 14) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "u16-endian16",
+                (4 << 16) | (1 << 11) | (3 << 3) | 2,
+                (4 << 16) | (1 << 11) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "u16-extra1",
+                (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "u16-flavor",
+                (4 << 16) | (1 << 13) | (3 << 3) | 2,
+                (4 << 16) | (1 << 13) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "u16-8bit",
+                (4 << 16) | (3 << 3) | 1,
+                (4 << 16) | (3 << 3) | 1,
+                ho,
+            ),
+            (
+                "u16-lab",
+                (4 << 16) | (3 << 3) | 2,
+                (10 << 16) | (3 << 3) | 2,
+                lab4,
+            ),
+            (
+                "u16-xyz",
+                (4 << 16) | (3 << 3) | 2,
+                (5 << 16) | (3 << 3) | 2,
+                lab4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt_in, p2,
-                fmt_out, 0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt_in, p2, fmt_out, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x8000u16, 0x6000, 0x4000];
                 let mut out = [0u16; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -463,36 +511,65 @@ fn colorspace_formats() {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            c::cmsD50_xyY() as *const std::ffi::c_void, gg);
+        let gray = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, gg);
         // each colorspace's packed formats — the Unroll*/Pack*
         // dispatch on each
         for (name, in_fmt, out_fmt, p2) in [
-            ("xyz-16", (4 << 16) | (3 << 3) | 2u32,
-             (5 << 16) | (3 << 3) | 2, xyz),
-            ("xyz-dbl", (1 << 22) | (4 << 16) | (3 << 3) | 0,
-             (1 << 22) | (5 << 16) | (3 << 3) | 0, xyz),
-            ("xyz-flt", (1 << 22) | (4 << 16) | (3 << 3) | 4,
-             (1 << 22) | (5 << 16) | (3 << 3) | 4, xyz),
-            ("gray-16", (4 << 16) | (3 << 3) | 2,
-             (3 << 16) | (1 << 3) | 2, gray),
-            ("gray-8", (4 << 16) | (3 << 3) | 1,
-             (3 << 16) | (1 << 3) | 1, gray),
-            ("gray-flt", (1 << 22) | (4 << 16) | (3 << 3) | 4,
-             (1 << 22) | (3 << 16) | (1 << 3) | 4, gray),
-            ("lab-8", (4 << 16) | (3 << 3) | 1,
-             (10 << 16) | (3 << 3) | 1, lab4),
-            ("lab-16", (4 << 16) | (3 << 3) | 2,
-             (10 << 16) | (3 << 3) | 2, lab4),
+            (
+                "xyz-16",
+                (4 << 16) | (3 << 3) | 2u32,
+                (5 << 16) | (3 << 3) | 2,
+                xyz,
+            ),
+            (
+                "xyz-dbl",
+                (1 << 22) | (4 << 16) | (3 << 3) | 0,
+                (1 << 22) | (5 << 16) | (3 << 3) | 0,
+                xyz,
+            ),
+            (
+                "xyz-flt",
+                (1 << 22) | (4 << 16) | (3 << 3) | 4,
+                (1 << 22) | (5 << 16) | (3 << 3) | 4,
+                xyz,
+            ),
+            (
+                "gray-16",
+                (4 << 16) | (3 << 3) | 2,
+                (3 << 16) | (1 << 3) | 2,
+                gray,
+            ),
+            (
+                "gray-8",
+                (4 << 16) | (3 << 3) | 1,
+                (3 << 16) | (1 << 3) | 1,
+                gray,
+            ),
+            (
+                "gray-flt",
+                (1 << 22) | (4 << 16) | (3 << 3) | 4,
+                (1 << 22) | (3 << 16) | (1 << 3) | 4,
+                gray,
+            ),
+            (
+                "lab-8",
+                (4 << 16) | (3 << 3) | 1,
+                (10 << 16) | (3 << 3) | 1,
+                lab4,
+            ),
+            (
+                "lab-16",
+                (4 << 16) | (3 << 3) | 2,
+                (10 << 16) | (3 << 3) | 2,
+                lab4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x8000u16, 0x6000, 0x4000, 0x2000];
                 let mut out = [0u16; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -514,34 +591,49 @@ fn cmyk_multi_formats() {
         // a CMYK profile for CMYK formats
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let curves = [g, g, g];
-        let cmyk = c::cmsCreateProfilePlaceholder(
-            std::ptr::null_mut());
+        let cmyk = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(cmyk, 0x70727472); // prtr
         c::cmsSetColorSpace(cmyk, 0x434D594B); // CMYK
         c::cmsSetPCS(cmyk, 0x4C616220); // Lab
         // CMYK + 4ch + 6ch + premul-alpha formats
         for (name, in_fmt, out_fmt, p2) in [
-            ("cmyk-8", (4 << 16) | (3 << 3) | 1u32,
-             (18 << 16) | (4 << 3) | 1, cmyk),
-            ("cmyk-16", (4 << 16) | (3 << 3) | 2,
-             (18 << 16) | (4 << 3) | 2, cmyk),
-            ("cmyk-flt", (1 << 22) | (4 << 16) | (3 << 3) | 4,
-             (1 << 22) | (18 << 16) | (4 << 3) | 4, cmyk),
-            ("4ch-rgba", (4 << 16) | (1 << 7) | (3 << 3) | 2,
-             (4 << 16) | (1 << 7) | (3 << 3) | 2, ho),
-            ("premul-a", (4 << 16) | (1 << 23) | (1 << 7)
-             | (3 << 3) | 2,
-             (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 2,
-             ho),
+            (
+                "cmyk-8",
+                (4 << 16) | (3 << 3) | 1u32,
+                (18 << 16) | (4 << 3) | 1,
+                cmyk,
+            ),
+            (
+                "cmyk-16",
+                (4 << 16) | (3 << 3) | 2,
+                (18 << 16) | (4 << 3) | 2,
+                cmyk,
+            ),
+            (
+                "cmyk-flt",
+                (1 << 22) | (4 << 16) | (3 << 3) | 4,
+                (1 << 22) | (18 << 16) | (4 << 3) | 4,
+                cmyk,
+            ),
+            (
+                "4ch-rgba",
+                (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "premul-a",
+                (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 2,
+                (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 2,
+                ho,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x8000u16, 0x6000, 0x4000, 0xFFFF];
                 let mut out = [0u16; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -560,25 +652,39 @@ fn mch_formats() {
         let ho = c::cmsCreate_sRGBProfile();
         // multi-channel formats — PT_MCH6/8/15 + the MCH
         // profiles via a devicelink
-        let ink = c::cmsCreateInkLimitingDeviceLink(
-            0x6D6E7472, 90.0); // 'mntr' class on CMYK
+        let ink = c::cmsCreateInkLimitingDeviceLink(0x6D6E7472, 90.0); // 'mntr' class on CMYK
         // 6ch/8ch/15ch on sRGB→sRGB (the MCH channel dispatch)
         for (name, in_fmt, out_fmt, p2) in [
-            ("6ch-u16", (24 << 16) | (6 << 3) | 2u32,
-             (4 << 16) | (3 << 3) | 2, ho),
-            ("8ch-u16", (26 << 16) | (8 << 3) | 2,
-             (4 << 16) | (3 << 3) | 2, ho),
-            ("15ch-u16", (31 << 16) | (15 << 3) | 2,
-             (4 << 16) | (3 << 3) | 2, ho),
+            (
+                "6ch-u16",
+                (24 << 16) | (6 << 3) | 2u32,
+                (4 << 16) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "8ch-u16",
+                (26 << 16) | (8 << 3) | 2,
+                (4 << 16) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "15ch-u16",
+                (31 << 16) | (15 << 3) | 2,
+                (4 << 16) | (3 << 3) | 2,
+                ho,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
-        if !ink.is_null() { c::cmsCloseProfile(ink); }
+        if !ink.is_null() {
+            c::cmsCloseProfile(ink);
+        }
     }
 }
 
@@ -591,29 +697,38 @@ fn byte_order_formats() {
         let ho = c::cmsCreate_sRGBProfile();
         // the byte-order variants — BGR/BGRA/RGBA/ARGB/ABGR/565
         for (name, in_fmt, out_fmt) in [
-            ("bgra-8", (4 << 16) | (1 << 10) | (1 << 7)
-             | (3 << 3) | 1u32,
-             (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 1),
-            ("rgba-8", (4 << 16) | (1 << 7) | (3 << 3) | 1,
-             (4 << 16) | (1 << 7) | (3 << 3) | 1),
-            ("argb-8", (4 << 16) | (1 << 14) | (1 << 7)
-             | (3 << 3) | 1,
-             (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 1),
-            ("abgr-8", (4 << 16) | (1 << 14) | (1 << 10)
-             | (1 << 7) | (3 << 3) | 1,
-             (4 << 16) | (1 << 14) | (1 << 10) | (1 << 7)
-             | (3 << 3) | 1),
-            ("bgr-8", (4 << 16) | (1 << 10) | (3 << 3) | 1,
-             (4 << 16) | (1 << 10) | (3 << 3) | 1),
+            (
+                "bgra-8",
+                (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 1u32,
+                (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 1,
+            ),
+            (
+                "rgba-8",
+                (4 << 16) | (1 << 7) | (3 << 3) | 1,
+                (4 << 16) | (1 << 7) | (3 << 3) | 1,
+            ),
+            (
+                "argb-8",
+                (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 1,
+                (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 1,
+            ),
+            (
+                "abgr-8",
+                (4 << 16) | (1 << 14) | (1 << 10) | (1 << 7) | (3 << 3) | 1,
+                (4 << 16) | (1 << 14) | (1 << 10) | (1 << 7) | (3 << 3) | 1,
+            ),
+            (
+                "bgr-8",
+                (4 << 16) | (1 << 10) | (3 << 3) | 1,
+                (4 << 16) | (1 << 10) | (3 << 3) | 1,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x80u8, 0x60, 0x40, 0xFF];
                 let mut out = [0u8; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -631,31 +746,49 @@ fn u16_byte_order_formats() {
         let ho = c::cmsCreate_sRGBProfile();
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for (name, in_fmt, out_fmt, p2) in [
-            ("bgra-16", (4 << 16) | (1 << 10) | (1 << 7)
-             | (3 << 3) | 2u32,
-             (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 2,
-             ho),
-            ("rgba-16", (4 << 16) | (1 << 7) | (3 << 3) | 2,
-             (4 << 16) | (1 << 7) | (3 << 3) | 2, ho),
-            ("argb-16", (4 << 16) | (1 << 14) | (1 << 7)
-             | (3 << 3) | 2,
-             (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 2,
-             ho),
-            ("bgr-16", (4 << 16) | (1 << 10) | (3 << 3) | 2,
-             (4 << 16) | (1 << 10) | (3 << 3) | 2, ho),
-            ("lab-bgr", (4 << 16) | (1 << 10) | (3 << 3) | 2,
-             (10 << 16) | (1 << 10) | (3 << 3) | 2, lab4),
-            ("lab-565", (4 << 16) | (3 << 3) | 1,
-             (10 << 16) | (3 << 3) | 1, lab4),
+            (
+                "bgra-16",
+                (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 2u32,
+                (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "rgba-16",
+                (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "argb-16",
+                (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 2,
+                (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "bgr-16",
+                (4 << 16) | (1 << 10) | (3 << 3) | 2,
+                (4 << 16) | (1 << 10) | (3 << 3) | 2,
+                ho,
+            ),
+            (
+                "lab-bgr",
+                (4 << 16) | (1 << 10) | (3 << 3) | 2,
+                (10 << 16) | (1 << 10) | (3 << 3) | 2,
+                lab4,
+            ),
+            (
+                "lab-565",
+                (4 << 16) | (3 << 3) | 1,
+                (10 << 16) | (3 << 3) | 1,
+                lab4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x8000u16, 0x6000, 0x4000, 0xFFFF];
                 let mut out = [0u16; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -673,27 +806,31 @@ fn float_byte_order() {
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreate_sRGBProfile();
         for (name, fmt) in [
-            ("bgra-flt", (1 << 22) | (4 << 16) | (1 << 10)
-             | (1 << 7) | (3 << 3) | 4u32),
-            ("rgba-flt", (1 << 22) | (4 << 16) | (1 << 7)
-             | (3 << 3) | 4),
-            ("argb-flt", (1 << 22) | (4 << 16) | (1 << 14)
-             | (1 << 7) | (3 << 3) | 4),
-            ("bgr-flt", (1 << 22) | (4 << 16) | (1 << 10)
-             | (3 << 3) | 4),
-            ("rgba-flt-x2", (1 << 22) | (4 << 16) | (2 << 7)
-             | (3 << 3) | 4),
-            ("rgba-flt-x3", (1 << 22) | (4 << 16) | (3 << 7)
-             | (3 << 3) | 4),
+            (
+                "bgra-flt",
+                (1 << 22) | (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 4u32,
+            ),
+            ("rgba-flt", (1 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 4),
+            (
+                "argb-flt",
+                (1 << 22) | (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 4,
+            ),
+            ("bgr-flt", (1 << 22) | (4 << 16) | (1 << 10) | (3 << 3) | 4),
+            (
+                "rgba-flt-x2",
+                (1 << 22) | (4 << 16) | (2 << 7) | (3 << 3) | 4,
+            ),
+            (
+                "rgba-flt-x3",
+                (1 << 22) | (4 << 16) | (3 << 7) | (3 << 3) | 4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0.5f32, 0.4, 0.3, 1.0, 0.5, 0.4];
                 let mut out = [0.0f32; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -710,29 +847,45 @@ fn cmyk_lab_byte_order() {
         let hi = c::cmsCreate_sRGBProfile();
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            c::cmsD50_xyY() as *const std::ffi::c_void, gg);
+        let gray = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, gg);
         for (name, in_fmt, out_fmt, p2) in [
-            ("lab-bgr-16", (4 << 16) | (1 << 10) | (3 << 3) | 2u32,
-             (10 << 16) | (1 << 10) | (3 << 3) | 2, lab4),
-            ("lab-rgba", (4 << 16) | (1 << 7) | (3 << 3) | 2,
-             (10 << 16) | (1 << 7) | (3 << 3) | 2, lab4),
-            ("lab-doswap", (4 << 16) | (3 << 3) | 2,
-             (10 << 16) | (1 << 10) | (3 << 3) | 2, lab4),
-            ("gray-alpha", (4 << 16) | (3 << 3) | 2,
-             (3 << 16) | (1 << 7) | (1 << 3) | 2, gray),
-            ("gray-alpha-f", (1 << 22) | (4 << 16) | (3 << 3) | 4,
-             (1 << 22) | (3 << 16) | (1 << 7) | (1 << 3) | 4,
-             gray),
+            (
+                "lab-bgr-16",
+                (4 << 16) | (1 << 10) | (3 << 3) | 2u32,
+                (10 << 16) | (1 << 10) | (3 << 3) | 2,
+                lab4,
+            ),
+            (
+                "lab-rgba",
+                (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                (10 << 16) | (1 << 7) | (3 << 3) | 2,
+                lab4,
+            ),
+            (
+                "lab-doswap",
+                (4 << 16) | (3 << 3) | 2,
+                (10 << 16) | (1 << 10) | (3 << 3) | 2,
+                lab4,
+            ),
+            (
+                "gray-alpha",
+                (4 << 16) | (3 << 3) | 2,
+                (3 << 16) | (1 << 7) | (1 << 3) | 2,
+                gray,
+            ),
+            (
+                "gray-alpha-f",
+                (1 << 22) | (4 << 16) | (3 << 3) | 4,
+                (1 << 22) | (3 << 16) | (1 << 7) | (1 << 3) | 4,
+                gray,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, in_fmt, p2,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, p2, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x8000u16, 0x6000, 0x4000, 0xFFFF];
                 let mut out = [0u16; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -750,29 +903,35 @@ fn half_byte_order() {
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreate_sRGBProfile();
         for (name, fmt) in [
-            ("bgra-half", (1 << 22) | (4 << 16) | (1 << 10)
-             | (1 << 7) | (3 << 3) | 2u32),
-            ("rgba-half", (1 << 22) | (4 << 16) | (1 << 7)
-             | (3 << 3) | 2),
-            ("bgr-half", (1 << 22) | (4 << 16) | (1 << 10)
-             | (3 << 3) | 2),
-            ("rgb-half-planar", (1 << 22) | (4 << 16) | (1 << 12)
-             | (3 << 3) | 2),
-            ("rgb-half-swap1", (1 << 22) | (4 << 16) | (1 << 14)
-             | (3 << 3) | 2),
-            ("rgb-flt-planar", (1 << 22) | (4 << 16) | (1 << 12)
-             | (3 << 3) | 4),
-            ("rgb-flt-swap1", (1 << 22) | (4 << 16) | (1 << 14)
-             | (3 << 3) | 4),
+            (
+                "bgra-half",
+                (1 << 22) | (4 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 2u32,
+            ),
+            ("rgba-half", (1 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 2),
+            ("bgr-half", (1 << 22) | (4 << 16) | (1 << 10) | (3 << 3) | 2),
+            (
+                "rgb-half-planar",
+                (1 << 22) | (4 << 16) | (1 << 12) | (3 << 3) | 2,
+            ),
+            (
+                "rgb-half-swap1",
+                (1 << 22) | (4 << 16) | (1 << 14) | (3 << 3) | 2,
+            ),
+            (
+                "rgb-flt-planar",
+                (1 << 22) | (4 << 16) | (1 << 12) | (3 << 3) | 4,
+            ),
+            (
+                "rgb-flt-swap1",
+                (1 << 22) | (4 << 16) | (1 << 14) | (3 << 3) | 4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0.5f32, 0.4, 0.3, 1.0, 0.5, 0.4];
                 let mut out = [0.0f32; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -790,7 +949,7 @@ fn named_unusual_formats() {
         let ho = c::cmsCreate_sRGBProfile();
         // named-color index + more unusual pixel types
         for (name, fmt) in [
-            ("named-idx", (1 << 3) | 2u32), // TYPE_NAMED_COLOR_INDEX
+            ("named-idx", (1 << 3) | 2u32),       // TYPE_NAMED_COLOR_INDEX
             ("rgb-4b", (4 << 16) | (3 << 3) | 0), // 0-byte packed
             ("rgb-1ch", (4 << 16) | (1 << 3) | 2),
             ("rgb-2ch", (4 << 16) | (2 << 3) | 2),
@@ -799,10 +958,11 @@ fn named_unusual_formats() {
             ("rgb-8ch", (4 << 16) | (8 << 3) | 2),
             ("rgb-15ch", (4 << 16) | (15 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -819,7 +979,10 @@ fn cmyk_real_formats() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let curves = [g, g, g, g];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B, curves.as_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_ptr(),
+        );
         // devicelink-only transform — the linearization link
         // IS a CMYK->CMYK transform (1-profile chain).
         eprintln!("dl={}", !dl.is_null());
@@ -830,38 +993,55 @@ fn cmyk_real_formats() {
         }
         // an ink-limiting devicelink IS a CMYK->CMYK link —
         // the 1-profile chain treats it as the full transform.
-        let ink = c::cmsCreateInkLimitingDeviceLink(
-            0x434D594B, 90.0);
+        let ink = c::cmsCreateInkLimitingDeviceLink(0x434D594B, 90.0);
         eprintln!("ink={}", !ink.is_null());
         let mut chain = [ink];
         for (name, in_fmt, out_fmt) in [
-            ("cmyk-8", (18 << 16) | (4 << 3) | 1u32,
-             (18 << 16) | (4 << 3) | 1),
-            ("cmyk-16", (18 << 16) | (4 << 3) | 2,
-             (18 << 16) | (4 << 3) | 2),
-            ("cmyk-flt", (1 << 22) | (18 << 16) | (4 << 3) | 4,
-             (1 << 22) | (18 << 16) | (4 << 3) | 4),
-            ("cmyk-bgr", (18 << 16) | (1 << 10) | (4 << 3) | 2,
-             (18 << 16) | (1 << 10) | (4 << 3) | 2),
-            ("cmyk-planar", (18 << 16) | (1 << 12) | (4 << 3) | 2,
-             (18 << 16) | (4 << 3) | 2),
-            ("cmyk-x1", (18 << 16) | (1 << 7) | (4 << 3) | 2,
-             (18 << 16) | (1 << 7) | (4 << 3) | 2),
+            (
+                "cmyk-8",
+                (18 << 16) | (4 << 3) | 1u32,
+                (18 << 16) | (4 << 3) | 1,
+            ),
+            (
+                "cmyk-16",
+                (18 << 16) | (4 << 3) | 2,
+                (18 << 16) | (4 << 3) | 2,
+            ),
+            (
+                "cmyk-flt",
+                (1 << 22) | (18 << 16) | (4 << 3) | 4,
+                (1 << 22) | (18 << 16) | (4 << 3) | 4,
+            ),
+            (
+                "cmyk-bgr",
+                (18 << 16) | (1 << 10) | (4 << 3) | 2,
+                (18 << 16) | (1 << 10) | (4 << 3) | 2,
+            ),
+            (
+                "cmyk-planar",
+                (18 << 16) | (1 << 12) | (4 << 3) | 2,
+                (18 << 16) | (4 << 3) | 2,
+            ),
+            (
+                "cmyk-x1",
+                (18 << 16) | (1 << 7) | (4 << 3) | 2,
+                (18 << 16) | (1 << 7) | (4 << 3) | 2,
+            ),
         ] {
-            let ct = c::cmsCreateMultiprofileTransform(
-                chain.as_mut_ptr(), 1, in_fmt,
-                out_fmt, 0, 0);
+            let ct =
+                c::cmsCreateMultiprofileTransform(chain.as_mut_ptr(), 1, in_fmt, out_fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x8000u16, 0x6000, 0x4000, 0x2000];
                 let mut out = [0u16; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
         let _ = c::cmsCloseProfile(hi);
-        if !dl.is_null() { c::cmsCloseProfile(dl); }
+        if !dl.is_null() {
+            c::cmsCloseProfile(dl);
+        }
     }
 }
 
@@ -882,14 +1062,12 @@ fn unusual_colorspace_formats() {
             ("yxy-16", (14 << 16) | (3 << 3) | 2),
             ("yuvk-16", (11 << 16) | (4 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = [0x8000u16, 0x6000, 0x4000, 0x2000];
                 let mut out = [0u16; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -923,10 +1101,11 @@ fn any_format_combos() {
             ("any-doswap", (0 << 16) | (1 << 10) | (3 << 3) | 2),
             ("any-extra", (0 << 16) | (1 << 7) | (3 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -949,13 +1128,16 @@ fn u16_modifier_matrix() {
             ("u16-x2", (4 << 16) | (2 << 7) | (3 << 3) | 2),
             ("u16-x3", (4 << 16) | (3 << 7) | (3 << 3) | 2),
             ("u16-x4", (4 << 16) | (4 << 7) | (3 << 3) | 2),
-            ("u16-premul", (4 << 16) | (1 << 23) | (1 << 7)
-             | (3 << 3) | 2),
+            (
+                "u16-premul",
+                (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 2,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -978,13 +1160,13 @@ fn u8_modifier_matrix() {
             ("u8-x2", (4 << 16) | (2 << 7) | (3 << 3) | 1),
             ("u8-x3", (4 << 16) | (3 << 7) | (3 << 3) | 1),
             ("u8-x4", (4 << 16) | (4 << 7) | (3 << 3) | 1),
-            ("u8-premul", (4 << 16) | (1 << 23) | (1 << 7)
-             | (3 << 3) | 1),
+            ("u8-premul", (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -998,29 +1180,27 @@ fn float_modifier_matrix() {
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreate_sRGBProfile();
         for (name, fmt) in [
-            ("f-planar", (1 << 22) | (4 << 16) | (1 << 12)
-             | (3 << 3) | 4u32),
-            ("f-doswap", (1 << 22) | (4 << 16) | (1 << 10)
-             | (3 << 3) | 4),
-            ("f-swapf", (1 << 22) | (4 << 16) | (1 << 14)
-             | (3 << 3) | 4),
-            ("f-flavor", (1 << 22) | (4 << 16) | (1 << 13)
-             | (3 << 3) | 4),
-            ("f-x1", (1 << 22) | (4 << 16) | (1 << 7)
-             | (3 << 3) | 4),
-            ("f-x2", (1 << 22) | (4 << 16) | (2 << 7)
-             | (3 << 3) | 4),
-            ("f-x3", (1 << 22) | (4 << 16) | (3 << 7)
-             | (3 << 3) | 4),
-            ("f-x4", (1 << 22) | (4 << 16) | (4 << 7)
-             | (3 << 3) | 4),
-            ("f-premul", (1 << 22) | (4 << 16) | (1 << 23)
-             | (1 << 7) | (3 << 3) | 4),
+            (
+                "f-planar",
+                (1 << 22) | (4 << 16) | (1 << 12) | (3 << 3) | 4u32,
+            ),
+            ("f-doswap", (1 << 22) | (4 << 16) | (1 << 10) | (3 << 3) | 4),
+            ("f-swapf", (1 << 22) | (4 << 16) | (1 << 14) | (3 << 3) | 4),
+            ("f-flavor", (1 << 22) | (4 << 16) | (1 << 13) | (3 << 3) | 4),
+            ("f-x1", (1 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 4),
+            ("f-x2", (1 << 22) | (4 << 16) | (2 << 7) | (3 << 3) | 4),
+            ("f-x3", (1 << 22) | (4 << 16) | (3 << 7) | (3 << 3) | 4),
+            ("f-x4", (1 << 22) | (4 << 16) | (4 << 7) | (3 << 3) | 4),
+            (
+                "f-premul",
+                (1 << 22) | (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -1034,29 +1214,27 @@ fn half_modifier_matrix() {
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreate_sRGBProfile();
         for (name, fmt) in [
-            ("h-planar", (1 << 22) | (4 << 16) | (1 << 12)
-             | (3 << 3) | 2u32),
-            ("h-doswap", (1 << 22) | (4 << 16) | (1 << 10)
-             | (3 << 3) | 2),
-            ("h-swapf", (1 << 22) | (4 << 16) | (1 << 14)
-             | (3 << 3) | 2),
-            ("h-flavor", (1 << 22) | (4 << 16) | (1 << 13)
-             | (3 << 3) | 2),
-            ("h-x1", (1 << 22) | (4 << 16) | (1 << 7)
-             | (3 << 3) | 2),
-            ("h-x2", (1 << 22) | (4 << 16) | (2 << 7)
-             | (3 << 3) | 2),
-            ("h-x3", (1 << 22) | (4 << 16) | (3 << 7)
-             | (3 << 3) | 2),
-            ("h-x4", (1 << 22) | (4 << 16) | (4 << 7)
-             | (3 << 3) | 2),
-            ("h-premul", (1 << 22) | (4 << 16) | (1 << 23)
-             | (1 << 7) | (3 << 3) | 2),
+            (
+                "h-planar",
+                (1 << 22) | (4 << 16) | (1 << 12) | (3 << 3) | 2u32,
+            ),
+            ("h-doswap", (1 << 22) | (4 << 16) | (1 << 10) | (3 << 3) | 2),
+            ("h-swapf", (1 << 22) | (4 << 16) | (1 << 14) | (3 << 3) | 2),
+            ("h-flavor", (1 << 22) | (4 << 16) | (1 << 13) | (3 << 3) | 2),
+            ("h-x1", (1 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 2),
+            ("h-x2", (1 << 22) | (4 << 16) | (2 << 7) | (3 << 3) | 2),
+            ("h-x3", (1 << 22) | (4 << 16) | (3 << 7) | (3 << 3) | 2),
+            ("h-x4", (1 << 22) | (4 << 16) | (4 << 7) | (3 << 3) | 2),
+            (
+                "h-premul",
+                (1 << 22) | (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 2,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -1079,10 +1257,11 @@ fn lab_modifier_matrix() {
             ("lab-x2", (10 << 16) | (2 << 7) | (3 << 3) | 2),
             ("lab-8", (10 << 16) | (3 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(hi,
-                (4 << 16) | (3 << 3) | 2, lab4, fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, (4 << 16) | (3 << 3) | 2, lab4, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(lab4);
@@ -1095,8 +1274,7 @@ fn gray_modifier_matrix() {
     unsafe {
         let hi = c::cmsCreate_sRGBProfile();
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        let gray = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, g);
         for (name, fmt) in [
             ("g-planar", (3 << 16) | (1 << 12) | (1 << 3) | 2u32),
             ("g-doswap", (3 << 16) | (1 << 10) | (1 << 3) | 2),
@@ -1110,10 +1288,11 @@ fn gray_modifier_matrix() {
             ("g-dbl", (1 << 22) | (3 << 16) | (1 << 3) | 0),
             ("g-hlf", (1 << 22) | (3 << 16) | (1 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(hi,
-                (4 << 16) | (3 << 3) | 2, gray, fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, (4 << 16) | (3 << 3) | 2, gray, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(gray);
@@ -1138,10 +1317,11 @@ fn xyz_modifier_matrix() {
             ("x-dbl", (1 << 22) | (9 << 16) | (3 << 3) | 0),
             ("x-hlf", (1 << 22) | (9 << 16) | (3 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(xyz, fmt, ho,
-                (4 << 16) | (3 << 3) | 2, 0, 0);
+            let ct = c::cmsCreateTransform(xyz, fmt, ho, (4 << 16) | (3 << 3) | 2, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(xyz);
         let _ = c::cmsCloseProfile(ho);
@@ -1154,30 +1334,30 @@ fn xyz_modifier_matrix() {
 fn named_color_format() {
     unsafe {
         // a named-color profile via the placeholder + ncl2 tag
-        let h = c::cmsCreateProfilePlaceholder(
-            std::ptr::null_mut());
+        let h = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(h, 0x6E6D636C); // 'nmcl'
         c::cmsSetColorSpace(h, 0x6E6D636C); // 'nmcl'
         c::cmsSetPCS(h, 0x4C616220); // Lab
         // a named-color list written to 'ncl2'
         let list = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 2, 3, b"P\0".as_ptr() as _,
-            b"S\0".as_ptr() as _);
+            std::ptr::null_mut(),
+            2,
+            3,
+            b"P\0".as_ptr() as _,
+            b"S\0".as_ptr() as _,
+        );
         if !list.is_null() {
-            let _ = c::cmsWriteTag(h, 0x6E636C32,
-                list as *mut std::ffi::c_void);
+            let _ = c::cmsWriteTag(h, 0x6E636C32, list as *mut std::ffi::c_void);
         }
         // the named-index format — 1-channel u16 index
         let named_fmt: u32 = (1 << 3) | 2;
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateTransform(h, named_fmt, h,
-            lab_fmt, 0, 0);
+        let ct = c::cmsCreateTransform(h, named_fmt, h, lab_fmt, 0, 0);
         eprintln!("named fmt t={}", !ct.is_null());
         if !ct.is_null() {
             let inp = [0u16; 1];
             let mut out = [0u16; 3];
-            c::cmsDoTransform(ct, inp.as_ptr() as _,
-                out.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
             c::cmsDeleteTransform(ct);
         }
         let _ = c::cmsCloseProfile(h);
@@ -1191,29 +1371,27 @@ fn double_modifier_matrix() {
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreate_sRGBProfile();
         for (name, fmt) in [
-            ("d-planar", (1 << 22) | (4 << 16) | (1 << 12)
-             | (3 << 3) | 0u32),
-            ("d-doswap", (1 << 22) | (4 << 16) | (1 << 10)
-             | (3 << 3) | 0),
-            ("d-swapf", (1 << 22) | (4 << 16) | (1 << 14)
-             | (3 << 3) | 0),
-            ("d-flavor", (1 << 22) | (4 << 16) | (1 << 13)
-             | (3 << 3) | 0),
-            ("d-x1", (1 << 22) | (4 << 16) | (1 << 7)
-             | (3 << 3) | 0),
-            ("d-x2", (1 << 22) | (4 << 16) | (2 << 7)
-             | (3 << 3) | 0),
-            ("d-x3", (1 << 22) | (4 << 16) | (3 << 7)
-             | (3 << 3) | 0),
-            ("d-x4", (1 << 22) | (4 << 16) | (4 << 7)
-             | (3 << 3) | 0),
-            ("d-premul", (1 << 22) | (4 << 16) | (1 << 23)
-             | (1 << 7) | (3 << 3) | 0),
+            (
+                "d-planar",
+                (1 << 22) | (4 << 16) | (1 << 12) | (3 << 3) | 0u32,
+            ),
+            ("d-doswap", (1 << 22) | (4 << 16) | (1 << 10) | (3 << 3) | 0),
+            ("d-swapf", (1 << 22) | (4 << 16) | (1 << 14) | (3 << 3) | 0),
+            ("d-flavor", (1 << 22) | (4 << 16) | (1 << 13) | (3 << 3) | 0),
+            ("d-x1", (1 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 0),
+            ("d-x2", (1 << 22) | (4 << 16) | (2 << 7) | (3 << 3) | 0),
+            ("d-x3", (1 << 22) | (4 << 16) | (3 << 7) | (3 << 3) | 0),
+            ("d-x4", (1 << 22) | (4 << 16) | (4 << 7) | (3 << 3) | 0),
+            (
+                "d-premul",
+                (1 << 22) | (4 << 16) | (1 << 23) | (1 << 7) | (3 << 3) | 0,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -1240,10 +1418,11 @@ fn multichannel_modifier_matrix() {
             ("4ch-doswap", (0 << 16) | (1 << 10) | (4 << 3) | 1),
             ("6ch-swapf", (0 << 16) | (1 << 14) | (6 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -1269,10 +1448,11 @@ fn matching_channel_formats() {
             ("3ch-end16", (0 << 16) | (1 << 11) | (3 << 3) | 1),
             ("3ch-flavor", (0 << 16) | (1 << 13) | (3 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
@@ -1287,8 +1467,10 @@ fn four_channel_formats() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         eprintln!("dl={}", !dl.is_null());
         // 4-channel formats on the devicelink
         for (name, fmt) in [
@@ -1299,10 +1481,11 @@ fn four_channel_formats() {
             ("4ch-hlf", (1 << 22) | (0 << 16) | (4 << 3) | 2),
             ("4ch-planar", (0 << 16) | (1 << 12) | (4 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1315,8 +1498,10 @@ fn four_channel_modifier_matrix() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("4ch-doswap", (0 << 16) | (1 << 10) | (4 << 3) | 1),
             ("4ch-swapf", (0 << 16) | (1 << 14) | (4 << 3) | 1),
@@ -1326,13 +1511,16 @@ fn four_channel_modifier_matrix() {
             ("4ch-x2", (0 << 16) | (2 << 7) | (4 << 3) | 1),
             ("4ch-x3", (0 << 16) | (3 << 7) | (4 << 3) | 1),
             ("4ch-x4", (0 << 16) | (4 << 7) | (4 << 3) | 1),
-            ("4ch-premul", (0 << 16) | (1 << 23) | (1 << 7)
-             | (4 << 3) | 1),
+            (
+                "4ch-premul",
+                (0 << 16) | (1 << 23) | (1 << 7) | (4 << 3) | 1,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1344,8 +1532,7 @@ fn four_channel_modifier_matrix() {
 fn gray_channel_formats() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        let gray = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, g);
         for (name, fmt) in [
             ("1ch-u8", (0 << 16) | (1 << 3) | 1u32),
             ("1ch-u16", (0 << 16) | (1 << 3) | 2),
@@ -1356,10 +1543,11 @@ fn gray_channel_formats() {
             ("2ch-x1", (0 << 16) | (1 << 7) | (1 << 3) | 1),
             ("1ch-planar", (0 << 16) | (1 << 12) | (1 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(gray, fmt, gray,
-                fmt, 0, 0);
+            let ct = c::cmsCreateTransform(gray, fmt, gray, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(gray);
     }
@@ -1371,8 +1559,7 @@ fn gray_channel_formats() {
 fn gray_modifier_matrix2() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            c::cmsD50_xyY() as *const std::ffi::c_void, g);
+        let gray = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, g);
         for (name, fmt) in [
             ("g-doswap", (0 << 16) | (1 << 10) | (1 << 3) | 1),
             ("g-swapf", (0 << 16) | (1 << 14) | (1 << 3) | 1),
@@ -1380,17 +1567,15 @@ fn gray_modifier_matrix2() {
             ("g-x2", (0 << 16) | (2 << 7) | (1 << 3) | 1),
             ("g-x3", (0 << 16) | (3 << 7) | (1 << 3) | 1),
             ("g-x4", (0 << 16) | (4 << 7) | (1 << 3) | 1),
-            ("g-premul", (0 << 16) | (1 << 23) | (1 << 7)
-             | (1 << 3) | 1),
-            ("g-flt-x1", (1 << 22) | (0 << 16) | (1 << 7)
-             | (1 << 3) | 4),
-            ("g-dbl-x1", (1 << 22) | (0 << 16) | (1 << 7)
-             | (1 << 3) | 0),
+            ("g-premul", (0 << 16) | (1 << 23) | (1 << 7) | (1 << 3) | 1),
+            ("g-flt-x1", (1 << 22) | (0 << 16) | (1 << 7) | (1 << 3) | 4),
+            ("g-dbl-x1", (1 << 22) | (0 << 16) | (1 << 7) | (1 << 3) | 0),
         ] {
-            let ct = c::cmsCreateTransform(gray, fmt, gray,
-                fmt, 0, 0);
+            let ct = c::cmsCreateTransform(gray, fmt, gray, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(gray);
     }
@@ -1405,8 +1590,10 @@ fn two_channel_formats() {
         let mut curves = [g; 2];
         // '2CLR' (MCH2) devicelink
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x32434C52,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x32434C52,
+            curves.as_mut_ptr(),
+        );
         eprintln!("dl={}", !dl.is_null());
         for (name, fmt) in [
             ("2ch-u8", (0 << 16) | (2 << 3) | 1u32),
@@ -1416,10 +1603,11 @@ fn two_channel_formats() {
             ("2ch-hlf", (1 << 22) | (0 << 16) | (2 << 3) | 2),
             ("2ch-planar", (0 << 16) | (1 << 12) | (2 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1434,22 +1622,29 @@ fn multichannel_formats() {
         for (nch, sig, name) in [
             (6usize, 0x36434C52u32, "6CLR"),
             (8, 0x38434C52u32, "8CLR"),
-            (15, 0x46434C52u32, "FCLR")] {
+            (15, 0x46434C52u32, "FCLR"),
+        ] {
             let mut curves = vec![g; nch];
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), sig, curves.as_mut_ptr());
+                std::ptr::null_mut(),
+                sig,
+                curves.as_mut_ptr(),
+            );
             eprintln!("{name} dl={}", !dl.is_null());
             for fmt in [
                 (0 << 16) | ((nch as u32) << 3) | 1,
                 (0 << 16) | ((nch as u32) << 3) | 2,
                 (1 << 22) | (0 << 16) | ((nch as u32) << 3) | 4,
             ] {
-                let ct = c::cmsCreateTransform(dl, fmt, dl,
-                    fmt, 0, 0);
+                let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
                 eprintln!("  fmt t={}", !ct.is_null());
-                if !ct.is_null() { c::cmsDeleteTransform(ct); }
+                if !ct.is_null() {
+                    c::cmsDeleteTransform(ct);
+                }
             }
-            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            if !dl.is_null() {
+                c::cmsCloseProfile(dl);
+            }
         }
     }
 }
@@ -1461,8 +1656,10 @@ fn multichannel_modifier_matrix2() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 6];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x36434C52,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x36434C52,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("6ch-doswap", (0 << 16) | (1 << 10) | (6 << 3) | 1),
             ("6ch-swapf", (0 << 16) | (1 << 14) | (6 << 3) | 1),
@@ -1472,15 +1669,18 @@ fn multichannel_modifier_matrix2() {
             ("6ch-x2", (0 << 16) | (2 << 7) | (6 << 3) | 1),
             ("6ch-x3", (0 << 16) | (3 << 7) | (6 << 3) | 1),
             ("6ch-x4", (0 << 16) | (4 << 7) | (6 << 3) | 1),
-            ("6ch-premul", (0 << 16) | (1 << 23) | (1 << 7)
-             | (6 << 3) | 1),
+            (
+                "6ch-premul",
+                (0 << 16) | (1 << 23) | (1 << 7) | (6 << 3) | 1,
+            ),
             ("6ch-dbl", (1 << 22) | (0 << 16) | (6 << 3) | 0),
             ("6ch-hlf", (1 << 22) | (0 << 16) | (6 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1494,15 +1694,18 @@ fn named_color_on_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x52474220,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x52474220,
+            curves.as_mut_ptr(),
+        );
         // the named-index format — 1-channel u16 index
         let named_fmt: u32 = (1 << 3) | 2;
         let rgb_fmt: u32 = (4 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateTransform(dl, named_fmt, dl,
-            rgb_fmt, 0, 0);
+        let ct = c::cmsCreateTransform(dl, named_fmt, dl, rgb_fmt, 0, 0);
         eprintln!("named t={}", !ct.is_null());
-        if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        if !ct.is_null() {
+            c::cmsDeleteTransform(ct);
+        }
         let _ = c::cmsCloseProfile(dl);
     }
 }
@@ -1515,21 +1718,22 @@ fn byte_order_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("4ch-bgr", (0 << 16) | (1 << 10) | (4 << 3) | 1),
-            ("4ch-abgr", (0 << 16) | (1 << 14) | (1 << 10)
-             | (4 << 3) | 1),
+            ("4ch-abgr", (0 << 16) | (1 << 14) | (1 << 10) | (4 << 3) | 1),
             ("4ch-argb", (0 << 16) | (1 << 14) | (4 << 3) | 1),
-            ("4ch-bgra", (0 << 16) | (1 << 10) | (1 << 7)
-             | (4 << 3) | 1),
+            ("4ch-bgra", (0 << 16) | (1 << 10) | (1 << 7) | (4 << 3) | 1),
             ("4ch-rgba", (0 << 16) | (1 << 7) | (4 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1543,26 +1747,35 @@ fn float_byte_order_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
-            ("4f-bgr", (1 << 22) | (0 << 16) | (1 << 10)
-             | (4 << 3) | 4u32),
-            ("4f-abgr", (1 << 22) | (0 << 16) | (1 << 14)
-             | (1 << 10) | (4 << 3) | 4),
-            ("4f-argb", (1 << 22) | (0 << 16) | (1 << 14)
-             | (4 << 3) | 4),
-            ("4f-bgra", (1 << 22) | (0 << 16) | (1 << 10)
-             | (1 << 7) | (4 << 3) | 4),
-            ("4f-rgba", (1 << 22) | (0 << 16) | (1 << 7)
-             | (4 << 3) | 4),
-            ("4f-planar", (1 << 22) | (0 << 16) | (1 << 12)
-             | (4 << 3) | 4),
+            (
+                "4f-bgr",
+                (1 << 22) | (0 << 16) | (1 << 10) | (4 << 3) | 4u32,
+            ),
+            (
+                "4f-abgr",
+                (1 << 22) | (0 << 16) | (1 << 14) | (1 << 10) | (4 << 3) | 4,
+            ),
+            ("4f-argb", (1 << 22) | (0 << 16) | (1 << 14) | (4 << 3) | 4),
+            (
+                "4f-bgra",
+                (1 << 22) | (0 << 16) | (1 << 10) | (1 << 7) | (4 << 3) | 4,
+            ),
+            ("4f-rgba", (1 << 22) | (0 << 16) | (1 << 7) | (4 << 3) | 4),
+            (
+                "4f-planar",
+                (1 << 22) | (0 << 16) | (1 << 12) | (4 << 3) | 4,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1576,22 +1789,26 @@ fn u16_byte_order_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("4u16-bgr", (0 << 16) | (1 << 10) | (4 << 3) | 2u32),
-            ("4u16-abgr", (0 << 16) | (1 << 14) | (1 << 10)
-             | (4 << 3) | 2),
+            (
+                "4u16-abgr",
+                (0 << 16) | (1 << 14) | (1 << 10) | (4 << 3) | 2,
+            ),
             ("4u16-argb", (0 << 16) | (1 << 14) | (4 << 3) | 2),
-            ("4u16-bgra", (0 << 16) | (1 << 10) | (1 << 7)
-             | (4 << 3) | 2),
+            ("4u16-bgra", (0 << 16) | (1 << 10) | (1 << 7) | (4 << 3) | 2),
             ("4u16-rgba", (0 << 16) | (1 << 7) | (4 << 3) | 2),
             ("4u16-planar", (0 << 16) | (1 << 12) | (4 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1605,26 +1822,35 @@ fn half_byte_order_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
-            ("4h-bgr", (1 << 22) | (0 << 16) | (1 << 10)
-             | (4 << 3) | 2u32),
-            ("4h-abgr", (1 << 22) | (0 << 16) | (1 << 14)
-             | (1 << 10) | (4 << 3) | 2),
-            ("4h-argb", (1 << 22) | (0 << 16) | (1 << 14)
-             | (4 << 3) | 2),
-            ("4h-bgra", (1 << 22) | (0 << 16) | (1 << 10)
-             | (1 << 7) | (4 << 3) | 2),
-            ("4h-rgba", (1 << 22) | (0 << 16) | (1 << 7)
-             | (4 << 3) | 2),
-            ("4h-doswap", (1 << 22) | (0 << 16) | (1 << 10)
-             | (4 << 3) | 2),
+            (
+                "4h-bgr",
+                (1 << 22) | (0 << 16) | (1 << 10) | (4 << 3) | 2u32,
+            ),
+            (
+                "4h-abgr",
+                (1 << 22) | (0 << 16) | (1 << 14) | (1 << 10) | (4 << 3) | 2,
+            ),
+            ("4h-argb", (1 << 22) | (0 << 16) | (1 << 14) | (4 << 3) | 2),
+            (
+                "4h-bgra",
+                (1 << 22) | (0 << 16) | (1 << 10) | (1 << 7) | (4 << 3) | 2,
+            ),
+            ("4h-rgba", (1 << 22) | (0 << 16) | (1 << 7) | (4 << 3) | 2),
+            (
+                "4h-doswap",
+                (1 << 22) | (0 << 16) | (1 << 10) | (4 << 3) | 2,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1638,26 +1864,35 @@ fn double_byte_order_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
-            ("4d-bgr", (1 << 22) | (0 << 16) | (1 << 10)
-             | (4 << 3) | 0u32),
-            ("4d-abgr", (1 << 22) | (0 << 16) | (1 << 14)
-             | (1 << 10) | (4 << 3) | 0),
-            ("4d-argb", (1 << 22) | (0 << 16) | (1 << 14)
-             | (4 << 3) | 0),
-            ("4d-bgra", (1 << 22) | (0 << 16) | (1 << 10)
-             | (1 << 7) | (4 << 3) | 0),
-            ("4d-rgba", (1 << 22) | (0 << 16) | (1 << 7)
-             | (4 << 3) | 0),
-            ("4d-doswap", (1 << 22) | (0 << 16) | (1 << 10)
-             | (4 << 3) | 0),
+            (
+                "4d-bgr",
+                (1 << 22) | (0 << 16) | (1 << 10) | (4 << 3) | 0u32,
+            ),
+            (
+                "4d-abgr",
+                (1 << 22) | (0 << 16) | (1 << 14) | (1 << 10) | (4 << 3) | 0,
+            ),
+            ("4d-argb", (1 << 22) | (0 << 16) | (1 << 14) | (4 << 3) | 0),
+            (
+                "4d-bgra",
+                (1 << 22) | (0 << 16) | (1 << 10) | (1 << 7) | (4 << 3) | 0,
+            ),
+            ("4d-rgba", (1 << 22) | (0 << 16) | (1 << 7) | (4 << 3) | 0),
+            (
+                "4d-doswap",
+                (1 << 22) | (0 << 16) | (1 << 10) | (4 << 3) | 0,
+            ),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1670,20 +1905,24 @@ fn devicelink_transform_eval() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         for (nch, sig) in [
-            (2usize, 0x32434C52u32), (4, 0x434D594B),
-            (6, 0x36434C52), (8, 0x38434C52)] {
+            (2usize, 0x32434C52u32),
+            (4, 0x434D594B),
+            (6, 0x36434C52),
+            (8, 0x38434C52),
+        ] {
             let mut curves = vec![g; nch];
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), sig, curves.as_mut_ptr());
+                std::ptr::null_mut(),
+                sig,
+                curves.as_mut_ptr(),
+            );
             let fmt: u32 = (0 << 16) | ((nch as u32) << 3) | 1;
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{nch}ch t={}", !ct.is_null());
             if !ct.is_null() {
                 let inp = vec![0x40u8; nch];
                 let mut out = vec![0u8; nch];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
             let _ = c::cmsCloseProfile(dl);
@@ -1699,16 +1938,25 @@ fn change_buffers_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
-        let ct = c::cmsCreateTransform(dl,
-            (0 << 16) | (4 << 3) | 1, dl,
-            (0 << 16) | (4 << 3) | 2, 0, 0);
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
+        let ct = c::cmsCreateTransform(
+            dl,
+            (0 << 16) | (4 << 3) | 1,
+            dl,
+            (0 << 16) | (4 << 3) | 2,
+            0,
+            0,
+        );
         eprintln!("t={}", !ct.is_null());
         if !ct.is_null() {
-            let ok = c::cmsChangeBuffersFormat(ct,
+            let ok = c::cmsChangeBuffersFormat(
+                ct,
                 (1 << 22) | (0 << 16) | (4 << 3) | 4,
-                (1 << 22) | (0 << 16) | (4 << 3) | 0);
+                (1 << 22) | (0 << 16) | (4 << 3) | 0,
+            );
             eprintln!("change={ok}");
             c::cmsDeleteTransform(ct);
         }
@@ -1724,18 +1972,24 @@ fn stride_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
-        let ct = c::cmsCreateTransform(dl,
-            (0 << 16) | (1 << 12) | (4 << 3) | 1, dl,
-            (0 << 16) | (1 << 12) | (4 << 3) | 1, 0, 0);
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
+        let ct = c::cmsCreateTransform(
+            dl,
+            (0 << 16) | (1 << 12) | (4 << 3) | 1,
+            dl,
+            (0 << 16) | (1 << 12) | (4 << 3) | 1,
+            0,
+            0,
+        );
         eprintln!("t={}", !ct.is_null());
         if !ct.is_null() {
             // planar stride eval
             let inp = [0x40u8; 8];
             let mut out = [0u8; 8];
-            c::cmsDoTransformStride(ct, inp.as_ptr() as _,
-                out.as_mut_ptr() as *mut _, 2, 4);
+            c::cmsDoTransformStride(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 2, 4);
             c::cmsDeleteTransform(ct);
         }
         let _ = c::cmsCloseProfile(dl);
@@ -1750,18 +2004,34 @@ fn line_stride_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
-        let ct = c::cmsCreateTransform(dl,
-            (0 << 16) | (4 << 3) | 1, dl,
-            (0 << 16) | (4 << 3) | 1, 0, 0);
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
+        let ct = c::cmsCreateTransform(
+            dl,
+            (0 << 16) | (4 << 3) | 1,
+            dl,
+            (0 << 16) | (4 << 3) | 1,
+            0,
+            0,
+        );
         eprintln!("t={}", !ct.is_null());
         if !ct.is_null() {
             // line-stride eval — 2 lines x 2 pixels x 4ch
             let inp = [0x40u8; 16];
             let mut out = [0u8; 16];
-            c::cmsDoTransformLineStride(ct, inp.as_ptr() as _,
-                out.as_mut_ptr() as *mut _, 2, 2, 8, 8, 4, 4);
+            c::cmsDoTransformLineStride(
+                ct,
+                inp.as_ptr() as _,
+                out.as_mut_ptr() as *mut _,
+                2,
+                2,
+                8,
+                8,
+                4,
+                4,
+            );
             c::cmsDeleteTransform(ct);
         }
         let _ = c::cmsCloseProfile(dl);
@@ -1776,8 +2046,10 @@ fn alpha_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 4];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("4ch-x1", (0 << 16) | (1 << 7) | (4 << 3) | 1),
             ("4ch-x2", (0 << 16) | (2 << 7) | (4 << 3) | 1),
@@ -1786,10 +2058,11 @@ fn alpha_devicelink() {
             ("4ch-a1u8", (0 << 16) | (1 << 7) | (4 << 3) | 1),
             ("4ch-a1u16", (0 << 16) | (1 << 7) | (4 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1804,15 +2077,18 @@ fn named_color_nmcl() {
         let mut curves = [g; 1];
         // 'nmcl' devicelink (1-channel named-color)
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x6E6D636C,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x6E6D636C,
+            curves.as_mut_ptr(),
+        );
         eprintln!("dl={}", !dl.is_null());
         // the named-index format — 1-channel u16 index
         let named_fmt: u32 = (1 << 3) | 2;
-        let ct = c::cmsCreateTransform(dl, named_fmt, dl,
-            named_fmt, 0, 0);
+        let ct = c::cmsCreateTransform(dl, named_fmt, dl, named_fmt, 0, 0);
         eprintln!("named t={}", !ct.is_null());
-        if !ct.is_null() { c::cmsDeleteTransform(ct); }
+        if !ct.is_null() {
+            c::cmsDeleteTransform(ct);
+        }
         let _ = c::cmsCloseProfile(dl);
     }
 }
@@ -1824,8 +2100,10 @@ fn fclr_modifier_matrix() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 15];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x46434C52,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x46434C52,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("15ch-doswap", (0 << 16) | (1 << 10) | (15 << 3) | 1),
             ("15ch-swapf", (0 << 16) | (1 << 14) | (15 << 3) | 1),
@@ -1835,10 +2113,11 @@ fn fclr_modifier_matrix() {
             ("15ch-dbl", (1 << 22) | (0 << 16) | (15 << 3) | 0),
             ("15ch-hlf", (1 << 22) | (0 << 16) | (15 << 3) | 2),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1851,8 +2130,10 @@ fn lab_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x4C616220,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x4C616220,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("lab-u8", (0 << 16) | (3 << 3) | 1u32),
             ("lab-u16", (0 << 16) | (3 << 3) | 2),
@@ -1861,10 +2142,11 @@ fn lab_devicelink() {
             ("lab-hlf", (1 << 22) | (0 << 16) | (3 << 3) | 2),
             ("lab-planar", (0 << 16) | (1 << 12) | (3 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1878,8 +2160,10 @@ fn xyz_devicelink() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x58595A20,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x58595A20,
+            curves.as_mut_ptr(),
+        );
         for (name, fmt) in [
             ("xyz-u8", (0 << 16) | (3 << 3) | 1u32),
             ("xyz-u16", (0 << 16) | (3 << 3) | 2),
@@ -1888,10 +2172,11 @@ fn xyz_devicelink() {
             ("xyz-hlf", (1 << 22) | (0 << 16) | (3 << 3) | 2),
             ("xyz-planar", (0 << 16) | (1 << 12) | (3 << 3) | 1),
         ] {
-            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
         let _ = c::cmsCloseProfile(dl);
     }
@@ -1906,12 +2191,14 @@ fn ink_limiting_variants() {
         for (nch, sig, name) in [
             (4usize, 0x434D594B, "CMYK"),
             (6, 0x36434C52, "6CLR"),
-            (3, 0x52474220, "RGB ")] {
+            (3, 0x52474220, "RGB "),
+        ] {
             let mut curves = vec![g; nch];
-            let dl = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), sig, 60.0);
+            let dl = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), sig, 60.0);
             eprintln!("{name} dl={}", !dl.is_null());
-            if !dl.is_null() { c::cmsCloseProfile(dl); }
+            if !dl.is_null() {
+                c::cmsCloseProfile(dl);
+            }
         }
     }
 }
@@ -1927,19 +2214,25 @@ fn multich_packers2() {
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
                 std::ptr::null_mut(),
                 match n {
-                    5 => 0x35434C52, 7 => 0x37434C52,
-                    9 => 0x39434C52, 10 => 0x41434C52,
-                    11 => 0x42434C52, 12 => 0x43434C52,
-                    13 => 0x44434C52, 14 => 0x45434C52,
+                    5 => 0x35434C52,
+                    7 => 0x37434C52,
+                    9 => 0x39434C52,
+                    10 => 0x41434C52,
+                    11 => 0x42434C52,
+                    12 => 0x43434C52,
+                    13 => 0x44434C52,
+                    14 => 0x45434C52,
                     _ => 0x46434C52,
                 },
-                curves.as_mut_ptr());
+                curves.as_mut_ptr(),
+            );
             for (name, bytes) in [("u8", 1u32), ("u16", 2)] {
                 let fmt = (0 << 16) | (n << 3) | bytes;
-                let t = c::cmsCreateTransform(dl, fmt,
-                    dl, fmt, 0, 0);
+                let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
                 eprintln!("{n}ch-{name} t={}", !t.is_null());
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             c::cmsCloseProfile(dl);
         }
@@ -1958,22 +2251,26 @@ fn multich_float_packers() {
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
                 std::ptr::null_mut(),
                 match n {
-                    5 => 0x35434C52, 7 => 0x37434C52,
-                    9 => 0x39434C52, 10 => 0x41434C52,
-                    11 => 0x42434C52, 12 => 0x43434C52,
-                    13 => 0x44434C52, 14 => 0x45434C52,
+                    5 => 0x35434C52,
+                    7 => 0x37434C52,
+                    9 => 0x39434C52,
+                    10 => 0x41434C52,
+                    11 => 0x42434C52,
+                    12 => 0x43434C52,
+                    13 => 0x44434C52,
+                    14 => 0x45434C52,
                     _ => 0x46434C52,
                 },
-                curves.as_mut_ptr());
+                curves.as_mut_ptr(),
+            );
             // FLOAT_SH=22, bytes=4 (flt=4, dbl=8, half=2+float)
-            for (name, bytes, flt) in [
-                ("flt", 4u32, 1u32 << 22),
-                ("dbl", 8, 1 << 22)] {
+            for (name, bytes, flt) in [("flt", 4u32, 1u32 << 22), ("dbl", 8, 1 << 22)] {
                 let fmt = (0 << 16) | (n << 3) | bytes | flt;
-                let t = c::cmsCreateTransform(dl, fmt,
-                    dl, fmt, 0, 0);
+                let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
                 eprintln!("{n}ch-{name} t={}", !t.is_null());
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             c::cmsCloseProfile(dl);
         }
@@ -1992,19 +2289,25 @@ fn multich_half_packers() {
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
                 std::ptr::null_mut(),
                 match n {
-                    5 => 0x35434C52, 7 => 0x37434C52,
-                    9 => 0x39434C52, 10 => 0x41434C52,
-                    11 => 0x42434C52, 12 => 0x43434C52,
-                    13 => 0x44434C52, 14 => 0x45434C52,
+                    5 => 0x35434C52,
+                    7 => 0x37434C52,
+                    9 => 0x39434C52,
+                    10 => 0x41434C52,
+                    11 => 0x42434C52,
+                    12 => 0x43434C52,
+                    13 => 0x44434C52,
+                    14 => 0x45434C52,
                     _ => 0x46434C52,
                 },
-                curves.as_mut_ptr());
+                curves.as_mut_ptr(),
+            );
             // half = FLOAT_SH(22) + bytes=2
             let fmt = (0 << 16) | (n << 3) | 2 | (1u32 << 22);
-            let t = c::cmsCreateTransform(dl, fmt,
-                dl, fmt, 0, 0);
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{n}ch-half t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(dl);
         }
         c::cmsFreeToneCurve(g);
@@ -2022,18 +2325,20 @@ fn multich_extra_packers() {
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
                 std::ptr::null_mut(),
                 match n {
-                    3 => 0x52474220, 5 => 0x35434C52,
+                    3 => 0x52474220,
+                    5 => 0x35434C52,
                     _ => 0x37434C52,
                 },
-                curves.as_mut_ptr());
+                curves.as_mut_ptr(),
+            );
             // EXTRA_SH=7 — 1/2 extra channels
             for (name, extra) in [("x1", 1u32), ("x2", 2)] {
-                let fmt = (0 << 16) | (n << 3) | 1
-                    | (extra << 7);
-                let t = c::cmsCreateTransform(dl, fmt,
-                    dl, fmt, 0, 0);
+                let fmt = (0 << 16) | (n << 3) | 1 | (extra << 7);
+                let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
                 eprintln!("{n}ch-{name} t={}", !t.is_null());
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             c::cmsCloseProfile(dl);
         }
@@ -2052,10 +2357,12 @@ fn multich_swap_packers() {
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
                 std::ptr::null_mut(),
                 match n {
-                    3 => 0x52474220, 5 => 0x35434C52,
+                    3 => 0x52474220,
+                    5 => 0x35434C52,
                     _ => 0x37434C52,
                 },
-                curves.as_mut_ptr());
+                curves.as_mut_ptr(),
+            );
             // DO_SWAP=10, SWAP_FIRST=14, ENDIAN16=9,
             // PLANAR=19, FLAVOR=21
             for (name, bits, bytes) in [
@@ -2063,12 +2370,14 @@ fn multich_swap_packers() {
                 ("swapf", 1 << 14, 1),
                 ("end16", 1 << 9, 2),
                 ("planar", 1 << 19, 1),
-                ("flavor", 1 << 21, 1)] {
+                ("flavor", 1 << 21, 1),
+            ] {
                 let fmt = (0 << 16) | (n << 3) | bytes | bits;
-                let t = c::cmsCreateTransform(dl, fmt,
-                    dl, fmt, 0, 0);
+                let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
                 eprintln!("{n}ch-{name} t={}", !t.is_null());
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             c::cmsCloseProfile(dl);
         }
@@ -2087,16 +2396,20 @@ fn dotransform_multich2() {
             let dl = c::cmsCreateLinearizationDeviceLinkTHR(
                 std::ptr::null_mut(),
                 match n {
-                    5 => 0x35434C52, 7 => 0x37434C52,
-                    9 => 0x39434C52, 10 => 0x41434C52,
-                    11 => 0x42434C52, 12 => 0x43434C52,
-                    13 => 0x44434C52, 14 => 0x45434C52,
+                    5 => 0x35434C52,
+                    7 => 0x37434C52,
+                    9 => 0x39434C52,
+                    10 => 0x41434C52,
+                    11 => 0x42434C52,
+                    12 => 0x43434C52,
+                    13 => 0x44434C52,
+                    14 => 0x45434C52,
                     _ => 0x46434C52,
                 },
-                curves.as_mut_ptr());
+                curves.as_mut_ptr(),
+            );
             let fmt = (0 << 16) | (n << 3) | 1;
-            let t = c::cmsCreateTransform(dl, fmt,
-                dl, fmt, 0, 0);
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             if t.is_null() {
                 eprintln!("{n}ch NULL");
                 c::cmsCloseProfile(dl);
@@ -2104,8 +2417,7 @@ fn dotransform_multich2() {
             }
             let inp = vec![0x80u8; n as usize];
             let mut out = vec![0u8; n as usize];
-            c::cmsDoTransform(t, inp.as_ptr() as _,
-                out.as_mut_ptr() as _, 1);
+            c::cmsDoTransform(t, inp.as_ptr() as _, out.as_mut_ptr() as _, 1);
             eprintln!("{n}ch do=1 out0={:#x}", out[0]);
             c::cmsDeleteTransform(t);
             c::cmsCloseProfile(dl);
@@ -2122,19 +2434,23 @@ fn planar_packers() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x52474220,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x52474220,
+            curves.as_mut_ptr(),
+        );
         for (name, bits, bytes) in [
             ("planar-u8", 1u32 << 19, 1u32),
             ("planar-u16", 1 << 19, 2),
             ("planar-flt", (1 << 19) | (1 << 22), 4),
             ("planar-dbl", (1 << 19) | (1 << 22), 8),
-            ("planar-half", (1 << 19) | (1 << 22), 2)] {
+            ("planar-half", (1 << 19) | (1 << 22), 2),
+        ] {
             let fmt = (0 << 16) | (3 << 3) | bytes | bits;
-            let t = c::cmsCreateTransform(dl, fmt,
-                dl, fmt, 0, 0);
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
         }
         c::cmsCloseProfile(dl);
         c::cmsFreeToneCurve(g);
@@ -2149,20 +2465,23 @@ fn premul_packers() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x52474220,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x52474220,
+            curves.as_mut_ptr(),
+        );
         for (name, bits, bytes) in [
             ("premul", 1u32 << 23, 1u32),
             ("premul-x1", (1 << 23) | (1 << 7), 1),
             ("premul-x1-u16", (1 << 23) | (1 << 7), 2),
             ("premul-flt", (1 << 23) | (1 << 22), 4),
-            ("premul-x1-flt", (1 << 23) | (1 << 7)
-                | (1 << 22), 4)] {
+            ("premul-x1-flt", (1 << 23) | (1 << 7) | (1 << 22), 4),
+        ] {
             let fmt = (0 << 16) | (3 << 3) | bytes | bits;
-            let t = c::cmsCreateTransform(dl, fmt,
-                dl, fmt, 0, 0);
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
         }
         c::cmsCloseProfile(dl);
         c::cmsFreeToneCurve(g);
@@ -2177,19 +2496,23 @@ fn flavor_packers() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x4C616220,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x4C616220,
+            curves.as_mut_ptr(),
+        );
         for (name, bits, bytes) in [
             ("flav-u8", 1u32 << 21, 1u32),
             ("flav-u16", 1 << 21, 2),
             ("noflav-u8", 0u32, 1),
             ("noflav-u16", 0, 2),
-            ("flav-flt", (1 << 21) | (1 << 22), 4)] {
+            ("flav-flt", (1 << 21) | (1 << 22), 4),
+        ] {
             let fmt = (10 << 16) | (3 << 3) | bytes | bits;
-            let t = c::cmsCreateTransform(dl, fmt,
-                dl, fmt, 0, 0);
+            let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
         }
         c::cmsCloseProfile(dl);
         c::cmsFreeToneCurve(g);
@@ -2266,8 +2589,12 @@ fn pack_chgbuf_sweep() {
             let out_sz = pixel_size(fo) * n;
             let inp = rng_bytes(in_sz, 0xDEAD ^ fi as u64);
             let mut co = vec![0u8; out_sz];
-            c::cmsDoTransform(ct, inp.as_ptr() as *const c_void,
-                co.as_mut_ptr() as *mut c_void, n as u32);
+            c::cmsDoTransform(
+                ct,
+                inp.as_ptr() as *const c_void,
+                co.as_mut_ptr() as *mut c_void,
+                n as u32,
+            );
             c::cmsDeleteTransform(ct);
 
             // Rust side
@@ -2277,37 +2604,37 @@ fn pack_chgbuf_sweep() {
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let mut rt = xform::create_extended_transform(
-                None, &mut v, &mut bpc, &intents, &adapt,
-                None, 0, 0, 0, 0)
-                .unwrap_or_else(|| panic!("{name}: R (0,0) create"));
-            assert!(rt.change_buffers_format(fi, fo),
-                "{name}: R change_buffers");
+                None, &mut v, &mut bpc, &intents, &adapt, None, 0, 0, 0, 0,
+            )
+            .unwrap_or_else(|| panic!("{name}: R (0,0) create"));
+            assert!(rt.change_buffers_format(fi, fo), "{name}: R change_buffers");
             let mut ro = vec![0u8; out_sz];
             rt.do_transform(&inp, &mut ro, n as u32);
             if fo & (1 << 22) != 0 {
                 // float out — tolerance compare like check()
                 let lanew = if fo & 7 == 0 { 8 } else { 4 };
-                for (i, (cb, rb)) in co.chunks_exact(lanew)
-                    .zip(ro.chunks_exact(lanew)).enumerate() {
+                for (i, (cb, rb)) in co
+                    .chunks_exact(lanew)
+                    .zip(ro.chunks_exact(lanew))
+                    .enumerate()
+                {
                     let (cf, rf) = if lanew == 4 {
-                        (f32::from_bits(u32::from_le_bytes(
-                            cb.try_into().unwrap())) as f64,
-                         f32::from_bits(u32::from_le_bytes(
-                            rb.try_into().unwrap())) as f64)
+                        (
+                            f32::from_bits(u32::from_le_bytes(cb.try_into().unwrap())) as f64,
+                            f32::from_bits(u32::from_le_bytes(rb.try_into().unwrap())) as f64,
+                        )
                     } else {
-                        (f64::from_bits(u64::from_le_bytes(
-                            cb.try_into().unwrap())),
-                         f64::from_bits(u64::from_le_bytes(
-                            rb.try_into().unwrap())))
+                        (
+                            f64::from_bits(u64::from_le_bytes(cb.try_into().unwrap())),
+                            f64::from_bits(u64::from_le_bytes(rb.try_into().unwrap())),
+                        )
                     };
                     if !cf.is_finite() || !rf.is_finite() {
-                        assert_eq!(cb, rb,
-                            "{name} lane {i} non-finite");
+                        assert_eq!(cb, rb, "{name} lane {i} non-finite");
                         continue;
                     }
                     let tol = (5e-5 * cf.abs()).max(1e-5);
-                    assert!((cf - rf).abs() <= tol,
-                        "{name} lane {i}: {cf} vs {rf}");
+                    assert!((cf - rf).abs() <= tol, "{name} lane {i}: {cf} vs {rf}");
                 }
             } else {
                 if co != ro {
@@ -2319,8 +2646,10 @@ fn pack_chgbuf_sweep() {
         }
     }
     unsafe {
-        c::cmsCloseProfile(cs); c::cmsCloseProfile(cl);
-        c::cmsCloseProfile(cx); c::cmsCloseProfile(cg);
+        c::cmsCloseProfile(cs);
+        c::cmsCloseProfile(cl);
+        c::cmsCloseProfile(cx);
+        c::cmsCloseProfile(cg);
     }
 }
 
@@ -2369,20 +2698,24 @@ fn pack_misc16() {
         let g4 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut cur4 = [g4; 4];
         let cd4 = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B, cur4.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x434D594B,
+            cur4.as_mut_ptr(),
+        );
         let tg4 = gamma::build_gamma(None, 2.2).unwrap();
-        let rd4 = virt::create_linearization_device_link(
-            None, 0x434D594B,
-            &[&tg4, &tg4, &tg4, &tg4]).unwrap();
+        let rd4 =
+            virt::create_linearization_device_link(None, 0x434D594B, &[&tg4, &tg4, &tg4, &tg4])
+                .unwrap();
         // MCH2 devicelink — 2 channels (PT_MCH2 = 11)
         let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut cur2 = [g2; 2];
         let cd2 = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x4D434832, cur2.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x4D434832,
+            cur2.as_mut_ptr(),
+        );
         let tg2 = gamma::build_gamma(None, 2.2).unwrap();
-        let rd2 = virt::create_linearization_device_link(
-            None, 0x4D434832,
-            &[&tg2, &tg2]).unwrap();
+        let rd2 = virt::create_linearization_device_link(None, 0x4D434832, &[&tg2, &tg2]).unwrap();
         // gray — 1 channel
         let gg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let cg = c::cmsCreateGrayProfile(std::ptr::null_mut(), gg);
@@ -2395,13 +2728,20 @@ fn pack_misc16() {
             ("4c8sf", cd4, &rd4, sf(cmyk8), sf(cmyk8)),
             ("4c8dwsf", cd4, &rd4, dw(sf(cmyk8)), dw(sf(cmyk8))),
             ("4c16dwsf", cd4, &rd4, dw(sf(cmyk16)), dw(sf(cmyk16))),
-            ("4c8pm16", cd4, &rd4, pm(pl(f(PT_CMYK, 4, 1, 2))), pm(pl(f(PT_CMYK, 4, 1, 2)))),
+            (
+                "4c8pm16",
+                cd4,
+                &rd4,
+                pm(pl(f(PT_CMYK, 4, 1, 2))),
+                pm(pl(f(PT_CMYK, 4, 1, 2))),
+            ),
             ("2c8", cd2, &rd2, f(11, 2, 0, 1), f(11, 2, 0, 1)),
             ("1c16x3", cg, &rg, f(PT_GRAY, 1, 3, 2), f(PT_GRAY, 1, 0, 2)),
         ] {
             check(name, cp, rp, fi, fo);
         }
-        c::cmsCloseProfile(cd4); c::cmsCloseProfile(cd2);
+        c::cmsCloseProfile(cd4);
+        c::cmsCloseProfile(cd2);
         c::cmsCloseProfile(cg);
     }
 }
@@ -2412,8 +2752,7 @@ fn pack_misc16() {
 fn pack_optimized_u8() {
     unsafe {
         let c1 = c::cmsCreate_sRGBProfile();
-        let pb = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../aRGBlcms2.icc");
+        let pb = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../aRGBlcms2.icc");
         let pth = std::ffi::CString::new(pb.to_str().unwrap()).unwrap();
         let c2 = c::cmsOpenProfileFromFile(pth.as_ptr(), b"r\0".as_ptr());
         let data = std::fs::read(&pb).unwrap();
@@ -2437,26 +2776,27 @@ fn pack_optimized_u8() {
             } else {
                 // pair transform
                 let ct = c::cmsCreateTransform(c1, fi, c2, fo, 0, 0);
-                let mut v: Vec<Box<lcms::profile::IccProfile>> =
-                    vec![r1.clone(), r2.clone()];
+                let mut v: Vec<Box<lcms::profile::IccProfile>> = vec![r1.clone(), r2.clone()];
                 let mut bpc = [false; 2];
                 let intents = [0u32; 2];
                 let adapt = [1.0f64; 2];
                 let rt = xform::create_extended_transform(
-                    None, &mut v, &mut bpc, &intents, &adapt,
-                    None, 0, fi, fo, 0);
+                    None, &mut v, &mut bpc, &intents, &adapt, None, 0, fi, fo, 0,
+                );
                 if ct.is_null() || rt.is_none() {
-                    assert!(ct.is_null() && rt.is_none(),
-                        "{name}: reject parity");
+                    assert!(ct.is_null() && rt.is_none(), "{name}: reject parity");
                     continue;
                 }
                 let n = 16usize;
-                let inp = rng_bytes(pixel_size(fi) * n,
-                    0xBEEF ^ fi as u64);
+                let inp = rng_bytes(pixel_size(fi) * n, 0xBEEF ^ fi as u64);
                 let mut co = vec![0u8; pixel_size(fo) * n];
                 let mut ro = vec![0u8; pixel_size(fo) * n];
-                c::cmsDoTransform(ct, inp.as_ptr() as *const c_void,
-                    co.as_mut_ptr() as *mut c_void, n as u32);
+                c::cmsDoTransform(
+                    ct,
+                    inp.as_ptr() as *const c_void,
+                    co.as_mut_ptr() as *mut c_void,
+                    n as u32,
+                );
                 rt.unwrap().do_transform(&inp, &mut ro, n as u32);
                 if co != ro {
                     eprintln!("{name} C={:?}", &co[..24]);
@@ -2466,7 +2806,8 @@ fn pack_optimized_u8() {
                 c::cmsDeleteTransform(ct);
             }
         }
-        c::cmsCloseProfile(c1); c::cmsCloseProfile(c2);
+        c::cmsCloseProfile(c1);
+        c::cmsCloseProfile(c2);
     }
 }
 
@@ -2480,9 +2821,9 @@ fn pack_optimized_variants() {
         let rp = virt::create_srgb_profile(None).unwrap();
         // EXTRA(1)|SWAPFIRST(2)|DOSWAP(3)|OPTIMIZED(4) in my bit map:
         // T_EXTRA(4..=7), T_SWAPFIRST(10), T_DOSWAP(11), T_OPTIMIZED(21)
-        let opt = |ex: u32, sf: u32, ds: u32|
-            (4u32 << 16) | (3 << 3) | 1 | (1 << 21)
-            | (ex << 7) | (sf << 10) | (ds << 11);
+        let opt = |ex: u32, sf: u32, ds: u32| {
+            (4u32 << 16) | (3 << 3) | 1 | (1 << 21) | (ex << 7) | (sf << 10) | (ds << 11)
+        };
         let rgb8 = f(PT_RGB, 3, 0, 1);
         for &(name, ex, sf, ds) in &[
             ("p3b-opt", 0u32, 0u32, 0u32),
@@ -2490,35 +2831,44 @@ fn pack_optimized_variants() {
             ("p3be1sf-opt", 1, 1, 0),
             ("p3be1dssf-opt", 1, 1, 1),
             ("p3be1ds-opt", 1, 0, 1),
-            ("p3bds-opt", 0, 0, 1)] {
-            check(&format!("opt-{name}"), cp, &rp, rgb8,
-                opt(ex, sf, ds));
+            ("p3bds-opt", 0, 0, 1),
+        ] {
+            check(&format!("opt-{name}"), cp, &rp, rgb8, opt(ex, sf, ds));
         }
         c::cmsCloseProfile(cp);
         // Unroll2Bytes — MCH2 2-channel u8 input via 2ch link
         let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut cur2 = [g2; 2];
         let cd2 = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x4D434832, cur2.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x4D434832,
+            cur2.as_mut_ptr(),
+        );
         let tg2 = gamma::build_gamma(None, 2.2).unwrap();
-        let rd2 = virt::create_linearization_device_link(
-            None, 0x4D434832, &[&tg2, &tg2]).unwrap();
+        let rd2 = virt::create_linearization_device_link(None, 0x4D434832, &[&tg2, &tg2]).unwrap();
         check("u2b-mch2", cd2, &rd2, f(11, 2, 0, 1), f(11, 2, 0, 1));
         c::cmsCloseProfile(cd2);
     }
 }
 
-fn r_fmt_xform(fin: u32, fout: u32)
-    -> Option<Box<lcms::xform::Transform>> {
+fn r_fmt_xform(fin: u32, fout: u32) -> Option<Box<lcms::xform::Transform>> {
     let mut srgb = lcms::virt::create_srgb_profile(None).unwrap();
     let mut lab = lcms::virt::create_lab4_profile(None, None).unwrap();
-    let mut profs: Vec<Box<lcms::profile::IccProfile>> =
-        vec![srgb, lab];
+    let mut profs: Vec<Box<lcms::profile::IccProfile>> = vec![srgb, lab];
     let mut bpc = [false; 2];
     let mut g: Option<&mut lcms::profile::IccProfile> = None;
     lcms::xform::create_extended_transform(
-        None, &mut profs, &mut bpc, &[0, 0], &[1.0, 1.0],
-        g, 0, fin, fout, 0)
+        None,
+        &mut profs,
+        &mut bpc,
+        &[0, 0],
+        &[1.0, 1.0],
+        g,
+        0,
+        fin,
+        fout,
+        0,
+    )
 }
 
 /// Format-word sweep — float/double unrollers, chunky and planar
@@ -2527,10 +2877,16 @@ fn r_fmt_xform(fin: u32, fout: u32)
 #[test]
 fn format_sweep_pack_arms() {
     // (cs, ch, bytes, extra, doswap, flavor, swapfirst, planar, float)
-    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32, fl: u32,
-        sf: u32, pl: u32, flt: u32) -> u32 {
-        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
-            | (pl << 12) | (ds << 10) | (ex << 7) | (ch << 3) | by
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32, fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16)
+            | (flt << 22)
+            | (sf << 14)
+            | (fl << 13)
+            | (pl << 12)
+            | (ds << 10)
+            | (ex << 7)
+            | (ch << 3)
+            | by
     }
     // NOTE: float/double cases pinned out — the Rust generic float
     // eval (xform_f32 -> unroll_float_to_float + pipeline.eval_float +
@@ -2540,24 +2896,63 @@ fn format_sweep_pack_arms() {
     // numeric-parity pass.
     let combos: &[(u32, u32, &str)] = &[
         // chunky u8/u16 with extras+swaps
-        (f(4,3,1,1, 0,0,1,0,0), f(4,3,1,0, 0,0,0,0,0), "8ex1sf"),
-        (f(4,3,1,3, 0,0,0,0,0), f(4,3,1,0, 0,0,0,0,0), "8ex3"),
-        (f(4,3,2,1, 1,0,0,0,0), f(4,3,2,0, 0,0,0,0,0), "16ex1ds"),
-        (f(4,3,2,2, 0,0,0,0,0), f(4,3,2,0, 0,0,0,0,0), "16ex2"),
+        (
+            f(4, 3, 1, 1, 0, 0, 1, 0, 0),
+            f(4, 3, 1, 0, 0, 0, 0, 0, 0),
+            "8ex1sf",
+        ),
+        (
+            f(4, 3, 1, 3, 0, 0, 0, 0, 0),
+            f(4, 3, 1, 0, 0, 0, 0, 0, 0),
+            "8ex3",
+        ),
+        (
+            f(4, 3, 2, 1, 1, 0, 0, 0, 0),
+            f(4, 3, 2, 0, 0, 0, 0, 0, 0),
+            "16ex1ds",
+        ),
+        (
+            f(4, 3, 2, 2, 0, 0, 0, 0, 0),
+            f(4, 3, 2, 0, 0, 0, 0, 0, 0),
+            "16ex2",
+        ),
         // planar u8/u16
-        (f(4,3,1,0, 0,0,0,1,0), f(4,3,1,0, 0,0,0,0,0), "8planar"),
-        (f(4,3,2,0, 0,0,0,1,0), f(4,3,2,0, 0,0,0,0,0), "16planar"),
-        (f(4,3,1,1, 0,0,0,1,0), f(4,3,1,0, 0,0,0,0,0), "8planar-ex1"),
+        (
+            f(4, 3, 1, 0, 0, 0, 0, 1, 0),
+            f(4, 3, 1, 0, 0, 0, 0, 0, 0),
+            "8planar",
+        ),
+        (
+            f(4, 3, 2, 0, 0, 0, 0, 1, 0),
+            f(4, 3, 2, 0, 0, 0, 0, 0, 0),
+            "16planar",
+        ),
+        (
+            f(4, 3, 1, 1, 0, 0, 0, 1, 0),
+            f(4, 3, 1, 0, 0, 0, 0, 0, 0),
+            "8planar-ex1",
+        ),
         // flavor (reversed channels)
-        (f(4,3,1,0, 0,1,0,0,0), f(4,3,1,0, 0,0,0,0,0), "8rev"),
-        (f(4,3,2,0, 0,1,0,0,0), f(4,3,2,0, 0,0,0,0,0), "16rev"),
+        (
+            f(4, 3, 1, 0, 0, 1, 0, 0, 0),
+            f(4, 3, 1, 0, 0, 0, 0, 0, 0),
+            "8rev",
+        ),
+        (
+            f(4, 3, 2, 0, 0, 1, 0, 0, 0),
+            f(4, 3, 2, 0, 0, 0, 0, 0, 0),
+            "16rev",
+        ),
     ];
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for (fin, fout, name) in combos {
             let t = c::cmsCreateTransform(srgb, *fin, lab, *fout, 0, 0);
-            if t.is_null() { eprintln!("{name}: C create fail"); continue; }
+            if t.is_null() {
+                eprintln!("{name}: C create fail");
+                continue;
+            }
             let rt = r_fmt_xform(*fin, *fout);
             let ch = ((fin >> 3) & 15) as usize;
             let by = (fin & 7) as usize;
@@ -2565,8 +2960,11 @@ fn format_sweep_pack_arms() {
             let pl = (fin >> 12) & 1;
             let n = 16;
             let elem = if by == 0 { 4 } else { by }; // float default
-            let per_px = if pl == 1 { (ch + ex) * elem }
-                else { (ch + ex) * elem };
+            let per_px = if pl == 1 {
+                (ch + ex) * elem
+            } else {
+                (ch + ex) * elem
+            };
             let mut inp = vec![0u8; n * per_px * 3];
             if by == 4 || by == 0 || by == 8 {
                 // float/double formats need valid floats, not garbage bits
@@ -2592,18 +2990,20 @@ fn format_sweep_pack_arms() {
             let elemo = if byo == 0 { 4 } else { byo };
             let mut cout = vec![0u8; n * (ch_out + exo) * elemo * 3];
             let mut rout = vec![0u8; cout.len()];
-            c::cmsDoTransform(t, inp.as_ptr() as *const _,
-                cout.as_mut_ptr() as *mut _, n as u32);
+            c::cmsDoTransform(
+                t,
+                inp.as_ptr() as *const _,
+                cout.as_mut_ptr() as *mut _,
+                n as u32,
+            );
             let mut rt = rt;
             if let Some(rt) = &mut rt {
                 rt.do_transform(&inp, &mut rout, n as u32);
             }
             if let Some(_r) = &rt {
                 if cout != rout {
-                    let d = cout.iter().zip(&rout)
-                        .position(|(a,b)| a != b);
-                    eprintln!("{name} diff at {d:?} c={:?} r={:?}",
-                        &cout[..8], &rout[..8]);
+                    let d = cout.iter().zip(&rout).position(|(a, b)| a != b);
+                    eprintln!("{name} diff at {d:?} c={:?} r={:?}", &cout[..8], &rout[..8]);
                 }
                 assert_eq!(cout, rout, "{name} bytes");
             }
@@ -2624,27 +3024,23 @@ fn float_pack_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // (cs<<16)|(extra<<7)|(float=1<<22? no — T_FLOAT is a flag)
         // format word: PT|float|channels|bytes|extra|doswap|planar
-        let f = |cs: u32, ch: u32, by: u32, fl: u32|
-            (cs << 16) | fl | (ch << 3) | by;
+        let f = |cs: u32, ch: u32, by: u32, fl: u32| (cs << 16) | fl | (ch << 3) | by;
         // T_FLOAT = 1<<22; T_EXTRA(n) = n<<7? T_DOSWAP=1<<10,
         // T_PLANAR=1<<11 — probe the accepted float/double combos
         for (name, in_fmt, out_fmt) in [
             ("f32-in", f(4, 3, 4, 1 << 22), f(10, 3, 4, 1 << 22)),
-
             // T_EXTRA/T_PLANAR/T_DOSWAP float shapes crash in C
             // (formatter-table gap) — pinned as C rejects/UB; only
             // the plain float/double arms are safe to drive.
         ] {
-            let t = c::cmsCreateTransform(srgb, in_fmt, lab,
-                out_fmt, 0, 0);
+            let t = c::cmsCreateTransform(srgb, in_fmt, lab, out_fmt, 0, 0);
             eprintln!("{name}: t={}", !t.is_null());
             if !t.is_null() {
                 let ch = ((in_fmt >> 3) & 15) as usize;
                 let by = (in_fmt & 7) as usize;
                 let inp = vec![0x40u8; ch * by * 4];
                 let mut out = vec![0u8; 64];
-                c::cmsDoTransform(t, inp.as_ptr() as *const _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, inp.as_ptr() as *const _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -2658,42 +3054,59 @@ fn float_pack_arms() {
 #[test]
 fn mch_pack_arms() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         // use profiles across channel counts where valid
         let srgb = c::cmsCreate_sRGBProfile();
-        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
-        let gray = c::cmsCreateGrayProfile(&wp as *const _ as *const _,
-            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        let wp = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
+        let gray = c::cmsCreateGrayProfile(
+            &wp as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+        );
         let mut cmyk = std::ptr::null_mut();
         if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
-            cmyk = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
+            cmyk = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
         }
         // (PT_MCH<<16)|fl|(ch<<3)|bytes — multi-channel packers
-        let f = |cs: u32, ch: u32, by: u32, fl: u32|
-            (cs << 16) | fl | (ch << 3) | by;
-        let cases: &[(*mut std::ffi::c_void, *mut std::ffi::c_void,
-                     u32, u32, &str)] = &[
-            (srgb, gray, f(4,3,1,0), f(3,1,1,0), "3->1 u8"),
-            (srgb, gray, f(4,3,2,0), f(3,1,2,0), "3->1 u16"),
-            (srgb, gray, f(4,3,1,1<<10), f(3,1,1,0), "3->1 u8doswap"),
-            (srgb, gray, f(4,3,1,1<<16|1<<14), f(3,1,1,0), "3->1 be"),
+        let f = |cs: u32, ch: u32, by: u32, fl: u32| (cs << 16) | fl | (ch << 3) | by;
+        let cases: &[(*mut std::ffi::c_void, *mut std::ffi::c_void, u32, u32, &str)] = &[
+            (srgb, gray, f(4, 3, 1, 0), f(3, 1, 1, 0), "3->1 u8"),
+            (srgb, gray, f(4, 3, 2, 0), f(3, 1, 2, 0), "3->1 u16"),
+            (
+                srgb,
+                gray,
+                f(4, 3, 1, 1 << 10),
+                f(3, 1, 1, 0),
+                "3->1 u8doswap",
+            ),
+            (
+                srgb,
+                gray,
+                f(4, 3, 1, 1 << 16 | 1 << 14),
+                f(3, 1, 1, 0),
+                "3->1 be",
+            ),
         ];
         for (inp, outp, inf, of, name) in cases {
-            if (*inp).is_null() || (*outp).is_null() { continue; }
+            if (*inp).is_null() || (*outp).is_null() {
+                continue;
+            }
             let t = c::cmsCreateTransform(*inp, *inf, *outp, *of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ch = ((*inf >> 3) & 15) as usize;
                 let ib = vec![0x40u8; ch * 4];
                 let mut ob = [0u8; 16];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
-        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !cmyk.is_null() {
+            c::cmsCloseProfile(cmyk);
+        }
         c::cmsCloseProfile(gray);
         c::cmsCloseProfile(srgb);
     }
@@ -2708,9 +3121,15 @@ fn mch_format_arms() {
         // with matching channel count, or probe the format-table
         // dispatch via transform creation (reject still exercises)
         let srgb = c::cmsCreate_sRGBProfile();
-        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
-        let gray = c::cmsCreateGrayProfile(&wp as *const _ as *const _,
-            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        let wp = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
+        let gray = c::cmsCreateGrayProfile(
+            &wp as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+        );
         // MCH format words — PT_MCH<<16 where MCH encodes channels
         // 12-15 base + channel count
         for cs in [0xB, 0xC, 0xD, 0xE, 0xF, 0x10, 0x11, 0x12] {
@@ -2736,7 +3155,10 @@ fn mch_format_arms() {
 fn four_channel_packers() {
     unsafe {
         let dl = c::cmsCreateInkLimitingDeviceLink(0x434D594B, 250.0);
-        if dl.is_null() { eprintln!("dl=null"); return; }
+        if dl.is_null() {
+            eprintln!("dl=null");
+            return;
+        }
         // 4-channel formats — PT_CMYK=6, 4ch, u8/u16, +swap/endian
         for (fl, name) in [
             (0u32, "u8"),
@@ -2745,15 +3167,14 @@ fn four_channel_packers() {
             (1 << 15, "u8-swapfirst"),
             ((1 << 10) | (1 << 14), "u16-be-doswap"),
         ] {
-            let f = (6u32 << 16) | fl | (4 << 3) | (if fl & 1 != 0 {2} else {1});
+            let f = (6u32 << 16) | fl | (4 << 3) | (if fl & 1 != 0 { 2 } else { 1 });
             let f2 = (6u32 << 16) | (4 << 3) | 1;
             let t = c::cmsCreateTransform(dl, f2, dl, f2, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x40u8; 8];
                 let mut ob = [0u8; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -2768,27 +3189,25 @@ fn six_eight_channel_packers() {
     unsafe {
         // 6-channel + 8-channel linearization devicelinks
         for (cs, ch, name) in [
-            (0x434d4e36u32, 6u32, "6ch"),  // 'CMN6' mch6
-            (0x434d4e38, 8, "8ch"),          // 'CMN8' mch8
+            (0x434d4e36u32, 6u32, "6ch"), // 'CMN6' mch6
+            (0x434d4e38, 8, "8ch"),       // 'CMN8' mch8
         ] {
             let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-            let dl = c::cmsCreateLinearizationDeviceLink(
-                cs, [g; 15].as_ptr() as *mut _);
+            let dl = c::cmsCreateLinearizationDeviceLink(cs, [g; 15].as_ptr() as *mut _);
             if dl.is_null() {
                 eprintln!("{name} dl=null");
                 continue;
             }
             let f = (cs & 0x7f) as u32; // colorspace bits
-            let fmt = ((cs == 0x434d4e36) as u32 * 9
-                | (cs == 0x434d4e38) as u32 * 11) << 16
-                | (ch << 3) | 1;
+            let fmt = ((cs == 0x434d4e36) as u32 * 9 | (cs == 0x434d4e38) as u32 * 11) << 16
+                | (ch << 3)
+                | 1;
             let t = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = vec![0x40u8; (ch * 2) as usize];
                 let mut ob = [0u8; 32];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
             c::cmsCloseProfile(dl);
@@ -2803,26 +3222,28 @@ fn real_mch_devicelink() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 6, 6);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 6,
-                [g; 6].as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 6, [g; 6].as_ptr() as *mut _),
+        );
         let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof, 0x6c696e6b); // 'link'
-        c::cmsSetColorSpace(prof, 0x434d4e36);   // MCH6
+        c::cmsSetColorSpace(prof, 0x434d4e36); // MCH6
         c::cmsSetPCS(prof, 0x434d4e36);
         c::cmsWriteTag(prof, 0x41324230, p as *const _); // A2B0
         let fmt = (9u32 << 16) | (6 << 3) | 1; // MCH6=9? use PT
-        for ch_fmt in [(9u32 << 16) | (6 << 3) | 1,
-                       (6u32 << 16) | (6 << 3) | 1,
-                       (0xBu32 << 16) | (6 << 3) | 1] {
-            let t = c::cmsCreateTransform(prof, ch_fmt,
-                prof, ch_fmt, 0, 0);
+        for ch_fmt in [
+            (9u32 << 16) | (6 << 3) | 1,
+            (6u32 << 16) | (6 << 3) | 1,
+            (0xBu32 << 16) | (6 << 3) | 1,
+        ] {
+            let t = c::cmsCreateTransform(prof, ch_fmt, prof, ch_fmt, 0, 0);
             eprintln!("fmt{ch_fmt:#x} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x40u8; 12];
                 let mut ob = [0u8; 12];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -2838,8 +3259,13 @@ fn extra_swap_flavor_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let gray = c::cmsCreateGrayProfile(
-            &c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 } as *const _ as *const _,
-            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+            &c::CieXyz {
+                X: 0.9642,
+                Y: 1.0,
+                Z: 0.8249,
+            } as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+        );
         // EXTRA=1 (skip byte), SWAPFIRST, FLAVOR, DOSWAP combos
         for (fl, name) in [
             (1u32 << 3, "extra1"),
@@ -2856,8 +3282,7 @@ fn extra_swap_flavor_arms() {
                     if !t.is_null() {
                         let ib = vec![0x40u8; 32];
                         let mut ob = [0u8; 16];
-                        c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                            ob.as_mut_ptr() as *mut _, 1);
+                        c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                         c::cmsDeleteTransform(t);
                         eprintln!("{name} ch{ch} by{by} ok");
                     }
@@ -2875,11 +3300,14 @@ fn extra_swap_flavor_arms() {
 fn mch6_packers() {
     unsafe {
         let ftab: Vec<f32> = (0..(2usize.pow(6) * 6))
-            .map(|i| (i % 64) as f32 / 64.0).collect();
+            .map(|i| (i % 64) as f32 / 64.0)
+            .collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 6, 6);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 6, 6,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 6, 6, ftab.as_ptr()),
+        );
         let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(dl, 0x6c696e6b);
         c::cmsSetColorSpace(dl, 0x36434C52); // '6CLR'
@@ -2898,8 +3326,7 @@ fn mch6_packers() {
             if !t.is_null() {
                 let ib = [0x4000u16; 6];
                 let mut ob = [0u16; 6];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 eprintln!("  ob={ob:?}");
                 c::cmsDeleteTransform(t);
             }
@@ -2921,11 +3348,14 @@ fn mch_8_9_10_packers() {
             (15, 0x46434C52, 29, "FCLR"),
         ] {
             let ftab: Vec<f32> = (0..(2usize.pow(nch) * nch as usize))
-                .map(|i| (i % 64) as f32 / 64.0).collect();
+                .map(|i| (i % 64) as f32 / 64.0)
+                .collect();
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, nch);
-            c::cmsPipelineInsertStage(p, 1,
-                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2,
-                    nch, nch, ftab.as_ptr()));
+            c::cmsPipelineInsertStage(
+                p,
+                1,
+                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, nch, nch, ftab.as_ptr()),
+            );
             let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(dl, 0x6c696e6b);
             c::cmsSetColorSpace(dl, cssig);
@@ -2938,8 +3368,7 @@ fn mch_8_9_10_packers() {
             if !t.is_null() {
                 let ib = vec![0x4000u16; nch as usize];
                 let mut ob = vec![0u16; nch as usize];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 eprintln!("  ob[..4]={:?}", &ob[..4]);
                 c::cmsDeleteTransform(t);
             }
@@ -2978,8 +3407,7 @@ fn format_flag_megasweep() {
             if !t.is_null() {
                 let ib = [0x4000u16; 3];
                 let mut ob = [0u16; 3];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3013,8 +3441,7 @@ fn float_half_packers() {
             if !t.is_null() {
                 let ib = [0x4000u16; 3];
                 let mut ob = [0u16; 3];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3050,8 +3477,7 @@ fn packer_bodies() {
             if !t.is_null() {
                 let ib = [0x4000u16; 4];
                 let mut ob = [0u16; 4];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3084,8 +3510,7 @@ fn extra_channel_packers() {
             if !t.is_null() {
                 let ib = [0x40u8; 8];
                 let mut ob = [0u16; 4];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3116,17 +3541,12 @@ fn unroll_cell_sweep() {
             if ok {
                 let ib = [0x4000u16; 8];
                 let mut ob = [0u16; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         };
-        let rgb = |ch: u32, extra: u32, bytes: u32| {
-            (4u32 << 16) | (extra << 7) | (ch << 3) | bytes
-        };
-        let gry = |extra: u32, bytes: u32| {
-            (3u32 << 16) | (extra << 7) | (1 << 3) | bytes
-        };
+        let rgb = |ch: u32, extra: u32, bytes: u32| (4u32 << 16) | (extra << 7) | (ch << 3) | bytes;
+        let gry = |extra: u32, bytes: u32| (3u32 << 16) | (extra << 7) | (1 << 3) | bytes;
         // --- 3-channel u16 word arms ---
         sw("3w", srgb, rgb(3, 0, 2), l16, lab);
         sw("3w-doswap", srgb, rgb(3, 0, 2) | (1 << 10), l16, lab);
@@ -3139,17 +3559,20 @@ fn unroll_cell_sweep() {
         sw("3b-doswap", srgb, rgb(3, 0, 1) | (1 << 10), l16, lab);
         sw("3b-x1-doswap", srgb, rgb(3, 1, 1) | (1 << 10), l16, lab);
         sw("3b-x1-swapfirst", srgb, rgb(3, 1, 1) | (1 << 14), l16, lab);
-        sw("3b-x1-ds-sf", srgb,
-            rgb(3, 1, 1) | (1 << 10) | (1 << 14), l16, lab);
+        sw(
+            "3b-x1-ds-sf",
+            srgb,
+            rgb(3, 1, 1) | (1 << 10) | (1 << 14),
+            l16,
+            lab,
+        );
         sw("3b-planar", srgb, rgb(3, 0, 1) | (1 << 12), l16, lab);
         sw("3b-chunky-x2", srgb, rgb(3, 2, 1), l16, lab);
         // --- 4-channel word arms (CMYK out of srgb? need cmyk prof)
         // use CMYK profile for input side
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
-            let ck = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
-                d.len() as u32);
+            let ck = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
             if !ck.is_null() {
                 let k = |ch: u32, extra: u32, bytes: u32| {
                     (6u32 << 16) | (extra << 7) | (ch << 3) | bytes
@@ -3158,14 +3581,12 @@ fn unroll_cell_sweep() {
                 sw("4w-flavor", ck, k(4, 0, 2) | (1 << 13), l16, lab);
                 sw("4w-swapfirst", ck, k(4, 0, 2) | (1 << 14), l16, lab);
                 sw("4w-doswap", ck, k(4, 0, 2) | (1 << 10), l16, lab);
-                sw("4w-ds-sf", ck,
-                    k(4, 0, 2) | (1 << 10) | (1 << 14), l16, lab);
+                sw("4w-ds-sf", ck, k(4, 0, 2) | (1 << 10) | (1 << 14), l16, lab);
                 sw("4b", ck, k(4, 0, 1), l16, lab);
                 sw("4b-flavor", ck, k(4, 0, 1) | (1 << 13), l16, lab);
                 sw("4b-swapfirst", ck, k(4, 0, 1) | (1 << 14), l16, lab);
                 sw("4b-doswap", ck, k(4, 0, 1) | (1 << 10), l16, lab);
-                sw("4b-ds-sf", ck,
-                    k(4, 0, 1) | (1 << 10) | (1 << 14), l16, lab);
+                sw("4b-ds-sf", ck, k(4, 0, 1) | (1 << 10) | (1 << 14), l16, lab);
                 sw("2w", ck, k(2, 0, 2), l16, lab);
                 c::cmsCloseProfile(ck);
             }
@@ -3203,17 +3624,12 @@ fn pack_cell_sweep() {
             if ok {
                 let ib = [0x4000u16; 8];
                 let mut ob = [0u16; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         };
-        let rgb = |ch: u32, extra: u32, bytes: u32| {
-            (4u32 << 16) | (extra << 7) | (ch << 3) | bytes
-        };
-        let gry = |extra: u32, bytes: u32| {
-            (3u32 << 16) | (extra << 7) | (1 << 3) | bytes
-        };
+        let rgb = |ch: u32, extra: u32, bytes: u32| (4u32 << 16) | (extra << 7) | (ch << 3) | bytes;
+        let gry = |extra: u32, bytes: u32| (3u32 << 16) | (extra << 7) | (1 << 3) | bytes;
         // 3-channel word output arms
         sw("p3w", lab, l16, rgb(3, 0, 2), srgb);
         sw("p3w-doswap", lab, l16, rgb(3, 0, 2) | (1 << 10), srgb);
@@ -3226,8 +3642,13 @@ fn pack_cell_sweep() {
         sw("p3b-doswap", lab, l16, rgb(3, 0, 1) | (1 << 10), srgb);
         sw("p3b-x1-ds", lab, l16, rgb(3, 1, 1) | (1 << 10), srgb);
         sw("p3b-x1-sf", lab, l16, rgb(3, 1, 1) | (1 << 14), srgb);
-        sw("p3b-x1-ds-sf", lab, l16,
-            rgb(3, 1, 1) | (1 << 10) | (1 << 14), srgb);
+        sw(
+            "p3b-x1-ds-sf",
+            lab,
+            l16,
+            rgb(3, 1, 1) | (1 << 10) | (1 << 14),
+            srgb,
+        );
         sw("p3b-planar", lab, l16, rgb(3, 0, 1) | (1 << 12), srgb);
         sw("p3b-chunky-x2", lab, l16, rgb(3, 2, 1), srgb);
         // gray output arms
@@ -3239,11 +3660,9 @@ fn pack_cell_sweep() {
         sw("p1b-x2", lab, l16, gry(2, 1), gray);
         sw("p1b-flavor", lab, l16, gry(0, 1) | (1 << 13), gray);
         // CMYK output arms
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
-            let ck = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
-                d.len() as u32);
+            let ck = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
             if !ck.is_null() {
                 let k = |ch: u32, extra: u32, bytes: u32| {
                     (6u32 << 16) | (extra << 7) | (ch << 3) | bytes
@@ -3252,14 +3671,24 @@ fn pack_cell_sweep() {
                 sw("p4w-flavor", lab, l16, k(4, 0, 2) | (1 << 13), ck);
                 sw("p4w-sf", lab, l16, k(4, 0, 2) | (1 << 14), ck);
                 sw("p4w-ds", lab, l16, k(4, 0, 2) | (1 << 10), ck);
-                sw("p4w-ds-sf", lab, l16,
-                    k(4, 0, 2) | (1 << 10) | (1 << 14), ck);
+                sw(
+                    "p4w-ds-sf",
+                    lab,
+                    l16,
+                    k(4, 0, 2) | (1 << 10) | (1 << 14),
+                    ck,
+                );
                 sw("p4b", lab, l16, k(4, 0, 1), ck);
                 sw("p4b-flavor", lab, l16, k(4, 0, 1) | (1 << 13), ck);
                 sw("p4b-sf", lab, l16, k(4, 0, 1) | (1 << 14), ck);
                 sw("p4b-ds", lab, l16, k(4, 0, 1) | (1 << 10), ck);
-                sw("p4b-ds-sf", lab, l16,
-                    k(4, 0, 1) | (1 << 10) | (1 << 14), ck);
+                sw(
+                    "p4b-ds-sf",
+                    lab,
+                    l16,
+                    k(4, 0, 1) | (1 << 10) | (1 << 14),
+                    ck,
+                );
                 sw("p2w", lab, l16, k(2, 0, 2), ck);
                 c::cmsCloseProfile(ck);
             }
@@ -3291,17 +3720,13 @@ fn float_packers2() {
             if ok {
                 let ib = [0.5f32; 8];
                 let mut ob = [0.5f32; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         };
-        let rf = |ch: u32, extra: u32, bytes: u32| {
-            (4u32 << 16) | fl | (extra << 7) | (ch << 3) | bytes
-        };
-        let gf = |extra: u32, bytes: u32| {
-            (3u32 << 16) | fl | (extra << 7) | (1 << 3) | bytes
-        };
+        let rf =
+            |ch: u32, extra: u32, bytes: u32| (4u32 << 16) | fl | (extra << 7) | (ch << 3) | bytes;
+        let gf = |extra: u32, bytes: u32| (3u32 << 16) | fl | (extra << 7) | (1 << 3) | bytes;
         // float in -> 16 out
         sw("f32-16", srgb, rf(3, 0, 4), l16, lab);
         sw("f32-16-x1", srgb, rf(3, 1, 4), l16, lab);
@@ -3315,9 +3740,7 @@ fn float_packers2() {
         sw("f16-16", srgb, rf(3, 0, 2), l16, lab);
         sw("f16-16-x1", srgb, rf(3, 1, 2), l16, lab);
         // 16 in -> float out
-        let lfr = |ch: u32, bytes: u32| {
-            (4u32 << 16) | fl | (ch << 3) | bytes
-        };
+        let lfr = |ch: u32, bytes: u32| (4u32 << 16) | fl | (ch << 3) | bytes;
         sw("16-f32", lab, l16, lfr(3, 4), srgb);
         sw("16-f64", lab, l16, lfr(3, 0), srgb);
         sw("16-f16", lab, l16, lfr(3, 2), srgb);
@@ -3328,8 +3751,7 @@ fn float_packers2() {
         sw("gf64-16", gray, gf(0, 0), l16, lab);
         sw("16-gf32", lab, l16, gf(0, 4), gray);
         // Lab_DBL/Xyz_FLT typed formats
-        sw("lab-dbl", lab, (10u32 << 16) | fl | (3 << 3) | 0,
-            l16, lab);
+        sw("lab-dbl", lab, (10u32 << 16) | fl | (3 << 3) | 0, l16, lab);
         sw("lab-flt-x1", lab, lfl | (1 << 7), l16, lab);
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab);
@@ -3358,8 +3780,7 @@ fn labv2_premul_packers() {
             if ok {
                 let ib = [0x4000u16; 8];
                 let mut ob = [0u16; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         };
@@ -3409,19 +3830,15 @@ fn float_pack_out_sweep() {
             if ok {
                 let ib = [0.5f32; 8];
                 let mut ob = [0.5f32; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         };
         // float in (lab) -> various out formats on srgb/gray
-        let rf = |ch: u32, extra: u32, bytes: u32| {
-            (4u32 << 16) | fl | (extra << 7) | (ch << 3) | bytes
-        };
+        let rf =
+            |ch: u32, extra: u32, bytes: u32| (4u32 << 16) | fl | (extra << 7) | (ch << 3) | bytes;
         let r16 = |ch: u32, bytes: u32| (4u32 << 16) | (ch << 3) | bytes;
-        let gf = |extra: u32, bytes: u32| {
-            (3u32 << 16) | fl | (extra << 7) | (1 << 3) | bytes
-        };
+        let gf = |extra: u32, bytes: u32| (3u32 << 16) | fl | (extra << 7) | (1 << 3) | bytes;
         sw("fl->f32", lab, lfl, rf(3, 0, 4), srgb);
         sw("fl->f32-x1", lab, lfl, rf(3, 1, 4), srgb);
         sw("fl->f32-ds", lab, lfl, rf(3, 0, 4) | (1 << 10), srgb);
@@ -3462,13 +3879,17 @@ fn mch_channel_count_sweep() {
         ] {
             let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
             let curves = vec![g; n];
-            let p = c::cmsPipelineAlloc(std::ptr::null_mut(),
-                n as u32, n as u32);
-            c::cmsPipelineInsertStage(p, 1,
-                c::cmsStageAllocToneCurves(std::ptr::null_mut(),
-                    n as u32, curves.as_ptr() as *mut _));
-            let prof = c::cmsCreateProfilePlaceholder(
-                std::ptr::null_mut());
+            let p = c::cmsPipelineAlloc(std::ptr::null_mut(), n as u32, n as u32);
+            c::cmsPipelineInsertStage(
+                p,
+                1,
+                c::cmsStageAllocToneCurves(
+                    std::ptr::null_mut(),
+                    n as u32,
+                    curves.as_ptr() as *mut _,
+                ),
+            );
+            let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(prof, 0x6c696e6b); // 'link'
             c::cmsSetColorSpace(prof, sig);
             c::cmsSetPCS(prof, sig);
@@ -3476,14 +3897,12 @@ fn mch_channel_count_sweep() {
             let pt = (n + 14) as u32; // PT_MCHn = n+14
             for bytes in [1u32, 2] {
                 let fmt = (pt << 16) | ((n as u32) << 3) | bytes;
-                let t = c::cmsCreateTransform(prof, fmt, prof, fmt,
-                    0, 0);
+                let t = c::cmsCreateTransform(prof, fmt, prof, fmt, 0, 0);
                 eprintln!("{name}-b{bytes} t={}", !t.is_null());
                 if !t.is_null() {
                     let ib = vec![0x40u8; n * 2 * bytes as usize];
                     let mut ob = vec![0u8; n * 2 * bytes as usize];
-                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
             }
@@ -3505,14 +3924,13 @@ fn pack_optimized_cells() {
         let g22 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let curves = [g22, g22, g22];
         let wp = [0.3127f64, 0.3290, 1.0]; // D65
-        let prim = [
-            0.64f64, 0.33, 1.0,
-            0.30, 0.60, 1.0,
-            0.15, 0.06, 1.0,
-        ];
-        let argb = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
-            wp.as_ptr() as *const _, prim.as_ptr() as *const _,
-            curves.as_ptr() as *const _);
+        let prim = [0.64f64, 0.33, 1.0, 0.30, 0.60, 1.0, 0.15, 0.06, 1.0];
+        let argb = c::cmsCreateRGBProfileTHR(
+            std::ptr::null_mut(),
+            wp.as_ptr() as *const _,
+            prim.as_ptr() as *const _,
+            curves.as_ptr() as *const _,
+        );
         let r8 = (4u32 << 16) | (3 << 3) | 1;
         for (inp, outp, f, name) in [
             (srgb, argb, r8, "srgb-argb"),
@@ -3522,16 +3940,19 @@ fn pack_optimized_cells() {
             (srgb, argb, r8 | (1 << 7), "extra"),
             (srgb, argb, r8 | (1 << 10) | (1 << 7), "doswap-extra"),
             (srgb, argb, r8 | (1 << 14) | (1 << 7), "swapfirst-extra"),
-            (srgb, argb, r8 | (1 << 10) | (1 << 14) | (1 << 7),
-             "all-flags"),
+            (
+                srgb,
+                argb,
+                r8 | (1 << 10) | (1 << 14) | (1 << 7),
+                "all-flags",
+            ),
         ] {
             let t = c::cmsCreateTransform(inp, f, outp, f, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x80u8; 4];
                 let mut ob = [0u8; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3551,35 +3972,34 @@ fn unroll_word_double_arms() {
         let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
         // FLOAT_SH on input formats -> unroll float/double arms
         for f in [
-            (4u32 << 16) | (3 << 3) | 4 | fl,              // RGB float
-            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 10),  // +DOSWAP
-            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 7),   // +EXTRA
-            (4u32 << 16) | (4 << 3) | 4 | fl,              // 4ch float
-            (10u32 << 16) | (3 << 3) | 4 | fl,             // Lab float
-            (9u32 << 16) | (3 << 3) | 4 | fl,              // XYZ float
-            (3u32 << 16) | (1 << 3) | 4 | fl,              // gray float
-            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 14),  // +SWAPFIRST
-            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 12),  // +PLANAR
+            (4u32 << 16) | (3 << 3) | 4 | fl,             // RGB float
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 10), // +DOSWAP
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 7),  // +EXTRA
+            (4u32 << 16) | (4 << 3) | 4 | fl,             // 4ch float
+            (10u32 << 16) | (3 << 3) | 4 | fl,            // Lab float
+            (9u32 << 16) | (3 << 3) | 4 | fl,             // XYZ float
+            (3u32 << 16) | (1 << 3) | 4 | fl,             // gray float
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 14), // +SWAPFIRST
+            (4u32 << 16) | (3 << 3) | 4 | fl | (1 << 12), // +PLANAR
         ] {
             let t = c::cmsCreateTransform(srgb, f, lab, lfl, 0, 0);
             eprintln!("f{f:#x} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0.5f32; 8];
                 let mut ob = [0.5f32; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
         // u16 chunky word formats -> Unroll1-4Words* arms
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         for f in [
-            (4u32 << 16) | (1 << 3) | 2,              // 1ch u16
-            (4u32 << 16) | (2 << 3) | 2,              // 2ch u16
-            (4u32 << 16) | (3 << 3) | 2,              // 3ch u16
-            (4u32 << 16) | (4 << 3) | 2,              // 4ch u16
-            (4u32 << 16) | (3 << 3) | 2 | (1 << 10),  // +DOSWAP
-            (4u32 << 16) | (3 << 3) | 2 | (1 << 14),  // +SWAPFIRST
+            (4u32 << 16) | (1 << 3) | 2,             // 1ch u16
+            (4u32 << 16) | (2 << 3) | 2,             // 2ch u16
+            (4u32 << 16) | (3 << 3) | 2,             // 3ch u16
+            (4u32 << 16) | (4 << 3) | 2,             // 4ch u16
+            (4u32 << 16) | (3 << 3) | 2 | (1 << 10), // +DOSWAP
+            (4u32 << 16) | (3 << 3) | 2 | (1 << 14), // +SWAPFIRST
             (4u32 << 16) | (4 << 3) | 2 | (1 << 10) | (1 << 14),
             (4u32 << 16) | (4 << 3) | 2 | (1 << 14),
         ] {
@@ -3588,8 +4008,7 @@ fn unroll_word_double_arms() {
             if !t.is_null() {
                 let ib = [0x8000u16; 4];
                 let mut ob = [0x8000u16; 4];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3636,8 +4055,7 @@ fn labv2_formatter_cells() {
             if !t.is_null() {
                 let ib = [0x80u8; 16];
                 let mut ob = [0u8; 16];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3656,11 +4074,10 @@ fn pack_words_cells() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
-        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
-            .map(|d| c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32))
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc"))
+            .ok()
+            .map(|d| c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32))
             .unwrap_or(std::ptr::null_mut());
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
@@ -3674,22 +4091,35 @@ fn pack_words_cells() {
             (lab, gray, l16, g16 | (1 << 14), "lab->gray sf"),
             (srgb, lab, r16, l16 | (1 << 10), "srgb->lab swap"),
             (srgb, lab, r16, l16 | (1 << 7), "srgb->lab extra"),
-            (srgb, lab, r16, l16 | (1 << 14) | (1 << 7), "srgb->lab sf+ex"),
-            (srgb, lab, r16, l16 | (1 << 10) | (1 << 14) | (1 << 7),
-             "srgb->lab all"),
+            (
+                srgb,
+                lab,
+                r16,
+                l16 | (1 << 14) | (1 << 7),
+                "srgb->lab sf+ex",
+            ),
+            (
+                srgb,
+                lab,
+                r16,
+                l16 | (1 << 10) | (1 << 14) | (1 << 7),
+                "srgb->lab all",
+            ),
             (lab, cmyk, l16, k16, "lab->cmyk u16"),
             (lab, cmyk, l16, k16 | (1 << 10), "lab->cmyk swap"),
             (lab, cmyk, l16, k16 | (1 << 7), "lab->cmyk extra"),
             (lab, lab, l16, l16, "lab->lab"),
         ] {
-            if outp.is_null() { eprintln!("{name} nullprof"); continue; }
+            if outp.is_null() {
+                eprintln!("{name} nullprof");
+                continue;
+            }
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x8000u16; 4];
                 let mut ob = [0x8000u16; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3697,7 +4127,9 @@ fn pack_words_cells() {
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab);
         c::cmsCloseProfile(gray);
-        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !cmyk.is_null() {
+            c::cmsCloseProfile(cmyk);
+        }
         c::cmsFreeToneCurve(g);
     }
 }
@@ -3711,11 +4143,10 @@ fn unroll_words_cells() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
-        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
-            .map(|d| c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32))
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc"))
+            .ok()
+            .map(|d| c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32))
             .unwrap_or(std::ptr::null_mut());
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
@@ -3729,28 +4160,36 @@ fn unroll_words_cells() {
             (srgb, lab, r16 | (1 << 10), l16, "srgb->lab swap"),
             (srgb, lab, r16 | (1 << 7), l16, "srgb->lab extra"),
             (srgb, lab, r16 | (1 << 14) | (1 << 7), l16, "srgb sf+ex"),
-            (srgb, lab, r16 | (1 << 10) | (1 << 14) | (1 << 7),
-             l16, "srgb all"),
+            (
+                srgb,
+                lab,
+                r16 | (1 << 10) | (1 << 14) | (1 << 7),
+                l16,
+                "srgb all",
+            ),
             (cmyk, lab, k16, l16, "cmyk->lab"),
             (cmyk, lab, k16 | (1 << 10), l16, "cmyk->lab swap"),
             (cmyk, lab, k16 | (1 << 7), l16, "cmyk->lab extra"),
             (cmyk, lab, k16 | (1 << 14) | (1 << 7), l16, "cmyk sf+ex"),
         ] {
-            if inp.is_null() { continue; }
+            if inp.is_null() {
+                continue;
+            }
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x8000u16; 8];
                 let mut ob = [0x8000u16; 4];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab);
         c::cmsCloseProfile(gray);
-        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !cmyk.is_null() {
+            c::cmsCloseProfile(cmyk);
+        }
         c::cmsFreeToneCurve(g);
     }
 }
@@ -3783,14 +4222,15 @@ fn unroll_double_float_arms() {
             (srgb, lab, df(4, 4), l16, "rgba-dbl"),
             (srgb, lab, ff(4, 4), l16, "rgba-flt"),
         ] {
-            if inp.is_null() { continue; }
+            if inp.is_null() {
+                continue;
+            }
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x80u8; 64];
                 let mut ob = [0x8000u16; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -3811,11 +4251,10 @@ fn pack_loop_iterations() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
-        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc")).ok()
-            .map(|d| c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32))
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        let cmyk = std::fs::read(dir.join("lcms2cmyk.icc"))
+            .ok()
+            .map(|d| c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32))
             .unwrap_or(std::ptr::null_mut());
         let fl = 1u32 << 22;
         let r8 = (4u32 << 16) | (3 << 3) | 1;
@@ -3835,21 +4274,24 @@ fn pack_loop_iterations() {
             (srgb, lab, r8 | fl, l16, "r8f->l16", 8),
             (lab, srgb, l16, r8 | fl, "l16->r8f", 8),
         ] {
-            if inp.is_null() || outp.is_null() { continue; }
+            if inp.is_null() || outp.is_null() {
+                continue;
+            }
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x80u8; 256];
                 let mut ob = [0u8; 256];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, npix);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, npix);
                 c::cmsDeleteTransform(t);
             }
         }
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab);
         c::cmsCloseProfile(gray);
-        if !cmyk.is_null() { c::cmsCloseProfile(cmyk); }
+        if !cmyk.is_null() {
+            c::cmsCloseProfile(cmyk);
+        }
         c::cmsFreeToneCurve(g);
     }
 }
@@ -3864,34 +4306,42 @@ fn pack_residual_arms() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
         // every pixel-type x bytes/flags combination
-        for cs in [3u32, 4, 6, 9, 10, 12, 13, 14, 15, 16,
-            17, 18, 19, 20, 21, 22, 23] {
+        for cs in [
+            3u32, 4, 6, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+        ] {
             for b in [1u32, 2, 4, 8] {
-                for fl in [0u32, 1 << 7, 1 << 12, 1 << 13,
-                    1 << 14, 1 << 15, 1 << 16, 1 << 17,
-                    1 << 18, 1 << 19, 1 << 20, 1 << 22] {
-                    let fmt = (cs << 16) | (b << 3)
-                        | 1 | fl;
-                    let t = c::cmsCreateTransform(srgb,
-                        (4 << 16) | (3 << 3) | 1,
-                        lab, fmt, 0, 0);
+                for fl in [
+                    0u32,
+                    1 << 7,
+                    1 << 12,
+                    1 << 13,
+                    1 << 14,
+                    1 << 15,
+                    1 << 16,
+                    1 << 17,
+                    1 << 18,
+                    1 << 19,
+                    1 << 20,
+                    1 << 22,
+                ] {
+                    let fmt = (cs << 16) | (b << 3) | 1 | fl;
+                    let t = c::cmsCreateTransform(srgb, (4 << 16) | (3 << 3) | 1, lab, fmt, 0, 0);
                     if !t.is_null() {
                         let ib = [0x55u8; 64];
                         let mut ob = [0u8; 64];
-                        c::cmsDoTransform(t, ib.as_ptr()
-                            as *const _, ob.as_mut_ptr()
-                            as *mut _, 1);
+                        c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                         c::cmsDeleteTransform(t);
                     }
-                    let t2 = c::cmsCreateTransform(lab,
-                        fmt, srgb,
-                        (4 << 16) | (3 << 3) | 1, 0, 0);
+                    let t2 = c::cmsCreateTransform(lab, fmt, srgb, (4 << 16) | (3 << 3) | 1, 0, 0);
                     if !t2.is_null() {
                         let ib = [0x55u8; 64];
                         let mut ob = [0u8; 64];
-                        c::cmsDoTransform(t2, ib.as_ptr()
-                            as *const _, ob.as_mut_ptr()
-                            as *mut _, 1);
+                        c::cmsDoTransform(
+                            t2,
+                            ib.as_ptr() as *const _,
+                            ob.as_mut_ptr() as *mut _,
+                            1,
+                        );
                         c::cmsDeleteTransform(t2);
                     }
                 }
@@ -3902,21 +4352,33 @@ fn pack_residual_arms() {
         for cs in [3u32, 4, 6] {
             for b in [1u32, 2, 4] {
                 let fmt = (cs << 16) | (1 << 3) | b;
-                let t = c::cmsCreateTransform(gray,
-                    (3 << 16) | (1 << 3) | 1, srgb,
-                    (4 << 16) | (3 << 3) | 1, 0, 0);
+                let t = c::cmsCreateTransform(
+                    gray,
+                    (3 << 16) | (1 << 3) | 1,
+                    srgb,
+                    (4 << 16) | (3 << 3) | 1,
+                    0,
+                    0,
+                );
                 if !t.is_null() {
-                    c::cmsDeleteTransform(t); }
-                let t2 = c::cmsCreateTransform(srgb,
-                    (4 << 16) | (3 << 3) | 1, gray,
-                    (3 << 16) | (1 << 3) | 1, 0, 0);
+                    c::cmsDeleteTransform(t);
+                }
+                let t2 = c::cmsCreateTransform(
+                    srgb,
+                    (4 << 16) | (3 << 3) | 1,
+                    gray,
+                    (3 << 16) | (1 << 3) | 1,
+                    0,
+                    0,
+                );
                 if !t2.is_null() {
-                    c::cmsDeleteTransform(t2); }
-                let t3 = c::cmsCreateTransform(gray, fmt,
-                    lab, (10 << 16) | (3 << 3) | 1, 0, 0);
+                    c::cmsDeleteTransform(t2);
+                }
+                let t3 = c::cmsCreateTransform(gray, fmt, lab, (10 << 16) | (3 << 3) | 1, 0, 0);
                 eprintln!("g cs{cs} b{b} t3={}", !t3.is_null());
                 if !t3.is_null() {
-                    c::cmsDeleteTransform(t3); }
+                    c::cmsDeleteTransform(t3);
+                }
             }
         }
         c::cmsCloseProfile(srgb);
@@ -3934,43 +4396,34 @@ fn pack_dbl_arms() {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let gray = c::cmsCreateGrayProfile(
-            std::ptr::null_mut(), g);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
         // 8-byte channels on every colorspace
-        for cs in [3u32, 4, 6, 9, 10, 12, 13, 14, 15, 16,
-            17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-            28, 29, 30, 31] {
+        for cs in [
+            3u32, 4, 6, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+            29, 30, 31,
+        ] {
             for fl in [0u32, 1 << 22, 1 << 7, 1 << 12] {
                 let fmt = (cs << 16) | (3 << 3) | 8 | fl;
-                let t = c::cmsCreateTransform(srgb, r8,
-                    lab, fmt, 0, 0);
-                let t2 = c::cmsCreateTransform(lab, fmt,
-                    srgb, r8, 0, 0);
-                let t3 = c::cmsCreateTransform(srgb, fmt,
-                    lab, fmt, 0, 0);
+                let t = c::cmsCreateTransform(srgb, r8, lab, fmt, 0, 0);
+                let t2 = c::cmsCreateTransform(lab, fmt, srgb, r8, 0, 0);
+                let t3 = c::cmsCreateTransform(srgb, fmt, lab, fmt, 0, 0);
                 if !t.is_null() {
                     let ib = [0x55u8; 64];
                     let mut ob = [0u8; 64];
-                    c::cmsDoTransform(t, ib.as_ptr()
-                        as *const _, ob.as_mut_ptr()
-                        as *mut _, 1);
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
                 if !t2.is_null() {
                     let ib = [0x55u8; 64];
                     let mut ob = [0u8; 64];
-                    c::cmsDoTransform(t2, ib.as_ptr()
-                        as *const _, ob.as_mut_ptr()
-                        as *mut _, 1);
+                    c::cmsDoTransform(t2, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t2);
                 }
                 if !t3.is_null() {
                     let ib = [0x55u8; 64];
                     let mut ob = [0u8; 64];
-                    c::cmsDoTransform(t3, ib.as_ptr()
-                        as *const _, ob.as_mut_ptr()
-                        as *mut _, 1);
+                    c::cmsDoTransform(t3, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t3);
                 }
             }
@@ -3980,12 +4433,11 @@ fn pack_dbl_arms() {
         for cs in [3u32, 4] {
             for ch in [1u32, 2, 3, 4] {
                 let fmt = (cs << 16) | (ch << 3) | 8;
-                let t = c::cmsCreateTransform(gray, fmt,
-                    lab, (10 << 16) | (3 << 3) | 1, 0, 0);
-                eprintln!("gdbl cs{cs} ch{ch}={}",
-                    !t.is_null());
+                let t = c::cmsCreateTransform(gray, fmt, lab, (10 << 16) | (3 << 3) | 1, 0, 0);
+                eprintln!("gdbl cs{cs} ch{ch}={}", !t.is_null());
                 if !t.is_null() {
-                    c::cmsDeleteTransform(t); }
+                    c::cmsDeleteTransform(t);
+                }
             }
         }
         c::cmsCloseProfile(srgb);
@@ -4000,74 +4452,60 @@ fn pack_dbl_arms() {
 ///   Pack*From16/Pack*FromFloat + LabV2 encoders).
 #[test]
 fn pack_float_lab_xyz_arms() {
-    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
-        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
-        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
-            | (pl << 12) | (ds << 10) | (ex << 7)
-            | (ch << 3) | by
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32, fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16)
+            | (flt << 22)
+            | (sf << 14)
+            | (fl << 13)
+            | (pl << 12)
+            | (ds << 10)
+            | (ex << 7)
+            | (ch << 3)
+            | by
     }
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         // float in (Unroll*To16) → u16 out (Pack*From16)
-        for (pt, prof, name) in [
-            (10u32, lab, "Lab"), (9, xyz, "XYZ"),
-        ] {
-            for (by, bname) in [
-                (4u32, "flt"), (8, "dbl"), (2, "half"),
-            ] {
+        for (pt, prof, name) in [(10u32, lab, "Lab"), (9, xyz, "XYZ")] {
+            for (by, bname) in [(4u32, "flt"), (8, "dbl"), (2, "half")] {
                 let flt = if by != 1 { 1u32 } else { 0 };
                 let fin = f(pt, 3, by, 0, 0, 0, 0, 0, flt);
                 let fout = f(4, 3, 1, 0, 0, 0, 0, 0, 0);
-                let t = c::cmsCreateTransform(prof, fin,
-                    srgb, fout, 0, 0);
-                eprintln!("{name}->{bname} t={}",
-                    !t.is_null());
+                let t = c::cmsCreateTransform(prof, fin, srgb, fout, 0, 0);
+                eprintln!("{name}->{bname} t={}", !t.is_null());
                 if !t.is_null() {
-                    let mut src = vec![0u8;
-                        3 * by as usize * 4];
-                    for (i, b) in src.iter_mut()
-                        .enumerate() { *b = (i * 37) as u8; }
+                    let mut src = vec![0u8; 3 * by as usize * 4];
+                    for (i, b) in src.iter_mut().enumerate() {
+                        *b = (i * 37) as u8;
+                    }
                     let mut dst = vec![0u8; 3 * 4];
-                    c::cmsDoTransform(t,
-                        src.as_ptr() as *const _,
-                        dst.as_mut_ptr() as *mut _, 4);
+                    c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 4);
                     c::cmsDeleteTransform(t);
                 }
                 // reverse: u16 in → float out
                 let fin2 = f(4, 3, 2, 0, 0, 0, 0, 0, 0);
                 let fout2 = f(pt, 3, by, 0, 0, 0, 0, 0, flt);
-                let t2 = c::cmsCreateTransform(srgb, fin2,
-                    prof, fout2, 0, 0);
-                eprintln!("{bname}->{name} t={}",
-                    !t2.is_null());
+                let t2 = c::cmsCreateTransform(srgb, fin2, prof, fout2, 0, 0);
+                eprintln!("{bname}->{name} t={}", !t2.is_null());
                 if !t2.is_null() {
                     let src = [0x4000u16; 3];
-                    let mut dst = vec![0u8;
-                        3 * by as usize];
-                    c::cmsDoTransform(t2,
-                        src.as_ptr() as *const _,
-                        dst.as_mut_ptr() as *mut _, 1);
+                    let mut dst = vec![0u8; 3 * by as usize];
+                    c::cmsDoTransform(t2, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t2);
                 }
                 // float → float (Unroll*ToFloat + Pack*FromFloat)
                 let f3 = f(pt, 3, by, 0, 0, 0, 0, 0, flt);
-                let t3 = c::cmsCreateTransform(prof, f3,
-                    prof, f3, 0, 0);
-                eprintln!("{name}->{name} {bname} t={}",
-                    !t3.is_null());
+                let t3 = c::cmsCreateTransform(prof, f3, prof, f3, 0, 0);
+                eprintln!("{name}->{name} {bname} t={}", !t3.is_null());
                 if !t3.is_null() {
-                    let mut src = vec![0u8;
-                        3 * by as usize * 2];
-                    for (i, b) in src.iter_mut()
-                        .enumerate() { *b = (i * 41) as u8; }
-                    let mut dst = vec![0u8;
-                        3 * by as usize * 2];
-                    c::cmsDoTransform(t3,
-                        src.as_ptr() as *const _,
-                        dst.as_mut_ptr() as *mut _, 2);
+                    let mut src = vec![0u8; 3 * by as usize * 2];
+                    for (i, b) in src.iter_mut().enumerate() {
+                        *b = (i * 41) as u8;
+                    }
+                    let mut dst = vec![0u8; 3 * by as usize * 2];
+                    c::cmsDoTransform(t3, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 2);
                     c::cmsDeleteTransform(t3);
                 }
                 // doswap+swapfirst+planar+extra variants
@@ -4078,14 +4516,14 @@ fn pack_float_lab_xyz_arms() {
                     (0, 0, 0, 1, "ex1"),
                     (1, 1, 0, 1, "dssfex1"),
                 ] {
-                    let f4 = f(pt, 3, by, ex, ds, 0, sf, pl,
-                        flt);
-                    let t4 = c::cmsCreateTransform(prof, f4,
-                        srgb, f(4, 3, 1, 0, 0, 0, 0, 0, 0),
-                        0, 0);
+                    let f4 = f(pt, 3, by, ex, ds, 0, sf, pl, flt);
+                    let t4 =
+                        c::cmsCreateTransform(prof, f4, srgb, f(4, 3, 1, 0, 0, 0, 0, 0, 0), 0, 0);
                     if !t4.is_null() {
-                        eprintln!("  {name} {bname} {vname} \
-                            ok");
+                        eprintln!(
+                            "  {name} {bname} {vname} \
+                            ok"
+                        );
                         c::cmsDeleteTransform(t4);
                     }
                 }
@@ -4101,64 +4539,58 @@ fn pack_float_lab_xyz_arms() {
 ///   PackChunkyBytes internals via extra-channel outputs.
 #[test]
 fn pack_skip1_planar_arms() {
-    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
-        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
-        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
-            | (pl << 12) | (ds << 10) | (ex << 7)
-            | (ch << 3) | by
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32, fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16)
+            | (flt << 22)
+            | (sf << 14)
+            | (fl << 13)
+            | (pl << 12)
+            | (ds << 10)
+            | (ex << 7)
+            | (ch << 3)
+            | by
     }
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // output: 3ch + 1 extra, 1 byte → Pack3BytesAndSkip1
         for (ds, sf, name) in [
-            (0u32, 0, "plain"), (1, 0, "ds"),
-            (0, 1, "sf"), (1, 1, "dssf"),
+            (0u32, 0, "plain"),
+            (1, 0, "ds"),
+            (0, 1, "sf"),
+            (1, 1, "dssf"),
         ] {
             let fin = f(10, 3, 1, 0, 0, 0, 0, 0, 0);
             let fout = f(4, 3, 1, 1, ds, 0, sf, 0, 0);
-            let t = c::cmsCreateTransform(lab, fin,
-                srgb, fout, 0, 0);
+            let t = c::cmsCreateTransform(lab, fin, srgb, fout, 0, 0);
             eprintln!("3+1ex {name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [128u8; 3 * 16];
                 let mut dst = [0u8; 4 * 16];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 16);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 16);
                 c::cmsDeleteTransform(t);
             }
             // also RGB→RGB extra-1 output
-            let t2 = c::cmsCreateTransform(srgb,
-                f(4, 3, 1, 0, 0, 0, 0, 0, 0),
-                srgb, fout, 0, 0);
+            let t2 = c::cmsCreateTransform(srgb, f(4, 3, 1, 0, 0, 0, 0, 0, 0), srgb, fout, 0, 0);
             eprintln!("rgb3+1ex {name} t={}", !t2.is_null());
             if !t2.is_null() {
                 let src = [128u8; 3 * 16];
                 let mut dst = [0u8; 4 * 16];
-                c::cmsDoTransform(t2,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 16);
-                c::cmsDeleteTransform(t2); }
+                c::cmsDoTransform(t2, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 16);
+                c::cmsDeleteTransform(t2);
+            }
         }
         // planar bytes out (PackPlanarBytes)
-        for (pl, name) in [
-            (1u32, "pl"), (0, "ch"),
-        ] {
+        for (pl, name) in [(1u32, "pl"), (0, "ch")] {
             for ch in [1u32, 3, 4] {
                 let fin = f(4, 3, 1, 0, 0, 0, 0, 0, 0);
                 let fout = f(4, ch, 1, 0, 0, 0, 0, pl, 0);
-                let t = c::cmsCreateTransform(srgb, fin,
-                    srgb, fout, 0, 0);
-                eprintln!("pl{pl} {ch}ch t={}",
-                    !t.is_null());
+                let t = c::cmsCreateTransform(srgb, fin, srgb, fout, 0, 0);
+                eprintln!("pl{pl} {ch}ch t={}", !t.is_null());
                 if !t.is_null() {
                     let src = [100u8; 3 * 8];
                     let mut dst = [0u8; 4 * 16];
-                    c::cmsDoTransform(t,
-                        src.as_ptr() as *const _,
-                        dst.as_mut_ptr() as *mut _, 4);
+                    c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 4);
                     c::cmsDeleteTransform(t);
                 }
             }
@@ -4167,15 +4599,12 @@ fn pack_skip1_planar_arms() {
         for ch in [2u32, 3, 4, 5, 6, 8] {
             let fin = f(4, 3, 1, 0, 0, 0, 0, 0, 0);
             let fout = f(4, ch, 1, 0, 0, 0, 0, 0, 0);
-            let t = c::cmsCreateTransform(srgb, fin,
-                srgb, fout, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fin, srgb, fout, 0, 0);
             eprintln!("ch{ch} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [100u8; 3 * 8];
                 let mut dst = [0u8; 8 * 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 4);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4189,26 +4618,30 @@ fn pack_skip1_planar_arms() {
 ///   LabV2 float encoders.
 #[test]
 fn pack_fmt_dup_dbl_arms() {
-    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
-        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
-        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
-            | (pl << 12) | (ds << 10) | (ex << 7)
-            | (ch << 3) | by
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32, fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16)
+            | (flt << 22)
+            | (sf << 14)
+            | (fl << 13)
+            | (pl << 12)
+            | (ds << 10)
+            | (ex << 7)
+            | (ch << 3)
+            | by
     }
-    unsafe extern "C" fn my_factory(
-        _t: u32, _d: u32, _m: u32)
-        -> *const std::ffi::c_void {
+    unsafe extern "C" fn my_factory(_t: u32, _d: u32, _m: u32) -> *const std::ffi::c_void {
         std::ptr::null()
     }
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // formatter plugin into ctx → dup ctx →
         //   DupFormatterFactoryList list-walk
         #[repr(C)]
         struct PluginBase {
-            magic: u32, ver: u32, typ: u32,
+            magic: u32,
+            ver: u32,
+            typ: u32,
             next: *mut std::ffi::c_void,
         }
         #[repr(C)]
@@ -4217,8 +4650,7 @@ fn pack_fmt_dup_dbl_arms() {
             factory: *const std::ffi::c_void,
         }
         for npl in [1u32, 4] {
-            let ctx = c::cmsCreateContext(
-                std::ptr::null_mut(), std::ptr::null_mut());
+            let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
             let mut plugs = vec![];
             for _ in 0..npl {
                 plugs.push(FmtPlugin {
@@ -4228,62 +4660,118 @@ fn pack_fmt_dup_dbl_arms() {
                         typ: 0x66726D48,
                         next: std::ptr::null_mut(),
                     },
-                    factory: my_factory
-                        as *const std::ffi::c_void,
+                    factory: my_factory as *const std::ffi::c_void,
                 });
             }
             for p in &plugs {
-                let r = c::cmsPluginTHR(ctx,
-                    p as *const _ as *mut _);
+                let r = c::cmsPluginTHR(ctx, p as *const _ as *mut _);
                 eprintln!("reg={r}");
             }
-            let d = c::cmsDupContext(ctx,
-                std::ptr::null_mut());
+            let d = c::cmsDupContext(ctx, std::ptr::null_mut());
             eprintln!("fmt dup{npl} d={}", !d.is_null());
-            if !d.is_null() { c::cmsDeleteContext(d); }
+            if !d.is_null() {
+                c::cmsDeleteContext(d);
+            }
             c::cmsDeleteContext(ctx);
         }
         // dbl→float eval paths (FloatXFORM on doubles)
         for (pt, prof, name) in [
-            (10u32, lab, "Lab"), (9, c::cmsCreateXYZProfile(),
-                "XYZ"), (4, srgb, "RGB"), (3,
-                c::cmsCreateGrayProfile(
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut()), "Gray"),
+            (10u32, lab, "Lab"),
+            (9, c::cmsCreateXYZProfile(), "XYZ"),
+            (4, srgb, "RGB"),
+            (
+                3,
+                c::cmsCreateGrayProfile(std::ptr::null_mut(), std::ptr::null_mut()),
+                "Gray",
+            ),
         ] {
-            for (by, bname) in [
-                (8u32, "dbl"), (4, "flt"), (2, "half"),
-            ] {
-                let fin = f(pt, match pt {
-                    3 => 1, _ => 3 }, by, 0, 0, 0, 0, 0, 1);
-                let fout = f(pt, match pt {
-                    3 => 1, _ => 3 }, 4, 0, 0, 0, 0, 0, 1);
-                let t = c::cmsCreateTransform(prof, fin,
-                    prof, fout, 0, 0);
-                eprintln!("{name} {bname}->flt t={}",
-                    !t.is_null());
+            for (by, bname) in [(8u32, "dbl"), (4, "flt"), (2, "half")] {
+                let fin = f(
+                    pt,
+                    match pt {
+                        3 => 1,
+                        _ => 3,
+                    },
+                    by,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                );
+                let fout = f(
+                    pt,
+                    match pt {
+                        3 => 1,
+                        _ => 3,
+                    },
+                    4,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                );
+                let t = c::cmsCreateTransform(prof, fin, prof, fout, 0, 0);
+                eprintln!("{name} {bname}->flt t={}", !t.is_null());
                 if !t.is_null() {
-                    let mut src = vec![0u8;
-                        match pt { 3 => 1, _ => 3 }
-                            * by as usize * 4];
-                    for (i, b) in src.iter_mut()
-                        .enumerate() { *b = (i * 43) as u8; }
-                    let mut dst = vec![0u8;
-                        match pt { 3 => 1, _ => 3 } * 4 * 4];
-                    c::cmsDoTransform(t,
-                        src.as_ptr() as *const _,
-                        dst.as_mut_ptr() as *mut _, 4);
+                    let mut src = vec![
+                        0u8;
+                        match pt {
+                            3 => 1,
+                            _ => 3,
+                        } * by as usize
+                            * 4
+                    ];
+                    for (i, b) in src.iter_mut().enumerate() {
+                        *b = (i * 43) as u8;
+                    }
+                    let mut dst = vec![
+                        0u8;
+                        match pt {
+                            3 => 1,
+                            _ => 3,
+                        } * 4
+                            * 4
+                    ];
+                    c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 4);
                     c::cmsDeleteTransform(t);
                 }
                 // u16→float LabV2 encoder paths
-                let fin2 = f(pt, match pt {
-                    3 => 1, _ => 3 }, 2, 0, 0, 0, 0, 0, 0);
-                let fout2 = f(pt, match pt {
-                    3 => 1, _ => 3 }, by, 0, 0, 0, 0, 0, 1);
-                let t2 = c::cmsCreateTransform(prof, fin2,
-                    prof, fout2, 0, 0);
+                let fin2 = f(
+                    pt,
+                    match pt {
+                        3 => 1,
+                        _ => 3,
+                    },
+                    2,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                );
+                let fout2 = f(
+                    pt,
+                    match pt {
+                        3 => 1,
+                        _ => 3,
+                    },
+                    by,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                );
+                let t2 = c::cmsCreateTransform(prof, fin2, prof, fout2, 0, 0);
                 if !t2.is_null() {
-                    c::cmsDeleteTransform(t2); }
+                    c::cmsDeleteTransform(t2);
+                }
             }
         }
         c::cmsCloseProfile(srgb);
@@ -4296,53 +4784,49 @@ fn pack_fmt_dup_dbl_arms() {
 ///   transforms (only reachable path upstream).
 #[test]
 fn pack_chgfmt_float16_arms() {
-    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32,
-        fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
-        (cs << 16) | (flt << 22) | (sf << 14) | (fl << 13)
-            | (pl << 12) | (ds << 10) | (ex << 7)
-            | (ch << 3) | by
+    fn f(cs: u32, ch: u32, by: u32, ex: u32, ds: u32, fl: u32, sf: u32, pl: u32, flt: u32) -> u32 {
+        (cs << 16)
+            | (flt << 22)
+            | (sf << 14)
+            | (fl << 13)
+            | (pl << 12)
+            | (ds << 10)
+            | (ex << 7)
+            | (ch << 3)
+            | by
     }
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         // u16 transforms, then change formats to float
         //   variants → Unroll*To16 / Pack*From16
-        for (pt, prof, name) in [
-            (10u32, lab, "Lab"), (9, xyz, "XYZ"),
-            (4, srgb, "RGB"),
-        ] {
+        for (pt, prof, name) in [(10u32, lab, "Lab"), (9, xyz, "XYZ"), (4, srgb, "RGB")] {
             for (by, flt, bname) in [
-                (4u32, 1, "flt"), (8, 1, "dbl"),
-                (2, 1, "half"), (1, 0, "u8"),
+                (4u32, 1, "flt"),
+                (8, 1, "dbl"),
+                (2, 1, "half"),
+                (1, 0, "u8"),
                 (2, 0, "u16"),
             ] {
                 let fin16 = f(pt, 3, 2, 0, 0, 0, 0, 0, 0);
-                let t = c::cmsCreateTransform(prof, fin16,
-                    srgb, fin16, 0, 0);
-                if t.is_null() { continue; }
-                let newfmt = f(pt, 3, by, 0, 0, 0, 0, 0,
-                    flt);
-                let r1 = c::cmsChangeBuffersFormat(t,
-                    newfmt, fin16);
-                let mut src = vec![0u8;
-                    3 * by as usize * 8];
+                let t = c::cmsCreateTransform(prof, fin16, srgb, fin16, 0, 0);
+                if t.is_null() {
+                    continue;
+                }
+                let newfmt = f(pt, 3, by, 0, 0, 0, 0, 0, flt);
+                let r1 = c::cmsChangeBuffersFormat(t, newfmt, fin16);
+                let mut src = vec![0u8; 3 * by as usize * 8];
                 for (i, b) in src.iter_mut().enumerate() {
-                    *b = (i * 53) as u8; }
+                    *b = (i * 53) as u8;
+                }
                 let mut dst = [0u16; 3 * 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 8);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 8);
                 // change output format → Pack*From16
-                let r2 = c::cmsChangeBuffersFormat(t,
-                    fin16, newfmt);
+                let r2 = c::cmsChangeBuffersFormat(t, fin16, newfmt);
                 let src2 = [0x4000u16; 3];
-                let mut dst2 = vec![0u8;
-                    3 * by as usize];
-                c::cmsDoTransform(t,
-                    src2.as_ptr() as *const _,
-                    dst2.as_mut_ptr() as *mut _, 1);
+                let mut dst2 = vec![0u8; 3 * by as usize];
+                c::cmsDoTransform(t, src2.as_ptr() as *const _, dst2.as_mut_ptr() as *mut _, 1);
                 eprintln!("{name} {bname} r={r1}/{r2}");
                 // swap variants
                 for (ds, sf, pl, ex, vn) in [
@@ -4351,14 +4835,15 @@ fn pack_chgfmt_float16_arms() {
                     (0, 0, 1, 0, "pl"),
                     (0, 0, 0, 1, "ex1"),
                 ] {
-                    let fmt2 = f(pt, 3, by, ex, ds, 0,
-                        sf, pl, flt);
-                    let r3 = c::cmsChangeBuffersFormat(t,
-                        fmt2, fin16);
+                    let fmt2 = f(pt, 3, by, ex, ds, 0, sf, pl, flt);
+                    let r3 = c::cmsChangeBuffersFormat(t, fmt2, fin16);
                     if r3 != 0 {
-                        c::cmsDoTransform(t,
+                        c::cmsDoTransform(
+                            t,
                             src.as_ptr() as *const _,
-                            dst.as_mut_ptr() as *mut _, 4);
+                            dst.as_mut_ptr() as *mut _,
+                            4,
+                        );
                         eprintln!("  {vn} r3={r3}");
                     }
                 }
@@ -4383,26 +4868,27 @@ fn pack_planar_opt_arms() {
         // FLOAT_SH(1)<<22 | PT_LAB(12)<<16 |
         //   PLANAR(1)<<12 | CH(3)<<3 | BYTES
         for (pf, pname) in [
-            ((1u32 << 22) | (12 << 16) | (1 << 12)
-                | (3 << 3) | 4, "flt-planar"),
-            ((1u32 << 22) | (12 << 16) | (3 << 3) | 4,
-                "flt-chunky"),
-            ((1u32 << 22) | (12 << 16) | (1 << 12)
-                | (3 << 3) | 8, "dbl-planar"),
-            ((1u32 << 22) | (12 << 16) | (3 << 3) | 8,
-                "dbl-chunky"),
-            ((1u32 << 22) | (10 << 16) | (1 << 12)
-                | (3 << 3) | 4, "xyz-flt-planar"),
-            ((1u32 << 22) | (10 << 16) | (3 << 3) | 4,
-                "xyz-flt-chunky"),
+            (
+                (1u32 << 22) | (12 << 16) | (1 << 12) | (3 << 3) | 4,
+                "flt-planar",
+            ),
+            ((1u32 << 22) | (12 << 16) | (3 << 3) | 4, "flt-chunky"),
+            (
+                (1u32 << 22) | (12 << 16) | (1 << 12) | (3 << 3) | 8,
+                "dbl-planar",
+            ),
+            ((1u32 << 22) | (12 << 16) | (3 << 3) | 8, "dbl-chunky"),
+            (
+                (1u32 << 22) | (10 << 16) | (1 << 12) | (3 << 3) | 4,
+                "xyz-flt-planar",
+            ),
+            ((1u32 << 22) | (10 << 16) | (3 << 3) | 4, "xyz-flt-chunky"),
         ] {
             // 16-bit transform then ChangeBuffersFormat
             //   to the float-planar input format
-            let lab = c::cmsCreateLab4Profile(
-                std::ptr::null_mut());
+            let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
             let fin = (0u32 << 16) | (3 << 3) | 2;
-            let t = c::cmsCreateTransform(lab, fin,
-                srgb, fin, 0, 0);
+            let t = c::cmsCreateTransform(lab, fin, srgb, fin, 0, 0);
             if !t.is_null() {
                 c::cmsChangeBuffersFormat(t, pf, fin);
                 // planar input: 3 separate channel planes
@@ -4415,11 +4901,13 @@ fn pack_planar_opt_arms() {
                     a_plane.as_ptr() as *const _,
                     b_plane.as_ptr() as *const _,
                 ];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     planes.as_mut_ptr() as *const _,
-                    out.as_mut_ptr() as *mut _, 4);
-                eprintln!("{pname} ok dst={:?}",
-                    &out[..3]);
+                    out.as_mut_ptr() as *mut _,
+                    4,
+                );
+                eprintln!("{pname} ok dst={:?}", &out[..3]);
                 c::cmsDeleteTransform(t);
             }
             c::cmsCloseProfile(lab);
@@ -4428,42 +4916,33 @@ fn pack_planar_opt_arms() {
         for (fmt, fname) in [
             ((4u32 << 16) | (3 << 3) | 1, "u8-3"),
             ((4u32 << 16) | (4 << 3) | 1, "u8-4"),
-            ((4u32 << 16) | (3 << 3) | 1 | (1 << 12),
-                "u8-3-planar"),
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 12), "u8-3-planar"),
         ] {
-            let t = c::cmsCreateTransform(srgb, fmt,
-                srgb, fmt, 0, 0x0100); // optimized
+            let t = c::cmsCreateTransform(srgb, fmt, srgb, fmt, 0, 0x0100); // optimized
             eprintln!("{fname} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [128u8, 64, 200, 255];
                 let mut dst = [0u8; 4];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 eprintln!("  {fname} {src:?}->{dst:?}");
                 c::cmsDeleteTransform(t);
             }
-            let tn = c::cmsCreateTransform(srgb, fmt,
-                srgb, fmt, 0, 0); // non-opt
+            let tn = c::cmsCreateTransform(srgb, fmt, srgb, fmt, 0, 0); // non-opt
             if !tn.is_null() {
-                c::cmsDeleteTransform(tn); }
+                c::cmsDeleteTransform(tn);
+            }
         }
         // skip1 variants: RGBX/XRGB u8 → Pack3BytesAndSkip1*
         for (fmt, fname) in [
-            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7),
-                "rgbx4"),
-            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7)
-                | (1 << 14), "xrgb4"),
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7), "rgbx4"),
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7) | (1 << 14), "xrgb4"),
         ] {
-            let t = c::cmsCreateTransform(srgb, fmt,
-                srgb, fmt, 0, 0x0100);
+            let t = c::cmsCreateTransform(srgb, fmt, srgb, fmt, 0, 0x0100);
             eprintln!("{fname} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [255u8, 128, 64, 200];
                 let mut dst = [0u8; 4];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4479,68 +4958,87 @@ fn pack_planar_opt_arms() {
 fn pack_swap_extra_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         let frgb = (4u32 << 16) | (3 << 3) | 1;
         // float/double Lab/XYZ formats as profile OUTPUT
         for (out_prof, fmt, name) in [
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
-                | (3 << 3) | 4, "labf-doswap"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 14)
-                | (3 << 3) | 4, "labf-sf"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
-                | (1 << 14) | (3 << 3) | 4, "labf-both"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 7)
-                | (3 << 3) | 4, "labf-ex1"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
-                | (1 << 7) | (3 << 3) | 8, "labd-ex1-ds"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 10)
-                | (3 << 3) | 4, "xyzf-doswap"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 14)
-                | (3 << 3) | 8, "xyzd-sf"),
-            (xyz, (1u32 << 22) | (9 << 16) | (2 << 7)
-                | (3 << 3) | 4, "xyzf-ex2"),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (3 << 3) | 4,
+                "labf-doswap",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 14) | (3 << 3) | 4,
+                "labf-sf",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (1 << 14) | (3 << 3) | 4,
+                "labf-both",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 7) | (3 << 3) | 4,
+                "labf-ex1",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (1 << 7) | (3 << 3) | 8,
+                "labd-ex1-ds",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 10) | (3 << 3) | 4,
+                "xyzf-doswap",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 14) | (3 << 3) | 8,
+                "xyzd-sf",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (2 << 7) | (3 << 3) | 4,
+                "xyzf-ex2",
+            ),
         ] {
-            let t = c::cmsCreateTransform(srgb, frgb,
-                out_prof, fmt, 0, 0);
+            let t = c::cmsCreateTransform(srgb, frgb, out_prof, fmt, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [128u8, 64, 200];
                 let mut dst = vec![0u8; 32];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
         // u8/u16 packer variants as srgb INPUT
         let flab = (10u32 << 16) | (3 << 3) | 2;
         for (fmt, name) in [
-            ((4u32 << 16) | (1 << 12) | (3 << 3) | 1,
-                "rgb8-planar"),
-            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
-                "rgb16-planar"),
-            ((4u32 << 16) | (1 << 7) | (1 << 10)
-                | (1 << 14) | (3 << 3) | 1, "rgbx-ds-sf"),
-            ((4u32 << 16) | (1 << 7) | (1 << 10)
-                | (3 << 3) | 1, "rgbx-ds"),
-            ((4u32 << 16) | (1 << 7) | (1 << 14)
-                | (3 << 3) | 1, "rgbx-sf"),
-            ((4u32 << 16) | (1 << 14) | (3 << 3) | 1,
-                "rgb8-sf"),
-            ((4u32 << 16) | (1 << 10) | (3 << 3) | 1,
-                "rgb8-ds"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 1, "rgb8-planar"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2, "rgb16-planar"),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 10) | (1 << 14) | (3 << 3) | 1,
+                "rgbx-ds-sf",
+            ),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 10) | (3 << 3) | 1,
+                "rgbx-ds",
+            ),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 14) | (3 << 3) | 1,
+                "rgbx-sf",
+            ),
+            ((4u32 << 16) | (1 << 14) | (3 << 3) | 1, "rgb8-sf"),
+            ((4u32 << 16) | (1 << 10) | (3 << 3) | 1, "rgb8-ds"),
         ] {
-            let t = c::cmsCreateTransform(srgb, fmt,
-                lab, flab, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fmt, lab, flab, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [128u8, 64, 200, 255];
                 let mut dst = [0u16; 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4557,8 +5055,7 @@ fn pack_swap_extra_arms() {
 fn pack_float_in_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         let frgb = (4u32 << 16) | (3 << 3) | 1;
         let flab = (10u32 << 16) | (3 << 3) | 2;
@@ -4568,74 +5065,119 @@ fn pack_float_in_arms() {
         //   transform (float_in_profile, fin, srgb, rgb)
         for (in_prof, fin, name) in [
             // Lab float input variants -> srgb
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
-                | (3 << 3) | 4, "labf-in-ds"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 14)
-                | (3 << 3) | 4, "labf-in-sf"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
-                | (1 << 14) | (3 << 3) | 4, "labf-in-both"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 7)
-                | (3 << 3) | 4, "labf-in-ex1"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 12)
-                | (3 << 3) | 4, "labf-in-planar"),
-            (lab, (1u32 << 22) | (10 << 16) | (3 << 3)
-                | 4, "labf-in-plain"),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (3 << 3) | 4,
+                "labf-in-ds",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 14) | (3 << 3) | 4,
+                "labf-in-sf",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (1 << 14) | (3 << 3) | 4,
+                "labf-in-both",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 7) | (3 << 3) | 4,
+                "labf-in-ex1",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 12) | (3 << 3) | 4,
+                "labf-in-planar",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (3 << 3) | 4,
+                "labf-in-plain",
+            ),
             // Lab double input
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 10)
-                | (3 << 3) | 8, "labd-in-ds"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 14)
-                | (3 << 3) | 8, "labd-in-sf"),
-            (lab, (1u32 << 22) | (10 << 16) | (1 << 7)
-                | (3 << 3) | 8, "labd-in-ex1"),
-            (lab, (1u32 << 22) | (10 << 16) | (3 << 3)
-                | 8, "labd-in-plain"),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (3 << 3) | 8,
+                "labd-in-ds",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 14) | (3 << 3) | 8,
+                "labd-in-sf",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (1 << 7) | (3 << 3) | 8,
+                "labd-in-ex1",
+            ),
+            (
+                lab,
+                (1u32 << 22) | (10 << 16) | (3 << 3) | 8,
+                "labd-in-plain",
+            ),
             // XYZ float/double input -> srgb
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 10)
-                | (3 << 3) | 4, "xyzf-in-ds"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 14)
-                | (3 << 3) | 4, "xyzf-in-sf"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 7)
-                | (3 << 3) | 4, "xyzf-in-ex1"),
-            (xyz, (1u32 << 22) | (9 << 16) | (3 << 3)
-                | 4, "xyzf-in-plain"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 10)
-                | (3 << 3) | 8, "xyzd-in-ds"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 14)
-                | (3 << 3) | 8, "xyzd-in-sf"),
-            (xyz, (1u32 << 22) | (9 << 16) | (3 << 3)
-                | 8, "xyzd-in-plain"),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 10) | (3 << 3) | 4,
+                "xyzf-in-ds",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 14) | (3 << 3) | 4,
+                "xyzf-in-sf",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 7) | (3 << 3) | 4,
+                "xyzf-in-ex1",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (3 << 3) | 4,
+                "xyzf-in-plain",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 10) | (3 << 3) | 8,
+                "xyzd-in-ds",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 14) | (3 << 3) | 8,
+                "xyzd-in-sf",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (3 << 3) | 8,
+                "xyzd-in-plain",
+            ),
         ] {
-            let t = c::cmsCreateTransform(in_prof, fin,
-                srgb, frgb, 0, 0);
+            let t = c::cmsCreateTransform(in_prof, fin, srgb, frgb, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0.5f64; 8];
                 let mut dst = [0u8; 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 eprintln!("  dst={dst:?}");
                 c::cmsDeleteTransform(t);
             }
         }
         // PackPlanarBytes: planar u8 OUTPUT formats
         for (fout, name) in [
-            ((4u32 << 16) | (1 << 12) | (3 << 3) | 1,
-                "out-planar8"),
-            ((4u32 << 16) | (1 << 12) | (1 << 7)
-                | (3 << 3) | 1, "out-planar-ex1"),
-            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
-                "out-planar16"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 1, "out-planar8"),
+            (
+                (4u32 << 16) | (1 << 12) | (1 << 7) | (3 << 3) | 1,
+                "out-planar-ex1",
+            ),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2, "out-planar16"),
         ] {
-            let t = c::cmsCreateTransform(lab, flab,
-                srgb, fout, 0, 0);
+            let t = c::cmsCreateTransform(lab, flab, srgb, fout, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0x8000u16; 3];
                 let mut dst = [0u8; 32];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 eprintln!("  dst={:?}", &dst[..6]);
                 c::cmsDeleteTransform(t);
             }
@@ -4653,71 +5195,85 @@ fn pack_float_in_arms() {
 fn pack_planar_float_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab4 = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         let frgb = (4u32 << 16) | (3 << 3) | 1;
         let flab = (10u32 << 16) | (3 << 3) | 2;
         // planar float INPUT on xyz/lab -> srgb
         for (in_prof, fin, name) in [
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
-                | (3 << 3) | 4, "xyzf-plan-in"),
-            (lab4, (1u32 << 22) | (10 << 16) | (1 << 12)
-                | (3 << 3) | 4, "labf-plan-in"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
-                | (1 << 10) | (3 << 3) | 4, "xyzf-plan-ds"),
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
-                | (3 << 3) | 8, "xyzd-plan-in"),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 12) | (3 << 3) | 4,
+                "xyzf-plan-in",
+            ),
+            (
+                lab4,
+                (1u32 << 22) | (10 << 16) | (1 << 12) | (3 << 3) | 4,
+                "labf-plan-in",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 12) | (1 << 10) | (3 << 3) | 4,
+                "xyzf-plan-ds",
+            ),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 12) | (3 << 3) | 8,
+                "xyzd-plan-in",
+            ),
         ] {
-            let t = c::cmsCreateTransform(in_prof, fin,
-                srgb, frgb, 0, 0);
+            let t = c::cmsCreateTransform(in_prof, fin, srgb, frgb, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0.5f32; 8];
                 let mut dst = [0u8; 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
         // planar float OUTPUT srgb -> xyz/lab
         for (out_prof, fout, name) in [
-            (xyz, (1u32 << 22) | (9 << 16) | (1 << 12)
-                | (3 << 3) | 4, "xyzf-plan-out"),
-            (lab4, (1u32 << 22) | (10 << 16) | (1 << 12)
-                | (3 << 3) | 4, "labf-plan-out"),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (1 << 12) | (3 << 3) | 4,
+                "xyzf-plan-out",
+            ),
+            (
+                lab4,
+                (1u32 << 22) | (10 << 16) | (1 << 12) | (3 << 3) | 4,
+                "labf-plan-out",
+            ),
         ] {
-            let t = c::cmsCreateTransform(srgb, frgb,
-                out_prof, fout, 0, 0);
+            let t = c::cmsCreateTransform(srgb, frgb, out_prof, fout, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [128u8, 64, 200];
                 let mut dst = vec![0u8; 24];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
         // planar+premul u8 output variants
         for (fout, name) in [
-            ((4u32 << 16) | (1 << 12) | (1 << 7)
-                | (4 << 3) | 1, "plan-ex1-premul"),
-            ((4u32 << 16) | (1 << 12) | (1 << 7)
-                | (1 << 14) | (4 << 3) | 1, "plan-ex1-sf"),
-            ((4u32 << 16) | (1 << 12) | (2 << 7)
-                | (5 << 3) | 1, "plan-ex2"),
+            (
+                (4u32 << 16) | (1 << 12) | (1 << 7) | (4 << 3) | 1,
+                "plan-ex1-premul",
+            ),
+            (
+                (4u32 << 16) | (1 << 12) | (1 << 7) | (1 << 14) | (4 << 3) | 1,
+                "plan-ex1-sf",
+            ),
+            (
+                (4u32 << 16) | (1 << 12) | (2 << 7) | (5 << 3) | 1,
+                "plan-ex2",
+            ),
         ] {
-            let t = c::cmsCreateTransform(lab4, flab,
-                srgb, fout, 0, 0);
+            let t = c::cmsCreateTransform(lab4, flab, srgb, fout, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0x8000u16; 3];
                 let mut dst = [0u8; 16];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4735,60 +5291,46 @@ fn pack_planar_float_arms() {
 fn pack_variant_tail_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab4 = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let xyz = c::cmsCreateXYZProfile();
         let flab16 = (10u32 << 16) | (3 << 3) | 2;
         let fxyz16 = (9u32 << 16) | (3 << 3) | 2;
         // input: rgb u16 variants -> lab
         for (fin, name) in [
             ((4u32 << 16) | (4 << 3) | 2, "rgbx16"),
-            ((4u32 << 16) | (1 << 10) | (4 << 3) | 2,
-                "xrgb16-ds"),
-            ((4u32 << 16) | (1 << 14) | (4 << 3) | 2,
-                "xrgb16-sf"),
-            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
-                "rgb16-plan"),
-            ((4u32 << 16) | (1 << 10) | (1 << 14)
-                | (4 << 3) | 2, "xrgb-both"),
-            ((4u32 << 16) | (1 << 11) | (4 << 3) | 2,
-                "xrgb16-e16"),
-            ((4u32 << 16) | (2 << 7) | (5 << 3) | 2,
-                "xrgbxx16"),
+            ((4u32 << 16) | (1 << 10) | (4 << 3) | 2, "xrgb16-ds"),
+            ((4u32 << 16) | (1 << 14) | (4 << 3) | 2, "xrgb16-sf"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2, "rgb16-plan"),
+            (
+                (4u32 << 16) | (1 << 10) | (1 << 14) | (4 << 3) | 2,
+                "xrgb-both",
+            ),
+            ((4u32 << 16) | (1 << 11) | (4 << 3) | 2, "xrgb16-e16"),
+            ((4u32 << 16) | (2 << 7) | (5 << 3) | 2, "xrgbxx16"),
         ] {
-            let t = c::cmsCreateTransform(srgb, fin,
-                lab4, flab16, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fin, lab4, flab16, 0, 0);
             eprintln!("in {name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0x4000u16; 8];
                 let mut dst = [0u16; 4];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
         // output: lab -> rgb u16 variants
         for (fout, name) in [
             ((4u32 << 16) | (4 << 3) | 2, "rgbx16"),
-            ((4u32 << 16) | (1 << 10) | (4 << 3) | 2,
-                "xrgb16-ds"),
-            ((4u32 << 16) | (1 << 14) | (4 << 3) | 2,
-                "xrgb16-sf"),
-            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2,
-                "rgb16-plan"),
-            ((4u32 << 16) | (2 << 7) | (5 << 3) | 2,
-                "xrgbxx16"),
+            ((4u32 << 16) | (1 << 10) | (4 << 3) | 2, "xrgb16-ds"),
+            ((4u32 << 16) | (1 << 14) | (4 << 3) | 2, "xrgb16-sf"),
+            ((4u32 << 16) | (1 << 12) | (3 << 3) | 2, "rgb16-plan"),
+            ((4u32 << 16) | (2 << 7) | (5 << 3) | 2, "xrgbxx16"),
         ] {
-            let t = c::cmsCreateTransform(lab4, flab16,
-                srgb, fout, 0, 0);
+            let t = c::cmsCreateTransform(lab4, flab16, srgb, fout, 0, 0);
             eprintln!("out {name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0x8000u16; 3];
                 let mut dst = [0u16; 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4796,17 +5338,26 @@ fn pack_variant_tail_arms() {
         for (a, af, b, bf, name) in [
             (xyz, fxyz16, lab4, flab16, "x->l16"),
             (lab4, flab16, xyz, fxyz16, "l->x16"),
-            (xyz, (1u32 << 22) | (9 << 16)
-                | (3 << 3) | 4,
-             lab4, flab16, "x->lf"),
-            (lab4, flab16, xyz, (1u32 << 22)
-                | (9 << 16) | (3 << 3) | 4, "l->xf"),
+            (
+                xyz,
+                (1u32 << 22) | (9 << 16) | (3 << 3) | 4,
+                lab4,
+                flab16,
+                "x->lf",
+            ),
+            (
+                lab4,
+                flab16,
+                xyz,
+                (1u32 << 22) | (9 << 16) | (3 << 3) | 4,
+                "l->xf",
+            ),
         ] {
-            let t = c::cmsCreateTransform(a, af, b, bf,
-                0, 0);
+            let t = c::cmsCreateTransform(a, af, b, bf, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                c::cmsDeleteTransform(t); }
+                c::cmsDeleteTransform(t);
+            }
         }
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab4);
@@ -4821,38 +5372,35 @@ fn pack_variant_tail_arms() {
 fn pack_optimized_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab4 = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let flab = (10u32 << 16) | (3 << 3) | 2;
         // u8 fast path: lab->srgb with chunky u8 outs
         //   at skip1/swap variants
         for (fout, name) in [
             ((4u32 << 16) | (3 << 3) | 1, "rgb8"),
-            ((4u32 << 16) | (1 << 10) | (3 << 3) | 1,
-                "rgb8-ds"),
-            ((4u32 << 16) | (1 << 14) | (3 << 3) | 1,
-                "rgb8-sf"),
-            ((4u32 << 16) | (1 << 10) | (1 << 14)
-                | (3 << 3) | 1, "rgb8-both"),
+            ((4u32 << 16) | (1 << 10) | (3 << 3) | 1, "rgb8-ds"),
+            ((4u32 << 16) | (1 << 14) | (3 << 3) | 1, "rgb8-sf"),
+            (
+                (4u32 << 16) | (1 << 10) | (1 << 14) | (3 << 3) | 1,
+                "rgb8-both",
+            ),
             ((4u32 << 16) | (4 << 3) | 1, "rgbx8"),
-            ((4u32 << 16) | (1 << 10) | (4 << 3) | 1,
-                "xrgb8-ds"),
-            ((4u32 << 16) | (1 << 14) | (4 << 3) | 1,
-                "xrgb8-sf"),
-            ((4u32 << 16) | (1 << 10) | (1 << 14)
-                | (4 << 3) | 1, "xrgb-both"),
+            ((4u32 << 16) | (1 << 10) | (4 << 3) | 1, "xrgb8-ds"),
+            ((4u32 << 16) | (1 << 14) | (4 << 3) | 1, "xrgb8-sf"),
+            (
+                (4u32 << 16) | (1 << 10) | (1 << 14) | (4 << 3) | 1,
+                "xrgb-both",
+            ),
         ] {
             for fl in [0u32, 0x0100] {
-                let t = c::cmsCreateTransform(lab4, flab,
-                    srgb, fout, 0, fl);
+                let t = c::cmsCreateTransform(lab4, flab, srgb, fout, 0, fl);
                 if !t.is_null() {
                     let src = [0x8000u16; 3];
                     let mut dst = [0u8; 8];
-                    c::cmsDoTransform(t,
-                        src.as_ptr() as *const _,
-                        dst.as_mut_ptr() as *mut _, 4);
+                    c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 4);
                     if fl == 0 {
-                        eprintln!("{name} {dst:?}"); }
+                        eprintln!("{name} {dst:?}");
+                    }
                     c::cmsDeleteTransform(t);
                 }
             }
@@ -4860,29 +5408,35 @@ fn pack_optimized_arms() {
         // float/double in variants: xyz/lab float +
         //   double -> srgb
         for (in_prof, fin, name) in [
-            (lab4, (1u32 << 22) | (10 << 16)
-                | (3 << 3) | 4, "labf"),
-            (lab4, (1u32 << 22) | (10 << 16)
-                | (3 << 3) | 8, "labd"),
-            (lab4, (1u32 << 22) | (10 << 16)
-                | (1 << 10) | (3 << 3) | 4, "labf-ds"),
-            (lab4, (1u32 << 22) | (10 << 16)
-                | (1 << 14) | (3 << 3) | 4, "labf-sf"),
-            (lab4, (1u32 << 22) | (10 << 16)
-                | (1 << 12) | (3 << 3) | 4, "labf-plan"),
-            (lab4, (1u32 << 22) | (10 << 16)
-                | (1 << 10) | (1 << 14) | (3 << 3) | 4,
-                "labf-both"),
+            (lab4, (1u32 << 22) | (10 << 16) | (3 << 3) | 4, "labf"),
+            (lab4, (1u32 << 22) | (10 << 16) | (3 << 3) | 8, "labd"),
+            (
+                lab4,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (3 << 3) | 4,
+                "labf-ds",
+            ),
+            (
+                lab4,
+                (1u32 << 22) | (10 << 16) | (1 << 14) | (3 << 3) | 4,
+                "labf-sf",
+            ),
+            (
+                lab4,
+                (1u32 << 22) | (10 << 16) | (1 << 12) | (3 << 3) | 4,
+                "labf-plan",
+            ),
+            (
+                lab4,
+                (1u32 << 22) | (10 << 16) | (1 << 10) | (1 << 14) | (3 << 3) | 4,
+                "labf-both",
+            ),
         ] {
-            let t = c::cmsCreateTransform(in_prof, fin,
-                srgb, (4u32 << 16) | (3 << 3) | 1, 0, 0);
+            let t = c::cmsCreateTransform(in_prof, fin, srgb, (4u32 << 16) | (3 << 3) | 1, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0.5f64; 8];
                 let mut dst = [0u8; 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4898,32 +5452,25 @@ fn pack_optimized_arms() {
 fn pack_variant2_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab4 = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let flab = (10u32 << 16) | (3 << 3) | 2;
         // lab -> rgb at u8/u16/double out variants
         for (fout, name) in [
             ((4u32 << 16) | (3 << 3) | 8, "rgb-dbl"),
             ((4u32 << 16) | (3 << 3) | 4, "rgb-flt"),
-            ((4u32 << 16) | (3 << 3) | 2 | (1 << 22),
-                "rgb-12?"),
+            ((4u32 << 16) | (3 << 3) | 2 | (1 << 22), "rgb-12?"),
             ((4u32 << 16) | (4 << 3) | 4, "rgbx-flt"),
             ((4u32 << 16) | (5 << 3) | 4, "rgbxx-flt"),
             ((4u32 << 16) | (6 << 3) | 4, "rgbxxx-flt"),
-            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7),
-                "rgb8-ex"),
-            ((4u32 << 16) | (3 << 3) | 2 | (1 << 7),
-                "rgb16-ex"),
+            ((4u32 << 16) | (3 << 3) | 1 | (1 << 7), "rgb8-ex"),
+            ((4u32 << 16) | (3 << 3) | 2 | (1 << 7), "rgb16-ex"),
         ] {
-            let t = c::cmsCreateTransform(lab4, flab,
-                srgb, fout, 0, 0);
+            let t = c::cmsCreateTransform(lab4, flab, srgb, fout, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0x8000u16; 3];
                 let mut dst = [0u8; 32];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4933,20 +5480,15 @@ fn pack_variant2_arms() {
             ((4u32 << 16) | (3 << 3) | 4, "rgb-flt-in"),
             ((4u32 << 16) | (4 << 3) | 4, "rgbx-flt-in"),
             ((4u32 << 16) | (5 << 3) | 4, "rgbxx-flt-in"),
-            ((4u32 << 16) | (1 << 10) | (3 << 3) | 8,
-                "rgb-dbl-ds"),
-            ((4u32 << 16) | (1 << 14) | (3 << 3) | 8,
-                "rgb-dbl-sf"),
+            ((4u32 << 16) | (1 << 10) | (3 << 3) | 8, "rgb-dbl-ds"),
+            ((4u32 << 16) | (1 << 14) | (3 << 3) | 8, "rgb-dbl-sf"),
         ] {
-            let t = c::cmsCreateTransform(srgb, fin,
-                lab4, flab, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fin, lab4, flab, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0.5f64; 8];
                 let mut dst = [0u16; 4];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -4964,8 +5506,7 @@ fn pack_variant2_arms() {
 // PREMUL[23]. PT codes: GRAY=3 RGB=4 CMYK=6 XYZ=9 LAB=10
 // MCH1..15=15..29 LABV2=30.
 
-const fn fw(pt: u32, ch: u32, ex: u32, by: u32,
-            flags: u32) -> u32 {
+const fn fw(pt: u32, ch: u32, ex: u32, by: u32, flags: u32) -> u32 {
     (pt << 16) | (flags) | (ex << 7) | (ch << 3) | by
 }
 const DOSWAP: u32 = 1 << 10;
@@ -4988,76 +5529,92 @@ struct Profs {
 
 unsafe fn mk_profs() -> (Profs, *mut c::ToneCurve) {
     unsafe {
-        let gamma = c::cmsBuildGamma(
-            std::ptr::null_mut(), 2.2);
+        let gamma = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let wp = {
-            let mut w = std::mem::zeroed::<
-                lcms::types::CiexyY>();
-            w.x = 0.3457; w.y = 0.3585; w.Y = 1.0;
+            let mut w = std::mem::zeroed::<lcms::types::CiexyY>();
+            w.x = 0.3457;
+            w.y = 0.3585;
+            w.Y = 1.0;
             w
         };
         let gray = c::cmsCreateGrayProfileTHR(
             std::ptr::null_mut(),
             &wp as *const _ as *const c_void,
-            gamma as *const c_void);
-        let rgb = c::cmsCreate_sRGBProfileTHR(
-            std::ptr::null_mut());
-        let lab = c::cmsCreateLab4ProfileTHR(
-            std::ptr::null_mut(), std::ptr::null());
-        let xyz = c::cmsCreateXYZProfileTHR(
-            std::ptr::null_mut());
-        let curves: [*mut c::ToneCurve; 4] =
-            [gamma, gamma, gamma, gamma];
+            gamma as *const c_void,
+        );
+        let rgb = c::cmsCreate_sRGBProfileTHR(std::ptr::null_mut());
+        let lab = c::cmsCreateLab4ProfileTHR(std::ptr::null_mut(), std::ptr::null());
+        let xyz = c::cmsCreateXYZProfileTHR(std::ptr::null_mut());
+        let curves: [*mut c::ToneCurve; 4] = [gamma, gamma, gamma, gamma];
         let cmyk = c::cmsCreateLinearizationDeviceLinkTHR(
             std::ptr::null_mut(),
             0x434D594B, // 'CMYK'
-            curves.as_ptr());
+            curves.as_ptr(),
+        );
         let mut mch = Vec::new();
-        for sig in [0x32434C52u32, 0x35434C52,
-                    0x36434C52, 0x38434C52,
-                    0x46434C52] { // '2CLR' '5CLR' '6CLR' '8CLR' 'FCLR'
-            let tc: [*mut c::ToneCurve; 15] =
-                [gamma; 15];
-            let p = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), sig, tc.as_ptr());
+        for sig in [
+            0x32434C52u32,
+            0x35434C52,
+            0x36434C52,
+            0x38434C52,
+            0x46434C52,
+        ] {
+            // '2CLR' '5CLR' '6CLR' '8CLR' 'FCLR'
+            let tc: [*mut c::ToneCurve; 15] = [gamma; 15];
+            let p = c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), sig, tc.as_ptr());
             mch.push(p);
         }
-        (Profs { gray, rgb, lab, xyz, cmyk, mch }, gamma)
+        (
+            Profs {
+                gray,
+                rgb,
+                lab,
+                xyz,
+                cmyk,
+                mch,
+            },
+            gamma,
+        )
     }
 }
 
 /// create + run a transform both ways; NULL-creation is
 /// acceptable (reject arms) but record it.
-unsafe fn xform_run(i: *mut c_void, fi: u32,
-                    o: *mut c_void, fo: u32,
-                    label: &str) {
+unsafe fn xform_run(i: *mut c_void, fi: u32, o: *mut c_void, fo: u32, label: &str) {
     unsafe {
         if i.is_null() || o.is_null() {
-            eprintln!("{label}: null prof"); return; }
+            eprintln!("{label}: null prof");
+            return;
+        }
         let t = c::cmsCreateTransform(i, fi, o, fo, 0, 0);
         if t.is_null() {
             // try multiprofile (devicelinks)
             let mut profs = [i, o];
-            let mt = c::cmsCreateMultiprofileTransform(
-                profs.as_mut_ptr(), 2, fi, fo, 0, 0);
+            let mt = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 2, fi, fo, 0, 0);
             if mt.is_null() {
                 eprintln!("{label}: REJECT");
                 return;
             }
             let ib = [0x55u8; 512];
             let mut ob = [0xA5u8; 512];
-            c::cmsDoTransform(mt,
+            c::cmsDoTransform(
+                mt,
                 ib.as_ptr() as *const c_void,
-                ob.as_mut_ptr() as *mut c_void, 2);
+                ob.as_mut_ptr() as *mut c_void,
+                2,
+            );
             c::cmsDeleteTransform(mt);
             eprintln!("{label}: mp ok");
             return;
         }
         let ib = [0x55u8; 512];
         let mut ob = [0xA5u8; 512];
-        c::cmsDoTransform(t,
+        c::cmsDoTransform(
+            t,
             ib.as_ptr() as *const c_void,
-            ob.as_mut_ptr() as *mut c_void, 2);
+            ob.as_mut_ptr() as *mut c_void,
+            2,
+        );
         c::cmsDeleteTransform(t);
         eprintln!("{label}: ok");
     }
@@ -5078,17 +5635,12 @@ fn pack_unroll_arms() {
             ("g16e3", fw(3, 1, 3, 2, 0)),
             ("g16e16", fw(3, 1, 0, 2, E16)),
         ] {
-            xform_run(p.gray, fo, p.rgb,
-                fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
+            xform_run(p.gray, fo, p.rgb, fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
         }
         // input-side MCH2 unroll + words
         let m2 = p.mch[0];
-        for (nm, fo) in [
-            ("m2b1", fw(16, 2, 0, 1, 0)),
-            ("m2b2", fw(16, 2, 0, 2, 0)),
-        ] {
-            xform_run(m2, fo, m2, fo,
-                &format!("in-{nm}"));
+        for (nm, fo) in [("m2b1", fw(16, 2, 0, 1, 0)), ("m2b2", fw(16, 2, 0, 2, 0))] {
+            xform_run(m2, fo, m2, fo, &format!("in-{nm}"));
         }
         // LabV2 unroll arms (input + output)
         for (nm, fo) in [
@@ -5096,10 +5648,8 @@ fn pack_unroll_arms() {
             ("alv2-8", fw(30, 3, 1, 1, SWAPFIRST)),
             ("lv2-16", fw(30, 3, 0, 2, 0)),
         ] {
-            xform_run(p.lab, fo, p.rgb,
-                fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
-            xform_run(p.rgb, fw(4, 3, 0, 1, 0),
-                p.lab, fo, &format!("out-{nm}"));
+            xform_run(p.lab, fo, p.rgb, fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
+            xform_run(p.rgb, fw(4, 3, 0, 1, 0), p.lab, fo, &format!("out-{nm}"));
         }
         // 3-byte unroll variants (RGB)
         for (nm, fo) in [
@@ -5107,17 +5657,14 @@ fn pack_unroll_arms() {
             ("b3sw", fw(4, 3, 0, 1, DOSWAP)),
             ("b3e1sw", fw(4, 3, 1, 1, DOSWAP)),
             ("b3e1sf", fw(4, 3, 1, 1, SWAPFIRST)),
-            ("b3e1swsf", fw(4, 3, 1, 1,
-                            DOSWAP | SWAPFIRST)),
+            ("b3e1swsf", fw(4, 3, 1, 1, DOSWAP | SWAPFIRST)),
             ("w3", fw(4, 3, 0, 2, 0)),
             ("w3sw", fw(4, 3, 0, 2, DOSWAP)),
             ("w3e1sf", fw(4, 3, 1, 2, SWAPFIRST)),
             ("w3e1sw", fw(4, 3, 1, 2, DOSWAP)),
         ] {
-            xform_run(p.rgb, fo, p.rgb,
-                fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
-            xform_run(p.rgb, fw(4, 3, 0, 1, 0),
-                p.rgb, fo, &format!("out-{nm}"));
+            xform_run(p.rgb, fo, p.rgb, fw(4, 3, 0, 1, 0), &format!("in-{nm}"));
+            xform_run(p.rgb, fw(4, 3, 0, 1, 0), p.rgb, fo, &format!("out-{nm}"));
         }
         // 4-byte unroll variants (CMYK devicelink)
         for (nm, fo) in [
@@ -5125,18 +5672,15 @@ fn pack_unroll_arms() {
             ("b4rev", fw(6, 4, 0, 1, FLAVOR)),
             ("b4sf", fw(6, 4, 0, 1, SWAPFIRST)),
             ("b4sw", fw(6, 4, 0, 1, DOSWAP)),
-            ("b4swsf", fw(6, 4, 0, 1,
-                          DOSWAP | SWAPFIRST)),
+            ("b4swsf", fw(6, 4, 0, 1, DOSWAP | SWAPFIRST)),
             ("w4", fw(6, 4, 0, 2, 0)),
             ("w4rev", fw(6, 4, 0, 2, FLAVOR)),
             ("w4sf", fw(6, 4, 0, 2, SWAPFIRST)),
             ("w4sw", fw(6, 4, 0, 2, DOSWAP)),
-            ("w4swsf", fw(6, 4, 0, 2,
-                          DOSWAP | SWAPFIRST)),
+            ("w4swsf", fw(6, 4, 0, 2, DOSWAP | SWAPFIRST)),
             ("w4e16", fw(6, 4, 0, 2, E16)),
         ] {
-            xform_run(p.cmyk, fo, p.cmyk, fo,
-                &format!("cm-{nm}"));
+            xform_run(p.cmyk, fo, p.cmyk, fo, &format!("cm-{nm}"));
         }
         // planar/chunky + premul on 5ch
         let m5 = p.mch[1];
@@ -5145,13 +5689,11 @@ fn pack_unroll_arms() {
             ("m5b1pl", fw(19, 5, 0, 1, PLANAR)),
             ("m5b2", fw(19, 5, 0, 2, 0)),
             ("m5b2pl", fw(19, 5, 0, 2, PLANAR)),
-            ("m5b2plpm", fw(19, 5, 1, 2,
-                            PLANAR | PREMUL)),
+            ("m5b2plpm", fw(19, 5, 1, 2, PLANAR | PREMUL)),
             ("m5b2pm", fw(19, 5, 1, 2, PREMUL)),
             ("m5b1e2", fw(19, 5, 2, 1, 0)),
         ] {
-            xform_run(m5, fo, m5, fo,
-                &format!("m5-{nm}"));
+            xform_run(m5, fo, m5, fo, &format!("m5-{nm}"));
         }
         // 6-byte pack (6ch) + swap
         let m6 = p.mch[2];
@@ -5161,40 +5703,54 @@ fn pack_unroll_arms() {
             ("m6b2", fw(20, 6, 0, 2, 0)),
             ("m6b2sw", fw(20, 6, 0, 2, DOSWAP)),
         ] {
-            xform_run(m6, fo, m6, fo,
-                &format!("m6-{nm}"));
+            xform_run(m6, fo, m6, fo, &format!("m6-{nm}"));
         }
-                // float-side unroll/pack arms
+        // float-side unroll/pack arms
         for (nm, fo) in [
             ("lab-dbl", fw(10, 3, 0, 0, FLOATF)),
             ("lab-flt", fw(10, 3, 0, 4, FLOATF)),
             ("lv2-8f", fw(30, 3, 0, 1, FLOATF)),
-            ("alv2-8f", fw(30, 3, 1, 1,
-                           FLOATF | SWAPFIRST)),
+            ("alv2-8f", fw(30, 3, 1, 1, FLOATF | SWAPFIRST)),
             ("lv2-16f", fw(30, 3, 0, 2, FLOATF)),
         ] {
             // Lab-float input on Lab profile; Lab-float
             // output on Lab profile (same-space transform
             // keeps IsProperColorSpace satisfied).
-            xform_run(p.lab, fo, p.lab,
+            xform_run(
+                p.lab,
+                fo,
+                p.lab,
                 fw(10, 3, 0, 4, FLOATF),
-                &format!("in-{nm}"));
-            xform_run(p.lab,
-                fw(10, 3, 0, 4, FLOATF), p.lab, fo,
-                &format!("out-{nm}"));
+                &format!("in-{nm}"),
+            );
+            xform_run(
+                p.lab,
+                fw(10, 3, 0, 4, FLOATF),
+                p.lab,
+                fo,
+                &format!("out-{nm}"),
+            );
         }
         for (nm, fo) in [
             ("xyz-dbl", fw(9, 3, 0, 0, FLOATF)),
             ("xyz-flt", fw(9, 3, 0, 4, FLOATF)),
         ] {
-            xform_run(p.xyz, fo, p.xyz,
+            xform_run(
+                p.xyz,
+                fo,
+                p.xyz,
                 fw(9, 3, 0, 4, FLOATF),
-                &format!("in-{nm}"));
-            xform_run(p.xyz,
-                fw(9, 3, 0, 4, FLOATF), p.xyz, fo,
-                &format!("out-{nm}"));
+                &format!("in-{nm}"),
+            );
+            xform_run(
+                p.xyz,
+                fw(9, 3, 0, 4, FLOATF),
+                p.xyz,
+                fo,
+                &format!("out-{nm}"),
+            );
         }
-// generic float unroll/pack on gray+mch
+        // generic float unroll/pack on gray+mch
         for (nm, fo, prof) in [
             ("g-flt", fw(3, 1, 0, 4, FLOATF), p.gray),
             ("g-dbl", fw(3, 1, 0, 0, FLOATF), p.gray),
@@ -5202,20 +5758,20 @@ fn pack_unroll_arms() {
             ("g-u16f", fw(3, 1, 0, 2, FLOATF), p.gray),
             ("g-half", fw(3, 1, 0, 2, FLOATF), p.gray),
             ("m5-flt", fw(19, 5, 0, 4, FLOATF), m5),
-            ("m5-fltpl", fw(19, 5, 0, 4,
-                            FLOATF | PLANAR), m5),
+            ("m5-fltpl", fw(19, 5, 0, 4, FLOATF | PLANAR), m5),
             ("m5-dbl", fw(19, 5, 0, 0, FLOATF), m5),
-            ("m5-fltpm", fw(19, 5, 1, 4,
-                            FLOATF | PREMUL), m5),
+            ("m5-fltpm", fw(19, 5, 1, 4, FLOATF | PREMUL), m5),
         ] {
-            xform_run(prof, fo, prof, fo,
-                &format!("f-{nm}"));
+            xform_run(prof, fo, prof, fo, &format!("f-{nm}"));
         }
         c::cmsFreeToneCurve(gamma);
         for pr in [p.gray, p.rgb, p.lab, p.xyz, p.cmyk]
-            .iter().chain(p.mch.iter()) {
+            .iter()
+            .chain(p.mch.iter())
+        {
             if !pr.is_null() {
-                c::cmsCloseProfile(*pr); }
+                c::cmsCloseProfile(*pr);
+            }
         }
     }
 }
@@ -5228,11 +5784,12 @@ fn float_lut_arms() {
     unsafe {
         let open = |n: &str| {
             let path = format!(
-                "{}/{}", env!("CARGO_MANIFEST_DIR")
-                    .replace("crates/lcms", ""), n);
+                "{}/{}",
+                env!("CARGO_MANIFEST_DIR").replace("crates/lcms", ""),
+                n
+            );
             let cs = std::ffi::CString::new(path).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let profiles = [
             ("srgb", open("sRGBlcms2.icc")),
@@ -5253,67 +5810,172 @@ fn float_lut_arms() {
             ("bright", open("brightness.icc")),
         ];
         for (nm, p) in &profiles {
-            eprintln!("{nm}: null={}", p.is_null()); }
+            eprintln!("{nm}: null={}", p.is_null());
+        }
         // format words: FLOAT|space|ch|bytes4
-        let f_flt = |pt: u32, ch: u32| -> u32 {
-            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
-        let f_16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f_flt = |pt: u32, ch: u32| -> u32 { (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let f_16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         // transform pairs — float+16 per intent
-        let pairs: Vec<(&str, *mut c_void, u32,
-                        &str, *mut c_void, u32)> = vec![
-            ("srgb", profiles[0].1, f_flt(4, 3),
-             "srgb", profiles[0].1, f_flt(4, 3)),
-            ("srgb", profiles[0].1, f_flt(4, 3),
-             "lab4", profiles[3].1, f_flt(10, 3)),
-            ("lab4", profiles[3].1, f_flt(10, 3),
-             "srgb", profiles[0].1, f_flt(4, 3)),
-            ("lab2", profiles[2].1, f_16(10, 3),
-             "srgb", profiles[0].1, f_16(4, 3)),
-            ("cmyk", profiles[4].1, f_flt(6, 4),
-             "lab4", profiles[3].1, f_flt(10, 3)),
-            ("lab4", profiles[3].1, f_flt(10, 3),
-             "cmyk", profiles[4].1, f_flt(6, 4)),
-            ("cmyk", profiles[4].1, f_16(6, 4),
-             "lab4", profiles[3].1, f_16(10, 3)),
-            ("link", profiles[5].1, f_flt(6, 4),
-             "link", profiles[5].1, f_flt(6, 4)),
-            ("limit", profiles[7].1, f_16(6, 4),
-             "limit", profiles[7].1, f_16(6, 4)),
-            ("gray3", profiles[10].1, f_flt(3, 1),
-             "xyz", profiles[13].1, f_flt(9, 3)),
-            ("xyz", profiles[13].1, f_flt(9, 3),
-             "gray3", profiles[10].1, f_flt(3, 1)),
-            ("nullg", profiles[9].1, f_flt(3, 1),
-             "lab4", profiles[3].1, f_flt(10, 3)),
-            ("gray", profiles[11].1, f_flt(3, 1),
-             "gray", profiles[11].1, f_flt(3, 1)),
-            ("glab", profiles[12].1, f_16(3, 1),
-             "lab4", profiles[3].1, f_16(10, 3)),
-            ("xyz", profiles[13].1, f_flt(9, 3),
-             "xyz", profiles[13].1, f_flt(9, 3)),
-            ("bchs", profiles[14].1, f_16(4, 3),
-             "srgb", profiles[0].1, f_16(4, 3)),
-            ("bright", profiles[15].1, f_16(4, 3),
-             "srgb", profiles[0].1, f_16(4, 3)),
+        let pairs: Vec<(&str, *mut c_void, u32, &str, *mut c_void, u32)> = vec![
+            (
+                "srgb",
+                profiles[0].1,
+                f_flt(4, 3),
+                "srgb",
+                profiles[0].1,
+                f_flt(4, 3),
+            ),
+            (
+                "srgb",
+                profiles[0].1,
+                f_flt(4, 3),
+                "lab4",
+                profiles[3].1,
+                f_flt(10, 3),
+            ),
+            (
+                "lab4",
+                profiles[3].1,
+                f_flt(10, 3),
+                "srgb",
+                profiles[0].1,
+                f_flt(4, 3),
+            ),
+            (
+                "lab2",
+                profiles[2].1,
+                f_16(10, 3),
+                "srgb",
+                profiles[0].1,
+                f_16(4, 3),
+            ),
+            (
+                "cmyk",
+                profiles[4].1,
+                f_flt(6, 4),
+                "lab4",
+                profiles[3].1,
+                f_flt(10, 3),
+            ),
+            (
+                "lab4",
+                profiles[3].1,
+                f_flt(10, 3),
+                "cmyk",
+                profiles[4].1,
+                f_flt(6, 4),
+            ),
+            (
+                "cmyk",
+                profiles[4].1,
+                f_16(6, 4),
+                "lab4",
+                profiles[3].1,
+                f_16(10, 3),
+            ),
+            (
+                "link",
+                profiles[5].1,
+                f_flt(6, 4),
+                "link",
+                profiles[5].1,
+                f_flt(6, 4),
+            ),
+            (
+                "limit",
+                profiles[7].1,
+                f_16(6, 4),
+                "limit",
+                profiles[7].1,
+                f_16(6, 4),
+            ),
+            (
+                "gray3",
+                profiles[10].1,
+                f_flt(3, 1),
+                "xyz",
+                profiles[13].1,
+                f_flt(9, 3),
+            ),
+            (
+                "xyz",
+                profiles[13].1,
+                f_flt(9, 3),
+                "gray3",
+                profiles[10].1,
+                f_flt(3, 1),
+            ),
+            (
+                "nullg",
+                profiles[9].1,
+                f_flt(3, 1),
+                "lab4",
+                profiles[3].1,
+                f_flt(10, 3),
+            ),
+            (
+                "gray",
+                profiles[11].1,
+                f_flt(3, 1),
+                "gray",
+                profiles[11].1,
+                f_flt(3, 1),
+            ),
+            (
+                "glab",
+                profiles[12].1,
+                f_16(3, 1),
+                "lab4",
+                profiles[3].1,
+                f_16(10, 3),
+            ),
+            (
+                "xyz",
+                profiles[13].1,
+                f_flt(9, 3),
+                "xyz",
+                profiles[13].1,
+                f_flt(9, 3),
+            ),
+            (
+                "bchs",
+                profiles[14].1,
+                f_16(4, 3),
+                "srgb",
+                profiles[0].1,
+                f_16(4, 3),
+            ),
+            (
+                "bright",
+                profiles[15].1,
+                f_16(4, 3),
+                "srgb",
+                profiles[0].1,
+                f_16(4, 3),
+            ),
         ];
         for (inm, ip, fi, onm, op, fo) in &pairs {
             if ip.is_null() || op.is_null() {
                 eprintln!("{inm}->{onm}: null prof");
-                continue; }
+                continue;
+            }
             for intent in 0u32..4 {
-                let t = c::cmsCreateTransform(
-                    *ip, *fi, *op, *fo, intent, 0);
+                let t = c::cmsCreateTransform(*ip, *fi, *op, *fo, intent, 0);
                 if t.is_null() {
                     eprintln!("{inm}->{onm} i{intent}: REJ");
-                    continue; }
+                    continue;
+                }
                 let ib = [0.5f32; 64];
                 let mut ob = [0f32; 64];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 2);
+                    ob.as_mut_ptr() as *mut c_void,
+                    2,
+                );
                 c::cmsDeleteTransform(t);
-                eprintln!("{inm}->{onm} i{intent}: ok"); }
+                eprintln!("{inm}->{onm} i{intent}: ok");
+            }
         }
         // multiprofile chains — float LUT readers on middle
         for combo in [
@@ -5321,36 +5983,58 @@ fn float_lut_arms() {
             ["cmyk", "lab4", "srgb"],
             ["gray3", "srgb", "cmyk"],
         ] {
-            let mut chain: Vec<*mut c_void> = combo.iter()
-                .map(|n| profiles.iter()
-                    .find(|t| t.0 == *n)
-                    .map(|t| t.1)
-                    .unwrap_or(std::ptr::null_mut()))
+            let mut chain: Vec<*mut c_void> = combo
+                .iter()
+                .map(|n| {
+                    profiles
+                        .iter()
+                        .find(|t| t.0 == *n)
+                        .map(|t| t.1)
+                        .unwrap_or(std::ptr::null_mut())
+                })
                 .collect();
             if chain.iter().any(|p| p.is_null()) {
-                continue; }
+                continue;
+            }
             let f_in = if combo[0] == "cmyk" {
-                f_flt(6, 4) } else if combo[0] == "gray3" {
-                f_flt(3, 1) } else { f_flt(4, 3) };
+                f_flt(6, 4)
+            } else if combo[0] == "gray3" {
+                f_flt(3, 1)
+            } else {
+                f_flt(4, 3)
+            };
             let f_out = if combo[2] == "cmyk" {
-                f_flt(6, 4) } else if combo[2] == "lab4" {
-                f_flt(10, 3) } else { f_flt(4, 3) };
-            let t = c::cmsCreateMultiprofileTransform(
-                chain.as_mut_ptr(), 3, f_in, f_out, 0, 0);
-            eprintln!("chain {}->{}->{}: {}",
-                combo[0], combo[1], combo[2],
-                !t.is_null());
+                f_flt(6, 4)
+            } else if combo[2] == "lab4" {
+                f_flt(10, 3)
+            } else {
+                f_flt(4, 3)
+            };
+            let t = c::cmsCreateMultiprofileTransform(chain.as_mut_ptr(), 3, f_in, f_out, 0, 0);
+            eprintln!(
+                "chain {}->{}->{}: {}",
+                combo[0],
+                combo[1],
+                combo[2],
+                !t.is_null()
+            );
             if !t.is_null() {
                 let ib = [0.5f32; 64];
                 let mut ob = [0f32; 64];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 2);
-                c::cmsDeleteTransform(t); }
+                    ob.as_mut_ptr() as *mut c_void,
+                    2,
+                );
+                c::cmsDeleteTransform(t);
+            }
         }
         for (_, p) in &profiles {
             if !p.is_null() {
-                c::cmsCloseProfile(*p); } }
+                c::cmsCloseProfile(*p);
+            }
+        }
     }
 }
 
@@ -5361,20 +6045,16 @@ fn float_lut_arms() {
 fn preserve_k_arms() {
     unsafe {
         let open = |n: &str| {
-            let path = concat!(
-                env!("CARGO_MANIFEST_DIR"), "/../../", "\0");
-            let p = format!("{}{}", &path[..path.len()-1], n);
+            let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../", "\0");
+            let p = format!("{}{}", &path[..path.len() - 1], n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(),
-                b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let cmyk = open("lcms2cmyk.icc");
         let link = open("lcms2link.icc");
         let srgb = open("sRGBlcms2.icc");
         let lab4 = open("labv4lcms2.icc");
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         // CMYK -> Lab and Lab -> CMYK at intents 0-15
         for (nm, i, fi, o, fo) in [
             ("cmyk", cmyk, f16(6, 4), lab4, f16(10, 3)),
@@ -5385,40 +6065,49 @@ fn preserve_k_arms() {
             ("cmyk", cmyk, f16(6, 4), cmyk, f16(6, 4)),
         ] {
             if i.is_null() || o.is_null() {
-                eprintln!("{nm}: null prof"); continue; }
+                eprintln!("{nm}: null prof");
+                continue;
+            }
             for intent in 0u32..16 {
-                let t = c::cmsCreateTransform(
-                    i, fi, o, fo, intent, 0);
+                let t = c::cmsCreateTransform(i, fi, o, fo, intent, 0);
                 if t.is_null() {
                     eprintln!("{nm} i{intent}: REJ");
-                    continue; }
+                    continue;
+                }
                 let ib = [0x4000u16; 32];
                 let mut ob = [0u16; 32];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 4);
+                    ob.as_mut_ptr() as *mut c_void,
+                    4,
+                );
                 c::cmsDeleteTransform(t);
-                eprintln!("{nm} i{intent}: ok"); }
+                eprintln!("{nm} i{intent}: ok");
+            }
         }
         // proofing transforms — proof chain intents too
         for intent in 10u32..16 {
-            let t = c::cmsCreateProofingTransform(
-                cmyk, f16(6, 4),
-                srgb, f16(4, 3),
-                cmyk, intent, 0, 0);
-            eprintln!("proof i{intent}: {}",
-                !t.is_null());
+            let t =
+                c::cmsCreateProofingTransform(cmyk, f16(6, 4), srgb, f16(4, 3), cmyk, intent, 0, 0);
+            eprintln!("proof i{intent}: {}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x4000u16; 32];
                 let mut ob = [0u16; 32];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 4);
-                c::cmsDeleteTransform(t); }
+                    ob.as_mut_ptr() as *mut c_void,
+                    4,
+                );
+                c::cmsDeleteTransform(t);
+            }
         }
         for p in [cmyk, link, srgb, lab4] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -5430,113 +6119,169 @@ fn preserve_k_arms() {
 fn lab_xyz_chain_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!(
-                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(),
-                b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let get = |n: &str| open(n);
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
-        let f_flt = |pt: u32, ch: u32| -> u32 {
-            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
+        let f_flt = |pt: u32, ch: u32| -> u32 { (1 << 22) | (pt << 16) | (ch << 3) | 4 };
         let prof = |n: &str| get(n);
         // chains through abst Lab/XYZ -> Lab2XYZ/XYZ2Lab
         //   stages get inserted by DefaultICCintents
         let chains: Vec<(&str, Vec<&str>, u32, u32)> = vec![
-            ("srgb>labv4>cmyk",
-                vec!["sRGBlcms2.icc", "labv4lcms2.icc",
-                     "lcms2cmyk.icc"],
-                f16(4, 3), f16(6, 4)),
-            ("cmyk>labv4>srgb",
-                vec!["lcms2cmyk.icc", "labv4lcms2.icc",
-                     "sRGBlcms2.icc"],
-                f16(6, 4), f16(4, 3)),
-            ("srgb>xyz>srgb",
-                vec!["sRGBlcms2.icc", "xyzlcms2.icc",
-                     "sRGBlcms2.icc"],
-                f16(4, 3), f16(4, 3)),
-            ("srgb>labv2>cmyk",
-                vec!["sRGBlcms2.icc", "labv2lcms2.icc",
-                     "lcms2cmyk.icc"],
-                f16(4, 3), f16(6, 4)),
-            ("lab4>labv4>lab4",
-                vec!["labv4lcms2.icc", "labv4lcms2.icc",
-                     "labv4lcms2.icc"],
-                f16(10, 3), f16(10, 3)),
-            ("srgb>labv4>srgb-flt",
-                vec!["sRGBlcms2.icc", "labv4lcms2.icc",
-                     "sRGBlcms2.icc"],
-                f_flt(4, 3), f_flt(4, 3)),
-            ("cmyk>xyz>cmyk",
-                vec!["lcms2cmyk.icc", "xyzlcms2.icc",
-                     "lcms2cmyk.icc"],
-                f16(6, 4), f16(6, 4)),
+            (
+                "srgb>labv4>cmyk",
+                vec!["sRGBlcms2.icc", "labv4lcms2.icc", "lcms2cmyk.icc"],
+                f16(4, 3),
+                f16(6, 4),
+            ),
+            (
+                "cmyk>labv4>srgb",
+                vec!["lcms2cmyk.icc", "labv4lcms2.icc", "sRGBlcms2.icc"],
+                f16(6, 4),
+                f16(4, 3),
+            ),
+            (
+                "srgb>xyz>srgb",
+                vec!["sRGBlcms2.icc", "xyzlcms2.icc", "sRGBlcms2.icc"],
+                f16(4, 3),
+                f16(4, 3),
+            ),
+            (
+                "srgb>labv2>cmyk",
+                vec!["sRGBlcms2.icc", "labv2lcms2.icc", "lcms2cmyk.icc"],
+                f16(4, 3),
+                f16(6, 4),
+            ),
+            (
+                "lab4>labv4>lab4",
+                vec!["labv4lcms2.icc", "labv4lcms2.icc", "labv4lcms2.icc"],
+                f16(10, 3),
+                f16(10, 3),
+            ),
+            (
+                "srgb>labv4>srgb-flt",
+                vec!["sRGBlcms2.icc", "labv4lcms2.icc", "sRGBlcms2.icc"],
+                f_flt(4, 3),
+                f_flt(4, 3),
+            ),
+            (
+                "cmyk>xyz>cmyk",
+                vec!["lcms2cmyk.icc", "xyzlcms2.icc", "lcms2cmyk.icc"],
+                f16(6, 4),
+                f16(6, 4),
+            ),
         ];
         for (nm, chain_names, fi, fo) in &chains {
-            let mut chain: Vec<*mut c_void> =
-                chain_names.iter()
-                    .map(|n| prof(n)).collect();
+            let mut chain: Vec<*mut c_void> = chain_names.iter().map(|n| prof(n)).collect();
             if chain.iter().any(|p| p.is_null()) {
                 eprintln!("{nm}: null in chain");
                 for p in &chain {
                     if !p.is_null() {
-                        c::cmsCloseProfile(*p); } }
-                continue; }
+                        c::cmsCloseProfile(*p);
+                    }
+                }
+                continue;
+            }
             for intent in 0u32..4 {
                 let t = c::cmsCreateMultiprofileTransform(
                     chain.as_mut_ptr(),
                     chain.len() as i32,
-                    *fi, *fo, intent, 0);
+                    *fi,
+                    *fo,
+                    intent,
+                    0,
+                );
                 if t.is_null() {
                     eprintln!("{nm} i{intent}: REJ");
-                    continue; }
+                    continue;
+                }
                 let ib = [0x4000u16; 32];
                 let mut ob = [0u16; 32];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 4);
+                    ob.as_mut_ptr() as *mut c_void,
+                    4,
+                );
                 c::cmsDeleteTransform(t);
-                eprintln!("{nm} i{intent}: ok"); }
+                eprintln!("{nm} i{intent}: ok");
+            }
             for p in &chain {
-                c::cmsCloseProfile(*p); }
+                c::cmsCloseProfile(*p);
+            }
         }
         // optimizer paths — flags that enable optimizers
         // (no cmsFLAGS_NOOPTIMIZE) on odd profiles
         let odd_pairs: Vec<(&str, &str, &str, u32, u32)> = vec![
-            ("bchs->srgb opt", "bchslcms2.icc",
-             "sRGBlcms2.icc", f16(4, 3), f16(4, 3)),
-            ("bright->srgb", "brightness.icc",
-             "sRGBlcms2.icc", f16(4, 3), f16(4, 3)),
-            ("nullg->lab", "nullcms2.icc",
-             "labv4lcms2.icc", f16(3, 1), f16(10, 3)),
-            ("gray3->xyz", "gray3lcms2.icc",
-             "xyzlcms2.icc", f16(3, 1), f16(9, 3)),
-            ("link->link", "lcms2link.icc",
-             "lcms2link2.icc", f16(6, 4), f16(6, 4)),
-            ("limit->lin", "limitlcms2.icc",
-             "linlcms2.icc", f16(6, 4), f16(6, 4)),
+            (
+                "bchs->srgb opt",
+                "bchslcms2.icc",
+                "sRGBlcms2.icc",
+                f16(4, 3),
+                f16(4, 3),
+            ),
+            (
+                "bright->srgb",
+                "brightness.icc",
+                "sRGBlcms2.icc",
+                f16(4, 3),
+                f16(4, 3),
+            ),
+            (
+                "nullg->lab",
+                "nullcms2.icc",
+                "labv4lcms2.icc",
+                f16(3, 1),
+                f16(10, 3),
+            ),
+            (
+                "gray3->xyz",
+                "gray3lcms2.icc",
+                "xyzlcms2.icc",
+                f16(3, 1),
+                f16(9, 3),
+            ),
+            (
+                "link->link",
+                "lcms2link.icc",
+                "lcms2link2.icc",
+                f16(6, 4),
+                f16(6, 4),
+            ),
+            (
+                "limit->lin",
+                "limitlcms2.icc",
+                "linlcms2.icc",
+                f16(6, 4),
+                f16(6, 4),
+            ),
         ];
         for (nm, inp, outp, fi, fo) in &odd_pairs {
             let i = prof(inp);
             let o = prof(outp);
             if i.is_null() || o.is_null() {
-                eprintln!("{nm}: null"); continue; }
+                eprintln!("{nm}: null");
+                continue;
+            }
             for flags in [0u32, 0x4000, 0x8000, 0x10000] {
                 // 0x4000=FORCE_CLUT? 0x8000=NOOPT?
                 // sweep raw flag bits to hit optimizer arms
-                let t = c::cmsCreateTransform(
-                    i, *fi, o, *fo, 0, flags);
+                let t = c::cmsCreateTransform(i, *fi, o, *fo, 0, flags);
                 if t.is_null() {
-                    continue; }
+                    continue;
+                }
                 let ib = [0x4000u16; 32];
                 let mut ob = [0u16; 32];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 4);
-                c::cmsDeleteTransform(t); }
+                    ob.as_mut_ptr() as *mut c_void,
+                    4,
+                );
+                c::cmsDeleteTransform(t);
+            }
             eprintln!("{nm}: done");
             c::cmsCloseProfile(i);
             c::cmsCloseProfile(o);
@@ -5555,39 +6300,41 @@ fn lab_xyz_chain_arms() {
 fn opt_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!(
-                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(),
-                b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
         let gray = open("gray3lcms2.icc");
         let lab4 = open("labv4lcms2.icc");
-        let f = |pt: u32, ch: u32, b: u32| -> u32 {
-            (pt << 16) | (ch << 3) | b };
-        let FC = 0x0002u32;   // FORCE_CLUT
-        let NOW = 0x0004u32;  // NOWHITEONWHITEFIXUP
-        let NOO = 0x0100u32;  // NOOPTIMIZE
-        let sweep = |nm: &str, i: *mut c_void, fi: u32,
-                     o: *mut c_void, fo: u32| {
+        let f = |pt: u32, ch: u32, b: u32| -> u32 { (pt << 16) | (ch << 3) | b };
+        let FC = 0x0002u32; // FORCE_CLUT
+        let NOW = 0x0004u32; // NOWHITEONWHITEFIXUP
+        let NOO = 0x0100u32; // NOOPTIMIZE
+        let sweep = |nm: &str, i: *mut c_void, fi: u32, o: *mut c_void, fo: u32| {
             if i.is_null() || o.is_null() {
-                eprintln!("{nm}: null"); return; }
+                eprintln!("{nm}: null");
+                return;
+            }
             for intent in 0u32..4 {
                 for flags in [0u32, FC, NOW, NOO, FC | NOW] {
-                    let t = c::cmsCreateTransform(
-                        i, fi, o, fo, intent, flags);
+                    let t = c::cmsCreateTransform(i, fi, o, fo, intent, flags);
                     if t.is_null() {
                         eprintln!("{nm} i{intent} fl={flags:#x}: REJ");
-                        continue; }
+                        continue;
+                    }
                     let ib = [0x4000u16; 32];
                     let mut ob = [0u16; 32];
-                    c::cmsDoTransform(t,
+                    c::cmsDoTransform(
+                        t,
                         ib.as_ptr() as *const c_void,
-                        ob.as_mut_ptr() as *mut c_void, 4);
-                    c::cmsDeleteTransform(t); } }
+                        ob.as_mut_ptr() as *mut c_void,
+                        4,
+                    );
+                    c::cmsDeleteTransform(t);
+                }
+            }
             eprintln!("{nm}: swept");
         };
         // RGB-input transforms -> OptimizeByComputingLinearization
@@ -5609,19 +6356,25 @@ fn opt_arms() {
         sweep("gray->gray-8", gray, f(3, 1, 1), gray, f(3, 1, 1));
         // ABSOLUTE intent on RGB -> NOWHITEONWHITEFIXUP arm
         for intent in [3u32, 1] {
-            let t = c::cmsCreateTransform(srgb,
-                f(4, 3, 2), cmyk, f(6, 4, 2), intent, 0);
+            let t = c::cmsCreateTransform(srgb, f(4, 3, 2), cmyk, f(6, 4, 2), intent, 0);
             eprintln!("abs i{intent}: {}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x4000u16; 32];
                 let mut ob = [0u16; 32];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 4);
-                c::cmsDeleteTransform(t); } }
+                    ob.as_mut_ptr() as *mut c_void,
+                    4,
+                );
+                c::cmsDeleteTransform(t);
+            }
+        }
         for p in [srgb, cmyk, gray, lab4] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -5634,87 +6387,134 @@ fn opt_arms() {
 fn blackpoint_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!(
-                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(),
-                b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         #[repr(C)]
-        struct Xyz { x: f64, y: f64, z: f64 }
-        for nm in ["sRGBlcms2.icc", "aRGBlcms2.icc",
-                   "lcms2cmyk.icc", "lcms2link.icc",
-                   "limitlcms2.icc", "linlcms2.icc",
-                   "gray3lcms2.icc", "nullcms2.icc",
-                   "glablcms2.icc", "xyzlcms2.icc",
-                   "labv2lcms2.icc", "labv4lcms2.icc",
-                   "bchslcms2.icc", "brightness.icc",
-                   "graylcms2.icc"] {
+        struct Xyz {
+            x: f64,
+            y: f64,
+            z: f64,
+        }
+        for nm in [
+            "sRGBlcms2.icc",
+            "aRGBlcms2.icc",
+            "lcms2cmyk.icc",
+            "lcms2link.icc",
+            "limitlcms2.icc",
+            "linlcms2.icc",
+            "gray3lcms2.icc",
+            "nullcms2.icc",
+            "glablcms2.icc",
+            "xyzlcms2.icc",
+            "labv2lcms2.icc",
+            "labv4lcms2.icc",
+            "bchslcms2.icc",
+            "brightness.icc",
+            "graylcms2.icc",
+        ] {
             let p = open(nm);
             if p.is_null() {
-                eprintln!("{nm}: null"); continue; }
+                eprintln!("{nm}: null");
+                continue;
+            }
             for intent in 0u32..4 {
                 for flags in [0u32, 0x0040, 0x0008] {
                     // 0x0040 = cmsFlagsBlackPreserving?
                     // sweep raw bits
-                    let mut bp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
-                    let r = c::cmsDetectBlackPoint(
-                        &mut bp as *mut _ as *mut c_void,
-                        p, intent, flags);
-                    let mut bp2 = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                    let mut bp = Xyz {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    };
+                    let r =
+                        c::cmsDetectBlackPoint(&mut bp as *mut _ as *mut c_void, p, intent, flags);
+                    let mut bp2 = Xyz {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    };
                     let r2 = c::cmsDetectDestinationBlackPoint(
                         &mut bp2 as *mut _ as *mut c_void,
-                        p, intent, flags);
+                        p,
+                        intent,
+                        flags,
+                    );
                     if intent == 0 && flags == 0 {
                         let tac = c::cmsDetectTAC(p);
                         eprintln!(
                             "{nm}: bp={r}({:.3},{:.3},{:.3}) dbp={r2} tac={tac:.1}",
-                            bp.x, bp.y, bp.z); } } }
-            c::cmsCloseProfile(p); }
+                            bp.x, bp.y, bp.z
+                        );
+                    }
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
         // DesaturateLab + GBD point checks
         #[repr(C)]
-        struct Lab { l: f64, a: f64, b: f64 }
-        let mut lab = Lab { l: 50.0, a: 80.0, b: -90.0 };
-        let ds = c::cmsDesaturateLab(
-            &mut lab as *mut _ as *mut c_void,
-            50.0, -50.0, 50.0, -50.0);
-        eprintln!("desat={ds} -> L{} a{} b{}",
-            lab.l, lab.a, lab.b);
+        struct Lab {
+            l: f64,
+            a: f64,
+            b: f64,
+        }
+        let mut lab = Lab {
+            l: 50.0,
+            a: 80.0,
+            b: -90.0,
+        };
+        let ds = c::cmsDesaturateLab(&mut lab as *mut _ as *mut c_void, 50.0, -50.0, 50.0, -50.0);
+        eprintln!("desat={ds} -> L{} a{} b{}", lab.l, lab.a, lab.b);
         let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
         eprintln!("gbd={}", !gbd.is_null());
         if !gbd.is_null() {
             for (l, a, b) in [
-                (0.0f64, 0.0, 0.0), (50.0, 50.0, 50.0),
-                (100.0, 0.0, 0.0), (50.0, -80.0, -80.0),
-                (25.0, 100.0, -100.0), (75.0, -60.0, 90.0),
+                (0.0f64, 0.0, 0.0),
+                (50.0, 50.0, 50.0),
+                (100.0, 0.0, 0.0),
+                (50.0, -80.0, -80.0),
+                (25.0, 100.0, -100.0),
+                (75.0, -60.0, 90.0),
             ] {
                 let pt = Lab { l, a, b };
-                let add = c::cmsGDBAddPoint(gbd,
-                    &pt as *const _ as *const c_void);
-                eprintln!("  add L{l}: {add}"); }
+                let add = c::cmsGDBAddPoint(gbd, &pt as *const _ as *const c_void);
+                eprintln!("  add L{l}: {add}");
+            }
             let cmp = c::cmsGDBCompute(gbd, 0);
             eprintln!("  compute={cmp}");
             for (l, a, b) in [
-                (50.0f64, 0.0, 0.0), (50.0, 90.0, 90.0),
-                (10.0, -20.0, 10.0), (95.0, 0.0, -5.0),
+                (50.0f64, 0.0, 0.0),
+                (50.0, 90.0, 90.0),
+                (10.0, -20.0, 10.0),
+                (95.0, 0.0, -5.0),
             ] {
                 let pt = Lab { l, a, b };
-                let chk = c::cmsGDBCheckPoint(gbd,
-                    &pt as *const _ as *const c_void);
-                eprintln!("  chk L{l}: {chk}"); }
-            c::cmsGBDFree(gbd); }
+                let chk = c::cmsGDBCheckPoint(gbd, &pt as *const _ as *const c_void);
+                eprintln!("  chk L{l}: {chk}");
+            }
+            c::cmsGBDFree(gbd);
+        }
         // IsCLUT per profile x intent x direction
-        for nm in ["lcms2cmyk.icc", "sRGBlcms2.icc",
-                   "lcms2link.icc", "labv4lcms2.icc",
-                   "nullcms2.icc"] {
+        for nm in [
+            "lcms2cmyk.icc",
+            "sRGBlcms2.icc",
+            "lcms2link.icc",
+            "labv4lcms2.icc",
+            "nullcms2.icc",
+        ] {
             let p = open(nm);
-            if p.is_null() { continue; }
+            if p.is_null() {
+                continue;
+            }
             for intent in 0u32..4 {
                 for dir in 0u32..2 {
                     let r = c::cmsIsCLUT(p, intent, dir);
-                    eprintln!("{nm} i{intent} d{dir}: {r}"); } }
-            c::cmsCloseProfile(p); }
+                    eprintln!("{nm} i{intent} d{dir}: {r}");
+                }
+            }
+            c::cmsCloseProfile(p);
+        }
     }
 }
 
@@ -5727,25 +6527,29 @@ fn blackpoint_arms() {
 fn cnvrt_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!(
-                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(),
-                b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         // check which profiles carry 'chad' (0x63686164)
-        for nm in ["sRGBlcms2.icc", "aRGBlcms2.icc",
-                   "lcms2cmyk.icc", "gray3lcms2.icc",
-                   "labv4lcms2.icc", "xyzlcms2.icc",
-                   "nullcms2.icc", "bchslcms2.icc"] {
+        for nm in [
+            "sRGBlcms2.icc",
+            "aRGBlcms2.icc",
+            "lcms2cmyk.icc",
+            "gray3lcms2.icc",
+            "labv4lcms2.icc",
+            "xyzlcms2.icc",
+            "nullcms2.icc",
+            "bchslcms2.icc",
+        ] {
             let p = open(nm);
             if !p.is_null() {
                 let chad = c::cmsReadTag(p, 0x63686164);
                 let wt = c::cmsReadTag(p, 0x77747074);
-                eprintln!("{nm}: chad={} wt={}",
-                    !chad.is_null(), !wt.is_null());
-                c::cmsCloseProfile(p); } }
+                eprintln!("{nm}: chad={} wt={}", !chad.is_null(), !wt.is_null());
+                c::cmsCloseProfile(p);
+            }
+        }
         let srgb = open("sRGBlcms2.icc");
         let argb = open("aRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
@@ -5753,8 +6557,7 @@ fn cnvrt_arms() {
         let lab4 = open("labv4lcms2.icc");
         let xyz = open("xyzlcms2.icc");
         let null = open("nullcms2.icc");
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         let BPC = 0x2000u32;
         // absolute intent (3) on all pairs — CHAD/white arms
         for (nm, i, fi, o, fo) in [
@@ -5769,27 +6572,32 @@ fn cnvrt_arms() {
             ("null", null, f16(3, 1), lab4, f16(10, 3)),
         ] {
             if i.is_null() || o.is_null() {
-                continue; }
+                continue;
+            }
             for flags in [0u32, BPC] {
-                let t = c::cmsCreateTransform(
-                    i, fi, o, fo, 3, flags);
-                eprintln!("abs3 {nm} fl={flags:#x}: {}",
-                    !t.is_null());
+                let t = c::cmsCreateTransform(i, fi, o, fo, 3, flags);
+                eprintln!("abs3 {nm} fl={flags:#x}: {}", !t.is_null());
                 if !t.is_null() {
                     let ib = [0x4000u16; 32];
                     let mut ob = [0u16; 32];
-                    c::cmsDoTransform(t,
+                    c::cmsDoTransform(
+                        t,
                         ib.as_ptr() as *const c_void,
-                        ob.as_mut_ptr() as *mut c_void, 4);
-                    c::cmsDeleteTransform(t); } }
+                        ob.as_mut_ptr() as *mut c_void,
+                        4,
+                    );
+                    c::cmsDeleteTransform(t);
+                }
+            }
         }
         // BPC on non-absolute intents — black-point pair arms
         for intent in [0u32, 1, 2] {
-            let t = c::cmsCreateTransform(srgb,
-                f16(4, 3), cmyk, f16(6, 4), intent, BPC);
+            let t = c::cmsCreateTransform(srgb, f16(4, 3), cmyk, f16(6, 4), intent, BPC);
             eprintln!("bpc i{intent}: {}", !t.is_null());
             if !t.is_null() {
-                c::cmsDeleteTransform(t); } }
+                c::cmsDeleteTransform(t);
+            }
+        }
         // multiprofile chains — IsEmptyLayer / ColorSpaceIsCompatible
         //   / AddConversion arms on odd combos
         let chains: Vec<(&str, Vec<*mut c_void>, u32, u32)> = vec![
@@ -5798,32 +6606,49 @@ fn cnvrt_arms() {
             ("dup", vec![srgb, srgb, srgb], f16(4, 3), f16(4, 3)),
             ("empty-mid", vec![srgb, lab4, srgb], f16(4, 3), f16(4, 3)),
             ("nul-mid", vec![srgb, null, cmyk], f16(4, 3), f16(6, 4)),
-            ("5ch", vec![srgb, lab4, cmyk, srgb, cmyk],
-                f16(4, 3), f16(6, 4)),
+            (
+                "5ch",
+                vec![srgb, lab4, cmyk, srgb, cmyk],
+                f16(4, 3),
+                f16(6, 4),
+            ),
             ("single", vec![srgb], f16(4, 3), f16(4, 3)),
             ("2ch", vec![srgb, cmyk], f16(4, 3), f16(6, 4)),
         ];
         for (nm, mut chain, fi, fo) in chains {
             if chain.iter().any(|p| p.is_null()) {
-                continue; }
+                continue;
+            }
             for intent in 0u32..4 {
                 for flags in [0u32, BPC] {
                     let t = c::cmsCreateMultiprofileTransform(
                         chain.as_mut_ptr(),
                         chain.len() as i32,
-                        fi, fo, intent, flags);
+                        fi,
+                        fo,
+                        intent,
+                        flags,
+                    );
                     if !t.is_null() {
                         let ib = [0x4000u16; 32];
                         let mut ob = [0u16; 32];
-                        c::cmsDoTransform(t,
+                        c::cmsDoTransform(
+                            t,
                             ib.as_ptr() as *const c_void,
-                            ob.as_mut_ptr() as *mut c_void, 4);
-                        c::cmsDeleteTransform(t); } } }
+                            ob.as_mut_ptr() as *mut c_void,
+                            4,
+                        );
+                        c::cmsDeleteTransform(t);
+                    }
+                }
+            }
             eprintln!("chain {nm}: swept");
         }
         for p in [srgb, argb, cmyk, gray, lab4, xyz, null] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -5835,70 +6660,80 @@ fn cnvrt_arms() {
 fn alpha_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!(
-                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(),
-                b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
         let gray = open("gray3lcms2.icc");
         let CA = 0x04000000u32; // COPY_ALPHA
-        let f = |pt: u32, ch: u32, ex: u32,
-                 b: u32, pl: u32| -> u32 {
-            (pt << 16) | (ex << 7) | (ch << 3) |
-            (pl << 12) | b };
+        let f = |pt: u32, ch: u32, ex: u32, b: u32, pl: u32| -> u32 {
+            (pt << 16) | (ex << 7) | (ch << 3) | (pl << 12) | b
+        };
         for (nm, i, fi, o, fo) in [
-            ("rgba-chunky", srgb, f(4, 3, 1, 1, 0),
-             srgb, f(4, 3, 1, 1, 0)),
-            ("rgba-16", srgb, f(4, 3, 1, 2, 0),
-             srgb, f(4, 3, 1, 2, 0)),
-            ("rgba-planar", srgb, f(4, 3, 1, 1, 1),
-             srgb, f(4, 3, 1, 1, 1)),
-            ("rgba-mixed", srgb, f(4, 3, 1, 1, 0),
-             srgb, f(4, 3, 0, 1, 0)),
-            ("rgbxx2", srgb, f(4, 3, 2, 1, 0),
-             srgb, f(4, 3, 2, 1, 0)),
-            ("rgbxx2-pl", srgb, f(4, 3, 2, 2, 1),
-             srgb, f(4, 3, 2, 2, 1)),
-            ("cmyka", cmyk, f(6, 4, 1, 1, 0),
-             cmyk, f(6, 4, 1, 1, 0)),
-            ("cmyka-pl", cmyk, f(6, 4, 1, 2, 1),
-             cmyk, f(6, 4, 1, 2, 1)),
-            ("graya", gray, f(3, 1, 1, 1, 0),
-             gray, f(3, 1, 1, 1, 0)),
-            ("graya-pl", gray, f(3, 1, 1, 2, 1),
-             gray, f(3, 1, 1, 2, 1)),
-            ("rgba->cmyk", srgb, f(4, 3, 1, 1, 0),
-             cmyk, f(6, 4, 0, 1, 0)),
-            ("cmyk->rgba", cmyk, f(6, 4, 0, 1, 0),
-             srgb, f(4, 3, 1, 1, 0)),
-            ("rgba->cmyka", srgb, f(4, 3, 1, 1, 0),
-             cmyk, f(6, 4, 1, 1, 0)),
+            (
+                "rgba-chunky",
+                srgb,
+                f(4, 3, 1, 1, 0),
+                srgb,
+                f(4, 3, 1, 1, 0),
+            ),
+            ("rgba-16", srgb, f(4, 3, 1, 2, 0), srgb, f(4, 3, 1, 2, 0)),
+            (
+                "rgba-planar",
+                srgb,
+                f(4, 3, 1, 1, 1),
+                srgb,
+                f(4, 3, 1, 1, 1),
+            ),
+            ("rgba-mixed", srgb, f(4, 3, 1, 1, 0), srgb, f(4, 3, 0, 1, 0)),
+            ("rgbxx2", srgb, f(4, 3, 2, 1, 0), srgb, f(4, 3, 2, 1, 0)),
+            ("rgbxx2-pl", srgb, f(4, 3, 2, 2, 1), srgb, f(4, 3, 2, 2, 1)),
+            ("cmyka", cmyk, f(6, 4, 1, 1, 0), cmyk, f(6, 4, 1, 1, 0)),
+            ("cmyka-pl", cmyk, f(6, 4, 1, 2, 1), cmyk, f(6, 4, 1, 2, 1)),
+            ("graya", gray, f(3, 1, 1, 1, 0), gray, f(3, 1, 1, 1, 0)),
+            ("graya-pl", gray, f(3, 1, 1, 2, 1), gray, f(3, 1, 1, 2, 1)),
+            ("rgba->cmyk", srgb, f(4, 3, 1, 1, 0), cmyk, f(6, 4, 0, 1, 0)),
+            ("cmyk->rgba", cmyk, f(6, 4, 0, 1, 0), srgb, f(4, 3, 1, 1, 0)),
+            (
+                "rgba->cmyka",
+                srgb,
+                f(4, 3, 1, 1, 0),
+                cmyk,
+                f(6, 4, 1, 1, 0),
+            ),
         ] {
             if i.is_null() || o.is_null() {
-                eprintln!("{nm}: null"); continue; }
+                eprintln!("{nm}: null");
+                continue;
+            }
             for flags in [0u32, CA] {
-                let t = c::cmsCreateTransform(
-                    i, fi, o, fo, 0, flags);
+                let t = c::cmsCreateTransform(i, fi, o, fo, 0, flags);
                 if t.is_null() {
                     eprintln!("{nm} fl={flags:#x}: REJ");
-                    continue; }
+                    continue;
+                }
                 // packed buffer with alpha
                 let ib = [0x80u8; 256];
                 let mut ob = [0u8; 256];
-                c::cmsDoTransform(t,
+                c::cmsDoTransform(
+                    t,
                     ib.as_ptr() as *const c_void,
-                    ob.as_mut_ptr() as *mut c_void, 8);
+                    ob.as_mut_ptr() as *mut c_void,
+                    8,
+                );
                 let a_in = ib[3];
                 let a_out = ob[3];
                 eprintln!("{nm} fl={flags:#x}: a {a_in}->{a_out}");
-                c::cmsDeleteTransform(t); } }
+                c::cmsDeleteTransform(t);
+            }
+        }
         for p in [srgb, cmyk, gray] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -5912,72 +6747,145 @@ fn wtpnt_arms() {
     unsafe {
         #[repr(C)]
         #[derive(Clone, Copy)]
-        struct Xyz { x: f64, y: f64, z: f64 }
+        struct Xyz {
+            x: f64,
+            y: f64,
+            z: f64,
+        }
         #[repr(C)]
         #[derive(Clone, Copy)]
-        struct Xyy { x: f64, y: f64, yy: f64 }
+        struct Xyy {
+            x: f64,
+            y: f64,
+            yy: f64,
+        }
         // WhitePointFromTemp across the range + edge temps
-        for t in [0.0f64, 1.0, 1000.0, 2000.0, 3000.0, 4000.0,
-                  5000.0, 6500.0, 6504.0, 10000.0, 15000.0,
-                  25000.0, 30000.0, 1e6, -1.0, f64::NAN,
-                  f64::INFINITY] {
-            let mut wp = Xyy { x: 0.0, y: 0.0, yy: 0.0 };
-            let r = c::cmsWhitePointFromTemp(
-                &mut wp as *mut _ as *mut _, t);
-            eprintln!("wpt {t}: {r} -> {:.4},{:.4}",
-                wp.x, wp.y);
+        for t in [
+            0.0f64,
+            1.0,
+            1000.0,
+            2000.0,
+            3000.0,
+            4000.0,
+            5000.0,
+            6500.0,
+            6504.0,
+            10000.0,
+            15000.0,
+            25000.0,
+            30000.0,
+            1e6,
+            -1.0,
+            f64::NAN,
+            f64::INFINITY,
+        ] {
+            let mut wp = Xyy {
+                x: 0.0,
+                y: 0.0,
+                yy: 0.0,
+            };
+            let r = c::cmsWhitePointFromTemp(&mut wp as *mut _ as *mut _, t);
+            eprintln!("wpt {t}: {r} -> {:.4},{:.4}", wp.x, wp.y);
             if r != 0 {
                 let mut t2 = 0.0f64;
-                let r2 = c::cmsTempFromWhitePoint(
-                    &mut t2,
-                    &wp as *const _ as *const _);
-                eprintln!("  back: {r2} {t2:.1}"); } }
+                let r2 = c::cmsTempFromWhitePoint(&mut t2, &wp as *const _ as *const _);
+                eprintln!("  back: {r2} {t2:.1}");
+            }
+        }
         // AdaptToIlluminant on illuminant pairs
-        let d50 = Xyz { x: 0.9642, y: 1.0, z: 0.8249 };
-        let d65 = Xyz { x: 0.9505, y: 1.0, z: 1.0890 };
-        let illum_a = Xyz { x: 1.0985, y: 1.0, z: 0.3558 };
-        let illum_e = Xyz { x: 1.0, y: 1.0, z: 1.0 };
-        let f2 = Xyz { x: 0.99187, y: 1.0, z: 0.67395 };
+        let d50 = Xyz {
+            x: 0.9642,
+            y: 1.0,
+            z: 0.8249,
+        };
+        let d65 = Xyz {
+            x: 0.9505,
+            y: 1.0,
+            z: 1.0890,
+        };
+        let illum_a = Xyz {
+            x: 1.0985,
+            y: 1.0,
+            z: 0.3558,
+        };
+        let illum_e = Xyz {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        };
+        let f2 = Xyz {
+            x: 0.99187,
+            y: 1.0,
+            z: 0.67395,
+        };
         let pairs: [(Xyz, Xyz, &str); 10] = [
-            (d50, d65, "d50->d65"), (d65, d50, "d65->d50"),
-            (d50, illum_a, "d50->A"), (illum_a, d50, "A->d50"),
-            (d50, illum_e, "d50->E"), (d50, f2, "d50->F2"),
-            (d65, illum_a, "d65->A"), (d50, d50, "d50->d50"),
+            (d50, d65, "d50->d65"),
+            (d65, d50, "d65->d50"),
+            (d50, illum_a, "d50->A"),
+            (illum_a, d50, "A->d50"),
+            (d50, illum_e, "d50->E"),
+            (d50, f2, "d50->F2"),
+            (d65, illum_a, "d65->A"),
+            (d50, d50, "d50->d50"),
             (illum_e, illum_e, "E->E"),
             (f2, illum_a, "F2->A"),
         ];
         for state in [0.0f64, 0.3, 0.7, 1.0, 1.5, -0.5] {
             let prev = c::cmsSetAdaptationState(state);
             for (w, ill, nm) in &pairs {
-                let src = Xyz { x: 0.5, y: 0.5, z: 0.5 };
-                let mut out = Xyz { x: 0.0, y: 0.0, z: 0.0 };
+                let src = Xyz {
+                    x: 0.5,
+                    y: 0.5,
+                    z: 0.5,
+                };
+                let mut out = Xyz {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                };
                 let r = c::cmsAdaptToIlluminant(
                     &mut out as *mut _ as *mut _,
                     w as *const _ as *const _,
                     ill as *const _ as *const _,
-                    &src as *const _ as *const _);
+                    &src as *const _ as *const _,
+                );
                 if *nm == "d50->d65" {
-                    eprintln!("adapt@{state} {nm}: {r} -> {:.4},{:.4},{:.4}",
-                        out.x, out.y, out.z); }
-                let _ = r; }
-            c::cmsSetAdaptationState(prev); }
+                    eprintln!(
+                        "adapt@{state} {nm}: {r} -> {:.4},{:.4},{:.4}",
+                        out.x, out.y, out.z
+                    );
+                }
+                let _ = r;
+            }
+            c::cmsSetAdaptationState(prev);
+        }
         // XYZ<->xyY round trips + zero-Y edge
         for (x, y, z) in [
-            (0.5f64, 0.5, 0.5), (0.9642, 1.0, 0.8249),
-            (0.0, 0.0, 0.0), (1.0, 0.0, 0.5),
-            (-0.1, 0.5, -0.1), (2.0, 1.5, 2.5),
+            (0.5f64, 0.5, 0.5),
+            (0.9642, 1.0, 0.8249),
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.5),
+            (-0.1, 0.5, -0.1),
+            (2.0, 1.5, 2.5),
         ] {
             let src = Xyz { x, y, z };
-            let mut xy = Xyy { x: 0.0, y: 0.0, yy: 0.0 };
-            c::cmsXYZ2xyY(
-                &mut xy as *mut _ as *mut _,
-                &src as *const _ as *const _);
-            let mut back = Xyz { x: 0.0, y: 0.0, z: 0.0 };
-            c::cmsxyY2XYZ(
-                &mut back as *mut _ as *mut _,
-                &xy as *const _ as *const _);
-            eprintln!("xyz ({x},{y},{z}) -> xyY ({:.4},{:.4},{:.4}) -> ({:.4},{:.4},{:.4})",
-                xy.x, xy.y, xy.yy, back.x, back.y, back.z); }
+            let mut xy = Xyy {
+                x: 0.0,
+                y: 0.0,
+                yy: 0.0,
+            };
+            c::cmsXYZ2xyY(&mut xy as *mut _ as *mut _, &src as *const _ as *const _);
+            let mut back = Xyz {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            };
+            c::cmsxyY2XYZ(&mut back as *mut _ as *mut _, &xy as *const _ as *const _);
+            eprintln!(
+                "xyz ({x},{y},{z}) -> xyY ({:.4},{:.4},{:.4}) -> ({:.4},{:.4},{:.4})",
+                xy.x, xy.y, xy.yy, back.x, back.y, back.z
+            );
+        }
         // D50 constants
         let d50x = c::cmsD50_XYZ();
         let d50y = c::cmsD50_xyY();
@@ -5992,86 +6900,89 @@ fn wtpnt_arms() {
 fn preview_dir_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!(
-                "{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(),
-                b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
         let lab4 = open("labv4lcms2.icc");
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
-        let ff = |pt: u32, ch: u32| -> u32 {
-            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
+        let ff = |pt: u32, ch: u32| -> u32 { (1 << 22) | (pt << 16) | (ch << 3) | 4 };
         // write D2B0/B2D0 preview tags into cmyk via dup of
         // its A2B0 pipeline, save, reopen, proof transforms
         let ab = c::cmsReadTag(cmyk, 0x41324230); // A2B0
         let dup_ok = if !ab.is_null() {
-            let wr1 = c::cmsWriteTag(cmyk, 0x44324230,
-                ab); // 'D2B0'
-            let wr2 = c::cmsWriteTag(cmyk, 0x42324430,
-                ab); // 'B2D0'
+            let wr1 = c::cmsWriteTag(cmyk, 0x44324230, ab); // 'D2B0'
+            let wr2 = c::cmsWriteTag(cmyk, 0x42324430, ab); // 'B2D0'
             eprintln!("write D2B0={wr1} B2D0={wr2}");
             wr1 != 0 && wr2 != 0
-        } else { false };
+        } else {
+            false
+        };
         let mut buf = [0u8; 1 << 18];
         let mut nn = buf.len() as u32;
         let sv = if dup_ok {
-            c::cmsSaveProfileToMem(cmyk,
-                buf.as_mut_ptr() as *mut _, &mut nn)
-        } else { 0 };
+            c::cmsSaveProfileToMem(cmyk, buf.as_mut_ptr() as *mut _, &mut nn)
+        } else {
+            0
+        };
         let pc = if sv != 0 {
-            c::cmsOpenProfileFromMem(
-                buf.as_ptr() as *const _, nn)
-        } else { std::ptr::null_mut() };
+            c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, nn)
+        } else {
+            std::ptr::null_mut()
+        };
         eprintln!("preview prof sv={sv} open={}", !pc.is_null());
         // proofing transform uses preview direction
         if !pc.is_null() {
             for intent in 0u32..4 {
                 let t = c::cmsCreateProofingTransform(
-                    srgb, f16(4, 3),
-                    srgb, f16(4, 3),
-                    pc, intent, 0, 0);
+                    srgb,
+                    f16(4, 3),
+                    srgb,
+                    f16(4, 3),
+                    pc,
+                    intent,
+                    0,
+                    0,
+                );
                 eprintln!("proof i{intent}: {}", !t.is_null());
                 if !t.is_null() {
                     let ib = [0x4000u16; 32];
                     let mut ob = [0u16; 32];
-                    c::cmsDoTransform(t,
-                        ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 4);
-                    c::cmsDeleteTransform(t); } }
-            c::cmsCloseProfile(pc); }
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+            c::cmsCloseProfile(pc);
+        }
         // output-side matrix shaper float: Lab->sRGB float
         for intent in 0u32..4 {
-            let t = c::cmsCreateTransform(
-                lab4, ff(10, 3), srgb, ff(4, 3), intent, 0);
+            let t = c::cmsCreateTransform(lab4, ff(10, 3), srgb, ff(4, 3), intent, 0);
             eprintln!("labf->srgbf i{intent}: {}", !t.is_null());
             if !t.is_null() {
                 let ib = [0.5f32; 16];
                 let mut ob = [0f32; 16];
-                c::cmsDoTransform(t,
-                    ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 4);
-                c::cmsDeleteTransform(t); } }
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
+                c::cmsDeleteTransform(t);
+            }
+        }
         // gamut-check with alarm codes
         let codes = [0x7f00u16; 16];
         c::cmsSetAlarmCodes(codes.as_ptr());
-        let t = c::cmsCreateTransform(cmyk, f16(6, 4),
-            srgb, f16(4, 3), 0, 0x1000);
+        let t = c::cmsCreateTransform(cmyk, f16(6, 4), srgb, f16(4, 3), 0, 0x1000);
         eprintln!("gc xform={}", !t.is_null());
         if !t.is_null() {
             let ib = [0xf000u16; 32];
             let mut ob = [0u16; 32];
-            c::cmsDoTransform(t,
-                ib.as_ptr() as *const _,
-                ob.as_mut_ptr() as *mut _, 4);
-            c::cmsDeleteTransform(t); }
+            c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
+            c::cmsDeleteTransform(t);
+        }
         for p in [srgb, cmyk, lab4] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6082,42 +6993,44 @@ fn preview_dir_arms() {
 fn fixcolorspaces_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let lab4 = open("labv4lcms2.icc");
         let xyz = open("xyzlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         // (in-prof, out-prof, in-fmt, out-fmt, name)
         for (a, b, fa, fb, nm) in [
             (lab4, lab4, f16(10, 3), f16(10, 3), "lab-lab"),
-            (lab4, xyz,  f16(10, 3), f16(9, 3),  "lab-xyz"),
-            (lab4, srgb, f16(10, 3), f16(4, 3),  "lab-rgb"),
-            (srgb, lab4, f16(4, 3),  f16(10, 3), "rgb-lab"),
-            (xyz, srgb,  f16(9, 3),  f16(4, 3),  "xyz-rgb"),
-            (srgb, srgb, f16(4, 3),  f16(4, 3),  "rgb-rgb"),
-            (srgb, cmyk, f16(4, 3),  f16(6, 4),  "rgb-cmyk"),
+            (lab4, xyz, f16(10, 3), f16(9, 3), "lab-xyz"),
+            (lab4, srgb, f16(10, 3), f16(4, 3), "lab-rgb"),
+            (srgb, lab4, f16(4, 3), f16(10, 3), "rgb-lab"),
+            (xyz, srgb, f16(9, 3), f16(4, 3), "xyz-rgb"),
+            (srgb, srgb, f16(4, 3), f16(4, 3), "rgb-rgb"),
+            (srgb, cmyk, f16(4, 3), f16(6, 4), "rgb-cmyk"),
         ] {
             let t = c::cmsCreateTransform(a, fa, b, fb, 0, 0);
             if t.is_null() {
-                eprintln!("{nm}: null xform"); continue; }
+                eprintln!("{nm}: null xform");
+                continue;
+            }
             for flags in [0x0020u32, 0] {
-                let dl = c::cmsTransform2DeviceLink(
-                    t, 4.4, flags);
-                eprintln!("{nm} f{flags:#x}: {}",
-                    !dl.is_null());
+                let dl = c::cmsTransform2DeviceLink(t, 4.4, flags);
+                eprintln!("{nm} f{flags:#x}: {}", !dl.is_null());
                 if !dl.is_null() {
-                    c::cmsCloseProfile(dl); } }
-            c::cmsDeleteTransform(t); }
+                    c::cmsCloseProfile(dl);
+                }
+            }
+            c::cmsDeleteTransform(t);
+        }
         for p in [srgb, lab4, xyz, cmyk] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6129,18 +7042,15 @@ fn fixcolorspaces_arms() {
 fn float_read_tails() {
     unsafe {
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let lab4 = open("labv4lcms2.icc");
         let xyz = open("xyzlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
-        let ff = |pt: u32, ch: u32| -> u32 {
-            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let ff = |pt: u32, ch: u32| -> u32 { (1 << 22) | (pt << 16) | (ch << 3) | 4 };
         // abst profiles (Lab/XYZ colorspace) + float fmt ->
         //   NormalizeTo/From{Lab,Xyz}Float stage inserts
         for (a, b, fa, fb, nm) in [
@@ -6153,42 +7063,42 @@ fn float_read_tails() {
             (lab4, cmyk, ff(10, 3), ff(6, 4), "lab>cmyk"),
         ] {
             for int in 0..4u32 {
-                let t = c::cmsCreateTransform(a, fa,
-                    b, fb, int, 0);
-                eprintln!("{nm} i{int}: {}",
-                    !t.is_null());
+                let t = c::cmsCreateTransform(a, fa, b, fb, int, 0);
+                eprintln!("{nm} i{int}: {}", !t.is_null());
                 if !t.is_null() {
                     let ib = [0.5f32; 8];
                     let mut ob = [0.0f32; 8];
-                    c::cmsDoTransform(t,
-                        ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
-                    c::cmsDeleteTransform(t); } } }
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
         // named-color class + no ncl2 -> nc==NULL arm
-        let nm = c::cmsCreateProfilePlaceholder(
-            std::ptr::null_mut());
+        let nm = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(nm, 0x6E6D636C);
         c::cmsSetColorSpace(nm, 0x31434C52);
         c::cmsSetPCS(nm, 0x4C616220);
         c::cmsSetProfileVersion(nm, 4.4);
-        let t = c::cmsCreateTransform(nm,
-            ff(0x31434C52, 1), srgb, ff(4, 3), 0, 0);
+        let t = c::cmsCreateTransform(nm, ff(0x31434C52, 1), srgb, ff(4, 3), 0, 0);
         eprintln!("nmcl-nofncl2: {}", !t.is_null());
         if !t.is_null() {
-            c::cmsDeleteTransform(t); }
+            c::cmsDeleteTransform(t);
+        }
         c::cmsCloseProfile(nm);
         // perceptual-fallback: intent>ABST, no float tag ->
         //   falls back to u16 tag read
         for int in 0..6u32 {
-            let t = c::cmsCreateTransform(srgb,
-                ff(4, 3), cmyk, ff(6, 4), int, 0);
-            eprintln!("srgb>cmyk f i{int}: {}",
-                !t.is_null());
+            let t = c::cmsCreateTransform(srgb, ff(4, 3), cmyk, ff(6, 4), int, 0);
+            eprintln!("srgb>cmyk f i{int}: {}", !t.is_null());
             if !t.is_null() {
-                c::cmsDeleteTransform(t); } }
+                c::cmsDeleteTransform(t);
+            }
+        }
         for p in [srgb, lab4, xyz, cmyk] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6200,21 +7110,17 @@ fn float_read_tails() {
 fn xform_tails() {
     unsafe {
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
         let gray = open("graylcms2.icc");
         let lab4 = open("labv4lcms2.icc");
         let null5 = open("nullcms2.icc");
-        let ff = |pt: u32, ch: u32| -> u32 {
-            (1 << 22) | (pt << 16) | (ch << 3) | 4 };
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let ff = |pt: u32, ch: u32| -> u32 { (1 << 22) | (pt << 16) | (ch << 3) | 4 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         // FloatXFORM per channel-count pair
         for (a, b, fa, fb, nm) in [
             (gray, srgb, ff(3, 1), ff(4, 3), "gray>rgb"),
@@ -6224,55 +7130,59 @@ fn xform_tails() {
             (srgb, lab4, ff(4, 3), ff(10, 3), "rgb>lab"),
             (null5, srgb, ff(0x35434C, 5), ff(4, 3), "5cl>rgb"),
         ] {
-            let t = c::cmsCreateTransform(a, fa,
-                b, fb, 0, 0);
+            let t = c::cmsCreateTransform(a, fa, b, fb, 0, 0);
             eprintln!("{nm} f: {}", !t.is_null());
             if !t.is_null() {
                 let ib = [0.5f32; 8];
                 let mut ob = [0.0f32; 8];
-                c::cmsDoTransform(t,
-                    ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
-                c::cmsDeleteTransform(t); } }
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        }
         // TransformOnePixelWithGamutCheck: proof + GAMUTCHECK
-        for (proof, nm) in [(cmyk, "cmyk-proof"),
-                            (gray, "gray-proof")] {
+        for (proof, nm) in [(cmyk, "cmyk-proof"), (gray, "gray-proof")] {
             let t = c::cmsCreateProofingTransform(
-                srgb, f16(4, 3), srgb, f16(4, 3),
-                proof, 0, 0, 0x1000 /*GAMUTCHECK*/);
+                srgb,
+                f16(4, 3),
+                srgb,
+                f16(4, 3),
+                proof,
+                0,
+                0,
+                0x1000, /*GAMUTCHECK*/
+            );
             eprintln!("{nm} gc: {}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x8000u16; 8];
                 let mut ob = [0u16; 8];
-                c::cmsDoTransform(t,
-                    ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 // multi-pixel for the parallel arm
                 let ib2 = [0x8000u16; 16];
                 let mut ob2 = [0u16; 16];
-                c::cmsDoTransform(t,
-                    ib2.as_ptr() as *const _,
-                    ob2.as_mut_ptr() as *mut _, 2);
-                c::cmsDeleteTransform(t); } }
+                c::cmsDoTransform(t, ib2.as_ptr() as *const _, ob2.as_mut_ptr() as *mut _, 2);
+                c::cmsDeleteTransform(t);
+            }
+        }
         // ParalellizeIfSuitable: multi-pixel on float + 16bit
         for (fa, nm) in [
             (ff(4, 3), "f32"),
             (f16(4, 3), "f16"),
             ((4 << 16) | (3 << 3) | 1, "u8"),
         ] {
-            let t = c::cmsCreateTransform(srgb, fa,
-                cmyk, f16(6, 4), 0, 0);
+            let t = c::cmsCreateTransform(srgb, fa, cmyk, f16(6, 4), 0, 0);
             if !t.is_null() {
                 let ib = [0x8000u16; 64];
                 let mut ob = [0u16; 96];
-                c::cmsDoTransform(t,
-                    ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 8);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 8);
                 eprintln!("{nm} px8: ok");
-                c::cmsDeleteTransform(t); } }
+                c::cmsDeleteTransform(t);
+            }
+        }
         for p in [srgb, cmyk, gray, lab4, null5] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6283,11 +7193,9 @@ fn xform_tails() {
 fn ncl2dl_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
@@ -6295,55 +7203,58 @@ fn ncl2dl_arms() {
         let lab4 = open("labv4lcms2.icc");
         // named-color input profile: nmcl class + 1CLR +
         //   ncl2 tag
-        let np = c::cmsCreateProfilePlaceholder(
-            std::ptr::null_mut());
+        let np = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(np, 0x6E6D636C);
         c::cmsSetColorSpace(np, 0x31434C52);
         c::cmsSetPCS(np, 0x4C616220);
         c::cmsSetProfileVersion(np, 4.4);
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 4, 3,
-            b"pre\0".as_ptr(), b"suf\0".as_ptr());
+            std::ptr::null_mut(),
+            4,
+            3,
+            b"pre\0".as_ptr(),
+            b"suf\0".as_ptr(),
+        );
         for i in 0..4u32 {
             let nm = format!("col{i}\0");
             let mut root = [0u8; 32];
-            root[..nm.len()-1].copy_from_slice(
-                &nm.as_bytes()[..nm.len()-1]);
+            root[..nm.len() - 1].copy_from_slice(&nm.as_bytes()[..nm.len() - 1]);
             let pcs = [0x4000u16 + i as u16 * 100; 3];
             let dev = [0u16; 16];
-            c::cmsAppendNamedColor(ncl,
-                root.as_ptr() as *const _,
-                pcs.as_ptr(), dev.as_ptr()); }
+            c::cmsAppendNamedColor(ncl, root.as_ptr() as *const _, pcs.as_ptr(), dev.as_ptr());
+        }
         c::cmsWriteTag(np, 0x6E636C32, ncl as *const _);
         // named-color index fmt: ch1, no colorspace field
         let ncix = (1 << 3) | 2;
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         for (o, fb, nm) in [
             (srgb, f16(4, 3), "rgb"),
             (cmyk, f16(6, 4), "cmyk"),
             (gray, f16(3, 1), "gray"),
             (lab4, f16(10, 3), "lab"),
         ] {
-            let t = c::cmsCreateTransform(np, ncix,
-                o, fb, 0, 0);
+            let t = c::cmsCreateTransform(np, ncix, o, fb, 0, 0);
             if t.is_null() {
-                eprintln!("{nm}: null xform"); continue; }
+                eprintln!("{nm}: null xform");
+                continue;
+            }
             for flags in [0x0020u32, 0] {
-                let dl = c::cmsTransform2DeviceLink(
-                    t, 4.4, flags);
-                eprintln!("{nm} f{flags:#x}: {}",
-                    !dl.is_null());
+                let dl = c::cmsTransform2DeviceLink(t, 4.4, flags);
+                eprintln!("{nm} f{flags:#x}: {}", !dl.is_null());
                 if !dl.is_null() {
-                    c::cmsCloseProfile(dl); } }
-            c::cmsDeleteTransform(t); }
+                    c::cmsCloseProfile(dl);
+                }
+            }
+            c::cmsDeleteTransform(t);
+        }
         c::cmsFreeNamedColorList(ncl);
         for p in [np, srgb, cmyk, gray, lab4] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
-
 
 /// cmsio1 residual — BuildRGBOutputMatrixShaper arms:
 ///   missing colorants, singular matrix, missing/non-
@@ -6352,50 +7263,57 @@ fn ncl2dl_arms() {
 fn rgb_shaper_arms() {
     unsafe {
         let ctx = std::ptr::null_mut();
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         let srgb = {
-            let p = format!("{}/../../sRGBlcms2.icc",
-                env!("CARGO_MANIFEST_DIR"));
+            let p = format!("{}/../../sRGBlcms2.icc", env!("CARGO_MANIFEST_DIR"));
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let g = c::cmsBuildGamma(ctx, 2.2);
-        let red = c::CieXyz { X: 0.64, Y: 0.33, Z: 0.03 };
-        let grn = c::CieXyz { X: 0.30, Y: 0.60, Z: 0.10 };
-        let blu = c::CieXyz { X: 0.15, Y: 0.06, Z: 0.79 };
-        let wt = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
-        let one = c::CieXyz { X: 1.0, Y: 1.0, Z: 1.0 };
-        let write_shaper = |p: *mut c_void,
-                            r: &c::CieXyz,
-                            gg: &c::CieXyz,
-                            b: &c::CieXyz,
-                            trc: *const c_void| {
-            let w1 = c::cmsWriteTag(p, 0x7258595A,
-                r as *const _ as *const _);
-            let w2 = c::cmsWriteTag(p, 0x6758595A,
-                gg as *const _ as *const _);
-            let w3 = c::cmsWriteTag(p, 0x6258595A,
-                b as *const _ as *const _);
-            let mut w4 = 0; let mut w5 = 0; let mut w6 = 0;
-            if !trc.is_null() {
-                w4 = c::cmsWriteTag(p, 0x72545243,
-                    trc as *const _);
-                w5 = c::cmsWriteTag(p, 0x67545243,
-                    trc as *const _);
-                w6 = c::cmsWriteTag(p, 0x62545243,
-                    trc as *const _); }
-            let w7 = c::cmsWriteTag(p, 0x77747074,
-                &wt as *const _ as *const _);
-            let w8 = c::cmsWriteTag(p, 0x626B7074,
-                &wt as *const _ as *const _);
-            let w9 = c::cmsWriteTag(p, 0x6C756D69,
-                &wt as *const _ as *const _);
-            eprintln!("  writes: {w1}{w2}{w3} trc{w4}{w5}{w6} {w7}{w8}{w9}"); };
-        let try_out = |pcs: u32,
-                       build: &dyn Fn(*mut c_void),
-                       nm: &str| {
+        let red = c::CieXyz {
+            X: 0.64,
+            Y: 0.33,
+            Z: 0.03,
+        };
+        let grn = c::CieXyz {
+            X: 0.30,
+            Y: 0.60,
+            Z: 0.10,
+        };
+        let blu = c::CieXyz {
+            X: 0.15,
+            Y: 0.06,
+            Z: 0.79,
+        };
+        let wt = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
+        let one = c::CieXyz {
+            X: 1.0,
+            Y: 1.0,
+            Z: 1.0,
+        };
+        let write_shaper =
+            |p: *mut c_void, r: &c::CieXyz, gg: &c::CieXyz, b: &c::CieXyz, trc: *const c_void| {
+                let w1 = c::cmsWriteTag(p, 0x7258595A, r as *const _ as *const _);
+                let w2 = c::cmsWriteTag(p, 0x6758595A, gg as *const _ as *const _);
+                let w3 = c::cmsWriteTag(p, 0x6258595A, b as *const _ as *const _);
+                let mut w4 = 0;
+                let mut w5 = 0;
+                let mut w6 = 0;
+                if !trc.is_null() {
+                    w4 = c::cmsWriteTag(p, 0x72545243, trc as *const _);
+                    w5 = c::cmsWriteTag(p, 0x67545243, trc as *const _);
+                    w6 = c::cmsWriteTag(p, 0x62545243, trc as *const _);
+                }
+                let w7 = c::cmsWriteTag(p, 0x77747074, &wt as *const _ as *const _);
+                let w8 = c::cmsWriteTag(p, 0x626B7074, &wt as *const _ as *const _);
+                let w9 = c::cmsWriteTag(p, 0x6C756D69, &wt as *const _ as *const _);
+                eprintln!("  writes: {w1}{w2}{w3} trc{w4}{w5}{w6} {w7}{w8}{w9}");
+            };
+        let try_out = |pcs: u32, build: &dyn Fn(*mut c_void), nm: &str| {
             let p = c::cmsCreateProfilePlaceholder(ctx);
             c::cmsSetDeviceClass(p, 0x6D6E7472);
             c::cmsSetColorSpace(p, 0x52474220);
@@ -6405,60 +7323,76 @@ fn rgb_shaper_arms() {
             // round-trip so the profile is validated
             let mut sb = [0u8; 1 << 18];
             let mut sn = sb.len() as u32;
-            let sv = c::cmsSaveProfileToMem(p,
-                sb.as_mut_ptr() as *mut _, &mut sn);
+            let sv = c::cmsSaveProfileToMem(p, sb.as_mut_ptr() as *mut _, &mut sn);
             let p2 = if sv != 0 {
-                c::cmsOpenProfileFromMem(
-                    sb.as_ptr() as *const _, sn)
-            } else { p };
+                c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sn)
+            } else {
+                p
+            };
             let i0 = c::cmsIsIntentSupported(p2, 0, 0);
             let i1 = c::cmsIsIntentSupported(p2, 0, 1);
             let cs = c::cmsGetColorSpace(p2);
-            eprintln!(
-                "{nm} sv={sv} intent in={i0} out={i1} cs={cs:#x}");
-            let t = c::cmsCreateTransform(srgb,
-                f16(4, 3), p2, f16(4, 3), 0, 0);
+            eprintln!("{nm} sv={sv} intent in={i0} out={i1} cs={cs:#x}");
+            let t = c::cmsCreateTransform(srgb, f16(4, 3), p2, f16(4, 3), 0, 0);
             eprintln!("{nm}: {}", !t.is_null());
             if !t.is_null() {
-                c::cmsDeleteTransform(t); }
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(p2);
-            c::cmsCloseProfile(p); };
+            c::cmsCloseProfile(p);
+        };
         // 1. valid
-        try_out(0x58595A20,
-            &|p| write_shaper(p, &red, &grn, &blu,
-                g as *const _), "valid");
+        try_out(
+            0x58595A20,
+            &|p| write_shaper(p, &red, &grn, &blu, g as *const _),
+            "valid",
+        );
         // 2. missing colorants -> ReadICCMatrix NULL
-        try_out(0x58595A20,
+        try_out(
+            0x58595A20,
             &|p| {
                 if !g.is_null() {
-                    c::cmsWriteTag(p, 0x72545243,
-                        g as *const _); }
-                c::cmsWriteTag(p, 0x77747074,
-                    &wt as *const _ as *const _); },
-            "no-clr");
+                    c::cmsWriteTag(p, 0x72545243, g as *const _);
+                }
+                c::cmsWriteTag(p, 0x77747074, &wt as *const _ as *const _);
+            },
+            "no-clr",
+        );
         // 3. singular colorants -> MAT3inverse NULL
-        try_out(0x58595A20,
-            &|p| write_shaper(p, &one, &one, &one,
-                g as *const _), "sing-clr");
+        try_out(
+            0x58595A20,
+            &|p| write_shaper(p, &one, &one, &one, g as *const _),
+            "sing-clr",
+        );
         // 4. missing TRC -> Shapes NULL
-        try_out(0x58595A20,
-            &|p| write_shaper(p, &red, &grn, &blu,
-                std::ptr::null()), "no-trc");
+        try_out(
+            0x58595A20,
+            &|p| write_shaper(p, &red, &grn, &blu, std::ptr::null()),
+            "no-trc",
+        );
         // 5. descending TRC -> ReverseToneCurve NULL
         let vals = [0xFFFFu16, 0x4000, 0x0000];
-        let dg = c::cmsBuildTabulatedToneCurve16(
-            ctx, 3, vals.as_ptr());
-        try_out(0x58595A20,
-            &|p| write_shaper(p, &red, &grn, &blu,
-                dg as *const _), "desc-trc");
+        let dg = c::cmsBuildTabulatedToneCurve16(ctx, 3, vals.as_ptr());
+        try_out(
+            0x58595A20,
+            &|p| write_shaper(p, &red, &grn, &blu, dg as *const _),
+            "desc-trc",
+        );
         // 6. Lab PCS -> Lab2XYZ insert
-        try_out(0x4C616220,
-            &|p| write_shaper(p, &red, &grn, &blu,
-                g as *const _), "lab-pcs");
-        if !g.is_null() { c::cmsFreeToneCurve(g); }
-        if !dg.is_null() { c::cmsFreeToneCurve(dg); }
+        try_out(
+            0x4C616220,
+            &|p| write_shaper(p, &red, &grn, &blu, g as *const _),
+            "lab-pcs",
+        );
+        if !g.is_null() {
+            c::cmsFreeToneCurve(g);
+        }
+        if !dg.is_null() {
+            c::cmsFreeToneCurve(dg);
+        }
         if !srgb.is_null() {
-            c::cmsCloseProfile(srgb); }
+            c::cmsCloseProfile(srgb);
+        }
     }
 }
 
@@ -6469,22 +7403,21 @@ fn rgb_shaper_arms() {
 fn gray_pipeline_arms() {
     unsafe {
         let ctx = std::ptr::null_mut();
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         let srgb = {
-            let p = format!("{}/../../sRGBlcms2.icc",
-                env!("CARGO_MANIFEST_DIR"));
+            let p = format!("{}/../../sRGBlcms2.icc", env!("CARGO_MANIFEST_DIR"));
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let g = c::cmsBuildGamma(ctx, 2.2);
-        let wt = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let wt = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
         let vals = [0xFFFFu16, 0x4000, 0x0000];
-        let dg = c::cmsBuildTabulatedToneCurve16(
-            ctx, 3, vals.as_ptr());
-        let try_gray = |pcs: u32, trc: *const c_void,
-                        nm: &str| {
+        let dg = c::cmsBuildTabulatedToneCurve16(ctx, 3, vals.as_ptr());
+        let try_gray = |pcs: u32, trc: *const c_void, nm: &str| {
             let p = c::cmsCreateProfilePlaceholder(ctx);
             c::cmsSetDeviceClass(p, 0x6D6E7472);
             c::cmsSetColorSpace(p, 0x47524159);
@@ -6492,34 +7425,36 @@ fn gray_pipeline_arms() {
             c::cmsSetProfileVersion(p, 4.4);
             if !trc.is_null() {
                 // kTRC = 'kTRC' 0x6B545243
-                c::cmsWriteTag(p, 0x6B545243,
-                    trc as *const _); }
-            c::cmsWriteTag(p, 0x77747074,
-                &wt as *const _ as *const _);
+                c::cmsWriteTag(p, 0x6B545243, trc as *const _);
+            }
+            c::cmsWriteTag(p, 0x77747074, &wt as *const _ as *const _);
             let mut sb = [0u8; 1 << 18];
             let mut sn = sb.len() as u32;
-            let sv = c::cmsSaveProfileToMem(p,
-                sb.as_mut_ptr() as *mut _, &mut sn);
+            let sv = c::cmsSaveProfileToMem(p, sb.as_mut_ptr() as *mut _, &mut sn);
             let p2 = if sv != 0 {
-                c::cmsOpenProfileFromMem(
-                    sb.as_ptr() as *const _, sn)
-            } else { p };
+                c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sn)
+            } else {
+                p
+            };
             let ii = c::cmsIsIntentSupported(p2, 0, 0);
             let io = c::cmsIsIntentSupported(p2, 0, 1);
             // in: gray->srgb, out: srgb->gray
-            let ti = c::cmsCreateTransform(p2,
-                f16(3, 1), srgb, f16(4, 3), 0, 0);
-            let to = c::cmsCreateTransform(srgb,
-                f16(4, 3), p2, f16(3, 1), 0, 0);
+            let ti = c::cmsCreateTransform(p2, f16(3, 1), srgb, f16(4, 3), 0, 0);
+            let to = c::cmsCreateTransform(srgb, f16(4, 3), p2, f16(3, 1), 0, 0);
             eprintln!(
                 "{nm} sv={sv} int={ii}/{io} in={} out={}",
-                !ti.is_null(), !to.is_null());
+                !ti.is_null(),
+                !to.is_null()
+            );
             if !ti.is_null() {
-                c::cmsDeleteTransform(ti); }
+                c::cmsDeleteTransform(ti);
+            }
             if !to.is_null() {
-                c::cmsDeleteTransform(to); }
+                c::cmsDeleteTransform(to);
+            }
             c::cmsCloseProfile(p2);
-            c::cmsCloseProfile(p); };
+            c::cmsCloseProfile(p);
+        };
         // valid XYZ PCS
         try_gray(0x58595A20, g as *const _, "xyz");
         // Lab PCS -> PickLstar/LabCurves arms
@@ -6528,10 +7463,15 @@ fn gray_pipeline_arms() {
         try_gray(0x58595A20, std::ptr::null(), "no-trc");
         // descending TRC
         try_gray(0x58595A20, dg as *const _, "desc");
-        if !g.is_null() { c::cmsFreeToneCurve(g); }
-        if !dg.is_null() { c::cmsFreeToneCurve(dg); }
+        if !g.is_null() {
+            c::cmsFreeToneCurve(g);
+        }
+        if !dg.is_null() {
+            c::cmsFreeToneCurve(dg);
+        }
         if !srgb.is_null() {
-            c::cmsCloseProfile(srgb); }
+            c::cmsCloseProfile(srgb);
+        }
     }
 }
 
@@ -6542,28 +7482,24 @@ fn gray_pipeline_arms() {
 fn formatter_matrix() {
     unsafe {
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let gray = open("graylcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
         let lab4 = open("labv4lcms2.icc");
         let xyz = open("xyzlcms2.icc");
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
-        let ok = |a: *mut c_void, fa: u32,
-                  b: *mut c_void, fb: u32| -> i32 {
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
+        let ok = |a: *mut c_void, fa: u32, b: *mut c_void, fb: u32| -> i32 {
             let t = c::cmsCreateTransform(a, fa, b, fb, 0, 0);
-            if t.is_null() { return 0; }
+            if t.is_null() {
+                return 0;
+            }
             let ib = [0x4000u16; 64];
             let mut ob = [0u16; 128];
-            c::cmsDoTransform(t,
-                ib.as_ptr() as *const _,
-                ob.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
             c::cmsDeleteTransform(t);
             1
         };
@@ -6594,7 +7530,9 @@ fn formatter_matrix() {
             (30, 3, lab4, "labv2"),
         ] {
             if prof.is_null() {
-                eprintln!("{nm}: null"); continue; }
+                eprintln!("{nm}: null");
+                continue;
+            }
             // bytes: 1=u8 2=u16 4=f32 0=f64 2f=half
             for bytes in [1u32, 2, 4, 0, 0x100] {
                 for (fl, fnm) in &combos {
@@ -6608,17 +7546,21 @@ fn formatter_matrix() {
                     };
                     // input side: PT-fmt -> srgb u16
                     let fi = (pt << 16) | (ch << 3) | fb;
-                    let ri = ok(prof, fi,
-                        srgb, f16(4, 3));
+                    let ri = ok(prof, fi, srgb, f16(4, 3));
                     // output side: srgb u16 -> PT-fmt
                     let fo = (pt << 16) | (ch << 3) | fb;
-                    let ro = ok(srgb, f16(4, 3),
-                        prof, fo);
+                    let ro = ok(srgb, f16(4, 3), prof, fo);
                     if ri == 0 && ro == 0 {
-                        eprintln!("{nm} b{bytes} {fnm}: -"); } } } }
+                        eprintln!("{nm} b{bytes} {fnm}: -");
+                    }
+                }
+            }
+        }
         for p in [srgb, gray, cmyk, lab4, xyz] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6631,14 +7573,11 @@ fn formatter_matrix() {
 fn pcs_mix_arms() {
     unsafe {
         let ctx = std::ptr::null_mut();
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
@@ -6654,62 +7593,67 @@ fn pcs_mix_arms() {
             c::cmsSetProfileVersion(p, 4.4);
             let g = c::cmsBuildGamma(ctx, 1.0);
             let lut = c::cmsPipelineAlloc(ctx, 3, 3);
-            let cv = c::cmsStageAllocToneCurves(ctx, 3,
-                vec![g; 3].as_ptr());
+            let cv = c::cmsStageAllocToneCurves(ctx, 3, vec![g; 3].as_ptr());
             c::cmsPipelineInsertStage(lut, 1, cv);
-            c::cmsWriteTag(p, 0x41324230,
-                lut as *const _);
+            c::cmsWriteTag(p, 0x41324230, lut as *const _);
             let mut sb = [0u8; 1 << 18];
             let mut sn = sb.len() as u32;
-            let sv = c::cmsSaveProfileToMem(p,
-                sb.as_mut_ptr() as *mut _, &mut sn);
+            let sv = c::cmsSaveProfileToMem(p, sb.as_mut_ptr() as *mut _, &mut sn);
             let p2 = if sv != 0 {
-                c::cmsOpenProfileFromMem(
-                    sb.as_ptr() as *const _, sn)
-            } else { p };
-            if !g.is_null() { c::cmsFreeToneCurve(g); }
-            if p2 != p { c::cmsCloseProfile(p); }
+                c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sn)
+            } else {
+                p
+            };
+            if !g.is_null() {
+                c::cmsFreeToneCurve(g);
+            }
+            if p2 != p {
+                c::cmsCloseProfile(p);
+            }
             p2
         };
         let lab_abst = mk_abst(0x4C616220); // Lab PCS
         let xyz_abst = mk_abst(0x58595A20); // XYZ PCS
         // multiprofile chains: [in, mid..., out]
-        let mpt = |profs: &[*mut c_void],
-                   fmt: u32, flags: u32, nm: &str| {
+        let mpt = |profs: &[*mut c_void], fmt: u32, flags: u32, nm: &str| {
             let t = c::cmsCreateMultiprofileTransform(
                 profs.as_ptr() as *mut _,
                 profs.len() as i32,
-                fmt, fmt, 0, flags);
+                fmt,
+                fmt,
+                0,
+                flags,
+            );
             eprintln!("{nm}: {}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x4000u16; 8];
                 let mut ob = [0u16; 8];
-                c::cmsDoTransform(t,
-                    ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
-                c::cmsDeleteTransform(t); } };
-        let rgb = f16(4, 3); let labf = f16(10, 3);
-        for flags in [0u32, 0x0200 /*BPC*/, 0x0400 /*NOWHITEONWHITEFIXUP?*/ ] {
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(t);
+            }
+        };
+        let rgb = f16(4, 3);
+        let labf = f16(10, 3);
+        for flags in [
+            0u32, 0x0200, /*BPC*/
+            0x0400, /*NOWHITEONWHITEFIXUP?*/
+        ] {
             for (nm, profs, fmt) in [
-                ("srgb-lab-srgb",
-                 vec![srgb, lab_abst, srgb], rgb),
-                ("srgb-xyz-srgb",
-                 vec![srgb, xyz_abst, srgb], rgb),
-                ("lab-lab-srgb",
-                 vec![lab4, lab_abst, srgb], labf),
-                ("xyz-xyz-srgb",
-                 vec![xyz, xyz_abst, srgb], f16(9, 3)),
-                ("srgb-lab-cmyk",
-                 vec![srgb, lab_abst, cmyk], rgb),
-                ("srgb-3x",
-                 vec![srgb, lab_abst, xyz_abst, cmyk], rgb),
+                ("srgb-lab-srgb", vec![srgb, lab_abst, srgb], rgb),
+                ("srgb-xyz-srgb", vec![srgb, xyz_abst, srgb], rgb),
+                ("lab-lab-srgb", vec![lab4, lab_abst, srgb], labf),
+                ("xyz-xyz-srgb", vec![xyz, xyz_abst, srgb], f16(9, 3)),
+                ("srgb-lab-cmyk", vec![srgb, lab_abst, cmyk], rgb),
+                ("srgb-3x", vec![srgb, lab_abst, xyz_abst, cmyk], rgb),
             ] {
-                mpt(&profs, fmt, flags,
-                    &format!("{nm} f{flags:#x}")); }
+                mpt(&profs, fmt, flags, &format!("{nm} f{flags:#x}"));
+            }
         }
         for p in [srgb, cmyk, lab4, xyz, lab_abst, xyz_abst] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6721,61 +7665,64 @@ fn opt_channel_arms() {
     unsafe {
         let ctx = std::ptr::null_mut();
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let null5 = open("nullcms2.icc");
         // profiles with unusual input channel counts ->
         //   FORCE_CLUT triggers resampling -> PatchLUT on
         //   non-{1,3,4}-ch CLUTs hits the reject arm
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         // MCH2 (2ch) profile via placeholder + clut
         let mut m2 = c::cmsCreateProfilePlaceholder(ctx);
         c::cmsSetDeviceClass(m2, 0x6D6E7472);
         c::cmsSetColorSpace(m2, 0x32434C52); // '2CLR'
         c::cmsSetPCS(m2, 0x4C616220);
         c::cmsSetProfileVersion(m2, 4.4);
-        let c2 = c::cmsStageAllocCLut16bit(ctx, 4, 2, 3,
-            vec![0x4000u16; 4 * 4 * 3].as_ptr());
+        let c2 = c::cmsStageAllocCLut16bit(ctx, 4, 2, 3, vec![0x4000u16; 4 * 4 * 3].as_ptr());
         let l2 = c::cmsPipelineAlloc(ctx, 2, 3);
         c::cmsPipelineInsertStage(l2, 1, c2);
         c::cmsWriteTag(m2, 0x41324230, l2 as *const _);
         {
             let mut sb = [0u8; 1 << 18];
             let mut sn = sb.len() as u32;
-            if c::cmsSaveProfileToMem(m2,
-                sb.as_mut_ptr() as *mut _, &mut sn) != 0 {
-                let p2 = c::cmsOpenProfileFromMem(
-                    sb.as_ptr() as *const _, sn);
+            if c::cmsSaveProfileToMem(m2, sb.as_mut_ptr() as *mut _, &mut sn) != 0 {
+                let p2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sn);
                 if !p2.is_null() {
                     c::cmsCloseProfile(m2);
-                    m2 = p2; } } }
+                    m2 = p2;
+                }
+            }
+        }
         // MCH5 (5ch) profile via placeholder + clut
         let mut m5 = c::cmsCreateProfilePlaceholder(ctx);
         c::cmsSetDeviceClass(m5, 0x6D6E7472);
         c::cmsSetColorSpace(m5, 0x35434C52); // '5CLR'
         c::cmsSetPCS(m5, 0x4C616220);
         c::cmsSetProfileVersion(m5, 4.4);
-        let c5 = c::cmsStageAllocCLut16bit(ctx, 4, 5, 3,
-            vec![0x4000u16; 4 * 4 * 4 * 4 * 4 * 3].as_ptr());
+        let c5 = c::cmsStageAllocCLut16bit(
+            ctx,
+            4,
+            5,
+            3,
+            vec![0x4000u16; 4 * 4 * 4 * 4 * 4 * 3].as_ptr(),
+        );
         let l5 = c::cmsPipelineAlloc(ctx, 5, 3);
         c::cmsPipelineInsertStage(l5, 1, c5);
         c::cmsWriteTag(m5, 0x41324230, l5 as *const _);
         {
             let mut sb = [0u8; 1 << 18];
             let mut sn = sb.len() as u32;
-            if c::cmsSaveProfileToMem(m5,
-                sb.as_mut_ptr() as *mut _, &mut sn) != 0 {
-                let p2 = c::cmsOpenProfileFromMem(
-                    sb.as_ptr() as *const _, sn);
+            if c::cmsSaveProfileToMem(m5, sb.as_mut_ptr() as *mut _, &mut sn) != 0 {
+                let p2 = c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sn);
                 if !p2.is_null() {
                     c::cmsCloseProfile(m5);
-                    m5 = p2; } } }
+                    m5 = p2;
+                }
+            }
+        }
         // transforms with FORCE_CLUT + NOOPTIMIZE off ->
         //   PatchLUT at unsupported channel counts
         for (a, fa, b, fb, nm) in [
@@ -6785,21 +7732,22 @@ fn opt_channel_arms() {
             (srgb, f16(4, 3), m2, f16(16, 2), ">2cl"),
             (srgb, f16(4, 3), m5, f16(19, 5), ">5cl"),
         ] {
-            for flags in [0u32, 0x0040 /*FORCE_CLUT*/ ] {
-                let t = c::cmsCreateTransform(a, fa,
-                    b, fb, 0, flags);
-                eprintln!("{nm} f{flags:#x}: {}",
-                    !t.is_null());
+            for flags in [0u32, 0x0040 /*FORCE_CLUT*/] {
+                let t = c::cmsCreateTransform(a, fa, b, fb, 0, flags);
+                eprintln!("{nm} f{flags:#x}: {}", !t.is_null());
                 if !t.is_null() {
                     let ib = [0x4000u16; 8];
                     let mut ob = [0u16; 8];
-                    c::cmsDoTransform(t,
-                        ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
-                    c::cmsDeleteTransform(t); } } }
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
         for p in [srgb, null5, m2, m5] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6812,13 +7760,15 @@ fn opt_channel_arms() {
 fn bp_class_arms() {
     unsafe {
         #[repr(C)]
-        struct Xyz { x: f64, y: f64, z: f64 }
+        struct Xyz {
+            x: f64,
+            y: f64,
+            z: f64,
+        }
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
@@ -6827,26 +7777,44 @@ fn bp_class_arms() {
         let link = open("lcms2link.icc");
         let null5 = open("nullcms2.icc");
         for (p, nm) in [
-            (srgb, "srgb"), (cmyk, "cmyk"), (gray, "gray"),
-            (lab4, "lab4"), (link, "link"), (null5, "n5")] {
+            (srgb, "srgb"),
+            (cmyk, "cmyk"),
+            (gray, "gray"),
+            (lab4, "lab4"),
+            (link, "link"),
+            (null5, "n5"),
+        ] {
             if p.is_null() {
-                eprintln!("{nm}: null"); continue; }
+                eprintln!("{nm}: null");
+                continue;
+            }
             for intent in 0..6u32 {
-                let mut bp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
-                let mut bp2 = Xyz { x: 0.0, y: 0.0, z: 0.0 };
-                let r1 = c::cmsDetectBlackPoint(
-                    &mut bp as *mut _ as *mut _,
-                    p, intent, 0);
-                let r2 = c::cmsDetectDestinationBlackPoint(
-                    &mut bp2 as *mut _ as *mut _,
-                    p, intent, 0);
+                let mut bp = Xyz {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                };
+                let mut bp2 = Xyz {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                };
+                let r1 = c::cmsDetectBlackPoint(&mut bp as *mut _ as *mut _, p, intent, 0);
+                let r2 =
+                    c::cmsDetectDestinationBlackPoint(&mut bp2 as *mut _ as *mut _, p, intent, 0);
                 if r1 != 0 || r2 != 0 {
                     eprintln!(
                         "{nm} i{intent}: in={r1}({:.2},{:.2},{:.2}) dst={r2}({:.2},{:.2},{:.2})",
-                        bp.x, bp.y, bp.z, bp2.x, bp2.y, bp2.z); } } }
+                        bp.x, bp.y, bp.z, bp2.x, bp2.y, bp2.z
+                    );
+                }
+            }
+        }
         for p in [srgb, cmyk, gray, lab4, link, null5] {
             if !p.is_null() {
-                c::cmsCloseProfile(p); } }
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }
 
@@ -6857,14 +7825,11 @@ fn bp_class_arms() {
 fn float_tag_precedence() {
     unsafe {
         let ctx = std::ptr::null_mut();
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         // minimal mpet blob: sig + res + u16 in + u16 out
@@ -6888,32 +7853,33 @@ fn float_tag_precedence() {
             c::cmsSetPCS(p, 0x4C616220);
             c::cmsSetProfileVersion(p, 4.4);
             let blob = mk(3);
-            c::cmsWriteRawTag(p, tag,
-                blob.as_ptr() as *const _, blob.len() as u32);
+            c::cmsWriteRawTag(p, tag, blob.as_ptr() as *const _, blob.len() as u32);
             let mut sb = [0u8; 1 << 18];
             let mut sn = sb.len() as u32;
-            let sv = c::cmsSaveProfileToMem(p,
-                sb.as_mut_ptr() as *mut _, &mut sn);
+            let sv = c::cmsSaveProfileToMem(p, sb.as_mut_ptr() as *mut _, &mut sn);
             let p2 = if sv != 0 {
-                c::cmsOpenProfileFromMem(
-                    sb.as_ptr() as *const _, sn)
-            } else { p };
+                c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sn)
+            } else {
+                p
+            };
             // transforms to fire the float-tag read path
-            let ti = c::cmsCreateTransform(p2,
-                f16(4, 3), srgb, f16(4, 3), 0, 0);
-            let to = c::cmsCreateTransform(srgb,
-                f16(4, 3), p2, f16(4, 3), 0, 0);
-            eprintln!(
-                "{nm} sv={sv} in={} out={}",
-                !ti.is_null(), !to.is_null());
+            let ti = c::cmsCreateTransform(p2, f16(4, 3), srgb, f16(4, 3), 0, 0);
+            let to = c::cmsCreateTransform(srgb, f16(4, 3), p2, f16(4, 3), 0, 0);
+            eprintln!("{nm} sv={sv} in={} out={}", !ti.is_null(), !to.is_null());
             if !ti.is_null() {
-                c::cmsDeleteTransform(ti); }
+                c::cmsDeleteTransform(ti);
+            }
             if !to.is_null() {
-                c::cmsDeleteTransform(to); }
-            if p2 != p { c::cmsCloseProfile(p2); }
-            c::cmsCloseProfile(p); }
+                c::cmsDeleteTransform(to);
+            }
+            if p2 != p {
+                c::cmsCloseProfile(p2);
+            }
+            c::cmsCloseProfile(p);
+        }
         if !srgb.is_null() {
-            c::cmsCloseProfile(srgb); }
+            c::cmsCloseProfile(srgb);
+        }
     }
 }
 
@@ -6924,14 +7890,11 @@ fn float_tag_precedence() {
 fn float_tag_body_arms() {
     unsafe {
         let ctx = std::ptr::null_mut();
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
         let srgb = open("sRGBlcms2.icc");
         // mpet w/ one 'cvst' elem: hdr + elem dir + elem
@@ -6952,14 +7915,13 @@ fn float_tag_body_arms() {
             el.extend_from_slice(&inc.to_be_bytes());
             el.extend_from_slice(&outc.to_be_bytes());
             for _ in 0..(inc as u32 * outc as u32) {
-                el.extend_from_slice(
-                    &1.0f64.to_be_bytes()); }
+                el.extend_from_slice(&1.0f64.to_be_bytes());
+            }
             for _ in 0..outc {
-                el.extend_from_slice(
-                    &0.0f64.to_be_bytes()); }
+                el.extend_from_slice(&0.0f64.to_be_bytes());
+            }
             b.extend_from_slice(&el_off.to_be_bytes());
-            b.extend_from_slice(
-                &(el.len() as u32).to_be_bytes());
+            b.extend_from_slice(&(el.len() as u32).to_be_bytes());
             b.extend_from_slice(&el);
             b
         };
@@ -6974,40 +7936,38 @@ fn float_tag_body_arms() {
             c::cmsSetPCS(p, 0x4C616220);
             c::cmsSetProfileVersion(p, 4.4);
             let blob = mk(3, 3);
-            c::cmsWriteRawTag(p, tag,
-                blob.as_ptr() as *const _, blob.len() as u32);
+            c::cmsWriteRawTag(p, tag, blob.as_ptr() as *const _, blob.len() as u32);
             let mut sb = [0u8; 1 << 18];
             let mut sn = sb.len() as u32;
-            let sv = c::cmsSaveProfileToMem(p,
-                sb.as_mut_ptr() as *mut _, &mut sn);
+            let sv = c::cmsSaveProfileToMem(p, sb.as_mut_ptr() as *mut _, &mut sn);
             let p2 = if sv != 0 {
-                c::cmsOpenProfileFromMem(
-                    sb.as_ptr() as *const _, sn)
-            } else { p };
-            let ti = c::cmsCreateTransform(p2,
-                f16(4, 3), srgb, f16(4, 3), 0, 0);
-            let to = c::cmsCreateTransform(srgb,
-                f16(4, 3), p2, f16(4, 3), 0, 0);
-            eprintln!("{nm} sv={sv} in={} out={}",
-                !ti.is_null(), !to.is_null());
+                c::cmsOpenProfileFromMem(sb.as_ptr() as *const _, sn)
+            } else {
+                p
+            };
+            let ti = c::cmsCreateTransform(p2, f16(4, 3), srgb, f16(4, 3), 0, 0);
+            let to = c::cmsCreateTransform(srgb, f16(4, 3), p2, f16(4, 3), 0, 0);
+            eprintln!("{nm} sv={sv} in={} out={}", !ti.is_null(), !to.is_null());
             if !ti.is_null() {
                 let ib = [0x4000u16; 8];
                 let mut ob = [0u16; 8];
-                c::cmsDoTransform(ti,
-                    ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
-                c::cmsDeleteTransform(ti); }
+                c::cmsDoTransform(ti, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(ti);
+            }
             if !to.is_null() {
                 let ib = [0x4000u16; 8];
                 let mut ob = [0u16; 8];
-                c::cmsDoTransform(to,
-                    ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
-                c::cmsDeleteTransform(to); }
-            if p2 != p { c::cmsCloseProfile(p2); }
-            c::cmsCloseProfile(p); }
+                c::cmsDoTransform(to, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDeleteTransform(to);
+            }
+            if p2 != p {
+                c::cmsCloseProfile(p2);
+            }
+            c::cmsCloseProfile(p);
+        }
         if !srgb.is_null() {
-            c::cmsCloseProfile(srgb); }
+            c::cmsCloseProfile(srgb);
+        }
     }
 }
 
@@ -7018,44 +7978,50 @@ fn float_tag_body_arms() {
 fn gmt_tac_arms() {
     unsafe {
         let open = |n: &str| {
-            let p = format!("{}/../../{}",
-                env!("CARGO_MANIFEST_DIR"), n);
+            let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(
-                cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
         };
-        for nm in ["sRGBlcms2.icc", "lcms2cmyk.icc",
-                   "graylcms2.icc", "labv4lcms2.icc",
-                   "lcms2link.icc", "nullcms2.icc",
-                   "xyzlcms2.icc"] {
+        for nm in [
+            "sRGBlcms2.icc",
+            "lcms2cmyk.icc",
+            "graylcms2.icc",
+            "labv4lcms2.icc",
+            "lcms2link.icc",
+            "nullcms2.icc",
+            "xyzlcms2.icc",
+        ] {
             let p = open(nm);
             if p.is_null() {
-                eprintln!("{nm}: null"); continue; }
+                eprintln!("{nm}: null");
+                continue;
+            }
             let tac = c::cmsDetectTAC(p);
             eprintln!("{nm} tac={tac:.2}");
-            c::cmsCloseProfile(p); }
+            c::cmsCloseProfile(p);
+        }
         // ComputeKToLstar: multiprofile chain black-point
         //   compensation — cmsBlackPointCompensatingTransform
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
-        let f16 = |pt: u32, ch: u32| -> u32 {
-            (pt << 16) | (ch << 3) | 2 };
+        let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
         // multiprofile transform w/ BPC + adaptation
-        for (a, b, nm) in [
-            (srgb, cmyk, "s2c"), (cmyk, srgb, "c2s")] {
+        for (a, b, nm) in [(srgb, cmyk, "s2c"), (cmyk, srgb, "c2s")] {
             for flags in [0x0200u32, 0x0200 | 0x4000] {
-                let t = c::cmsCreateTransform(a, f16(4, 3),
-                    b, f16(6, 4), 0, flags);
-                eprintln!("{nm} f{flags:#x}: {}",
-                    !t.is_null());
+                let t = c::cmsCreateTransform(a, f16(4, 3), b, f16(6, 4), 0, flags);
+                eprintln!("{nm} f{flags:#x}: {}", !t.is_null());
                 if !t.is_null() {
                     let ib = [0x4000u16; 8];
                     let mut ob = [0u16; 8];
-                    c::cmsDoTransform(t,
-                        ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
-                    c::cmsDeleteTransform(t); } } }
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDeleteTransform(t);
+                }
+            }
+        }
         for p in [srgb, cmyk] {
-            if !p.is_null() { c::cmsCloseProfile(p); } }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
+        }
     }
 }

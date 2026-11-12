@@ -7,8 +7,10 @@ use lcms_cref as c;
 
 fn corpus() -> Vec<Vec<u8>> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
-    let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap()
-        .filter_map(|e| e.ok()).map(|e| e.path())
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -34,13 +36,33 @@ fn tag_table_matrix() {
             // out-of-range sig
             assert_eq!(c::cmsGetTagSignature(h, c_cnt), 0, "sig oor");
             // is_tag on a sweep of known sigs
-            for sig in [0x41324230u32, 0x42324130, 0x6D414220, 0x6D424120,
-                        0x6B747263, 0x72545952, 0x67545952, 0x62545952,
-                        0x77687470, 0x64657363, 0x63707274, 0x70736571,
-                        0x63686164, 0x636C7475, 0x6D657461, 0x76696577,
-                        0x7363726E, 0x74656368, 0x76346367, 0x73667472] {
-                assert_eq!(c::cmsIsTag(h, sig) != 0,
-                    profile::cms_is_tag_pub(&rp, sig), "is_tag {sig:#x}");
+            for sig in [
+                0x41324230u32,
+                0x42324130,
+                0x6D414220,
+                0x6D424120,
+                0x6B747263,
+                0x72545952,
+                0x67545952,
+                0x62545952,
+                0x77687470,
+                0x64657363,
+                0x63707274,
+                0x70736571,
+                0x63686164,
+                0x636C7475,
+                0x6D657461,
+                0x76696577,
+                0x7363726E,
+                0x74656368,
+                0x76346367,
+                0x73667472,
+            ] {
+                assert_eq!(
+                    c::cmsIsTag(h, sig) != 0,
+                    profile::cms_is_tag_pub(&rp, sig),
+                    "is_tag {sig:#x}"
+                );
             }
             c::cmsCloseProfile(h);
         }
@@ -55,9 +77,11 @@ fn linked_tag_follow() {
         let ch = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let mut rp = virt::create_lab4_profile(None, None).unwrap();
         // link 'foo ' -> 'A2B0' (a tag the lab4 profile carries)
-        assert_eq!(c::cmsLinkTag(ch, 0x666F6F20, 0x41324230) != 0,
+        assert_eq!(
+            c::cmsLinkTag(ch, 0x666F6F20, 0x41324230) != 0,
             profile::cms_link_tag(&mut rp, 0x666F6F20, 0x41324230),
-            "link foo->A2B0");
+            "link foo->A2B0"
+        );
         // followed read — cmsReadTag on the linked sig returns the dest
         assert!(!c::cmsReadTag(ch, 0x41324230).is_null(), "C read A2B0");
         let c_rd = c::cmsReadTag(ch, 0x666F6F20);
@@ -75,22 +99,37 @@ fn mpe_tag_read() {
     unsafe {
         for mk in [0u32, 1, 2] {
             let (ch, mut rp): (*mut _, Option<Box<lcms::profile::IccProfile>>) = match mk {
-                0 => (c::cmsCreateBCHSWabstractProfile(17, 0.0, 20.0, 30.0, 40.0, 5000, 6000),
-                      virt::create_bchsw_abstract_profile(None, 17, 0.0, 20.0, 30.0, 40.0, 5000, 6000)),
+                0 => (
+                    c::cmsCreateBCHSWabstractProfile(17, 0.0, 20.0, 30.0, 40.0, 5000, 6000),
+                    virt::create_bchsw_abstract_profile(
+                        None, 17, 0.0, 20.0, 30.0, 40.0, 5000, 6000,
+                    ),
+                ),
                 1 => {
                     let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
                     let curves = vec![g; 3];
-                    (c::cmsCreateLinearizationDeviceLinkTHR(
-                        std::ptr::null_mut(), 0x52474220, curves.as_ptr()),
-                     virt::create_linearization_device_link(None, 0x52474220,
-                        &[&lcms::gamma::build_gamma(None, 2.2).unwrap(); 3]))
+                    (
+                        c::cmsCreateLinearizationDeviceLinkTHR(
+                            std::ptr::null_mut(),
+                            0x52474220,
+                            curves.as_ptr(),
+                        ),
+                        virt::create_linearization_device_link(
+                            None,
+                            0x52474220,
+                            &[&lcms::gamma::build_gamma(None, 2.2).unwrap(); 3],
+                        ),
+                    )
                 }
-                _ => (c::cmsCreateInkLimitingDeviceLinkTHR(
-                        std::ptr::null_mut(), 0x434D594B, 85.0),
-                      virt::create_ink_limiting_device_link(None, 0x434D594B, 85.0)),
+                _ => (
+                    c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), 0x434D594B, 85.0),
+                    virt::create_ink_limiting_device_link(None, 0x434D594B, 85.0),
+                ),
             };
             assert_eq!(ch.is_null(), rp.is_none(), "builder {mk} presence");
-            if ch.is_null() || rp.is_none() { continue; }
+            if ch.is_null() || rp.is_none() {
+                continue;
+            }
             let mut rp = rp.unwrap();
             // tag-count + per-tag read presence parity
             let c_cnt = rp.tag_count;
@@ -116,7 +155,10 @@ fn dict_machinery() {
         assert!(!cd.is_null());
         // wide strings (UTF-32 as i32)
         let w = |s: &str| -> Vec<i32> {
-            s.chars().map(|c| c as i32).chain(std::iter::once(0)).collect()
+            s.chars()
+                .map(|c| c as i32)
+                .chain(std::iter::once(0))
+                .collect()
         };
         let pairs = [
             ("Manufacturer", "Acme"),
@@ -129,8 +171,7 @@ fn dict_machinery() {
             let vw = w(v);
             let cm1 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
             let cm2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-            let c_ok = c::cmsDictAddEntry(cd, kw.as_ptr(), vw.as_ptr(),
-                cm1, cm2);
+            let c_ok = c::cmsDictAddEntry(cd, kw.as_ptr(), vw.as_ptr(), cm1, cm2);
             let mut rm1 = named::mlu_alloc(None, 1).unwrap();
             let mut rm2 = named::mlu_alloc(None, 1).unwrap();
             let r_ok = named::dict_add_entry(&mut rd, &kw, Some(&vw), Some(&rm1), Some(&rm2));
@@ -144,7 +185,9 @@ fn dict_machinery() {
         // entry count via GetEntryList walk — cmsDICTentry.next is
         // field 0
         #[repr(C)]
-        struct CDictEntry { next: *const CDictEntry }
+        struct CDictEntry {
+            next: *const CDictEntry,
+        }
         let mut cnt = 0u32;
         let mut e = c::cmsDictGetEntryList(cdd) as *const CDictEntry;
         while !e.is_null() {

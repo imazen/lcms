@@ -106,7 +106,12 @@ pub fn set_foreign_fmt_hooks(h: ForeignFmtHooks) {
 /// First non-NULL `cmsFormatter` union from the ctx's formatter factories
 /// (`_cmsGetFormatter`'s plugin consult) — `dir` 0=Input 1=Output, `flags`
 /// `CMS_PACK_FLAGS_*`.
-pub fn foreign_formatter_fn(ctx: Option<&crate::context::Context>, ty: u32, dir: u32, flags: u32) -> Option<usize> {
+pub fn foreign_formatter_fn(
+    ctx: Option<&crate::context::Context>,
+    ty: u32,
+    dir: u32,
+    flags: u32,
+) -> Option<usize> {
     let cctx = ctx?;
     let hooks = FMT_HOOKS.get()?;
     for &f in &cctx.formatter_factories {
@@ -120,10 +125,7 @@ pub fn foreign_formatter_fn(ctx: Option<&crate::context::Context>, ty: u32, dir:
 
 /// Bind a foreign formatter ptr under `(dir, ty)` — the trampolines resolve it.
 pub fn register_foreign_format(dir: u32, ty: u32, cfn: usize) {
-    FOREIGN_FMT
-        .lock()
-        .unwrap()
-        .insert((dir as u8, ty), cfn);
+    FOREIGN_FMT.lock().unwrap().insert((dir as u8, ty), cfn);
 }
 
 fn foreign16(dir: u8, fmt: u32) -> Option<(usize, &'static ForeignFmtHooks)> {
@@ -1016,9 +1018,7 @@ fn unroll_fd_to_float(
     let start = if extra_first { extra } else { 0 };
     // Interleaved f32 → direct loads (`v / 1.0` and `f32→f64→f32` are
     // exact) — the dominant float-transform format.
-    if esz == 4 && !do_swap && !reverse && !planar && !swap_first && !premul
-        && maximum == 1.0
-    {
+    if esz == 4 && !do_swap && !reverse && !planar && !swap_first && !premul && maximum == 1.0 {
         for c in 0..n_chan {
             w[c] = rd32f(a, (c + start) * 4);
         }
@@ -2439,27 +2439,20 @@ fn pack_fd_from_float(
     let start = if extra_first { extra } else { 0 };
     // Interleaved f32 → direct stores — the dominant float-transform
     // output format.
-    if esz == 4 && !do_swap && !reverse && !planar && !swap_first
-        && maximum == 1.0
-    {
+    if esz == 4 && !do_swap && !reverse && !planar && !swap_first && maximum == 1.0 {
         for c in 0..n_chan {
-            out[(c + start) * 4..(c + start) * 4 + 4]
-                .copy_from_slice(&w[c].to_le_bytes());
+            out[(c + start) * 4..(c + start) * 4 + 4].copy_from_slice(&w[c].to_le_bytes());
         }
         return (n_chan + extra) * 4;
     }
     // u8/u16 float output — same `qs16`/`f16to8` op chain, no decode.
-    if esz == 1 && !do_swap && !reverse && !planar && !swap_first
-        && maximum == 1.0
-    {
+    if esz == 1 && !do_swap && !reverse && !planar && !swap_first && maximum == 1.0 {
         for c in 0..n_chan {
             out[c + start] = f16to8(qs16(w[c] as f64 * 65535.0));
         }
         return n_chan + extra;
     }
-    if esz == 2 && !do_swap && !reverse && !planar && !swap_first
-        && maximum == 1.0
-    {
+    if esz == 2 && !do_swap && !reverse && !planar && !swap_first && maximum == 1.0 {
         for c in 0..n_chan {
             let v = qs16(w[c] as f64 * 65535.0);
             let o = (c + start) * 2;
@@ -2738,7 +2731,11 @@ pub fn unroll_half_to16(
     // apart; otherwise channels are contiguous (2 bytes each).
     let planar = t_planar(i.input_format) != 0;
     let mut o = if extra_first {
-        if planar { extra * stride as usize } else { extra * 2 }
+        if planar {
+            extra * stride as usize
+        } else {
+            extra * 2
+        }
     } else {
         0
     };
@@ -2786,7 +2783,11 @@ pub fn unroll_half_to_float(
     // PLANAR puts each channel plane `stride` bytes apart (see `unroll_half_to16`)
     let planar = t_planar(i.input_format) != 0;
     let mut o = if extra_first {
-        if planar { extra * stride as usize } else { extra * 2 }
+        if planar {
+            extra * stride as usize
+        } else {
+            extra * 2
+        }
     } else {
         0
     };

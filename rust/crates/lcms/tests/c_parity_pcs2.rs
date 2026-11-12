@@ -6,19 +6,19 @@ use lcms_cref as c;
 #[test]
 fn xyz_lab_roundtrip() {
     unsafe {
-        for (x, y, z) in [(0.5f64, 0.4, 0.3), (0.9642, 1.0, 0.8249),
-                          (0.0, 0.0, 0.0), (1.5, 1.2, 0.9)] {
+        for (x, y, z) in [
+            (0.5f64, 0.4, 0.3),
+            (0.9642, 1.0, 0.8249),
+            (0.0, 0.0, 0.0),
+            (1.5, 1.2, 0.9),
+        ] {
             let mut clab = c::CieLab::default();
             let cxyz = c::CieXyz { X: x, Y: y, Z: z };
             c::cmsXYZ2Lab(std::ptr::null(), &mut clab, &cxyz);
-            let rlab = pcs::xyz2lab(None,
-                &types::CieXyz { X: x, Y: y, Z: z });
-            assert!((clab.L - rlab.L).abs() < 1e-9,
-                "L ({x},{y},{z})");
-            assert!((clab.a - rlab.a).abs() < 1e-9,
-                "a ({x},{y},{z})");
-            assert!((clab.b - rlab.b).abs() < 1e-9,
-                "b ({x},{y},{z})");
+            let rlab = pcs::xyz2lab(None, &types::CieXyz { X: x, Y: y, Z: z });
+            assert!((clab.L - rlab.L).abs() < 1e-9, "L ({x},{y},{z})");
+            assert!((clab.a - rlab.a).abs() < 1e-9, "a ({x},{y},{z})");
+            assert!((clab.b - rlab.b).abs() < 1e-9, "b ({x},{y},{z})");
             // back
             let mut cxyz2 = c::CieXyz::default();
             c::cmsLab2XYZ(std::ptr::null(), &mut cxyz2, &clab);
@@ -34,8 +34,12 @@ fn xyz_lab_roundtrip() {
 fn lab_encodings() {
     unsafe {
         // V2 (legacy 0xFF00 quantum) + V4 (uniform) encodings
-        for (l, a, b) in [(50.0f64, 0.0, 0.0), (0.0, -128.0, -128.0),
-                          (100.0, 127.0, 127.0), (33.3, 12.5, -45.6)] {
+        for (l, a, b) in [
+            (50.0f64, 0.0, 0.0),
+            (0.0, -128.0, -128.0),
+            (100.0, 127.0, 127.0),
+            (33.3, 12.5, -45.6),
+        ] {
             let flab = c::CieLab { L: l, a, b };
             let mut cw2 = [0u16; 3];
             let mut cw4 = [0u16; 3];
@@ -66,8 +70,7 @@ fn xyz_xyy() {
             let cxyz = c::CieXyz { X: x, Y: y, Z: z };
             let mut cxyy = c::CiexyY::default();
             c::cmsXYZ2xyY(&mut cxyy, &cxyz);
-            let rxyy = pcs::xyz2xyy(
-                &types::CieXyz { X: x, Y: y, Z: z });
+            let rxyy = pcs::xyz2xyy(&types::CieXyz { X: x, Y: y, Z: z });
             assert!((cxyy.x - rxyy.x).abs() < 1e-9, "x");
             assert!((cxyy.y - rxyy.y).abs() < 1e-9, "y");
             let mut cxyz2 = c::CieXyz::default();

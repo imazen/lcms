@@ -532,7 +532,6 @@ pub fn create_gamut_check_pipeline(
     n_gamut_pcs_position: u32,
     h_gamut: &mut IccProfile,
 ) -> Option<crate::lut::Pipeline> {
-    
     let n = profiles.len();
     if n_gamut_pcs_position == 0 || n_gamut_pcs_position > 255 {
         crate::err::signal_error(ctx, crate::types::ERROR_RANGE, "Wrong position of PCS");

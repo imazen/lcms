@@ -8,12 +8,15 @@
 //! `c_parity_*` gates don't see: they drive the parity layer directly.
 //! Runs under default features; `lcms-cref` is a dev-dependency.
 
-use lcms::api::{flags, Format, Intent, Plan, PlanOptions, Profile};
+use lcms::api::{Format, Intent, Plan, PlanOptions, Profile, flags};
 use lcms_cref as c;
 use std::ffi::c_void;
 
 fn testbed(name: &str) -> Vec<u8> {
-    let p = format!("{}/../../../reference/lcms2/testbed/{name}", env!("CARGO_MANIFEST_DIR"));
+    let p = format!(
+        "{}/../../../reference/lcms2/testbed/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    );
     std::fs::read(&p).unwrap_or_else(|e| panic!("testbed profile {p}: {e}"))
 }
 
@@ -65,7 +68,12 @@ fn c_run(t: *mut c_void, input: &[u8], n: usize, out_bpp: usize) -> Vec<u8> {
     assert!(!t.is_null(), "C transform failed");
     let mut out = vec![0u8; n * out_bpp];
     unsafe {
-        c::cmsDoTransform(t, input.as_ptr() as *const c_void, out.as_mut_ptr() as *mut c_void, n as u32);
+        c::cmsDoTransform(
+            t,
+            input.as_ptr() as *const c_void,
+            out.as_mut_ptr() as *mut c_void,
+            n as u32,
+        );
         c::cmsDeleteTransform(t);
     }
     out
@@ -103,11 +111,27 @@ fn check_pair(src: Src, in_fmt: Format, dst: Src, out_fmt: Format, intent: Inten
     let opts = PlanOptions::new().intent(intent).flags(flags);
     let plan = Plan::with_options(&rs, &rd, in_fmt, out_fmt, &opts);
     let (cs, cd) = (src.c(), dst.c());
-    let t = unsafe { c::cmsCreateTransform(cs.0, in_fmt.code(), cd.0, out_fmt.code(), intent.code(), flags) };
-    let what = format!("{} {in_fmt:?} -> {} {out_fmt:?} {intent:?} flags {flags:#x}", src.name(), dst.name());
+    let t = unsafe {
+        c::cmsCreateTransform(
+            cs.0,
+            in_fmt.code(),
+            cd.0,
+            out_fmt.code(),
+            intent.code(),
+            flags,
+        )
+    };
+    let what = format!(
+        "{} {in_fmt:?} -> {} {out_fmt:?} {intent:?} flags {flags:#x}",
+        src.name(),
+        dst.name()
+    );
     match plan {
         Err(e) => {
-            assert!(t.is_null(), "{what}: Rust failed ({e}) but C built a transform");
+            assert!(
+                t.is_null(),
+                "{what}: Rust failed ({e}) but C built a transform"
+            );
         }
         Ok(plan) => {
             let want = c_run(t, &input, N, out_fmt.pixel_size());
@@ -115,14 +139,21 @@ fn check_pair(src: Src, in_fmt: Format, dst: Src, out_fmt: Format, intent: Inten
             plan.transform(&input, &mut got);
             if got != want {
                 let i = got.iter().zip(&want).position(|(a, b)| a != b).unwrap();
-                panic!("{what}: first difference at byte {i}: rust {} vs C {}", got[i], want[i]);
+                panic!(
+                    "{what}: first difference at byte {i}: rust {} vs C {}",
+                    got[i], want[i]
+                );
             }
         }
     }
 }
 
-const INTENTS: [Intent; 4] =
-    [Intent::Perceptual, Intent::RelativeColorimetric, Intent::Saturation, Intent::AbsoluteColorimetric];
+const INTENTS: [Intent; 4] = [
+    Intent::Perceptual,
+    Intent::RelativeColorimetric,
+    Intent::Saturation,
+    Intent::AbsoluteColorimetric,
+];
 
 #[test]
 fn rgb_to_rgb_all_intents_and_flags() {
@@ -131,7 +162,12 @@ fn rgb_to_rgb_all_intents_and_flags() {
         (Src::Srgb, Src::File("ibm-t61.icc")),
         (Src::File("test3.icc"), Src::File("test4.icc")),
     ];
-    let flag_sets = [0, flags::BLACK_POINT_COMPENSATION, flags::NO_OPTIMIZE, flags::HIGH_RES_PRECALC];
+    let flag_sets = [
+        0,
+        flags::BLACK_POINT_COMPENSATION,
+        flags::NO_OPTIMIZE,
+        flags::HIGH_RES_PRECALC,
+    ];
     for (s, d) in pairs {
         for intent in INTENTS {
             for flags in flag_sets {
@@ -146,9 +182,30 @@ fn rgb_to_rgb_all_intents_and_flags() {
 fn cmyk_links_all_intents_with_bpc() {
     for intent in INTENTS {
         for flags in [0, flags::BLACK_POINT_COMPENSATION] {
-            check_pair(Src::File("test1.icc"), Format::CMYK_8, Src::Srgb, Format::RGB_8, intent, flags);
-            check_pair(Src::Srgb, Format::RGB_8, Src::File("test2.icc"), Format::CMYK_8, intent, flags);
-            check_pair(Src::File("test1.icc"), Format::CMYK_16, Src::File("test2.icc"), Format::CMYK_16, intent, flags);
+            check_pair(
+                Src::File("test1.icc"),
+                Format::CMYK_8,
+                Src::Srgb,
+                Format::RGB_8,
+                intent,
+                flags,
+            );
+            check_pair(
+                Src::Srgb,
+                Format::RGB_8,
+                Src::File("test2.icc"),
+                Format::CMYK_8,
+                intent,
+                flags,
+            );
+            check_pair(
+                Src::File("test1.icc"),
+                Format::CMYK_16,
+                Src::File("test2.icc"),
+                Format::CMYK_16,
+                intent,
+                flags,
+            );
         }
     }
 }
@@ -156,19 +213,38 @@ fn cmyk_links_all_intents_with_bpc() {
 #[test]
 fn to_lab_and_gray() {
     for intent in INTENTS {
-        check_pair(Src::File("test5.icc"), Format::RGB_8, Src::Lab4, Format::LAB_16, intent, 0);
-        check_pair(Src::Srgb, Format::RGB_16, Src::File("graylcms2.icc"), Format::GRAY_16, intent, 0);
+        check_pair(
+            Src::File("test5.icc"),
+            Format::RGB_8,
+            Src::Lab4,
+            Format::LAB_16,
+            intent,
+            0,
+        );
+        check_pair(
+            Src::Srgb,
+            Format::RGB_16,
+            Src::File("graylcms2.icc"),
+            Format::GRAY_16,
+            intent,
+            0,
+        );
     }
 }
 
 #[test]
 fn multiprofile_matches_c() {
-    let chain = [Src::Srgb, Src::File("bchslcms2.icc"), Src::File("test1.icc")];
+    let chain = [
+        Src::Srgb,
+        Src::File("bchslcms2.icc"),
+        Src::File("test1.icc"),
+    ];
     for intent in [Intent::Perceptual, Intent::RelativeColorimetric] {
         for flags in [0, flags::BLACK_POINT_COMPENSATION] {
             let rust: Vec<Profile> = chain.iter().map(|s| s.rust()).collect();
             let refs: Vec<&Profile> = rust.iter().collect();
-            let plan = Plan::new_multiprofile(&refs, Format::RGB_8, Format::CMYK_8, intent, flags).unwrap();
+            let plan = Plan::new_multiprofile(&refs, Format::RGB_8, Format::CMYK_8, intent, flags)
+                .unwrap();
             let cps: Vec<CProfile> = chain.iter().map(|s| s.c()).collect();
             let mut hs: Vec<*mut c_void> = cps.iter().map(|p| p.0).collect();
             let t = unsafe {
@@ -193,7 +269,11 @@ fn multiprofile_matches_c() {
 #[test]
 fn proofing_matches_c() {
     let (src, dst, proof) = (Src::Srgb, Src::Srgb, Src::File("test1.icc"));
-    for flags in [flags::SOFT_PROOFING, flags::GAMUT_CHECK, flags::SOFT_PROOFING | flags::BLACK_POINT_COMPENSATION] {
+    for flags in [
+        flags::SOFT_PROOFING,
+        flags::GAMUT_CHECK,
+        flags::SOFT_PROOFING | flags::BLACK_POINT_COMPENSATION,
+    ] {
         for proofing_intent in [Intent::RelativeColorimetric, Intent::AbsoluteColorimetric] {
             let plan = Plan::new_proofing(
                 &src.rust(),
@@ -224,11 +304,16 @@ fn proofing_matches_c() {
             let mut got = vec![0u8; N * 3];
             plan.transform(&input, &mut got);
             if got != want {
-                let px: Vec<usize> = (0..N).filter(|&i| got[i * 3..i * 3 + 3] != want[i * 3..i * 3 + 3]).collect();
+                let px: Vec<usize> = (0..N)
+                    .filter(|&i| got[i * 3..i * 3 + 3] != want[i * 3..i * 3 + 3])
+                    .collect();
                 let i = px[0];
                 panic!(
                     "proofing flags {flags:#x} {proofing_intent:?}: {} of {N} pixels differ; first #{i}: in {:?} rust {:?} C {:?}",
-                    px.len(), &input[i * 3..i * 3 + 3], &got[i * 3..i * 3 + 3], &want[i * 3..i * 3 + 3]
+                    px.len(),
+                    &input[i * 3..i * 3 + 3],
+                    &got[i * 3..i * 3 + 3],
+                    &want[i * 3..i * 3 + 3]
                 );
             }
         }
@@ -246,7 +331,9 @@ fn adaptation_state_matches_c() {
             &dst.rust(),
             Format::RGB_8,
             Format::LAB_16,
-            &PlanOptions::new().intent(Intent::AbsoluteColorimetric).adaptation_state(state),
+            &PlanOptions::new()
+                .intent(Intent::AbsoluteColorimetric)
+                .adaptation_state(state),
         )
         .unwrap();
         // C reads the adaptation state from a context; use a private one so
@@ -298,14 +385,25 @@ fn device_link_bytes_match_c() {
     }
     let pairs = [
         (Src::Srgb, Format::RGB_8, Src::Lab4, Format::LAB_16),
-        (Src::File("test1.icc"), Format::CMYK_8, Src::File("test5.icc"), Format::RGB_8),
-        (Src::File("test5.icc"), Format::RGB_16, Src::File("test2.icc"), Format::CMYK_16),
+        (
+            Src::File("test1.icc"),
+            Format::CMYK_8,
+            Src::File("test5.icc"),
+            Format::RGB_8,
+        ),
+        (
+            Src::File("test5.icc"),
+            Format::RGB_16,
+            Src::File("test2.icc"),
+            Format::CMYK_16,
+        ),
     ];
     for (src, fi, dst, fo) in pairs {
         for fl in [0, flags::KEEP_SEQUENCE] {
             for version in [4.3, 2.1] {
                 let what = format!("{} -> {} flags {fl:#x} v{version}", src.name(), dst.name());
-                let plan = Plan::build(&src.rust(), &dst.rust(), fi, fo, Intent::Perceptual, fl).unwrap();
+                let plan =
+                    Plan::build(&src.rust(), &dst.rust(), fi, fo, Intent::Perceptual, fl).unwrap();
                 let got = mask(plan.to_device_link(version).unwrap().save().unwrap());
                 let (cs, cd) = (src.c(), dst.c());
                 let want = unsafe {
@@ -317,7 +415,10 @@ fn device_link_bytes_match_c() {
                 };
                 assert_eq!(got.len(), want.len(), "{what}: size");
                 if let Some(i) = got.iter().zip(&want).position(|(a, b)| a != b) {
-                    panic!("{what}: first difference at byte {i}: rust {} vs C {}", got[i], want[i]);
+                    panic!(
+                        "{what}: first difference at byte {i}: rust {} vs C {}",
+                        got[i], want[i]
+                    );
                 }
             }
         }

@@ -3,18 +3,22 @@
 //! context IDs, transform getters, intents, tone-curve segments,
 //! IO variants, pipeline misc, reverse/temp/alarm machinery.
 
-use lcms::{lut, profile, gamma, wtpnt, xform, pcs, err, named,
-    virt, types};
+use lcms::{err, gamma, lut, named, pcs, profile, types, virt, wtpnt, xform};
 use lcms_cref as c;
 use std::ffi::c_void;
 
 #[test]
 fn channels_of_colorspace() {
     unsafe {
-        for sig in [0x52474220u32 /*'RGB '*/, 0x4C616220 /*'Lab '*/,
-                    0x58595A20 /*'XYZ '*/, 0x434D594B /*'CMYK'*/,
-                    0x47524159 /*'GRAY'*/, 0x32434820 /*'2CH '*/,
-                    0x38434820 /*'8CH '*/] {
+        for sig in [
+            0x52474220u32, /*'RGB '*/
+            0x4C616220,    /*'Lab '*/
+            0x58595A20,    /*'XYZ '*/
+            0x434D594B,    /*'CMYK'*/
+            0x47524159,    /*'GRAY'*/
+            0x32434820,    /*'2CH '*/
+            0x38434820,    /*'8CH '*/
+        ] {
             let cn = c::cmsChannelsOfColorSpace(sig);
             let rn = pcs::channels_of_color_space(sig);
             assert_eq!(cn as i32, rn, "channels {sig:#x}");
@@ -35,10 +39,8 @@ fn encoded_cmm_version() {
 fn header_cmm_manufacturer() {
     for data in corpus() {
         unsafe {
-            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _,
-                data.len() as u32);
-            let mut rp = profile::open_profile_from_mem(None, &data)
-                .unwrap();
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
+            let mut rp = profile::open_profile_from_mem(None, &data).unwrap();
             let ccmm = c::cmsGetHeaderCMM(h);
             let cmfr = c::cmsGetHeaderManufacturer(h);
             // rust side reads the header fields directly
@@ -119,14 +121,17 @@ fn supported_intents() {
     unsafe {
         let mut codes = [0u32; 64];
         let mut descs: [*mut u8; 64] = [std::ptr::null_mut(); 64];
-        let n = c::cmsGetSupportedIntents(64, codes.as_mut_ptr(),
-            descs.as_mut_ptr());
+        let n = c::cmsGetSupportedIntents(64, codes.as_mut_ptr(), descs.as_mut_ptr());
         eprintln!("supported intents n={n}");
         assert!(n > 0, "C supported intents");
         let mut codes2 = [0u32; 64];
         let mut descs2: [*mut i8; 64] = [std::ptr::null_mut(); 64];
-        let n2 = c::cmsGetSupportedIntentsTHR(std::ptr::null_mut(),
-            64, codes2.as_mut_ptr(), descs2.as_mut_ptr());
+        let n2 = c::cmsGetSupportedIntentsTHR(
+            std::ptr::null_mut(),
+            64,
+            codes2.as_mut_ptr(),
+            descs2.as_mut_ptr(),
+        );
         assert_eq!(n, n2, "THR variant parity");
     }
 }
@@ -138,22 +143,23 @@ fn tone_curve_segments() {
         // type=6 = parametric (a*x^g+b); NULL sampled ok
         let segs = [
             c::CurveSegment {
-                x0: f32::NEG_INFINITY, x1: 0.5,
-                r#type: 6, params: [1.0, 1.0, 0.0, 0.0, 0.0,
-                                   0.0, 0.0, 0.0, 0.0, 0.0],
+                x0: f32::NEG_INFINITY,
+                x1: 0.5,
+                r#type: 6,
+                params: [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 n_grid_points: 0,
                 sampled_points: std::ptr::null(),
             },
             c::CurveSegment {
-                x0: 0.5, x1: f32::INFINITY,
-                r#type: 6, params: [2.0, 1.0, 0.0, 0.0, 0.0,
-                                   0.0, 0.0, 0.0, 0.0, 0.0],
+                x0: 0.5,
+                x1: f32::INFINITY,
+                r#type: 6,
+                params: [2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 n_grid_points: 0,
                 sampled_points: std::ptr::null(),
             },
         ];
-        let ct = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(),
-            2, segs.as_ptr());
+        let ct = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(), 2, segs.as_ptr());
         assert!(!ct.is_null());
         for i in 0..2 {
             let s = c::cmsGetToneCurveSegment(i, ct);
@@ -161,20 +167,27 @@ fn tone_curve_segments() {
         }
         let oob = c::cmsGetToneCurveSegment(5, ct);
         // rust side
-        let rt = gamma::build_segmented_tone_curve(None, &[
-            gamma::CurveSegment {
-                x0: f32::NEG_INFINITY, x1: 0.5, r#type: 6,
-                params: [1.0, 1.0, 0.0, 0.0, 0.0,
-                         0.0, 0.0, 0.0, 0.0, 0.0],
-                n_grid_points: 0, sampled_points: None,
-            },
-            gamma::CurveSegment {
-                x0: 0.5, x1: f32::INFINITY, r#type: 6,
-                params: [2.0, 1.0, 0.0, 0.0, 0.0,
-                         0.0, 0.0, 0.0, 0.0, 0.0],
-                n_grid_points: 0, sampled_points: None,
-            },
-        ]);
+        let rt = gamma::build_segmented_tone_curve(
+            None,
+            &[
+                gamma::CurveSegment {
+                    x0: f32::NEG_INFINITY,
+                    x1: 0.5,
+                    r#type: 6,
+                    params: [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    n_grid_points: 0,
+                    sampled_points: None,
+                },
+                gamma::CurveSegment {
+                    x0: 0.5,
+                    x1: f32::INFINITY,
+                    r#type: 6,
+                    params: [2.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    n_grid_points: 0,
+                    sampled_points: None,
+                },
+            ],
+        );
         if let Some(rc) = rt {
             for i in 0..2 {
                 assert!(rc.segment(i).is_some(), "rust seg {i}");
@@ -196,16 +209,27 @@ fn reverse_temp_adaptation() {
         let rr = gamma::reverse_tone_curve_ex(4096, &rg);
         assert!(rr.is_some(), "rust reverse ex");
         // TempFromWhitePoint
-        let mut cwp = c::CiexyY { x: 0.0, y: 0.0, Y: 1.0 };
+        let mut cwp = c::CiexyY {
+            x: 0.0,
+            y: 0.0,
+            Y: 1.0,
+        };
         c::cmsWhitePointFromTemp(&mut cwp, 6504.0);
         let mut ct2 = 0.0f64;
         let c_ok = c::cmsTempFromWhitePoint(&mut ct2, &cwp);
         assert_ne!(c_ok, 0, "C temp from wp");
-        let rwp = types::CiexyY { x: cwp.x, y: cwp.y, Y: 1.0 };
+        let rwp = types::CiexyY {
+            x: cwp.x,
+            y: cwp.y,
+            Y: 1.0,
+        };
         let rt2 = wtpnt::temp_from_white_point(&rwp);
         assert!(rt2.is_some());
-        assert!((ct2 - rt2.unwrap()).abs() < 0.01,
-            "temp roundtrip c={ct2} r={:?}", rt2);
+        assert!(
+            (ct2 - rt2.unwrap()).abs() < 0.01,
+            "temp roundtrip c={ct2} r={:?}",
+            rt2
+        );
         // SetAdaptationState (non-THR)
         let prev = c::cmsSetAdaptationState(0.9);
         let _ = c::cmsSetAdaptationState(prev);
@@ -220,8 +244,13 @@ fn dict_next_entry() {
         let cd = c::cmsDictAlloc(std::ptr::null_mut());
         let wname = ['n' as i32, 0];
         let wval = ['v' as i32, 0];
-        c::cmsDictAddEntry(cd, wname.as_ptr(), wval.as_ptr(),
-            std::ptr::null_mut(), std::ptr::null_mut());
+        c::cmsDictAddEntry(
+            cd,
+            wname.as_ptr(),
+            wval.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
         let mut e = c::cmsDictNextEntry(std::ptr::null_mut());
         // C's DictNext on NULL returns the first? or null — probe
         let _ = e;
@@ -235,17 +264,22 @@ fn open_profile_variants() {
     for data in corpus() {
         unsafe {
             // cmsOpenProfileFromMemTHR — THR variant
-            let h = c::cmsOpenProfileFromMemTHR(std::ptr::null_mut(),
-                data.as_ptr() as _, data.len() as u32);
+            let h = c::cmsOpenProfileFromMemTHR(
+                std::ptr::null_mut(),
+                data.as_ptr() as _,
+                data.len() as u32,
+            );
             assert!(!h.is_null(), "MemTHR open");
             c::cmsCloseProfile(h);
             // write temp file, open via FileTHR
             let path = std::env::temp_dir().join("lcms_test_mtv.icc");
             std::fs::write(&path, &data).unwrap();
-            let cpath = std::ffi::CString::new(
-                path.to_str().unwrap()).unwrap();
-            let h2 = c::cmsOpenProfileFromFileTHR(std::ptr::null_mut(),
-                cpath.as_ptr(), b"r\0".as_ptr() as *const _);
+            let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+            let h2 = c::cmsOpenProfileFromFileTHR(
+                std::ptr::null_mut(),
+                cpath.as_ptr(),
+                b"r\0".as_ptr() as *const _,
+            );
             assert!(!h2.is_null(), "FileTHR open");
             c::cmsCloseProfile(h2);
             break; // one profile suffices for the variants
@@ -268,15 +302,18 @@ fn matrix_shaper_check() {
 }
 
 fn corpus() -> Vec<Vec<u8>> {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../");
-    let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap()
-        .filter_map(|e| e.ok()).map(|e| e.path())
-        .filter(|p| p.extension().map(|x| x == "icc")
-            .unwrap_or(false))
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
-    files.into_iter().map(|p| std::fs::read(p).unwrap()).collect()
+    files
+        .into_iter()
+        .map(|p| std::fs::read(p).unwrap())
+        .collect()
 }
 
 /// cmsFormatterForColorspaceOfProfile + cmsFormatterForPCSOfProfile
@@ -285,14 +322,11 @@ fn corpus() -> Vec<Vec<u8>> {
 fn formatter_for_profile() {
     unsafe {
         for data in corpus() {
-            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _,
-                data.len() as u32);
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             for nb in [1u32, 2, 4] {
                 for fl in [0i32, 1] {
-                    let cf = c::cmsFormatterForColorspaceOfProfile(
-                        h, nb, fl);
-                    let cp = c::cmsFormatterForPCSOfProfile(h, nb,
-                        fl);
+                    let cf = c::cmsFormatterForColorspaceOfProfile(h, nb, fl);
+                    let cp = c::cmsFormatterForPCSOfProfile(h, nb, fl);
                     assert_ne!(cf, 0, "csfmt nb={nb} fl={fl}");
                     assert_ne!(cp, 0, "pcsfmt nb={nb} fl={fl}");
                 }
@@ -330,8 +364,9 @@ fn transform_gamut_pipeline() {
         let proof = c::cmsCreate_sRGBProfile();
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateProofingTransform(hi, in_fmt, ho,
-            out_fmt, proof, 0, 0, 0x1000 /*GAMUTCHECK*/);
+        let ct = c::cmsCreateProofingTransform(
+            hi, in_fmt, ho, out_fmt, proof, 0, 0, 0x1000, /*GAMUTCHECK*/
+        );
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
         let _ = c::cmsCloseProfile(proof);
@@ -349,31 +384,39 @@ fn pipeline_check_retrieve() {
     unsafe {
         let cp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         let s1 = c::cmsStageAllocIdentity(std::ptr::null_mut(), 3);
-        let s2 = c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3,
+        let s2 = c::cmsStageAllocMatrix(
+            std::ptr::null_mut(),
+            3,
+            3,
             [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0].as_ptr(),
-            std::ptr::null());
+            std::ptr::null(),
+        );
         c::cmsPipelineInsertStage(cp, 0, s1);
         c::cmsPipelineInsertStage(cp, 1, s2);
         // matching types: 'idn '(0x69646e20) + 'matf'(0x6d617466)
-        let ok = c::cmsPipelineCheckAndRetreiveStages(cp, 2,
-            0x69646e20u32, 0x6d617466u32);
+        let ok = c::cmsPipelineCheckAndRetreiveStages(cp, 2, 0x69646e20u32, 0x6d617466u32);
         assert_ne!(ok, 0, "matching stages");
-        let bad = c::cmsPipelineCheckAndRetreiveStages(cp, 2,
-            0x69646e20u32, 0x69646e20u32);
+        let bad = c::cmsPipelineCheckAndRetreiveStages(cp, 2, 0x69646e20u32, 0x69646e20u32);
         assert_eq!(bad, 0, "mismatched stages");
         // rust side — pipeline_check_and_retrieve_stages
         let mut rp = lut::pipeline_alloc(None, 3, 3).unwrap();
-        assert!(rp.insert_stage(lut::StageLoc::AtEnd,
-            lut::stage_alloc_identity(None, 3)));
-        assert!(rp.insert_stage(lut::StageLoc::AtEnd,
-            lut::stage_alloc_matrix(None, 3, 3,
-                &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
-                None).unwrap()));
-        let r = lut::pipeline_check_and_retrieve_stages(&rp,
-            &[0x69646e20, 0x6d617466]);
+        assert!(rp.insert_stage(lut::StageLoc::AtEnd, lut::stage_alloc_identity(None, 3)));
+        assert!(
+            rp.insert_stage(
+                lut::StageLoc::AtEnd,
+                lut::stage_alloc_matrix(
+                    None,
+                    3,
+                    3,
+                    &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                    None
+                )
+                .unwrap()
+            )
+        );
+        let r = lut::pipeline_check_and_retrieve_stages(&rp, &[0x69646e20, 0x6d617466]);
         assert!(r.is_some(), "rust matching stages");
-        let r2 = lut::pipeline_check_and_retrieve_stages(&rp,
-            &[0x69646e20, 0x69646e20]);
+        let r2 = lut::pipeline_check_and_retrieve_stages(&rp, &[0x69646e20, 0x69646e20]);
         assert!(r2.is_none(), "rust mismatched stages");
         c::cmsPipelineFree(cp);
     }
@@ -385,8 +428,7 @@ fn pipeline_check_retrieve() {
 fn unregister_plugins() {
     unsafe {
         c::cmsUnregisterPlugins();
-        let ctx = c::cmsDupContext(std::ptr::null_mut(),
-            std::ptr::null_mut());
+        let ctx = c::cmsDupContext(std::ptr::null_mut(), std::ptr::null_mut());
         c::cmsUnregisterPluginsTHR(ctx);
         c::cmsDeleteContext(ctx);
         // rust side — the context teardown path
@@ -408,21 +450,18 @@ fn devicelink_from_cube() {
                 1.0 1.0 1.0\n";
     let path = std::env::temp_dir().join("lcms_test.cube");
     std::fs::write(&path, cube).unwrap();
-    let cpath = std::ffi::CString::new(
-        path.to_str().unwrap()).unwrap();
+    let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
     unsafe {
         let h = c::cmsCreateDeviceLinkFromCubeFile(cpath.as_ptr());
         assert!(!h.is_null(), "C cube devicelink");
         let cclass = c::cmsGetDeviceClass(h);
         eprintln!("cube dl class={cclass:#x}");
-        let h2 = c::cmsCreateDeviceLinkFromCubeFileTHR(
-            std::ptr::null_mut(), cpath.as_ptr());
+        let h2 = c::cmsCreateDeviceLinkFromCubeFileTHR(std::ptr::null_mut(), cpath.as_ptr());
         assert!(!h2.is_null(), "C cube THR");
         let _ = c::cmsCloseProfile(h);
         let _ = c::cmsCloseProfile(h2);
     }
-    let r = lcms::cgats::It8::create_device_link_from_cube_file(None,
-        path.to_str().unwrap());
+    let r = lcms::cgats::It8::create_device_link_from_cube_file(None, path.to_str().unwrap());
     assert!(r.is_some(), "rust cube devicelink");
 }
 
@@ -435,12 +474,13 @@ fn detect_rgb_gamma() {
         let cg = c::cmsDetectRGBProfileGamma(h, 0.001);
         eprintln!("srgb gamma={cg}");
         // -1 = parametric TRC (not detectable as a plain gamma)
-        assert!(cg == -1.0 || (cg > 1.5 && cg < 3.0),
-            "srgb gamma sane c={cg}");
+        assert!(
+            cg == -1.0 || (cg > 1.5 && cg < 3.0),
+            "srgb gamma sane c={cg}"
+        );
         // corpus profiles
         for data in corpus() {
-            let h2 = c::cmsOpenProfileFromMem(data.as_ptr() as _,
-                data.len() as u32);
+            let h2 = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             let g = c::cmsDetectRGBProfileGamma(h2, 0.001);
             let _ = g; // accept any result incl. -1 for non-RGB
             c::cmsCloseProfile(h2);
@@ -454,36 +494,34 @@ fn detect_rgb_gamma() {
 /// the FILE*/IOhandler entry variants.
 #[test]
 fn stream_io_variants() {
-    unsafe extern "C" fn _fwrite(_p: *const c_void, _s: usize,
-        _n: usize, _f: *mut c_void) -> usize { _n }
+    unsafe extern "C" fn _fwrite(
+        _p: *const c_void,
+        _s: usize,
+        _n: usize,
+        _f: *mut c_void,
+    ) -> usize {
+        _n
+    }
     for data in corpus() {
         unsafe {
             // write to a temp file, reopen via the stream path
-            let path = std::env::temp_dir()
-                .join("lcms_test_stream.icc");
+            let path = std::env::temp_dir().join("lcms_test_stream.icc");
             std::fs::write(&path, &data).unwrap();
-            let _cpath = std::ffi::CString::new(
-                path.to_str().unwrap()).unwrap();
+            let _cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
             // cmsOpenProfileFromStream takes FILE* — get one via
             // libc fopen
             unsafe extern "C" {
-                fn fopen(path: *const i8, mode: *const i8)
-                    -> *mut c_void;
+                fn fopen(path: *const i8, mode: *const i8) -> *mut c_void;
                 fn fclose(f: *mut c_void) -> i32;
             }
-            let f = fopen(_cpath.as_ptr(),
-                b"rb\0".as_ptr() as *const _);
+            let f = fopen(_cpath.as_ptr(), b"rb\0".as_ptr() as *const _);
             assert!(!f.is_null(), "fopen");
-            let h = c::cmsOpenProfileFromStream(f,
-                b"r\0".as_ptr() as *const _);
+            let h = c::cmsOpenProfileFromStream(f, b"r\0".as_ptr() as *const _);
             assert!(!h.is_null(), "stream open");
             // save via cmsSaveProfileToStream to a second file
-            let path2 = std::env::temp_dir()
-                .join("lcms_test_stream_out.icc");
-            let cpath2 = std::ffi::CString::new(
-                path2.to_str().unwrap()).unwrap();
-            let f2 = fopen(cpath2.as_ptr(),
-                b"wb\0".as_ptr() as *const _);
+            let path2 = std::env::temp_dir().join("lcms_test_stream_out.icc");
+            let cpath2 = std::ffi::CString::new(path2.to_str().unwrap()).unwrap();
+            let f2 = fopen(cpath2.as_ptr(), b"wb\0".as_ptr() as *const _);
             assert!(!f2.is_null(), "fopen out");
             // C's IOHANDLER owns both FILE* — no manual fclose
             // (fclose in FileClose on save; on cmsCloseProfile for
@@ -496,8 +534,7 @@ fn stream_io_variants() {
             let mut cn = 0u32;
             c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
             let mut cbuf = vec![0u8; cn as usize];
-            c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
-                &mut cn);
+            c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _, &mut cn);
             assert_eq!(resaved, cbuf, "stream vs mem bytes");
             c::cmsCloseProfile(h);
             break;
@@ -510,22 +547,31 @@ fn stream_io_variants() {
 #[test]
 fn thr_builders() {
     unsafe {
-        let ctx = c::cmsDupContext(std::ptr::null_mut(),
-            std::ptr::null_mut());
+        let ctx = c::cmsDupContext(std::ptr::null_mut(), std::ptr::null_mut());
         // each builder on the real context — status parity only
         let builders: Vec<(&str, *mut c_void)> = vec![
             ("xyz", c::cmsCreateXYZProfileTHR(ctx)),
             ("srgb", c::cmsCreate_sRGBProfileTHR(ctx)),
             ("null", c::cmsCreateNULLProfileTHR(ctx)),
-            ("lab2", c::cmsCreateLab2ProfileTHR(ctx,
-                std::ptr::null())),
-            ("lab4", c::cmsCreateLab4ProfileTHR(ctx,
-                std::ptr::null())),
-            ("bchsw", c::cmsCreateBCHSWabstractProfileTHR(ctx,
-                17, 0.0, 0.0, 0.0, 1.0, std::ptr::null(),
-                std::ptr::null())),
-            ("inklim", c::cmsCreateInkLimitingDeviceLinkTHR(ctx,
-                0x434D594B, 200.0)), // 'CMYK', 200%
+            ("lab2", c::cmsCreateLab2ProfileTHR(ctx, std::ptr::null())),
+            ("lab4", c::cmsCreateLab4ProfileTHR(ctx, std::ptr::null())),
+            (
+                "bchsw",
+                c::cmsCreateBCHSWabstractProfileTHR(
+                    ctx,
+                    17,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    std::ptr::null(),
+                    std::ptr::null(),
+                ),
+            ),
+            (
+                "inklim",
+                c::cmsCreateInkLimitingDeviceLinkTHR(ctx, 0x434D594B, 200.0),
+            ), // 'CMYK', 200%
         ];
         for (name, h) in &builders {
             assert!(!h.is_null(), "{name} THR build");
@@ -544,16 +590,14 @@ fn transform_colorants() {
         let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
-            0, 0);
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
         assert!(!ct.is_null());
         // non-named-color transform → NULL colorant lists
         let ci = c::cmsGetTransformInputColorants(ct);
         let co = c::cmsGetTransformOutputColorants(ct);
-        eprintln!("colorants in={} out={}", ci.is_null(),
-            co.is_null());
+        eprintln!("colorants in={} out={}", ci.is_null(), co.is_null());
         c::cmsDeleteTransform(ct);
     }
 }
@@ -567,10 +611,20 @@ fn dict_iterate() {
         let wval = ['v' as i32, 0];
         let wname2 = ['m' as i32, 0];
         let wval2 = ['w' as i32, 0];
-        c::cmsDictAddEntry(cd, wname.as_ptr(), wval.as_ptr(),
-            std::ptr::null_mut(), std::ptr::null_mut());
-        c::cmsDictAddEntry(cd, wname2.as_ptr(), wval2.as_ptr(),
-            std::ptr::null_mut(), std::ptr::null_mut());
+        c::cmsDictAddEntry(
+            cd,
+            wname.as_ptr(),
+            wval.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
+        c::cmsDictAddEntry(
+            cd,
+            wname2.as_ptr(),
+            wval2.as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        );
         // iterate — DictNext(NULL first arg?) — the C API takes the
         // previous entry or NULL for the first
         let e0 = c::cmsDictNextEntry(std::ptr::null());
@@ -580,8 +634,7 @@ fn dict_iterate() {
         // rust side — dict iteration machinery
         let rd = named::dict_alloc(None);
         let mut rd2 = rd;
-        let _ = named::dict_add_entry(&mut rd2, &[110i32, 0],
-            Some(&[118i32, 0]), None, None);
+        let _ = named::dict_add_entry(&mut rd2, &[110i32, 0], Some(&[118i32, 0]), None, None);
     }
 }
 
@@ -594,20 +647,20 @@ fn postscript_color_resource() {
         for (name, ty) in [("csa", 0u32), ("crd", 1u32)] {
             // C side — a memory IOHANDLER to receive the resource
             let mut cbuf = vec![0u8; 65536];
-            let cio = c::cmsOpenIOhandlerFromMem(std::ptr::null_mut(),
-                cbuf.as_mut_ptr(), 65536,
-                b"w\0".as_ptr() as *const _);
+            let cio = c::cmsOpenIOhandlerFromMem(
+                std::ptr::null_mut(),
+                cbuf.as_mut_ptr(),
+                65536,
+                b"w\0".as_ptr() as *const _,
+            );
             assert!(!cio.is_null(), "{name} io");
-            let c_ok = c::cmsGetPostScriptColorResource(
-                std::ptr::null_mut(), ty, h, 0, 0, cio);
+            let c_ok = c::cmsGetPostScriptColorResource(std::ptr::null_mut(), ty, h, 0, 0, cio);
             eprintln!("{name} c_ok={c_ok}");
             c::cmsCloseIOhandler(cio);
             // rust side — io_handler_from_mem write-mode
             let mut rp = virt::create_srgb_profile(None).unwrap();
-            let mut rio = lcms::io::io_handler_from_mem(None,
-                vec![0u8; 65536], "w").unwrap();
-            let r_n = lcms::ps2::get_post_script_color_resource(
-                None, ty, &mut rp, 0, 0, &mut rio);
+            let mut rio = lcms::io::io_handler_from_mem(None, vec![0u8; 65536], "w").unwrap();
+            let r_n = lcms::ps2::get_post_script_color_resource(None, ty, &mut rp, 0, 0, &mut rio);
             eprintln!("{name} r_n={r_n}");
         }
         c::cmsCloseProfile(h);
@@ -618,27 +671,24 @@ fn postscript_color_resource() {
 #[test]
 fn thr_transform_variants() {
     unsafe {
-        let ctx = c::cmsDupContext(std::ptr::null_mut(),
-            std::ptr::null_mut());
+        let ctx = c::cmsDupContext(std::ptr::null_mut(), std::ptr::null_mut());
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let proof = c::cmsCreate_sRGBProfile();
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         // CreateTransformTHR
-        let t1 = c::cmsCreateTransformTHR(ctx, hi, in_fmt, ho,
-            out_fmt, 0, 0);
+        let t1 = c::cmsCreateTransformTHR(ctx, hi, in_fmt, ho, out_fmt, 0, 0);
         assert!(!t1.is_null(), "transformTHR");
         c::cmsDeleteTransform(t1);
         // CreateMultiprofileTransformTHR
         let mut profs = [hi, ho];
-        let t2 = c::cmsCreateMultiprofileTransformTHR(ctx,
-            profs.as_mut_ptr(), 2, in_fmt, out_fmt, 0, 0);
+        let t2 =
+            c::cmsCreateMultiprofileTransformTHR(ctx, profs.as_mut_ptr(), 2, in_fmt, out_fmt, 0, 0);
         assert!(!t2.is_null(), "multiprofileTHR");
         c::cmsDeleteTransform(t2);
         // CreateProofingTransformTHR
-        let t3 = c::cmsCreateProofingTransformTHR(ctx, hi, in_fmt,
-            ho, out_fmt, proof, 0, 0, 0);
+        let t3 = c::cmsCreateProofingTransformTHR(ctx, hi, in_fmt, ho, out_fmt, proof, 0, 0, 0);
         assert!(!t3.is_null(), "proofingTHR");
         c::cmsDeleteTransform(t3);
         let _ = c::cmsCloseProfile(hi);
@@ -657,29 +707,25 @@ fn iohandler_stream_variants() {
     }
     for data in corpus() {
         unsafe {
-            let path = std::env::temp_dir()
-                .join("lcms_test_ioh.icc");
+            let path = std::env::temp_dir().join("lcms_test_ioh.icc");
             std::fs::write(&path, &data).unwrap();
-            let cpath = std::ffi::CString::new(
-                path.to_str().unwrap()).unwrap();
-            let f = fopen(cpath.as_ptr(),
-                b"rb\0".as_ptr() as *const _);
+            let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+            let f = fopen(cpath.as_ptr(), b"rb\0".as_ptr() as *const _);
             assert!(!f.is_null());
             // cmsOpenIOhandlerFromStream — the stream IOHANDLER
-            let io = c::cmsOpenIOhandlerFromStream(
-                std::ptr::null_mut(), f);
+            let io = c::cmsOpenIOhandlerFromStream(std::ptr::null_mut(), f);
             assert!(!io.is_null(), "iohandler stream");
             // cmsOpenProfileFromIOhandler2THR — read through it
-            let h = c::cmsOpenProfileFromIOhandler2THR(
-                std::ptr::null_mut(), io, 0);
+            let h = c::cmsOpenProfileFromIOhandler2THR(std::ptr::null_mut(), io, 0);
             assert!(!h.is_null(), "iohandler2 open");
             c::cmsCloseProfile(h);
             // stream THR variant
-            let f2 = fopen(cpath.as_ptr(),
-                b"rb\0".as_ptr() as *const _);
+            let f2 = fopen(cpath.as_ptr(), b"rb\0".as_ptr() as *const _);
             let h2 = c::cmsOpenProfileFromStreamTHR(
-                std::ptr::null_mut(), f2,
-                b"r\0".as_ptr() as *const _);
+                std::ptr::null_mut(),
+                f2,
+                b"r\0".as_ptr() as *const _,
+            );
             assert!(!h2.is_null(), "streamTHR open");
             c::cmsCloseProfile(h2);
             break;
@@ -693,34 +739,49 @@ fn iohandler_stream_variants() {
 #[test]
 fn remaining_builders() {
     unsafe {
-        let ctx = c::cmsDupContext(std::ptr::null_mut(),
-            std::ptr::null_mut());
+        let ctx = c::cmsDupContext(std::ptr::null_mut(), std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         // gray THR + non-THR
-        let h1 = c::cmsCreateGrayProfileTHR(ctx, std::ptr::null(),
-            g as *const _);
+        let h1 = c::cmsCreateGrayProfileTHR(ctx, std::ptr::null(), g as *const _);
         assert!(!h1.is_null(), "gray THR");
         let h2 = c::cmsCreateGrayProfile(std::ptr::null(), g);
         assert!(!h2.is_null(), "gray");
         // RGB non-THR — D65 primaries
-        let d65 = c::CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 };
+        let d65 = c::CiexyY {
+            x: 0.3127,
+            y: 0.3290,
+            Y: 1.0,
+        };
         let prim = [
-            c::CiexyY { x: 0.6400, y: 0.3300, Y: 1.0 }, // R
-            c::CiexyY { x: 0.3000, y: 0.6000, Y: 1.0 }, // G
-            c::CiexyY { x: 0.1500, y: 0.0600, Y: 1.0 }, // B
+            c::CiexyY {
+                x: 0.6400,
+                y: 0.3300,
+                Y: 1.0,
+            }, // R
+            c::CiexyY {
+                x: 0.3000,
+                y: 0.6000,
+                Y: 1.0,
+            }, // G
+            c::CiexyY {
+                x: 0.1500,
+                y: 0.0600,
+                Y: 1.0,
+            }, // B
         ];
         let tfs = [g, g, g];
-        let h3 = c::cmsCreateRGBProfile(&d65 as *const _ as *const _,
-            prim.as_ptr() as *const _, tfs.as_ptr() as *const _);
+        let h3 = c::cmsCreateRGBProfile(
+            &d65 as *const _ as *const _,
+            prim.as_ptr() as *const _,
+            tfs.as_ptr() as *const _,
+        );
         assert!(!h3.is_null(), "rgb");
         // linearization + ink-limiting devicelinks (non-THR)
         // CMYK needs 4 curves
         let tfs4 = [g, g, g, g];
-        let h4 = c::cmsCreateLinearizationDeviceLink(0x434D594B,
-            tfs4.as_ptr() as *const _); // 'CMYK'
+        let h4 = c::cmsCreateLinearizationDeviceLink(0x434D594B, tfs4.as_ptr() as *const _); // 'CMYK'
         assert!(!h4.is_null(), "linearization");
-        let h5 = c::cmsCreateInkLimitingDeviceLink(0x434D594B,
-            200.0);
+        let h5 = c::cmsCreateInkLimitingDeviceLink(0x434D594B, 200.0);
         assert!(!h5.is_null(), "ink limiting");
         // profile placeholder
         let h6 = c::cmsCreateProfilePlaceholder(ctx);
@@ -745,19 +806,16 @@ fn tag_links() {
         // read the target + the linked slot
         let cwtpt = c::cmsReadTag(h, 0x77747074);
         let cchad = c::cmsReadTag(h, 0x63686164);
-        eprintln!("wtpt={} chad={}", cwtpt.is_null(),
-            cchad.is_null());
+        eprintln!("wtpt={} chad={}", cwtpt.is_null(), cchad.is_null());
         // save with the link
         let mut cn = 0u32;
         c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
         let mut cbuf = vec![0u8; cn as usize];
-        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
-            &mut cn);
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _, &mut cn);
         c::cmsCloseProfile(h);
         // rust side — same ops
         let mut rp = virt::create_srgb_profile(None).unwrap();
-        let rok = profile::cms_link_tag(&mut rp, 0x63686164,
-            0x77747074);
+        let rok = profile::cms_link_tag(&mut rp, 0x63686164, 0x77747074);
         assert_eq!(ok != 0, rok, "link status");
         let rto = profile::cms_tag_linked_to(&rp, 0x63686164);
         assert_eq!(to, rto, "linked-to");
@@ -767,14 +825,11 @@ fn tag_links() {
         // serialization produces a larger file (524 vs 544) —
         // pinned below.
         let rbytes = profile::save_profile_to_mem(&mut rp);
-        eprintln!("save c={cn} r={:?}",
-            rbytes.as_ref().map(|b| b.len()));
+        eprintln!("save c={cn} r={:?}", rbytes.as_ref().map(|b| b.len()));
         if let Some(rb) = &rbytes {
             if rb.len() != cn as usize {
-                eprintln!("DIVERGE linked save c={cn} r={}",
-                    rb.len());
+                eprintln!("DIVERGE linked save c={cn} r={}", rb.len());
             }
         }
     }
 }
-

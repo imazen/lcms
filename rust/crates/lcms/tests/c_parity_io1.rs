@@ -23,22 +23,26 @@ fn fmt_for(colorspace: u32, as_input: u32) -> u32 {
     (pt << 16) | (ch << 3) | 1
 }
 
-fn make_r_xform(data: &[u8], dir: u32, intent: u32)
-    -> Option<Box<lcms::xform::Transform>> {
+fn make_r_xform(data: &[u8], dir: u32, intent: u32) -> Option<Box<lcms::xform::Transform>> {
     let mut prof = lcms::profile::open_profile_from_mem(None, data)?;
     let mut srgb = lcms::virt::create_srgb_profile(None).unwrap();
     let cs = prof.color_space;
-    let (i, o) = if dir == 0 {
-        (prof, srgb)
-    } else {
-        (srgb, prof)
-    };
+    let (i, o) = if dir == 0 { (prof, srgb) } else { (srgb, prof) };
     let mut profs: Vec<Box<lcms::profile::IccProfile>> = vec![i, o];
     let mut bpc = [false; 2];
     let mut gamut: Option<&mut lcms::profile::IccProfile> = None;
     lcms::xform::create_extended_transform(
-        None, &mut profs, &mut bpc, &[intent, intent],
-        &[1.0, 1.0], gamut, 0, fmt_for(cs, dir), RGB8, 0)
+        None,
+        &mut profs,
+        &mut bpc,
+        &[intent, intent],
+        &[1.0, 1.0],
+        gamut,
+        0,
+        fmt_for(cs, dir),
+        RGB8,
+        0,
+    )
 }
 
 /// Corpus x intent transform matrix — every bundled profile as
@@ -49,32 +53,43 @@ fn make_r_xform(data: &[u8], dir: u32, intent: u32)
 fn corpus_intent_matrix() {
     unsafe {
         let files = [
-            "lcms2link.icc", "graylcms2.icc", "labv2lcms2.icc",
-            "linlcms2.icc", "brightness.icc", "gray3lcms2.icc",
-            "sRGB3.icc", "labv4lcms2.icc",
+            "lcms2link.icc",
+            "graylcms2.icc",
+            "labv2lcms2.icc",
+            "linlcms2.icc",
+            "brightness.icc",
+            "gray3lcms2.icc",
+            "sRGB3.icc",
+            "labv4lcms2.icc",
         ];
-        let dir = std::path::Path::new(
-            env!("CARGO_MANIFEST_DIR")).join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         for f in files {
             let path = dir.join(f);
             let Ok(data) = std::fs::read(&path) else {
-                eprintln!("{f}: missing"); continue;
+                eprintln!("{f}: missing");
+                continue;
             };
-            let cp = c::cmsOpenProfileFromMem(
-                data.as_ptr() as *const _, data.len() as u32);
-            if cp.is_null() { eprintln!("{f}: C open fail"); continue; }
+            let cp = c::cmsOpenProfileFromMem(data.as_ptr() as *const _, data.len() as u32);
+            if cp.is_null() {
+                eprintln!("{f}: C open fail");
+                continue;
+            }
             let cs = c::cmsGetColorSpace(cp);
             // input->srgb and srgb->output at each intent
             for intent in [0u32, 1, 2] {
                 let srgb = c::cmsCreate_sRGBProfile();
                 for dir in [0u32, 1] {
                     let (pi, po) = if dir == 0 { (cp, srgb) } else { (srgb, cp) };
-                    let t = c::cmsCreateTransform(pi,
-                        fmt_for(cs, dir), po, 0x00ff04, intent, 0);
+                    let t = c::cmsCreateTransform(pi, fmt_for(cs, dir), po, 0x00ff04, intent, 0);
                     let rt = make_r_xform(&data, dir, intent);
-                    assert_eq!(t.is_null(), rt.is_none(),
-                        "{f} dir{dir} i{intent} create parity");
-                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                    assert_eq!(
+                        t.is_null(),
+                        rt.is_none(),
+                        "{f} dir{dir} i{intent} create parity"
+                    );
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t);
+                    }
                 }
                 c::cmsCloseProfile(srgb);
             }
@@ -91,35 +106,52 @@ fn matrix_shaper_lab_pcs() {
     unsafe {
         let p = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(p, 0x6d6e7472); // 'mntr'
-        c::cmsSetColorSpace(p, 0x52474220);  // 'RGB '
-        c::cmsSetPCS(p, 0x4C616220);          // 'Lab '
+        c::cmsSetColorSpace(p, 0x52474220); // 'RGB '
+        c::cmsSetPCS(p, 0x4C616220); // 'Lab '
         // media white point (required)
-        #[repr(C)] struct Xyz0 { x: f64, y: f64, z: f64 }
-        let wp = Xyz0 { x: 0.9642, y: 1.0, z: 0.8249 };
+        #[repr(C)]
+        struct Xyz0 {
+            x: f64,
+            y: f64,
+            z: f64,
+        }
+        let wp = Xyz0 {
+            x: 0.9642,
+            y: 1.0,
+            z: 0.8249,
+        };
         c::cmsWriteTag(p, 0x77747074, &wp as *const _ as *const _);
         // XYZ colorant tags (sRGB primaries -> XYZ)
         for (sig, xyz) in [
-            (0x7258595Au32, [0.436, 0.2225, 0.0139]),   // 'rXYZ'
-            (0x6758595Au32, [0.385, 0.7169, 0.0971]),   // 'gXYZ'
-            (0x6258595Au32, [0.143, 0.0606, 0.714]),    // 'bXYZ'
+            (0x7258595Au32, [0.436, 0.2225, 0.0139]), // 'rXYZ'
+            (0x6758595Au32, [0.385, 0.7169, 0.0971]), // 'gXYZ'
+            (0x6258595Au32, [0.143, 0.0606, 0.714]),  // 'bXYZ'
         ] {
-            #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
-            let v = Xyz { x: xyz[0], y: xyz[1], z: xyz[2] };
+            #[repr(C)]
+            struct Xyz {
+                x: f64,
+                y: f64,
+                z: f64,
+            }
+            let v = Xyz {
+                x: xyz[0],
+                y: xyz[1],
+                z: xyz[2],
+            };
             c::cmsWriteTag(p, sig, &v as *const _ as *const _);
         }
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        for sig in [0x72545243u32, 0x67545243, 0x62545243] { // rTRC/gTRC/bTRC
+        for sig in [0x72545243u32, 0x67545243, 0x62545243] {
+            // rTRC/gTRC/bTRC
             c::cmsWriteTag(p, sig, g as *const _);
         }
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let t = c::cmsCreateTransform(p, 0x00ff04, lab,
-            0x0a0702, 0, 0);
+        let t = c::cmsCreateTransform(p, 0x00ff04, lab, 0x0a0702, 0, 0);
         eprintln!("labpcs t={}", !t.is_null());
         if !t.is_null() {
             let inp = [128u8, 200, 50];
             let mut out = [0u16; 3];
-            c::cmsDoTransform(t, inp.as_ptr() as *const _,
-                out.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(t, inp.as_ptr() as *const _, out.as_mut_ptr() as *mut _, 1);
             eprintln!("  out={out:?}");
             c::cmsDeleteTransform(t);
         }
@@ -134,14 +166,20 @@ fn matrix_shaper_lab_pcs() {
 #[test]
 fn output_lut_lab_normalization() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
-        for f in ["labv2lcms2.icc", "labv4lcms2.icc", "lcms2cmyk.icc",
-                  "graylcms2.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        for f in [
+            "labv2lcms2.icc",
+            "labv4lcms2.icc",
+            "lcms2cmyk.icc",
+            "graylcms2.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             let cs = c::cmsGetColorSpace(p);
             let out_fmt = match cs {
                 0x4C616220 => (10 << 16) | (3 << 3) | 2u32, // Lab16
@@ -152,14 +190,12 @@ fn output_lut_lab_normalization() {
             let srgb = c::cmsCreate_sRGBProfile();
             // srgb -> profile: profile is OUTPUT -> ReadOutputLUT
             for intent in 0..=3u32 {
-                let t = c::cmsCreateTransform(srgb, 0x00ff04,
-                    p, out_fmt, intent, 0);
+                let t = c::cmsCreateTransform(srgb, 0x00ff04, p, out_fmt, intent, 0);
                 eprintln!("{f} out i{intent} t={}", !t.is_null());
                 if !t.is_null() {
                     let inp = [128u8, 64, 220];
                     let mut out = [0u8; 8];
-                    c::cmsDoTransform(t, inp.as_ptr() as *const _,
-                        out.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t, inp.as_ptr() as *const _, out.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
             }
@@ -177,29 +213,32 @@ fn devicelink_lut_dispatch() {
     unsafe {
         // named-color class + ncl2 tag -> the named-color arm
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
-            b"suf\0".as_ptr());
-        for (name, pcs) in [("S1\0", [0x9000u16, 0x5500, 0x5500]),
-                            ("S2\0", [0x3000, 0x2000, 0x9000])] {
+            std::ptr::null_mut(),
+            2,
+            4,
+            b"pre\0".as_ptr(),
+            b"suf\0".as_ptr(),
+        );
+        for (name, pcs) in [
+            ("S1\0", [0x9000u16, 0x5500, 0x5500]),
+            ("S2\0", [0x3000, 0x2000, 0x9000]),
+        ] {
             let col = [0xFFFFu16; 4];
-            c::cmsAppendNamedColor(ncl, name.as_ptr(),
-                pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr(), pcs.as_ptr(), col.as_ptr());
         }
         let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
-        c::cmsSetDeviceClass(nmcl, 0x6e6d636c);      // 'nmcl'
-        c::cmsSetColorSpace(nmcl, 0x6e636c32);        // 'ncl2'
-        c::cmsSetPCS(nmcl, 0x4C616220);               // 'Lab '
+        c::cmsSetDeviceClass(nmcl, 0x6e6d636c); // 'nmcl'
+        c::cmsSetColorSpace(nmcl, 0x6e636c32); // 'ncl2'
+        c::cmsSetPCS(nmcl, 0x4C616220); // 'Lab '
         c::cmsWriteTag(nmcl, 0x6e636c32, ncl as *const _);
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for intent in 0..=4u32 {
-            let t = c::cmsCreateTransform(nmcl,
-                (1 << 3) | 2, lab, 0x0a0702, intent, 0);
+            let t = c::cmsCreateTransform(nmcl, (1 << 3) | 2, lab, 0x0a0702, intent, 0);
             eprintln!("nmcl i{intent} t={}", !t.is_null());
             if !t.is_null() {
                 let idx = [0u16, 1];
                 let mut out = [0u16; 3];
-                c::cmsDoTransform(t, idx.as_ptr() as *const _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, idx.as_ptr() as *const _, out.as_mut_ptr() as *mut _, 1);
                 eprintln!("  out={out:?}");
                 c::cmsDeleteTransform(t);
             }
@@ -218,21 +257,19 @@ fn matrix_shaper_directions() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let rgb16 = (4u32 << 16) | (3 << 3) | 2;   // RGB u16
-        let lab16 = (10u32 << 16) | (3 << 3) | 2;  // Lab u16
+        let rgb16 = (4u32 << 16) | (3 << 3) | 2; // RGB u16
+        let lab16 = (10u32 << 16) | (3 << 3) | 2; // Lab u16
         for (name, inp, out, in_fmt, out_fmt) in [
             ("srgb-in", srgb, lab, rgb16, lab16),
             ("srgb-out", lab, srgb, lab16, rgb16),
         ] {
             for intent in 0..=3u32 {
-                let t = c::cmsCreateTransform(inp, in_fmt, out,
-                    out_fmt, intent, 0);
+                let t = c::cmsCreateTransform(inp, in_fmt, out, out_fmt, intent, 0);
                 eprintln!("{name} i{intent} t={}", !t.is_null());
                 if !t.is_null() {
                     let mut buf = [0x80u8; 16];
                     let mut ob = [0u8; 16];
-                    c::cmsDoTransform(t, buf.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t, buf.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
             }
@@ -248,13 +285,18 @@ fn matrix_shaper_directions() {
 fn named_color_input_lut() {
     unsafe {
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 2, 4, b"pre\0".as_ptr(),
-            b"suf\0".as_ptr());
-        for (name, pcs) in [("S1\0", [0x9000u16, 0x5500, 0x5500]),
-                            ("S2\0", [0x3000, 0x2000, 0x9000])] {
+            std::ptr::null_mut(),
+            2,
+            4,
+            b"pre\0".as_ptr(),
+            b"suf\0".as_ptr(),
+        );
+        for (name, pcs) in [
+            ("S1\0", [0x9000u16, 0x5500, 0x5500]),
+            ("S2\0", [0x3000, 0x2000, 0x9000]),
+        ] {
             let col = [0xFFFFu16; 4];
-            c::cmsAppendNamedColor(ncl, name.as_ptr(),
-                pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr(), pcs.as_ptr(), col.as_ptr());
         }
         let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(nmcl, 0x6e6d636c);
@@ -267,14 +309,12 @@ fn named_color_input_lut() {
         let lab16 = (10u32 << 16) | (3 << 3) | 2;
         for (out, name) in [(lab, "lab"), (srgb, "srgb")] {
             let of = if out == srgb { rgb16 } else { lab16 };
-            let t = c::cmsCreateTransform(nmcl,
-                (1 << 3) | 2, out, of, 0, 0);
+            let t = c::cmsCreateTransform(nmcl, (1 << 3) | 2, out, of, 0, 0);
             eprintln!("nmcl-in->{name} t={}", !t.is_null());
             if !t.is_null() {
                 let idx = [0u16, 1];
                 let mut ob = [0u8; 8];
-                c::cmsDoTransform(t, idx.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, idx.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -291,13 +331,19 @@ fn named_color_input_lut() {
 #[test]
 fn gray_matrix_pipelines() {
     unsafe {
-        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
-        let gray = c::cmsCreateGrayProfile(&wp as *const _ as *const _,
-            c::cmsBuildGamma(std::ptr::null_mut(), 2.2));
+        let wp = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
+        let gray = c::cmsCreateGrayProfile(
+            &wp as *const _ as *const _,
+            c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+        );
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let g16 = (3u32 << 16) | (1 << 3) | 2;  // GRAY u16
-        let r16 = (4u32 << 16) | (3 << 3) | 2;  // RGB u16
+        let g16 = (3u32 << 16) | (1 << 3) | 2; // GRAY u16
+        let r16 = (4u32 << 16) | (3 << 3) | 2; // RGB u16
         let l16 = (10u32 << 16) | (3 << 3) | 2; // Lab u16
         // gray in -> gray out (input + output pipelines)
         for (inp, outp, if_, of, name) in [
@@ -311,8 +357,7 @@ fn gray_matrix_pipelines() {
             if !t.is_null() {
                 let ib = [0x40u8; 8];
                 let mut ob = [0u8; 8];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -327,22 +372,36 @@ fn gray_matrix_pipelines() {
 #[test]
 fn media_white_chad() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
-        #[repr(C)] struct Xyz { x: f64, y: f64, z: f64 }
-        for f in ["lcms2cmyk.icc", "graylcms2.icc", "labv2lcms2.icc",
-                  "sRGB3.icc", "linlcms2.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
-            let mut wp = Xyz { x: 0.0, y: 0.0, z: 0.0 };
-            let r = c::_cmsReadMediaWhitePoint(
-                &mut wp as *mut _ as *mut _, p);
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        #[repr(C)]
+        struct Xyz {
+            x: f64,
+            y: f64,
+            z: f64,
+        }
+        for f in [
+            "lcms2cmyk.icc",
+            "graylcms2.icc",
+            "labv2lcms2.icc",
+            "sRGB3.icc",
+            "linlcms2.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
+            let mut wp = Xyz {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            };
+            let r = c::_cmsReadMediaWhitePoint(&mut wp as *mut _ as *mut _, p);
             let mut chad = [0f64; 9];
             let r2 = c::_cmsReadCHAD(chad.as_mut_ptr() as *mut _, p);
-            eprintln!("{f} wp={r} ({:.3},{:.3},{:.3}) chad={r2}",
-                wp.x, wp.y, wp.z);
+            eprintln!("{f} wp={r} ({:.3},{:.3},{:.3}) chad={r2}", wp.x, wp.y, wp.z);
             c::cmsCloseProfile(p);
         }
     }
@@ -353,15 +412,17 @@ fn media_white_chad() {
 #[test]
 fn float_lut_lab_normalization() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3).map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof, 0x6d6e7472); // 'mntr'
-        c::cmsSetColorSpace(prof, 0x4C616220);  // 'Lab ' colorspace
-        c::cmsSetPCS(prof, 0x4C616220);          // 'Lab ' PCS
+        c::cmsSetColorSpace(prof, 0x4C616220); // 'Lab ' colorspace
+        c::cmsSetPCS(prof, 0x4C616220); // 'Lab ' PCS
         c::cmsWriteTag(prof, 0x44324230, p as *const _); // D2B0 mpet
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
@@ -369,8 +430,12 @@ fn float_lut_lab_normalization() {
         let t = c::cmsCreateTransform(prof, l16, lab, l16, 0, 0);
         let tf = c::cmsCreateTransform(prof, lf, lab, lf, 0, 0);
         eprintln!("lab-mpet t={} tf={}", !t.is_null(), !tf.is_null());
-        if !t.is_null() { c::cmsDeleteTransform(t); }
-        if !tf.is_null() { c::cmsDeleteTransform(tf); }
+        if !t.is_null() {
+            c::cmsDeleteTransform(t);
+        }
+        if !tf.is_null() {
+            c::cmsDeleteTransform(tf);
+        }
         c::cmsCloseProfile(prof);
         c::cmsCloseProfile(lab);
         c::cmsPipelineFree(p);
@@ -382,16 +447,17 @@ fn float_lut_lab_normalization() {
 #[test]
 fn float_devicelink_tag() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(dl, 0x6c696e6b); // 'link'
-        c::cmsSetColorSpace(dl, 0x52474220);   // 'RGB '
-        c::cmsSetPCS(dl, 0x4C616220);           // 'Lab '
+        c::cmsSetColorSpace(dl, 0x52474220); // 'RGB '
+        c::cmsSetPCS(dl, 0x4C616220); // 'Lab '
         c::cmsSetProfileVersion(dl, 4.4);
         c::cmsWriteTag(dl, 0x41324230, p as *const _); // A2B0 mpet
         let r16 = (4u32 << 16) | (3 << 3) | 2;
@@ -402,8 +468,7 @@ fn float_devicelink_tag() {
             if !t.is_null() {
                 let ib = [0x40u8; 16];
                 let mut ob = [0u8; 16];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -417,17 +482,17 @@ fn float_devicelink_tag() {
 #[test]
 fn profile_capability_helpers() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let mut profs = vec![
             ("srgb", c::cmsCreate_sRGBProfile()),
             ("lab", c::cmsCreateLab4Profile(std::ptr::null_mut())),
         ];
         for f in ["lcms2cmyk.icc", "lcms2link.icc", "graylcms2.icc"] {
             if let Ok(d) = std::fs::read(dir.join(f)) {
-                let p = c::cmsOpenProfileFromMem(
-                    d.as_ptr() as *const _, d.len() as u32);
-                if !p.is_null() { profs.push((f, p)); }
+                let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+                if !p.is_null() {
+                    profs.push((f, p));
+                }
             }
         }
         for (name, p) in &profs {
@@ -453,12 +518,13 @@ fn profile_capability_helpers() {
 #[test]
 fn float_tag_readers() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         // input-class profile with DToB tag -> _cmsReadFloatInputTag
         let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(inp, 0x6d6e7472);
@@ -475,7 +541,9 @@ fn float_tag_readers() {
         ] {
             let t = c::cmsCreateTransform(a, af, b, bf, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
         }
         c::cmsCloseProfile(inp);
         c::cmsCloseProfile(lab);
@@ -488,12 +556,13 @@ fn float_tag_readers() {
 #[test]
 fn float_output_tag() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         // output profile (Lab PCS in, RGB device out) with BToD tag
         let outp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(outp, 0x6d6e7472);
@@ -506,7 +575,9 @@ fn float_output_tag() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let t = c::cmsCreateTransform(lab, l16, outp, r16, 0, 0);
         eprintln!("b2d-out t={}", !t.is_null());
-        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !t.is_null() {
+            c::cmsDeleteTransform(t);
+        }
         c::cmsCloseProfile(outp);
         c::cmsCloseProfile(lab);
         c::cmsPipelineFree(p);
@@ -518,18 +589,19 @@ fn float_output_tag() {
 #[test]
 fn input_lut_intent_dispatch() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "aRGBlcms2.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for intent in [0u32, 1, 2, 3] {
-                let t = c::cmsCreateTransform(p,
-                    (6u32 << 16) | (4 << 3) | 2, lab, l16, intent, 0);
+                let t = c::cmsCreateTransform(p, (6u32 << 16) | (4 << 3) | 2, lab, l16, intent, 0);
                 if !t.is_null() {
                     eprintln!("{f} i{intent} ok");
                     c::cmsDeleteTransform(t);
@@ -546,18 +618,19 @@ fn input_lut_intent_dispatch() {
 #[test]
 fn output_lut_intent_dispatch() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         for f in ["lcms2cmyk.icc", "lcms2link.icc", "labv2lcms2.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for intent in [0u32, 1, 2, 3] {
-                let t = c::cmsCreateTransform(lab, l16, p,
-                    (6u32 << 16) | (4 << 3) | 2, intent, 0);
+                let t = c::cmsCreateTransform(lab, l16, p, (6u32 << 16) | (4 << 3) | 2, intent, 0);
                 if !t.is_null() {
                     eprintln!("{f} i{intent} ok");
                     c::cmsDeleteTransform(t);
@@ -574,22 +647,21 @@ fn output_lut_intent_dispatch() {
 #[test]
 fn formatter_for_profile() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let mut profs = vec![
             ("srgb", c::cmsCreate_sRGBProfile()),
             ("lab", c::cmsCreateLab4Profile(std::ptr::null_mut())),
         ];
         if let Ok(d) = std::fs::read(dir.join("lcms2cmyk.icc")) {
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if !p.is_null() { profs.push(("cmyk", p)); }
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if !p.is_null() {
+                profs.push(("cmyk", p));
+            }
         }
         for (name, p) in &profs {
             for nb in [1u32, 2, 4] {
                 for fl in [0i32, 1] {
-                    let fc = c::cmsFormatterForColorspaceOfProfile(
-                        *p, nb, fl);
+                    let fc = c::cmsFormatterForColorspaceOfProfile(*p, nb, fl);
                     let fp = c::cmsFormatterForPCSOfProfile(*p, nb, fl);
                     if fc != 0 || fp != 0 {
                         eprintln!("{name} nb{nb} f{fl} cs={fc:#x} pcs={fp:#x}");
@@ -606,12 +678,13 @@ fn formatter_for_profile() {
 #[test]
 fn output_lut_fallbacks() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsSetProfileVersion(prof, 4.4);
         // gamut + preview tags -> the fallback read arms
@@ -622,10 +695,11 @@ fn output_lut_fallbacks() {
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for intent in [0u32, 1, 2, 3, 5, 6] {
-            let t = c::cmsCreateTransform(lab, l16, prof, r16,
-                intent, 0);
+            let t = c::cmsCreateTransform(lab, l16, prof, r16, intent, 0);
             eprintln!("i{intent} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
         }
         c::cmsCloseProfile(prof);
         c::cmsCloseProfile(lab);
@@ -638,12 +712,13 @@ fn output_lut_fallbacks() {
 #[test]
 fn devicelink_lut_dispatch2() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         // link-class profiles with each tag sig
         for sig in [0x41324230u32, 0x44324230, 0x6B4C5546] {
@@ -655,7 +730,9 @@ fn devicelink_lut_dispatch2() {
             c::cmsWriteTag(dl, sig, p as *const _);
             let t = c::cmsCreateTransform(dl, r16, dl, r16, 0, 0);
             eprintln!("sig{sig:#x} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(dl);
         }
         c::cmsPipelineFree(p);
@@ -667,21 +744,29 @@ fn devicelink_lut_dispatch2() {
 #[test]
 fn input_lut_matrix_shaper() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let r16 = (4u32 << 16) | (3 << 3) | 2;
-        for f in ["sRGBlcms2.icc", "aRGBlcms2.icc", "graylcms2.icc",
-                  "lcms2mtsh.icc", "lcms2matrix.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "sRGBlcms2.icc",
+            "aRGBlcms2.icc",
+            "graylcms2.icc",
+            "lcms2mtsh.icc",
+            "lcms2matrix.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for intent in [0u32, 1, 2, 3] {
-                let t = c::cmsCreateTransform(p, r16, lab, l16,
-                    intent, 0);
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                let t = c::cmsCreateTransform(p, r16, lab, l16, intent, 0);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             eprintln!("{f} ok");
             c::cmsCloseProfile(p);
@@ -696,12 +781,13 @@ fn input_lut_matrix_shaper() {
 fn gamut_preview_lut_readers2() {
     let _g = CTX_LOCK.lock().unwrap();
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsSetProfileVersion(prof, 4.4);
         c::cmsWriteTag(prof, 0x67616d74, p as *const _); // 'gamt'
@@ -709,10 +795,11 @@ fn gamut_preview_lut_readers2() {
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // gamut-check transform (proof flag + gamut intent)
-        let t = c::cmsCreateTransform(prof, r16, lab, l16, 0,
-            0x00000400 | 0x00001000); // NOCACHE + GAMUTCHECK
+        let t = c::cmsCreateTransform(prof, r16, lab, l16, 0, 0x00000400 | 0x00001000); // NOCACHE + GAMUTCHECK
         eprintln!("gamut t={}", !t.is_null());
-        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !t.is_null() {
+            c::cmsDeleteTransform(t);
+        }
         c::cmsCloseProfile(prof);
         c::cmsCloseProfile(lab);
         c::cmsPipelineFree(p);
@@ -724,12 +811,13 @@ fn gamut_preview_lut_readers2() {
 #[test]
 fn float_reader_normalization() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         // input profile + DToB tag — triggers NormalizeToLabFloat
         let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(inp, 0x6d6e7472);
@@ -745,8 +833,7 @@ fn float_reader_normalization() {
         if !t.is_null() {
             let ib = [0x4000u16; 3];
             let mut ob = [0u16; 3];
-            c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                ob.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
             eprintln!("ob={ob:?}");
             c::cmsDeleteTransform(t);
         }
@@ -761,12 +848,13 @@ fn float_reader_normalization() {
 #[test]
 fn float_output_normalization() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let outp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(outp, 0x6d6e7472);
         c::cmsSetColorSpace(outp, 0x52474220);
@@ -781,8 +869,7 @@ fn float_output_normalization() {
         if !t.is_null() {
             let ib = [0x8000u16; 3];
             let mut ob = [0u16; 3];
-            c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                ob.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
             eprintln!("ob={ob:?}");
             c::cmsDeleteTransform(t);
         }
@@ -797,12 +884,13 @@ fn float_output_normalization() {
 #[test]
 fn devicelink_output_remaining() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         // devicelink with AToB0 tag
         let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(dl, 0x6c696e6b);
@@ -813,7 +901,9 @@ fn devicelink_output_remaining() {
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let t = c::cmsCreateTransform(dl, r16, dl, r16, 0, 0);
         eprintln!("dl t={}", !t.is_null());
-        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !t.is_null() {
+            c::cmsDeleteTransform(t);
+        }
         c::cmsCloseProfile(dl);
         c::cmsPipelineFree(p);
     }
@@ -824,17 +914,15 @@ fn devicelink_output_remaining() {
 #[test]
 fn lut_reader_remaining_arms() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         // named-color input (nmcl profile with ncl2 tag)
-        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 1,
-            3, b"p\0".as_ptr(), b"s\0".as_ptr());
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
-            lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         let nclp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(nclp, 0x6e6d636c);
         c::cmsSetColorSpace(nclp, 0x6e6d636c);
@@ -843,7 +931,9 @@ fn lut_reader_remaining_arms() {
         let ncf = (0xFFu32 << 16) | (1 << 3) | 1;
         let t = c::cmsCreateTransform(nclp, ncf, lab, l16, 0, 0);
         eprintln!("ncl t={}", !t.is_null());
-        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !t.is_null() {
+            c::cmsDeleteTransform(t);
+        }
         c::cmsCloseProfile(nclp);
         c::cmsFreeNamedColorList(ncl);
         c::cmsCloseProfile(lab);
@@ -855,21 +945,29 @@ fn lut_reader_remaining_arms() {
 #[test]
 fn output_lut_internals() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         // output-position corpus profiles exercise the reader
-        for f in ["lcms2cmyk.icc", "labv2lcms2.icc", "graylcms2.icc",
-                  "lcms2link.icc", "lcms2mtsh.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "lcms2cmyk.icc",
+            "labv2lcms2.icc",
+            "graylcms2.icc",
+            "lcms2link.icc",
+            "lcms2mtsh.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for intent in [0u32, 1, 2, 3] {
-                let t = c::cmsCreateTransform(lab, l16, p,
-                    (4u32 << 16) | (3 << 3) | 2, intent, 0);
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                let t = c::cmsCreateTransform(lab, l16, p, (4u32 << 16) | (3 << 3) | 2, intent, 0);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             eprintln!("{f} ok");
             c::cmsCloseProfile(p);
@@ -883,18 +981,18 @@ fn output_lut_internals() {
 #[test]
 fn float_normalization_arms() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // Lab-PCS + XYZ-PCS input profiles
-        for (pcs, name) in [(0x4C616220u32, "lab-pcs"),
-                            (0x58595A20, "xyz-pcs")] {
+        for (pcs, name) in [(0x4C616220u32, "lab-pcs"), (0x58595A20, "xyz-pcs")] {
             let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(inp, 0x6d6e7472);
             c::cmsSetColorSpace(inp, 0x52474220);
@@ -903,7 +1001,9 @@ fn float_normalization_arms() {
             c::cmsWriteTag(inp, 0x44324230, p as *const _);
             let t = c::cmsCreateTransform(inp, r16, lab, l16, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(inp);
         }
         c::cmsCloseProfile(lab);
@@ -916,13 +1016,15 @@ fn float_normalization_arms() {
 #[test]
 fn float_devicelink_reader() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
-        for sig in [0x44324230u32, 0x42324430] { // 'D2B0','B2D0'
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
+        for sig in [0x44324230u32, 0x42324430] {
+            // 'D2B0','B2D0'
             let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(dl, 0x6c696e6b);
             c::cmsSetColorSpace(dl, 0x52474220);
@@ -932,7 +1034,9 @@ fn float_devicelink_reader() {
             let r16 = (4u32 << 16) | (3 << 3) | 2;
             let t = c::cmsCreateTransform(dl, r16, dl, r16, 0, 0);
             eprintln!("sig{sig:#x} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(dl);
         }
         c::cmsPipelineFree(p);
@@ -945,12 +1049,13 @@ fn float_devicelink_reader() {
 fn preview_lut_reader() {
     let _g = CTX_LOCK.lock().unwrap();
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsSetProfileVersion(prof, 4.4);
         c::cmsWriteTag(prof, 0x70726530, p as *const _); // 'pre0'
@@ -958,10 +1063,11 @@ fn preview_lut_reader() {
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // proofing transform — the preview path
-        let pt = c::cmsCreateProofingTransform(prof, r16,
-            lab, l16, prof, 0, 0, 0);
+        let pt = c::cmsCreateProofingTransform(prof, r16, lab, l16, prof, 0, 0, 0);
         eprintln!("proof t={}", !pt.is_null());
-        if !pt.is_null() { c::cmsDeleteTransform(pt); }
+        if !pt.is_null() {
+            c::cmsDeleteTransform(pt);
+        }
         c::cmsCloseProfile(prof);
         c::cmsCloseProfile(lab);
         c::cmsPipelineFree(p);
@@ -973,26 +1079,36 @@ fn preview_lut_reader() {
 #[test]
 fn lut_reader_dispatch_all() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         // every corpus profile in input + output positions
-        for f in ["lcms2cmyk.icc", "sRGBlcms2.icc", "aRGBlcms2.icc",
-                  "lcms2link.icc", "labv2lcms2.icc", "graylcms2.icc",
-                  "lcms2mtsh.icc", "lcms2matrix.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "lcms2cmyk.icc",
+            "sRGBlcms2.icc",
+            "aRGBlcms2.icc",
+            "lcms2link.icc",
+            "labv2lcms2.icc",
+            "graylcms2.icc",
+            "lcms2mtsh.icc",
+            "lcms2matrix.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for (inp, outp, if_, of) in [
-                (p, lab, r16, l16),      // input
-                (lab, p, l16, r16),      // output
+                (p, lab, r16, l16), // input
+                (lab, p, l16, r16), // output
             ] {
-                let t = c::cmsCreateTransform(inp, if_, outp, of,
-                    0, 0);
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             eprintln!("{f} ok");
             c::cmsCloseProfile(p);
@@ -1006,12 +1122,13 @@ fn lut_reader_dispatch_all() {
 #[test]
 fn float_tag_readers2() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         // input + output profiles with float tags
         for (cls, sig, name) in [
             (0x6d6e7472u32, 0x44324230, "in-D2B0"), // mntr + D2B0
@@ -1036,7 +1153,9 @@ fn float_tag_readers2() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(lab);
             c::cmsCloseProfile(prof);
         }
@@ -1048,12 +1167,13 @@ fn float_tag_readers2() {
 #[test]
 fn float_tag_remaining() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -1075,7 +1195,9 @@ fn float_tag_remaining() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
         }
         c::cmsCloseProfile(lab);
@@ -1089,19 +1211,23 @@ fn float_tag_remaining() {
 #[test]
 fn float_normalization_colorspaces() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // cs-sig -> PT_ enum -> proper format word
         for (cs, pt, name) in [
-            (0x52474220u32, 4u32, "rgb"), (0x434D594B, 6, "cmyk"),
-            (0x47524159, 3, "gray"), (0x58595A20, 9, "xyz"),
-            (0x4C616220, 10, "lab"), (0x4C756976, 14, "luv"),
+            (0x52474220u32, 4u32, "rgb"),
+            (0x434D594B, 6, "cmyk"),
+            (0x47524159, 3, "gray"),
+            (0x58595A20, 9, "xyz"),
+            (0x4C616220, 10, "lab"),
+            (0x4C756976, 14, "luv"),
         ] {
             let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(inp, 0x6d6e7472);
@@ -1112,7 +1238,9 @@ fn float_normalization_colorspaces() {
             let f = (pt << 16) | (3 << 3) | 2;
             let t = c::cmsCreateTransform(inp, f, lab, l16, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(inp);
         }
         c::cmsCloseProfile(lab);
@@ -1125,12 +1253,13 @@ fn float_normalization_colorspaces() {
 #[test]
 fn lut_reader_arms() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
@@ -1143,7 +1272,9 @@ fn lut_reader_arms() {
             c::cmsWriteTag(prof, sig, p as *const _);
             let t = c::cmsCreateTransform(prof, r16, lab, l16, 0, 0);
             eprintln!("sig{sig:#x} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
         }
         c::cmsCloseProfile(lab);
@@ -1160,11 +1291,14 @@ fn float_tag_channel_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for nch in [1u32, 3, 4] {
             let ftab: Vec<f32> = (0..(4usize.pow(nch) * 3))
-                .map(|i| i as f32 / 12.0).collect();
+                .map(|i| i as f32 / 12.0)
+                .collect();
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, 3);
-            c::cmsPipelineInsertStage(p, 1,
-                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 4,
-                    nch, 3, ftab.as_ptr()));
+            c::cmsPipelineInsertStage(
+                p,
+                1,
+                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 4, nch, 3, ftab.as_ptr()),
+            );
             let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(inp, 0x6d6e7472);
             c::cmsSetColorSpace(inp, 0x52474220);
@@ -1174,7 +1308,9 @@ fn float_tag_channel_arms() {
             let f = (4u32 << 16) | (nch << 3) | 2;
             let t = c::cmsCreateTransform(inp, f, lab, l16, 0, 0);
             eprintln!("nch{nch} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(inp);
             c::cmsPipelineFree(p);
         }
@@ -1187,12 +1323,13 @@ fn float_tag_channel_arms() {
 #[test]
 fn float_reader_lab_arms() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -1215,7 +1352,9 @@ fn float_reader_lab_arms() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
         }
         c::cmsCloseProfile(lab);
@@ -1228,15 +1367,15 @@ fn float_reader_lab_arms() {
 #[test]
 fn devicelink_lut_internals() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
-        for sig in [0x41324230u32, 0x42324130, 0x44324230,
-                    0x42324430] {
+        for sig in [0x41324230u32, 0x42324130, 0x44324230, 0x42324430] {
             let dl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(dl, 0x6c696e6b);
             c::cmsSetColorSpace(dl, 0x52474220);
@@ -1245,7 +1384,9 @@ fn devicelink_lut_internals() {
             c::cmsWriteTag(dl, sig, p as *const _);
             let t = c::cmsCreateTransform(dl, r16, dl, r16, 0, 0);
             eprintln!("sig{sig:#x} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(dl);
         }
         c::cmsPipelineFree(p);
@@ -1257,18 +1398,21 @@ fn devicelink_lut_internals() {
 #[test]
 fn float_reader_colorspaces() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for (cs, name) in [
-            (0x52474220u32, "rgb"), (0x434D594B, "cmyk"),
-            (0x58595A20, "xyz"), (0x4C756976, "luv"),
+            (0x52474220u32, "rgb"),
+            (0x434D594B, "cmyk"),
+            (0x58595A20, "xyz"),
+            (0x4C756976, "luv"),
         ] {
             let inp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(inp, 0x6d6e7472);
@@ -1278,7 +1422,9 @@ fn float_reader_colorspaces() {
             c::cmsWriteTag(inp, 0x44324230, p as *const _);
             let t = c::cmsCreateTransform(inp, r16, lab, l16, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(inp);
         }
         c::cmsCloseProfile(lab);
@@ -1291,12 +1437,13 @@ fn float_reader_colorspaces() {
 #[test]
 fn float_reader_combos() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -1320,7 +1467,9 @@ fn float_reader_combos() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
         }
         c::cmsCloseProfile(lab);
@@ -1342,11 +1491,14 @@ fn float_reader_combos2() {
             (3, 0x4C616220, 0x42324430, "3ch-lab-B2D"),
         ] {
             let ftab: Vec<f32> = (0..(4usize.pow(nch) * 3))
-                .map(|i| i as f32 / 12.0).collect();
+                .map(|i| i as f32 / 12.0)
+                .collect();
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), nch, 3);
-            c::cmsPipelineInsertStage(p, 1,
-                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 4,
-                    nch, 3, ftab.as_ptr()));
+            c::cmsPipelineInsertStage(
+                p,
+                1,
+                c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 4, nch, 3, ftab.as_ptr()),
+            );
             let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(prof, 0x6d6e7472);
             c::cmsSetColorSpace(prof, 0x52474220);
@@ -1361,7 +1513,9 @@ fn float_reader_combos2() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
             c::cmsPipelineFree(p);
         }
@@ -1374,12 +1528,13 @@ fn float_reader_combos2() {
 #[test]
 fn float_reader_normalization_arms() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -1403,7 +1558,9 @@ fn float_reader_normalization_arms() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
         }
         c::cmsCloseProfile(lab);
@@ -1416,12 +1573,13 @@ fn float_reader_normalization_arms() {
 #[test]
 fn float_reader_per_cs() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for (cs, sig, name) in [
@@ -1446,7 +1604,9 @@ fn float_reader_per_cs() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
         }
         c::cmsCloseProfile(lab);
@@ -1459,12 +1619,13 @@ fn float_reader_per_cs() {
 #[test]
 fn lut_reader_all_arms() {
     unsafe {
-        let ftab: Vec<f32> = (0..8*3)
-            .map(|i| i as f32 / 24.0).collect();
+        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3,
-                ftab.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
+        );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -1488,7 +1649,9 @@ fn lut_reader_all_arms() {
             };
             let t = c::cmsCreateTransform(inp, if_, outp, of, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
             c::cmsCloseProfile(prof);
         }
         c::cmsCloseProfile(lab);
@@ -1503,20 +1666,28 @@ fn lut_reader_all_arms() {
 fn colorspace_intent_internals() {
     unsafe {
         for (cs, name) in [
-            (0x47524159u32, "gray"), (0x52474220, "rgb"),
-            (0x434D594B, "cmyk"), (0x58595A20, "xyz"),
-            (0x4C616220, "lab"), (0x4C756976, "luv"),
-            (0x59436272, "ycbcr"), (0x4D434836, "mch6"),
-            (0xFFFF0000, "bad"), (0x00000000, "zero"),
+            (0x47524159u32, "gray"),
+            (0x52474220, "rgb"),
+            (0x434D594B, "cmyk"),
+            (0x58595A20, "xyz"),
+            (0x4C616220, "lab"),
+            (0x4C756976, "luv"),
+            (0x59436272, "ycbcr"),
+            (0x4D434836, "mch6"),
+            (0xFFFF0000, "bad"),
+            (0x00000000, "zero"),
         ] {
             let ch = c::_cmsLCMScolorSpace(cs);
             eprintln!("cs {name} ch={ch}");
         }
         // intent support on each class
         for (cls, name) in [
-            (0x6d6e7472u32, "mntr"), (0x6c696e6b, "link"),
-            (0x61627374, "abst"), (0x73706163, "spac"),
-            (0x6e6d636c, "nmcl"), (0x70727472, "prtr"),
+            (0x6d6e7472u32, "mntr"),
+            (0x6c696e6b, "link"),
+            (0x61627374, "abst"),
+            (0x73706163, "spac"),
+            (0x6e6d636c, "nmcl"),
+            (0x70727472, "prtr"),
         ] {
             let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(prof, cls);
@@ -1544,29 +1715,30 @@ fn io1_lut_reader_chains() {
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         // proofing transforms: input/proof/output × proofing intents
         for proofing in 0..4u32 {
-            let t = c::cmsCreateProofingTransform(srgb, r16, srgb, r16,
-                lab, 0, proofing, 0);
+            let t = c::cmsCreateProofingTransform(srgb, r16, srgb, r16, lab, 0, proofing, 0);
             eprintln!("proof-p{proofing} t={}", !t.is_null());
-            if !t.is_null() { c::cmsDeleteTransform(t); }
+            if !t.is_null() {
+                c::cmsDeleteTransform(t);
+            }
         }
         // multiprofile transform: srgb -> lab -> srgb
         let profiles = [srgb, lab, srgb];
-        let t = c::cmsCreateMultiprofileTransform(
-            profiles.as_ptr() as *mut _, 3, r16, r16, 0, 0);
+        let t = c::cmsCreateMultiprofileTransform(profiles.as_ptr() as *mut _, 3, r16, r16, 0, 0);
         eprintln!("multi3 t={}", !t.is_null());
-        if !t.is_null() { c::cmsDeleteTransform(t); }
+        if !t.is_null() {
+            c::cmsDeleteTransform(t);
+        }
         // devicelink transform via link profile
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         if let Ok(d) = std::fs::read(dir.join("lcms2link.icc")) {
-            let lk = c::cmsOpenProfileFromMem(d.as_ptr() as *const _,
-                d.len() as u32);
+            let lk = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
             if !lk.is_null() {
                 for intent in 0..4u32 {
-                    let t = c::cmsCreateTransform(lab, l16, lk, l16,
-                        intent, 0);
+                    let t = c::cmsCreateTransform(lab, l16, lk, l16, intent, 0);
                     eprintln!("link-i{intent} t={}", !t.is_null());
-                    if !t.is_null() { c::cmsDeleteTransform(t); }
+                    if !t.is_null() {
+                        c::cmsDeleteTransform(t);
+                    }
                 }
                 c::cmsCloseProfile(lk);
             }
@@ -1582,32 +1754,38 @@ fn io1_lut_reader_chains() {
 #[test]
 fn io1_float_devicelink() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let fl = 1u32 << 22;
         let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        for f in ["lcms2link.icc", "lcms2link2.icc", "lcms2cmyk.icc",
-                  "limitlcms2.icc", "linlcms2.icc", "brightness.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "lcms2link.icc",
+            "lcms2link2.icc",
+            "lcms2cmyk.icc",
+            "limitlcms2.icc",
+            "linlcms2.icc",
+            "brightness.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for (ifmt, ofmt, intent, name) in [
                 (lfl, lfl, 0u32, "fl-fl-i0"),
                 (l16, lfl, 0, "16-fl-i0"),
                 (lfl, l16, 1, "fl-16-i1"),
                 (lfl, lfl, 2, "fl-fl-i2"),
             ] {
-                let t = c::cmsCreateTransform(lab, ifmt, p, ofmt,
-                    intent, 0);
+                let t = c::cmsCreateTransform(lab, ifmt, p, ofmt, intent, 0);
                 eprintln!("{f}-{name} t={}", !t.is_null());
                 if !t.is_null() {
                     let ib = [0.5f32; 4];
                     let mut ob = [0.5f32; 4];
-                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
             }
@@ -1622,20 +1800,30 @@ fn io1_float_devicelink() {
 #[test]
 fn io1_named_abstract_readers() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let srgb = c::cmsCreate_sRGBProfile();
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let n16 = (16u32 << 16) | (1 << 3) | 2; // named-color fmt?
-        for f in ["lcms2link.icc", "lcms2link2.icc", "brightness.icc",
-                  "nullcms2.icc", "labv4lcms2.icc", "labv2lcms2.icc",
-                  "glablcms2.icc", "aRGBlcms2.icc", "gray3lcms2.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "lcms2link.icc",
+            "lcms2link2.icc",
+            "brightness.icc",
+            "nullcms2.icc",
+            "labv4lcms2.icc",
+            "labv2lcms2.icc",
+            "glablcms2.icc",
+            "aRGBlcms2.icc",
+            "gray3lcms2.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             // both directions through lab/srgb
             for (inp, outp, if_, of_, intent, name) in [
                 (p, lab, n16, l16, 0u32, "p-lab-i0"),
@@ -1644,10 +1832,11 @@ fn io1_named_abstract_readers() {
                 (lab, p, l16, r16, 2, "lab-p-i2"),
                 (srgb, p, r16, r16, 0, "rgb-p-i0"),
             ] {
-                let t = c::cmsCreateTransform(inp, if_, outp, of_,
-                    intent, 0);
+                let t = c::cmsCreateTransform(inp, if_, outp, of_, intent, 0);
                 eprintln!("{f}-{name} t={}", !t.is_null());
-                if !t.is_null() { c::cmsDeleteTransform(t); }
+                if !t.is_null() {
+                    c::cmsDeleteTransform(t);
+                }
             }
             c::cmsCloseProfile(p);
         }
@@ -1662,18 +1851,24 @@ fn io1_named_abstract_readers() {
 #[test]
 fn io1_lab_version_norm() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let fl = 1u32 << 22;
         let lfl = (10u32 << 16) | (3 << 3) | 4 | fl;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let srgb = c::cmsCreate_sRGBProfile();
-        for f in ["labv2lcms2.icc", "labv4lcms2.icc", "glablcms2.icc",
-                  "brightness.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        for f in [
+            "labv2lcms2.icc",
+            "labv4lcms2.icc",
+            "glablcms2.icc",
+            "brightness.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for (ifmt, ofmt, name) in [
                 (lfl, lfl, "fl-fl"),
                 (l16, lfl, "16-fl"),
@@ -1682,20 +1877,17 @@ fn io1_lab_version_norm() {
                 // both directions
                 let t = c::cmsCreateTransform(p, ifmt, srgb, ofmt, 0, 0);
                 let t2 = c::cmsCreateTransform(srgb, ofmt, p, ifmt, 0, 0);
-                eprintln!("{f}-{name} t={} t2={}",
-                    !t.is_null(), !t2.is_null());
+                eprintln!("{f}-{name} t={} t2={}", !t.is_null(), !t2.is_null());
                 if !t.is_null() {
                     let ib = [0.5f32; 4];
                     let mut ob = [0.5f32; 4];
-                    c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
                 }
                 if !t2.is_null() {
                     let ib = [0.5f32; 4];
                     let mut ob = [0.5f32; 4];
-                    c::cmsDoTransform(t2, ib.as_ptr() as *const _,
-                        ob.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t2, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t2);
                 }
             }

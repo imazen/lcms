@@ -24,8 +24,11 @@ fn it8_sheet_patch() {
         let mut rh = cgats::It8::alloc(None);
         // sheet-type set/get parity
         for ty in ["CGATS.5", "IT8", "CUSTOM"] {
-            assert_eq!(c::cmsIT8SetSheetType(ch, cs8(ty)) != 0,
-                rh.set_sheet_type(ty), "sheet type {ty}");
+            assert_eq!(
+                c::cmsIT8SetSheetType(ch, cs8(ty)) != 0,
+                rh.set_sheet_type(ty),
+                "sheet type {ty}"
+            );
         }
         // data-format then patch-name/by-name parity
         for (i, sample) in ["R", "G", "B"].iter().enumerate() {
@@ -34,16 +37,24 @@ fn it8_sheet_patch() {
         }
         // patch-by-name on the empty table
         for patch in ["0", "1", "MISSING"] {
-            assert_eq!(c::cmsIT8GetPatchByName(ch, cs8(patch)),
-                rh.get_patch_by_name(patch), "patch {patch}");
+            assert_eq!(
+                c::cmsIT8GetPatchByName(ch, cs8(patch)),
+                rh.get_patch_by_name(patch),
+                "patch {patch}"
+            );
         }
         // patch name for index 0
         let pn = c::cmsIT8GetPatchName(ch, 0, std::ptr::null_mut());
-        let cpn = if pn.is_null() { String::new() } else {
+        let cpn = if pn.is_null() {
+            String::new()
+        } else {
             std::ffi::CStr::from_ptr(pn).to_string_lossy().into_owned()
         };
-        assert_eq!(cpn, rh.get_patch_name(0).unwrap_or_default(),
-            "patch name 0");
+        assert_eq!(
+            cpn,
+            rh.get_patch_name(0).unwrap_or_default(),
+            "patch name 0"
+        );
         c::cmsIT8Free(ch);
     }
 }

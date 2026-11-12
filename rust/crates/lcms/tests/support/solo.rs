@@ -32,7 +32,11 @@ pub fn delegated(name: &str) -> bool {
     let stderr = String::from_utf8_lossy(&out.stderr);
     print!("{stdout}");
     eprint!("{stderr}");
-    assert!(out.status.success(), "{name} in its own process: {}", out.status);
+    assert!(
+        out.status.success(),
+        "{name} in its own process: {}",
+        out.status
+    );
     assert!(
         stdout.contains("1 passed"),
         "{name} in its own process ran no test (filter mismatch?)"

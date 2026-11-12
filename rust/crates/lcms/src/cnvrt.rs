@@ -11,14 +11,10 @@ use crate::types::{CieXyz, Mat3, Vec3};
 use crate::wtpnt::{adaptation_matrix, d50_xyz, temp_from_white_point, white_point_from_temp};
 
 pub use crate::types::{
-    INTENT_ABSOLUTE_COLORIMETRIC, INTENT_PERCEPTUAL,
-    INTENT_PRESERVE_K_ONLY_PERCEPTUAL,
-    INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC,
-    INTENT_PRESERVE_K_ONLY_SATURATION,
-    INTENT_PRESERVE_K_PLANE_PERCEPTUAL,
-    INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC,
-    INTENT_PRESERVE_K_PLANE_SATURATION,
-    INTENT_RELATIVE_COLORIMETRIC, INTENT_SATURATION,
+    INTENT_ABSOLUTE_COLORIMETRIC, INTENT_PERCEPTUAL, INTENT_PRESERVE_K_ONLY_PERCEPTUAL,
+    INTENT_PRESERVE_K_ONLY_RELATIVE_COLORIMETRIC, INTENT_PRESERVE_K_ONLY_SATURATION,
+    INTENT_PRESERVE_K_PLANE_PERCEPTUAL, INTENT_PRESERVE_K_PLANE_RELATIVE_COLORIMETRIC,
+    INTENT_PRESERVE_K_PLANE_SATURATION, INTENT_RELATIVE_COLORIMETRIC, INTENT_SATURATION,
 };
 
 const FLAGS_NONEGATIVES: u32 = 0x8000;
@@ -440,12 +436,12 @@ fn default_icc_intents(
 /// performs the transmute/`from_raw`.
 pub type IntentLinkHook = fn(
     Option<&Context>,
-    usize,             // `cmsIntentFn` ptr
+    usize, // `cmsIntentFn` ptr
     &mut [Box<IccProfile>],
-    &[u32],            // intents
-    &[bool],           // bpc
-    &[f64],            // adaptation states
-    u32,               // dwFlags
+    &[u32],  // intents
+    &[bool], // bpc
+    &[f64],  // adaptation states
+    u32,     // dwFlags
 ) -> Option<Box<Pipeline>>;
 static INTENT_LINK_HOOK: std::sync::OnceLock<IntentLinkHook> = std::sync::OnceLock::new();
 pub fn set_intent_link_hook(h: IntentLinkHook) {

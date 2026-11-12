@@ -2,7 +2,7 @@
 //! format variants; each hits a different Pack/Unroll formatter fn.
 //! C gets native u16s (as_ptr()); Rust gets the byte buffer.
 
-use lcms::{virt, xform, gamma, types::*};
+use lcms::{gamma, types::*, virt, xform};
 use lcms_cref as c;
 
 #[test]
@@ -15,46 +15,78 @@ fn format_eval_matrix() {
         let combos: [(&str, u32, u32, &[u16]); 10] = [
             ("rgb16->lab16", rgb16, lab16, &[0x1234, 0x5678, 0x9abc]),
             ("rgb8->lab8", rgb8, lab8, &[0x12, 0x56, 0x9a]),
-            ("rgb16+swapfirst->lab16", rgb16 | (1 << 14), lab16,
-                &[0x1234, 0x5678, 0x9abc, 0xffff]),
-            ("rgb16+endian16->lab16", rgb16 | (1 << 11), lab16,
-                &[0x1234, 0x5678, 0x9abc]),
-            ("rgb16+flavor->lab16", rgb16 | (1 << 13), lab16,
-                &[0x1234, 0x5678, 0x9abc]),
-            ("rgb16+planar->lab16", rgb16 | (1 << 12), lab16,
-                &[0x1234, 0x5678, 0x9abc]),
-            ("rgb16+premul->lab16", rgb16 | (1 << 23), lab16,
-                &[0x1234, 0x5678, 0x9abc, 0xffff]),
+            (
+                "rgb16+swapfirst->lab16",
+                rgb16 | (1 << 14),
+                lab16,
+                &[0x1234, 0x5678, 0x9abc, 0xffff],
+            ),
+            (
+                "rgb16+endian16->lab16",
+                rgb16 | (1 << 11),
+                lab16,
+                &[0x1234, 0x5678, 0x9abc],
+            ),
+            (
+                "rgb16+flavor->lab16",
+                rgb16 | (1 << 13),
+                lab16,
+                &[0x1234, 0x5678, 0x9abc],
+            ),
+            (
+                "rgb16+planar->lab16",
+                rgb16 | (1 << 12),
+                lab16,
+                &[0x1234, 0x5678, 0x9abc],
+            ),
+            (
+                "rgb16+premul->lab16",
+                rgb16 | (1 << 23),
+                lab16,
+                &[0x1234, 0x5678, 0x9abc, 0xffff],
+            ),
             ("lab16->rgb16", lab16, rgb16, &[0x4000, 0x8000, 0x2000]),
             ("lab8->rgb8", lab8, rgb8, &[0x40, 0x80, 0x20]),
-            ("rgb8+endian16->lab8", rgb8 | (1 << 11), lab8,
-                &[0x12, 0x56, 0x9a]),
+            (
+                "rgb8+endian16->lab8",
+                rgb8 | (1 << 11),
+                lab8,
+                &[0x12, 0x56, 0x9a],
+            ),
         ];
         for (name, in_fmt, out_fmt, inp) in combos {
             let is_lab_in = name.starts_with("lab");
             let (hi, ho) = if is_lab_in {
-                (c::cmsCreateLab4Profile(std::ptr::null_mut()),
-                 c::cmsCreate_sRGBProfile())
+                (
+                    c::cmsCreateLab4Profile(std::ptr::null_mut()),
+                    c::cmsCreate_sRGBProfile(),
+                )
             } else {
-                (c::cmsCreate_sRGBProfile(),
-                 c::cmsCreateLab4Profile(std::ptr::null_mut()))
+                (
+                    c::cmsCreate_sRGBProfile(),
+                    c::cmsCreateLab4Profile(std::ptr::null_mut()),
+                )
             };
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
             let mut rp1 = if is_lab_in {
                 virt::create_lab4_profile(None, None).unwrap()
-            } else { virt::create_srgb_profile(None).unwrap() };
+            } else {
+                virt::create_srgb_profile(None).unwrap()
+            };
             let mut rp2 = if is_lab_in {
                 virt::create_srgb_profile(None).unwrap()
-            } else { virt::create_lab4_profile(None, None).unwrap() };
+            } else {
+                virt::create_lab4_profile(None, None).unwrap()
+            };
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, out_fmt, 0);
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "{name} create");
             if !ct.is_null() && rt.is_some() {
                 let mut rt = rt.unwrap();
@@ -67,19 +99,18 @@ fn format_eval_matrix() {
                 };
                 let mut co = [0u16; 4];
                 let mut ro = vec![0u8; 8];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 rt.do_transform(&inb, &mut ro, 1);
                 let rout: Vec<u16> = if out_fmt & 7 == 2 {
                     ro.chunks_exact(2)
                         .map(|b| u16::from_be_bytes([b[0], b[1]]))
-                        .take(3).collect()
+                        .take(3)
+                        .collect()
                 } else {
                     ro[..3].iter().map(|v| *v as u16).collect()
                 };
                 if co[..3] != rout[..3] {
-                    eprintln!("{name} DIVERGES c={:?} r={:?}",
-                        &co[..3], &rout[..3]);
+                    eprintln!("{name} DIVERGES c={:?} r={:?}", &co[..3], &rout[..3]);
                 }
                 c::cmsDeleteTransform(ct);
             }
@@ -112,21 +143,21 @@ fn extra_doswap_corrected() {
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, lab16, 0);
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, lab16, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
             if !ct.is_null() && rt.is_some() {
                 let mut rt = rt.unwrap();
                 let nchan = if in_fmt == rgba16 { 4 } else { 3 };
-                let inb: Vec<u8> = inp[..nchan].iter()
-                    .flat_map(|v| v.to_ne_bytes()).collect();
+                let inb: Vec<u8> = inp[..nchan].iter().flat_map(|v| v.to_ne_bytes()).collect();
                 let mut co = [0u16; 3];
                 let mut ro = vec![0u8; 6];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 rt.do_transform(&inb, &mut ro, 1);
-                let ro16: Vec<u16> = ro.chunks_exact(2)
-                    .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                let ro16: Vec<u16> = ro
+                    .chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                    .collect();
                 if co != ro16[..3] {
                     eprintln!("{name} c={co:?} r={ro16:?}");
                 }
@@ -143,9 +174,11 @@ fn mch_formats() {
     unsafe {
         let lab16: u32 = (10 << 16) | (3 << 3) | 2;
         // MCH5=(5<<3)|2, MCH6=(6<<3)|2, MCH8=(8<<3)|2 — PT_MCH5=15
-        for (name, cs, nch) in [("mch5", 15u32, 5usize),
-                                ("mch6", 16u32, 6),
-                                ("mch8", 17u32, 8)] {
+        for (name, cs, nch) in [
+            ("mch5", 15u32, 5usize),
+            ("mch6", 16u32, 6),
+            ("mch8", 17u32, 8),
+        ] {
             let in_fmt = (cs << 16) | ((nch as u32) << 3) | 2;
             // a devicelink/abstract profile for the MCH side — use
             // NULL profile (device-independent MCH)
@@ -161,22 +194,22 @@ fn mch_formats() {
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, lab16, 0);
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, lab16, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
             if !ct.is_null() && rt.is_some() {
                 let mut rt = rt.unwrap();
                 let mut inp = vec![0x4000u16; nch];
                 inp[0] = 0x8000;
-                let inb: Vec<u8> = inp.iter()
-                    .flat_map(|v| v.to_ne_bytes()).collect();
+                let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_ne_bytes()).collect();
                 let mut co = [0u16; 3];
                 let mut ro = vec![0u8; 6];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 rt.do_transform(&inb, &mut ro, 1);
-                let ro16: Vec<u16> = ro.chunks_exact(2)
-                    .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+                let ro16: Vec<u16> = ro
+                    .chunks_exact(2)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                    .collect();
                 if co != ro16[..3] {
                     eprintln!("{name} c={co:?} r={ro16:?}");
                 }
@@ -208,11 +241,12 @@ fn packed_float_formats() {
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, lab16, 0);
-            assert_eq!(ct.is_null(), rt.is_none(),
-                "{name} create");
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, lab16, 0,
+            );
+            assert_eq!(ct.is_null(), rt.is_none(), "{name} create");
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
     }
 }
@@ -236,21 +270,21 @@ fn anyspace_format() {
         let intents = [0u32; 2];
         let adapt = [1.0f64; 2];
         let rt = xform::create_extended_transform(
-            None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-            in_fmt, out_fmt, 0);
+            None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+        );
         assert_eq!(ct.is_null(), rt.is_none(), "anyspace create");
         if !ct.is_null() && rt.is_some() {
             let mut rt = rt.unwrap();
             let inp = [0x1234u16, 0x5678, 0x9abc];
-            let inb: Vec<u8> = inp.iter()
-                .flat_map(|v| v.to_ne_bytes()).collect();
+            let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_ne_bytes()).collect();
             let mut co = [0u16; 3];
             let mut ro = vec![0u8; 6];
-            c::cmsDoTransform(ct, inp.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             rt.do_transform(&inb, &mut ro, 1);
-            let ro16: Vec<u16> = ro.chunks_exact(2)
-                .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+            let ro16: Vec<u16> = ro
+                .chunks_exact(2)
+                .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                .collect();
             if co != ro16[..3] {
                 eprintln!("anyspace c={co:?} r={ro16:?}");
             }
@@ -265,30 +299,41 @@ fn low_channel_formats() {
     unsafe {
         // gray (1ch) + duo (2ch) formats u8/u16
         for (name, nch, bytes) in [
-            ("gray8", 1u32, 1u32), ("gray16", 1, 2),
-            ("duo8", 2, 1), ("duo16", 2, 2),
+            ("gray8", 1u32, 1u32),
+            ("gray16", 1, 2),
+            ("duo8", 2, 1),
+            ("duo16", 2, 2),
         ] {
             let in_fmt = (7 << 16) | (nch << 3) | bytes; // gray cs
             let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
             let hi = c::cmsCreateGrayProfile(c::cmsD50_xyY() as *const std::ffi::c_void, g);
             let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
-                (10 << 16) | (3 << 3) | 2, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, (10 << 16) | (3 << 3) | 2, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
             let rtc = gamma::build_gamma(None, 2.2).unwrap();
-            let mut rp1 = virt::create_gray_profile(None, None,
-                Some(&rtc)).unwrap();
+            let mut rp1 = virt::create_gray_profile(None, None, Some(&rtc)).unwrap();
             let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, (10 << 16) | (3 << 3) | 2, 0);
+                None,
+                &mut profs,
+                &mut bpc,
+                &intents,
+                &adapt,
+                None,
+                0,
+                in_fmt,
+                (10 << 16) | (3 << 3) | 2,
+                0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
     }
 }
@@ -318,10 +363,12 @@ fn premul_formats() {
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, out_fmt, 0);
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
             assert_eq!(ct.is_null(), rt.is_none(), "{name} create");
-            if !ct.is_null() { c::cmsDeleteTransform(ct); }
+            if !ct.is_null() {
+                c::cmsDeleteTransform(ct);
+            }
         }
     }
 }
@@ -345,23 +392,22 @@ fn modifier_matrix() {
                 let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
                 let hi = c::cmsCreate_sRGBProfile();
                 let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
-                let ct = c::cmsCreateTransform(hi, in_fmt, ho,
-                    out_fmt, 0, 0);
+                let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
                 let _ = c::cmsCloseProfile(hi);
                 let _ = c::cmsCloseProfile(ho);
                 let mut rp1 = virt::create_srgb_profile(None).unwrap();
-                let mut rp2 = virt::create_lab4_profile(None, None)
-                    .unwrap();
+                let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
                 let mut profs = vec![rp1.clone(), rp2.clone()];
                 let mut bpc = [false; 2];
                 let intents = [0u32; 2];
                 let adapt = [1.0f64; 2];
                 let rt = xform::create_extended_transform(
-                    None, &mut profs, &mut bpc, &intents, &adapt,
-                    None, 0, in_fmt, out_fmt, 0);
-                assert_eq!(ct.is_null(), rt.is_none(),
-                    "{mname} {nch}ch");
-                if !ct.is_null() { c::cmsDeleteTransform(ct); }
+                    None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+                );
+                assert_eq!(ct.is_null(), rt.is_none(), "{mname} {nch}ch");
+                if !ct.is_null() {
+                    c::cmsDeleteTransform(ct);
+                }
             }
         }
     }
@@ -384,58 +430,61 @@ fn eval_matrix() {
                     let in_fmt = (4 << 16) | (nch << 3) | bytes | bits;
                     let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
                     let hi = c::cmsCreate_sRGBProfile();
-                    let ho = c::cmsCreateLab4Profile(
-                        std::ptr::null_mut());
-                    let ct = c::cmsCreateTransform(hi, in_fmt, ho,
-                        out_fmt, 0, 0);
+                    let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+                    let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
                     let _ = c::cmsCloseProfile(hi);
                     let _ = c::cmsCloseProfile(ho);
-                    let mut rp1 = virt::create_srgb_profile(None)
-                        .unwrap();
-                    let mut rp2 = virt::create_lab4_profile(None,
-                        None).unwrap();
+                    let mut rp1 = virt::create_srgb_profile(None).unwrap();
+                    let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
                     let mut profs = vec![rp1.clone(), rp2.clone()];
                     let mut bpc = [false; 2];
                     let intents = [0u32; 2];
                     let adapt = [1.0f64; 2];
                     let rt = xform::create_extended_transform(
-                        None, &mut profs, &mut bpc, &intents,
-                        &adapt, None, 0, in_fmt, out_fmt, 0);
+                        None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+                    );
                     if ct.is_null() != rt.is_none() {
-                        eprintln!("{bname} {nch}ch {mname} status \
+                        eprintln!(
+                            "{bname} {nch}ch {mname} status \
                             c_null={} r_none={}",
-                            ct.is_null(), rt.is_none());
+                            ct.is_null(),
+                            rt.is_none()
+                        );
                         if !ct.is_null() {
                             c::cmsDeleteTransform(ct);
                         }
                         continue;
                     }
-                    if ct.is_null() { continue; }
+                    if ct.is_null() {
+                        continue;
+                    }
                     let mut rt = rt.unwrap();
                     // build a native input buffer + a byte view
-                    let nvals = (nch + if bits & (1 << 17) != 0 { 1 }
-                        else { 0 }) as usize;
+                    let nvals = (nch + if bits & (1 << 17) != 0 { 1 } else { 0 }) as usize;
                     let inp: Vec<u8> = match bytes {
-                        1 => (0..nvals).map(|i|
-                            (i * 40) as u8).collect(),
-                        2 => (0..nvals).flat_map(|i|
-                            ((i * 8192) as u16).to_ne_bytes())
+                        1 => (0..nvals).map(|i| (i * 40) as u8).collect(),
+                        2 => (0..nvals)
+                            .flat_map(|i| ((i * 8192) as u16).to_ne_bytes())
                             .collect(),
-                        _ => (0..nvals).flat_map(|i|
-                            (i as f32 * 0.25).to_ne_bytes())
+                        _ => (0..nvals)
+                            .flat_map(|i| (i as f32 * 0.25).to_ne_bytes())
                             .collect(),
                     };
                     let mut co = [0u16; 8];
                     let mut ro = vec![0u8; 6];
-                    c::cmsDoTransform(ct, inp.as_ptr() as _,
-                        co.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                     rt.do_transform(&inp, &mut ro, 1);
-                    let ro16: Vec<u16> = ro.chunks_exact(2)
+                    let ro16: Vec<u16> = ro
+                        .chunks_exact(2)
                         .map(|b| u16::from_ne_bytes([b[0], b[1]]))
                         .collect();
                     if co[..3] != ro16[..3] {
-                        eprintln!("DIVERGE {bname} {nch}ch {mname} \
-                            c={:?} r={:?}", &co[..3], &ro16[..3]);
+                        eprintln!(
+                            "DIVERGE {bname} {nch}ch {mname} \
+                            c={:?} r={:?}",
+                            &co[..3],
+                            &ro16[..3]
+                        );
                     }
                     c::cmsDeleteTransform(ct);
                 }
@@ -452,8 +501,7 @@ fn change_buffers_format() {
         let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
-            0, 0);
+        let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
         assert!(!ct.is_null());
@@ -463,25 +511,25 @@ fn change_buffers_format() {
         eprintln!("change to u8 cok={cok}");
         // rust side
         let mut rp1 = virt::create_srgb_profile(None).unwrap();
-        let mut rp2 = virt::create_lab4_profile(None, None)
-            .unwrap();
+        let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
         let mut profs = vec![rp1.clone(), rp2.clone()];
         let mut bpc = [false; 2];
         let intents = [0u32; 2];
         let adapt = [1.0f64; 2];
         let mut rt = xform::create_extended_transform(
-            None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-            in_fmt, out_fmt, 0).unwrap();
+            None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+        )
+        .unwrap();
         let rok = rt.change_buffers_format(in8, out_fmt);
         assert_eq!(cok != 0, rok, "change status");
         // eval through the swapped transform
         let inp8 = [120u8, 160, 200];
         let mut co = [0u16; 3];
         let mut ro = vec![0u8; 6];
-        c::cmsDoTransform(ct, inp8.as_ptr() as _,
-            co.as_mut_ptr() as *mut _, 1);
+        c::cmsDoTransform(ct, inp8.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
         rt.do_transform(&inp8, &mut ro, 1);
-        let ro16: Vec<u16> = ro.chunks_exact(2)
+        let ro16: Vec<u16> = ro
+            .chunks_exact(2)
             .map(|b| u16::from_ne_bytes([b[0], b[1]]))
             .collect();
         assert_eq!(co, ro16.as_slice(), "post-change eval");
@@ -496,42 +544,51 @@ fn planar_evals() {
     unsafe {
         for (bname, bytes) in [("u8", 1u32), ("u16", 2), ("f32", 4)] {
             // RGB planar -> Lab chunky
-            let in_fmt: u32 = (4 << 16) | (3 << 3) | bytes
-                | (1 << 9); // PLANAR_SH
+            let in_fmt: u32 = (4 << 16) | (3 << 3) | bytes | (1 << 9); // PLANAR_SH
             let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
             let hi = c::cmsCreate_sRGBProfile();
             let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
-                out_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            if ct.is_null() { continue; }
+            if ct.is_null() {
+                continue;
+            }
             // planar input: 3 channel planes
             let mut planes: [Vec<u8>; 3] = match bytes {
                 1 => [vec![120u8], vec![160], vec![200]],
                 2 => [
-                    vec![120u16].into_iter()
-                        .flat_map(|v| v.to_ne_bytes()).collect(),
-                    vec![160u16].into_iter()
-                        .flat_map(|v| v.to_ne_bytes()).collect(),
-                    vec![200u16].into_iter()
-                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                    vec![120u16]
+                        .into_iter()
+                        .flat_map(|v| v.to_ne_bytes())
+                        .collect(),
+                    vec![160u16]
+                        .into_iter()
+                        .flat_map(|v| v.to_ne_bytes())
+                        .collect(),
+                    vec![200u16]
+                        .into_iter()
+                        .flat_map(|v| v.to_ne_bytes())
+                        .collect(),
                 ],
                 _ => [
-                    vec![0.5f32].into_iter()
-                        .flat_map(|v| v.to_ne_bytes()).collect(),
-                    vec![0.6f32].into_iter()
-                        .flat_map(|v| v.to_ne_bytes()).collect(),
-                    vec![0.7f32].into_iter()
-                        .flat_map(|v| v.to_ne_bytes()).collect(),
+                    vec![0.5f32]
+                        .into_iter()
+                        .flat_map(|v| v.to_ne_bytes())
+                        .collect(),
+                    vec![0.6f32]
+                        .into_iter()
+                        .flat_map(|v| v.to_ne_bytes())
+                        .collect(),
+                    vec![0.7f32]
+                        .into_iter()
+                        .flat_map(|v| v.to_ne_bytes())
+                        .collect(),
                 ],
             };
-            let ptrs = [planes[0].as_ptr(),
-                        planes[1].as_ptr(),
-                        planes[2].as_ptr()];
+            let ptrs = [planes[0].as_ptr(), planes[1].as_ptr(), planes[2].as_ptr()];
             let mut co = [0u16; 3];
-            c::cmsDoTransform(ct, ptrs.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, ptrs.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             let _ = &mut planes;
             c::cmsDeleteTransform(ct);
         }
@@ -544,8 +601,8 @@ fn packed_evals() {
     unsafe {
         // PACKED_SH formats — the any-packed formatter path
         for (name, pt, nch, packed_bytes) in [
-            ("rgb332", 4u32, 3, 1u32),   // 1-byte packed RGB
-            ("rgb444", 4, 3, 2),          // 2-byte packed
+            ("rgb332", 4u32, 3, 1u32), // 1-byte packed RGB
+            ("rgb444", 4, 3, 2),       // 2-byte packed
             ("rgb555", 4, 3, 2),
             ("rgb565", 4, 3, 2),
             ("rgb5551", 4, 4, 2),
@@ -555,22 +612,20 @@ fn packed_evals() {
         ] {
             // PACKED_SH = the packed-color encoding flag; the
             // channel/byte count comes from the pt+nch+bytes
-            let in_fmt: u32 = (pt << 16) | (nch << 3)
-                | packed_bytes;
+            let in_fmt: u32 = (pt << 16) | (nch << 3) | packed_bytes;
             let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
             let hi = c::cmsCreate_sRGBProfile();
-            let ho = c::cmsCreateLab4Profile(
-                std::ptr::null_mut());
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho,
-                out_fmt, 0, 0);
+            let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            if ct.is_null() { continue; }
+            if ct.is_null() {
+                continue;
+            }
             // eval one pixel — packed bytes
             let inp = vec![0xABu8; packed_bytes as usize];
             let mut co = [0u16; 3];
-            c::cmsDoTransform(ct, inp.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             eprintln!("{name} eval={:?}", co);
             c::cmsDeleteTransform(ct);
         }
@@ -607,21 +662,19 @@ fn cross_format_evals() {
             for (out_fmt, out_name) in &variants {
                 let hi = c::cmsCreate_sRGBProfile();
                 let ho = c::cmsCreate_sRGBProfile();
-                let ct = c::cmsCreateTransform(hi, *in_fmt, ho,
-                    *out_fmt, 0, 0);
+                let ct = c::cmsCreateTransform(hi, *in_fmt, ho, *out_fmt, 0, 0);
                 let _ = c::cmsCloseProfile(hi);
                 let _ = c::cmsCloseProfile(ho);
-                if ct.is_null() { continue; }
+                if ct.is_null() {
+                    continue;
+                }
                 // in buffer sized to the in-format's byte count
-                let nbytes = ((in_fmt >> 0) & 7).max(1) as usize
-                    * ((in_fmt >> 3) & 0xF) as usize;
+                let nbytes = ((in_fmt >> 0) & 7).max(1) as usize * ((in_fmt >> 3) & 0xF) as usize;
                 let inp = vec![0x55u8; nbytes.max(1)];
                 // out buffer
-                let obytes = ((out_fmt >> 0) & 7).max(1) as usize
-                    * ((out_fmt >> 3) & 0xF) as usize;
+                let obytes = ((out_fmt >> 0) & 7).max(1) as usize * ((out_fmt >> 3) & 0xF) as usize;
                 let mut co = vec![0u8; obytes.max(1)];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -665,19 +718,17 @@ fn modifier_format_evals() {
             for (out_fmt, oname) in &variants {
                 let hi = c::cmsCreate_sRGBProfile();
                 let ho = c::cmsCreate_sRGBProfile();
-                let ct = c::cmsCreateTransform(hi, *in_fmt, ho,
-                    *out_fmt, 0, 0);
+                let ct = c::cmsCreateTransform(hi, *in_fmt, ho, *out_fmt, 0, 0);
                 let _ = c::cmsCloseProfile(hi);
                 let _ = c::cmsCloseProfile(ho);
-                if ct.is_null() { continue; }
-                let nbytes = ((in_fmt & 7).max(1) as usize)
-                    * ((in_fmt >> 3) & 0xF) as usize;
+                if ct.is_null() {
+                    continue;
+                }
+                let nbytes = ((in_fmt & 7).max(1) as usize) * ((in_fmt >> 3) & 0xF) as usize;
                 let inp = vec![0x66u8; nbytes.max(1)];
-                let obytes = ((out_fmt & 7).max(1) as usize)
-                    * ((out_fmt >> 3) & 0xF) as usize;
+                let obytes = ((out_fmt & 7).max(1) as usize) * ((out_fmt >> 3) & 0xF) as usize;
                 let mut co = vec![0u8; obytes.max(1)];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    co.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -694,29 +745,35 @@ fn exhaustive_format_matrix() {
         // the TYPE bits select the formatter family
         let pts = [1u32, 2, 3, 4, 10, 6, 18, 15];
         let byteses = [1u32, 2, 4, 8];
-        let mods = [0u32, 1 << 9, 1 << 10, 1 << 11, 1 << 12,
-                    1 << 13, 1 << 17, 1 << 18];
+        let mods = [
+            0u32,
+            1 << 9,
+            1 << 10,
+            1 << 11,
+            1 << 12,
+            1 << 13,
+            1 << 17,
+            1 << 18,
+        ];
         let mut count = 0u32;
         for pt in pts {
             for nch in 1..=8u32 {
                 for bytes in byteses {
                     for m in mods {
-                        let fmt: u32 = (pt << 16) | (nch << 3)
-                            | bytes | m;
+                        let fmt: u32 = (pt << 16) | (nch << 3) | bytes | m;
                         let hi = c::cmsCreate_sRGBProfile();
                         let ho = c::cmsCreate_sRGBProfile();
-                        let ct = c::cmsCreateTransform(hi, fmt,
-                            ho, fmt, 0, 0);
+                        let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
                         let _ = c::cmsCloseProfile(hi);
                         let _ = c::cmsCloseProfile(ho);
-                        if ct.is_null() { continue; }
+                        if ct.is_null() {
+                            continue;
+                        }
                         count += 1;
-                        let nbytes = (bytes.max(1) as usize)
-                            * nch as usize;
+                        let nbytes = (bytes.max(1) as usize) * nch as usize;
                         let inp = vec![0x77u8; nbytes];
                         let mut co = vec![0u8; nbytes];
-                        c::cmsDoTransform(ct, inp.as_ptr() as _,
-                            co.as_mut_ptr() as *mut _, 1);
+                        c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                         c::cmsDeleteTransform(ct);
                     }
                 }
@@ -733,29 +790,35 @@ fn format_matrix_round2() {
     unsafe {
         let pts = [1u32, 2, 3, 4, 10, 6, 18];
         let byteses = [1u32, 2, 4, 8];
-        let mods = [0u32, 1 << 9, 1 << 10, 1 << 11, 1 << 12,
-                    1 << 13, 1 << 17, 1 << 18];
+        let mods = [
+            0u32,
+            1 << 9,
+            1 << 10,
+            1 << 11,
+            1 << 12,
+            1 << 13,
+            1 << 17,
+            1 << 18,
+        ];
         let mut count = 0u32;
         for pt in pts {
             for nch in 1..=8u32 {
                 for bytes in byteses {
                     for m in mods {
-                        let fmt: u32 = (pt << 16) | (nch << 3)
-                            | bytes | m;
+                        let fmt: u32 = (pt << 16) | (nch << 3) | bytes | m;
                         let hi = c::cmsCreate_sRGBProfile();
                         let ho = c::cmsCreate_sRGBProfile();
-                        let ct = c::cmsCreateTransform(hi, fmt,
-                            ho, fmt, 0, 0);
+                        let ct = c::cmsCreateTransform(hi, fmt, ho, fmt, 0, 0);
                         let _ = c::cmsCloseProfile(hi);
                         let _ = c::cmsCloseProfile(ho);
-                        if ct.is_null() { continue; }
+                        if ct.is_null() {
+                            continue;
+                        }
                         count += 1;
-                        let nbytes = (bytes.max(1) as usize)
-                            * nch.min(8) as usize;
+                        let nbytes = (bytes.max(1) as usize) * nch.min(8) as usize;
                         let inp = vec![0x55u8; nbytes];
                         let mut co = vec![0u8; nbytes];
-                        c::cmsDoTransform(ct, inp.as_ptr() as _,
-                            co.as_mut_ptr() as *mut _, 1);
+                        c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                         c::cmsDeleteTransform(ct);
                     }
                 }

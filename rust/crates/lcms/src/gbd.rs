@@ -2,8 +2,8 @@
 //! hull over Lab space, with missing sectors modeled from neighbors.
 
 use crate::context::Context;
-use crate::types::Vec3;
 use crate::gmath::GmathExt;
+use crate::types::Vec3;
 
 pub const SECTORS: usize = 16;
 

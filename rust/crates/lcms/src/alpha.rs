@@ -86,15 +86,13 @@ fn fromfltto8(d: &mut [u8], s: &[u8]) {
 }
 fn fromfltto16(d: &mut [u8], s: &[u8]) {
     let n = f32::from_le_bytes(s[..4].try_into().unwrap());
-    d[..2].copy_from_slice(
-        &crate::fixed::quick_saturate_word((n * 65535.0f32) as f64).to_le_bytes(),
-    );
+    d[..2]
+        .copy_from_slice(&crate::fixed::quick_saturate_word((n * 65535.0f32) as f64).to_le_bytes());
 }
 fn fromfltto16se(d: &mut [u8], s: &[u8]) {
     let n = f32::from_le_bytes(s[..4].try_into().unwrap());
-    d[..2].copy_from_slice(
-        &crate::fixed::quick_saturate_word((n * 65535.0f32) as f64).to_be_bytes(),
-    );
+    d[..2]
+        .copy_from_slice(&crate::fixed::quick_saturate_word((n * 65535.0f32) as f64).to_be_bytes());
 }
 fn fromflttohlf(d: &mut [u8], s: &[u8]) {
     let n = f32::from_le_bytes(s[..4].try_into().unwrap());

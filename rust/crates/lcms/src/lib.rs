@@ -58,8 +58,6 @@ pub mod alpha;
 #[allow(dead_code)]
 pub(crate) mod alpha;
 pub mod api;
-#[cfg(feature = "lcms2-api")]
-pub mod lcms2;
 #[cfg(feature = "little-cms-api")]
 pub mod cam02;
 #[cfg(not(feature = "little-cms-api"))]
@@ -90,22 +88,17 @@ pub mod gamma;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod gamma;
-pub(crate) mod gmath;
 #[cfg(feature = "little-cms-api")]
 pub mod gbd;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod gbd;
+pub(crate) mod gmath;
 #[cfg(feature = "little-cms-api")]
 pub mod half;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod half;
-#[cfg(feature = "little-cms-api")]
-pub mod math;
-#[cfg(not(feature = "little-cms-api"))]
-#[allow(dead_code)]
-pub(crate) mod math;
 #[cfg(feature = "little-cms-api")]
 pub mod half_tables;
 #[cfg(not(feature = "little-cms-api"))]
@@ -121,11 +114,18 @@ pub mod io;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod io;
+#[cfg(feature = "lcms2-api")]
+pub mod lcms2;
 #[cfg(feature = "little-cms-api")]
 pub mod lut;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod lut;
+#[cfg(feature = "little-cms-api")]
+pub mod math;
+#[cfg(not(feature = "little-cms-api"))]
+#[allow(dead_code)]
+pub(crate) mod math;
 #[cfg(feature = "little-cms-api")]
 pub mod md5;
 #[cfg(not(feature = "little-cms-api"))]

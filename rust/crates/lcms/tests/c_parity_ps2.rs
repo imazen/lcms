@@ -258,8 +258,7 @@ fn ps2_all_intents() {
         let prof = c::cmsCreate_sRGBProfile();
         let mut rp = virt::create_srgb_profile(None).unwrap();
         for intent in 0..4u32 {
-            let cout = c_ps(c::cmsGetPostScriptCSA, prof,
-                intent, 0);
+            let cout = c_ps(c::cmsGetPostScriptCSA, prof, intent, 0);
             let rout = r_ps(true, &mut rp, intent, 0);
             assert_eq!(cout, rout, "intent {intent} CSA");
         }
@@ -276,24 +275,25 @@ fn postscript_shapes() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x52474220,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x52474220,
+            curves.as_mut_ptr(),
+        );
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        for (pname, h) in [
-            ("devlink", dl), ("srgb", srgb),
-            ("lab4", lab)] {
-            let n = c::cmsGetPostScriptCSA(
-                std::ptr::null_mut(), h, 0, 0,
-                std::ptr::null_mut(), 0);
+        for (pname, h) in [("devlink", dl), ("srgb", srgb), ("lab4", lab)] {
+            let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(), h, 0, 0, std::ptr::null_mut(), 0);
             let mut buf = vec![0u8; n as usize];
             let n2 = c::cmsGetPostScriptCSA(
-                std::ptr::null_mut(), h, 0, 0,
-                buf.as_mut_ptr() as *mut _, n);
+                std::ptr::null_mut(),
+                h,
+                0,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n,
+            );
             eprintln!("{pname} csa={n} n2={n2}");
-            let n3 = c::cmsGetPostScriptCRD(
-                std::ptr::null_mut(), h, 0, 0,
-                std::ptr::null_mut(), 0);
+            let n3 = c::cmsGetPostScriptCRD(std::ptr::null_mut(), h, 0, 0, std::ptr::null_mut(), 0);
             eprintln!("{pname} crd={n3}");
         }
         let _ = (dl, srgb, lab);
@@ -310,20 +310,21 @@ fn postscript_cr() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut curves = [g; 3];
         let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x52474220,
-            curves.as_mut_ptr());
+            std::ptr::null_mut(),
+            0x52474220,
+            curves.as_mut_ptr(),
+        );
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // type: 0=CSA, 1=CRD (probably)
-        for (pname, h) in [
-            ("srgb", srgb), ("lab4", lab)] {
+        for (pname, h) in [("srgb", srgb), ("lab4", lab)] {
             for ty in [0u32, 1, 2] {
-                let io = c::cmsOpenIOhandlerFromNULL(
-                    std::ptr::null_mut());
-                let n = c::cmsGetPostScriptColorResource(
-                    std::ptr::null_mut(), ty, h, 0, 0, io);
+                let io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+                let n = c::cmsGetPostScriptColorResource(std::ptr::null_mut(), ty, h, 0, 0, io);
                 eprintln!("{pname} ty{ty} n={n}");
-                if !io.is_null() { c::cmsCloseIOhandler(io); }
+                if !io.is_null() {
+                    c::cmsCloseIOhandler(io);
+                }
             }
         }
         let _ = (dl, srgb, lab);
@@ -339,16 +340,21 @@ fn postscript_intents() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        for (pname, h) in [
-            ("srgb", srgb), ("lab4", lab)] {
+        for (pname, h) in [("srgb", srgb), ("lab4", lab)] {
             for intent in [0u32, 1, 2, 3] {
                 for flags in [0u32, 1 << 0, 1 << 5] {
-                    let io = c::cmsOpenIOhandlerFromNULL(
-                        std::ptr::null_mut());
+                    let io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
                     let n = c::cmsGetPostScriptColorResource(
-                        std::ptr::null_mut(), 0, h, intent,
-                        flags, io);
-                    if !io.is_null() { c::cmsCloseIOhandler(io); }
+                        std::ptr::null_mut(),
+                        0,
+                        h,
+                        intent,
+                        flags,
+                        io,
+                    );
+                    if !io.is_null() {
+                        c::cmsCloseIOhandler(io);
+                    }
                     eprintln!("{pname} i{intent}f{flags} n={n}");
                 }
             }
@@ -365,16 +371,21 @@ fn postscript_crd_intents() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        for (pname, h) in [
-            ("srgb", srgb), ("lab4", lab)] {
+        for (pname, h) in [("srgb", srgb), ("lab4", lab)] {
             for intent in [0u32, 1, 2, 3] {
                 for flags in [0u32, 1 << 0, 1 << 5] {
-                    let io = c::cmsOpenIOhandlerFromNULL(
-                        std::ptr::null_mut());
+                    let io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
                     let n = c::cmsGetPostScriptColorResource(
-                        std::ptr::null_mut(), 1, h, intent,
-                        flags, io);
-                    if !io.is_null() { c::cmsCloseIOhandler(io); }
+                        std::ptr::null_mut(),
+                        1,
+                        h,
+                        intent,
+                        flags,
+                        io,
+                    );
+                    if !io.is_null() {
+                        c::cmsCloseIOhandler(io);
+                    }
                     eprintln!("{pname} i{intent}f{flags} n={n}");
                 }
             }
@@ -391,19 +402,19 @@ fn postscript_shapes2() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let xyz = c::cmsCreateXYZProfile();
-        let gray = c::cmsCreateGrayProfile(
-            std::ptr::null(), g);
+        let gray = c::cmsCreateGrayProfile(std::ptr::null(), g);
         let dl4 = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 0x434D594B,
-            [g; 4].as_mut_ptr());
-        for (pname, h) in [
-            ("xyz", xyz), ("gray", gray), ("dl4", dl4)] {
+            std::ptr::null_mut(),
+            0x434D594B,
+            [g; 4].as_mut_ptr(),
+        );
+        for (pname, h) in [("xyz", xyz), ("gray", gray), ("dl4", dl4)] {
             for ty in [0u32, 1] {
-                let io = c::cmsOpenIOhandlerFromNULL(
-                    std::ptr::null_mut());
-                let n = c::cmsGetPostScriptColorResource(
-                    std::ptr::null_mut(), ty, h, 0, 0, io);
-                if !io.is_null() { c::cmsCloseIOhandler(io); }
+                let io = c::cmsOpenIOhandlerFromNULL(std::ptr::null_mut());
+                let n = c::cmsGetPostScriptColorResource(std::ptr::null_mut(), ty, h, 0, 0, io);
+                if !io.is_null() {
+                    c::cmsCloseIOhandler(io);
+                }
                 eprintln!("{pname} ty{ty} n={n}");
             }
         }
@@ -420,24 +431,29 @@ fn postscript_write_bodies() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        for (pname, h) in [
-            ("srgb", srgb), ("lab4", lab)] {
-            let n = c::cmsGetPostScriptCSA(
-                std::ptr::null_mut(), h, 0, 0,
-                std::ptr::null_mut(), 0);
+        for (pname, h) in [("srgb", srgb), ("lab4", lab)] {
+            let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(), h, 0, 0, std::ptr::null_mut(), 0);
             let mut buf = vec![0u8; n as usize];
             let n2 = c::cmsGetPostScriptCSA(
-                std::ptr::null_mut(), h, 0, 0,
-                buf.as_mut_ptr() as *mut _, n);
+                std::ptr::null_mut(),
+                h,
+                0,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n,
+            );
             let head = String::from_utf8_lossy(&buf[..8.min(n2 as usize)]);
             eprintln!("{pname} csa n={n2} head={head:?}");
-            let n3 = c::cmsGetPostScriptCRD(
-                std::ptr::null_mut(), h, 0, 0,
-                std::ptr::null_mut(), 0);
+            let n3 = c::cmsGetPostScriptCRD(std::ptr::null_mut(), h, 0, 0, std::ptr::null_mut(), 0);
             let mut buf2 = vec![0u8; n3 as usize];
             let n4 = c::cmsGetPostScriptCRD(
-                std::ptr::null_mut(), h, 0, 0,
-                buf2.as_mut_ptr() as *mut _, n3);
+                std::ptr::null_mut(),
+                h,
+                0,
+                0,
+                buf2.as_mut_ptr() as *mut _,
+                n3,
+            );
             eprintln!("{pname} crd n={n4}");
         }
         let _ = (srgb, lab);
@@ -453,9 +469,12 @@ fn gray_csa_named_crd() {
     let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let cg = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut wp = c::CiexyY { x: 0.3457, y: 0.3585, Y: 1.0 };
-        let gp = c::cmsCreateGrayProfile(
-            &mut wp as *mut _ as *const _, cg);
+        let mut wp = c::CiexyY {
+            x: 0.3457,
+            y: 0.3585,
+            Y: 1.0,
+        };
+        let gp = c::cmsCreateGrayProfile(&mut wp as *mut _ as *const _, cg);
         let tg = lcms::gamma::build_gamma(None, 2.2).unwrap();
         let mut rg = lcms::virt::create_gray_profile(None, None, Some(&tg)).unwrap();
         let cout = c_ps(c::cmsGetPostScriptCSA, gp, 0, 0);
@@ -467,9 +486,14 @@ fn gray_csa_named_crd() {
         // strip the "% Created:" timestamp line — same-second races
         let strip = |v: &[u8]| -> Vec<u8> {
             let s = String::from_utf8_lossy(v);
-            s.lines().filter(|l| !l.starts_with("% Created:"))
-                .collect::<Vec<_>>().join("
-").into_bytes()
+            s.lines()
+                .filter(|l| !l.starts_with("% Created:"))
+                .collect::<Vec<_>>()
+                .join(
+                    "
+",
+                )
+                .into_bytes()
         };
         assert_eq!(strip(&cout2), strip(&rout2), "gray CRD");
         // named-color CRD — 'nmcl' placeholder + ncl2 tag
@@ -477,35 +501,39 @@ fn gray_csa_named_crd() {
         c::cmsSetDeviceClass(np, 0x6e6d636c); // 'nmcl'
         c::cmsSetColorSpace(np, 0x6e636c32); // 'ncl2'
         c::cmsSetPCS(np, 0x4C616220); // 'Lab '
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 2, 4, b"\0".as_ptr(), b"\0".as_ptr());
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, b"\0".as_ptr(), b"\0".as_ptr());
         let pcs = [0x8000u16, 0x8000, 0x8000];
         let col = [0xFFFFu16, 0, 0, 0];
-        c::cmsAppendNamedColor(ncl, b"Color1\0".as_ptr(),
-            pcs.as_ptr(), col.as_ptr());
-        c::cmsAppendNamedColor(ncl, b"Color2\0".as_ptr(),
-            pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"Color1\0".as_ptr(), pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"Color2\0".as_ptr(), pcs.as_ptr(), col.as_ptr());
         c::cmsWriteTag(np, 0x6e636c32, ncl as *const _);
         let mut buf = vec![0u8; BUF];
-        let cn = c::cmsGetPostScriptCRD(std::ptr::null_mut(), np, 0, 0,
-            buf.as_mut_ptr() as *mut _, buf.len() as u32);
+        let cn = c::cmsGetPostScriptCRD(
+            std::ptr::null_mut(),
+            np,
+            0,
+            0,
+            buf.as_mut_ptr() as *mut _,
+            buf.len() as u32,
+        );
         eprintln!("named CRD n={cn} (0 = C rejects WriteNamedColorCRD)");
         // rust side — same nmcl profile
         let mut rp = lcms::profile::create_profile_placeholder(None);
         rp.device_class = lcms::signatures::profileclass::SigNamedColorClass;
         rp.color_space = 0x6e636c32;
         rp.pcs = 0x4C616220;
-        let mut rncl = lcms::named::alloc_named_color_list(
-            None, 2, 4, b"", b"").unwrap();
+        let mut rncl = lcms::named::alloc_named_color_list(None, 2, 4, b"", b"").unwrap();
         let mut col16 = [0u16; 16];
         col16[..4].copy_from_slice(&col);
-        lcms::named::append_named_color(&mut rncl,
-            Some(b"Color1"), Some(&pcs), Some(&col16));
-        lcms::named::append_named_color(&mut rncl,
-            Some(b"Color2"), Some(&pcs), Some(&col16));
+        lcms::named::append_named_color(&mut rncl, Some(b"Color1"), Some(&pcs), Some(&col16));
+        lcms::named::append_named_color(&mut rncl, Some(b"Color2"), Some(&pcs), Some(&col16));
         let mut rp2 = *rp;
-        lcms::profile::cms_write_tag(&mut rp2, 0x6e636c32,
-            Some(lcms::tagtypes::TagObject::NamedColor(rncl)));
+        lcms::profile::cms_write_tag(
+            &mut rp2,
+            0x6e636c32,
+            Some(lcms::tagtypes::TagObject::NamedColor(rncl)),
+        );
         c::cmsCloseProfile(gp);
         c::cmsCloseProfile(np);
         c::cmsFreeNamedColorList(ncl);
@@ -517,23 +545,36 @@ fn gray_csa_named_crd() {
 #[test]
 fn named_color_crd() {
     unsafe {
-        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2,
-            3, b"pre\0".as_ptr(), b"suf\0".as_ptr());
+        let ncl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(),
+            2,
+            3,
+            b"pre\0".as_ptr(),
+            b"suf\0".as_ptr(),
+        );
         let lab = [0xF000u16, 0x8000, 0x8000];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(),
-            lab.as_ptr(), lab.as_ptr());
-        c::cmsAppendNamedColor(ncl, b"c2\0".as_ptr(),
-            lab.as_ptr(), lab.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab.as_ptr(), lab.as_ptr());
+        c::cmsAppendNamedColor(ncl, b"c2\0".as_ptr(), lab.as_ptr(), lab.as_ptr());
         let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof, 0x6e6d636c); // 'nmcl'
-        c::cmsSetColorSpace(prof, 0x6e6d636c);   // 'nmcl' colorspace
-        c::cmsSetPCS(prof, 0x4C616220);           // 'Lab ' PCS
+        c::cmsSetColorSpace(prof, 0x6e6d636c); // 'nmcl' colorspace
+        c::cmsSetPCS(prof, 0x4C616220); // 'Lab ' PCS
         c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _); // 'ncl2'
-        let wp = c::CieXyz { X: 0.9642, Y: 1.0, Z: 0.8249 };
+        let wp = c::CieXyz {
+            X: 0.9642,
+            Y: 1.0,
+            Z: 0.8249,
+        };
         c::cmsWriteTag(prof, 0x77747074, &wp as *const _ as *const _); // 'wtpt'
         let mut buf = vec![0u8; 1 << 20];
-        let r = c::cmsGetPostScriptCRD(std::ptr::null_mut(), prof,
-            0, 0, buf.as_mut_ptr() as *mut _, buf.len() as u32);
+        let r = c::cmsGetPostScriptCRD(
+            std::ptr::null_mut(),
+            prof,
+            0,
+            0,
+            buf.as_mut_ptr() as *mut _,
+            buf.len() as u32,
+        );
         eprintln!("nmcl-crd={r}");
         c::cmsCloseProfile(prof);
         c::cmsFreeNamedColorList(ncl);
@@ -555,13 +596,23 @@ fn ps2_emitters() {
             (srgb, 2, "srgb-i2"),
             (lab, 0, "lab-i0"),
         ] {
-            let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
-                prof, intent, 0, buf.as_mut_ptr() as *mut _,
-                buf.len() as u32);
+            let n = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(),
+                prof,
+                intent,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+            );
             eprintln!("csa {name} n={n}");
-            let n2 = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
-                prof, intent, 0, buf.as_mut_ptr() as *mut _,
-                buf.len() as u32);
+            let n2 = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(),
+                prof,
+                intent,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+            );
             eprintln!("crd {name} n={n2}");
         }
         c::cmsCloseProfile(srgb);
@@ -578,22 +629,40 @@ fn ps2_gray_colorant() {
         let g22 = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g22);
         let srgb = c::cmsCreate_sRGBProfile();
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../");
-        for f in ["graylcms2.icc", "gray3lcms2.icc", "lcms2cmyk.icc",
-                  "lcms2link.icc", "aRGBlcms2.icc", "limitlcms2.icc"] {
-            let Ok(d) = std::fs::read(dir.join(f)) else { continue };
-            let p = c::cmsOpenProfileFromMem(
-                d.as_ptr() as *const _, d.len() as u32);
-            if p.is_null() { continue; }
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        for f in [
+            "graylcms2.icc",
+            "gray3lcms2.icc",
+            "lcms2cmyk.icc",
+            "lcms2link.icc",
+            "aRGBlcms2.icc",
+            "limitlcms2.icc",
+        ] {
+            let Ok(d) = std::fs::read(dir.join(f)) else {
+                continue;
+            };
+            let p = c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32);
+            if p.is_null() {
+                continue;
+            }
             for intent in 0..4u32 {
                 let mut buf = vec![0u8; 1 << 18];
-                let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
-                    p, intent, 0, buf.as_mut_ptr() as *mut _,
-                    buf.len() as u32);
-                let n2 = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
-                    p, intent, 0, buf.as_mut_ptr() as *mut _,
-                    buf.len() as u32);
+                let n = c::cmsGetPostScriptCSA(
+                    std::ptr::null_mut(),
+                    p,
+                    intent,
+                    0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32,
+                );
+                let n2 = c::cmsGetPostScriptCRD(
+                    std::ptr::null_mut(),
+                    p,
+                    intent,
+                    0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32,
+                );
                 if intent == 0 && n + n2 > 0 {
                     eprintln!("{f} csa={n} crd={n2}");
                 }
@@ -603,13 +672,25 @@ fn ps2_gray_colorant() {
         for p in [gray, srgb] {
             for intent in 0..4u32 {
                 let mut buf = vec![0u8; 1 << 18];
-                let n = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
-                    p, intent, 0, buf.as_mut_ptr() as *mut _,
-                    buf.len() as u32);
-                let n2 = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
-                    p, intent, 0, buf.as_mut_ptr() as *mut _,
-                    buf.len() as u32);
-                if intent == 0 { eprintln!("virt csa={n} crd={n2}"); }
+                let n = c::cmsGetPostScriptCSA(
+                    std::ptr::null_mut(),
+                    p,
+                    intent,
+                    0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32,
+                );
+                let n2 = c::cmsGetPostScriptCRD(
+                    std::ptr::null_mut(),
+                    p,
+                    intent,
+                    0,
+                    buf.as_mut_ptr() as *mut _,
+                    buf.len() as u32,
+                );
+                if intent == 0 {
+                    eprintln!("virt csa={n} crd={n2}");
+                }
             }
         }
         c::cmsCloseProfile(gray);
@@ -635,12 +716,24 @@ fn ps2_gray_named_emitters() {
         let mut n = buf.len() as u32;
         for (prof, name) in [(gray, "gray"), (nmcl, "nmcl")] {
             let mut n2 = buf.len() as u32;
-            let csa = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
-                prof, 0, 0, buf.as_mut_ptr() as *mut _, n2);
+            let csa = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(),
+                prof,
+                0,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n2,
+            );
             eprintln!("{name}-csa={csa}");
             let mut n3 = buf.len() as u32;
-            let crd = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
-                prof, 0, 0, buf.as_mut_ptr() as *mut _, n3);
+            let crd = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(),
+                prof,
+                0,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n3,
+            );
             eprintln!("{name}-crd={crd}");
         }
         let _ = n;
@@ -657,42 +750,60 @@ fn ps2_named_crd_internals() {
     let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
-        c::cmsSetDeviceClass(nmcl, 0x6e6d636c);   // 'nmcl'
-        c::cmsSetColorSpace(nmcl, 0x33434c52);    // '3CLR' device
-        c::cmsSetPCS(nmcl, 0x4c616220);           // 'Lab '
+        c::cmsSetDeviceClass(nmcl, 0x6e6d636c); // 'nmcl'
+        c::cmsSetColorSpace(nmcl, 0x33434c52); // '3CLR' device
+        c::cmsSetPCS(nmcl, 0x4c616220); // 'Lab '
         // named-color list -> ncl2 tag
         let list = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 4, 3,
-            b"pre\0".as_ptr(), b"post\0".as_ptr());
+            std::ptr::null_mut(),
+            4,
+            3,
+            b"pre\0".as_ptr(),
+            b"post\0".as_ptr(),
+        );
         for i in 0..4u32 {
             let mut name = [0u8; 256];
             let nm = format!("color{}\0", i);
             name[..nm.len()].copy_from_slice(nm.as_bytes());
             let pcs = [100u16 * (i as u16 + 1), 200, 300];
             let dev = [0u16; 15];
-            c::cmsAppendNamedColor(list,
-                name.as_ptr() as *mut _,
-                pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(list, name.as_ptr() as *mut _, pcs.as_ptr(), dev.as_ptr());
         }
         let w = c::cmsWriteTag(nmcl, 0x6e636c32, list as *const _);
         eprintln!("ncl2 w={w}");
         // desc + wtpt for completeness
         let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
-        c::cmsMLUsetWide(ml, b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _, wk.as_mut_ptr() as *const _);
+        c::cmsMLUsetWide(
+            ml,
+            b"en\0".as_ptr() as *const _,
+            b"US\0".as_ptr() as *const _,
+            wk.as_mut_ptr() as *const _,
+        );
         c::cmsWriteTag(nmcl, 0x64657363, ml as *const _);
         let wp = [0.9642f64, 1.0, 0.8249];
         c::cmsWriteTag(nmcl, 0x77747074, wp.as_ptr() as *const _);
         let mut buf = vec![0u8; 1 << 18];
         for (intent, name) in [(0u32, "i0"), (1, "i1"), (3, "i3")] {
             let mut n = buf.len() as u32;
-            let crd = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
-                nmcl, intent, 0, buf.as_mut_ptr() as *mut _, n);
+            let crd = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(),
+                nmcl,
+                intent,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n,
+            );
             eprintln!("{name} crd={crd}");
             let mut n2 = buf.len() as u32;
-            let csa = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
-                nmcl, intent, 0, buf.as_mut_ptr() as *mut _, n2);
+            let csa = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(),
+                nmcl,
+                intent,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n2,
+            );
             eprintln!("{name} csa={csa}");
         }
         c::cmsCloseProfile(nmcl);
@@ -711,27 +822,43 @@ fn ps2_gray_lut_emitters() {
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
         // write an A2B0 CLUT so the LUT path fires
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 1,
-                [g].as_ptr() as *mut _));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocToneCurves(std::ptr::null_mut(), 1, [g].as_ptr() as *mut _),
+        );
         let mut grid = vec![0u16; 17 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 17) * 3855) as u16;
         }
-        c::cmsPipelineInsertStage(p, 1,
-            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 1, 3,
-                grid.as_ptr()));
+        c::cmsPipelineInsertStage(
+            p,
+            1,
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 17, 1, 3, grid.as_ptr()),
+        );
         let w = c::cmsWriteTag(gray, 0x41324230, p as *const _);
         eprintln!("a2b0 w={w}");
         let mut buf = vec![0u8; 1 << 18];
         for (intent, name) in [(0u32, "i0"), (1, "i1"), (3, "i3")] {
             let mut n = buf.len() as u32;
-            let csa = c::cmsGetPostScriptCSA(std::ptr::null_mut(),
-                gray, intent, 0, buf.as_mut_ptr() as *mut _, n);
+            let csa = c::cmsGetPostScriptCSA(
+                std::ptr::null_mut(),
+                gray,
+                intent,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n,
+            );
             eprintln!("{name} csa={csa}");
             let mut n2 = buf.len() as u32;
-            let crd = c::cmsGetPostScriptCRD(std::ptr::null_mut(),
-                gray, intent, 0, buf.as_mut_ptr() as *mut _, n2);
+            let crd = c::cmsGetPostScriptCRD(
+                std::ptr::null_mut(),
+                gray,
+                intent,
+                0,
+                buf.as_mut_ptr() as *mut _,
+                n2,
+            );
             eprintln!("{name} crd={crd}");
         }
         c::cmsCloseProfile(gray);
@@ -750,66 +877,103 @@ fn ps2_named_intent_arms() {
         let srgb = c::cmsCreate_sRGBProfile();
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         // named-color profile (class 'nmcl')
-        let ncp = c::cmsCreateProfilePlaceholder(
-            std::ptr::null_mut());
+        let ncp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(ncp, 0x6E6D636C);
         c::cmsSetColorSpace(ncp, 0x46434C52);
         c::cmsSetPCS(ncp, 0x58595A20);
         let nl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 2, 3,
+            std::ptr::null_mut(),
+            2,
+            3,
             b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _);
+            b"S\0".as_ptr() as *const _,
+        );
         let pcs = [0x1000u16, 0x2000, 0x3000];
         let dev = [0x4000u16, 0x5000, 0x6000];
-        c::cmsAppendNamedColor(nl,
+        c::cmsAppendNamedColor(
+            nl,
             b"red\0".as_ptr() as *const _,
-            pcs.as_ptr(), dev.as_ptr());
-        c::cmsAppendNamedColor(nl,
+            pcs.as_ptr(),
+            dev.as_ptr(),
+        );
+        c::cmsAppendNamedColor(
+            nl,
             b"blue\0".as_ptr() as *const _,
-            pcs.as_ptr(), dev.as_ptr());
-        c::cmsWriteTag(ncp, 0x6E636C32,
-            nl as *const _);
+            pcs.as_ptr(),
+            dev.as_ptr(),
+        );
+        c::cmsWriteTag(ncp, 0x6E636C32, nl as *const _);
         // matrix-shaper profile for WriteInputMatrixShaper
         #[repr(C)]
-        struct CieXyy { x: f64, y: f64, yy: f64 }
-        let wp = CieXyy { x: 0.3, y: 0.3, yy: 1.0 };
+        struct CieXyy {
+            x: f64,
+            y: f64,
+            yy: f64,
+        }
+        let wp = CieXyy {
+            x: 0.3,
+            y: 0.3,
+            yy: 1.0,
+        };
         let prim = [
-            CieXyy { x: 0.6, y: 0.3, yy: 1.0 },
-            CieXyy { x: 0.2, y: 0.6, yy: 1.0 },
-            CieXyy { x: 0.15, y: 0.06, yy: 1.0 },
+            CieXyy {
+                x: 0.6,
+                y: 0.3,
+                yy: 1.0,
+            },
+            CieXyy {
+                x: 0.2,
+                y: 0.6,
+                yy: 1.0,
+            },
+            CieXyy {
+                x: 0.15,
+                y: 0.06,
+                yy: 1.0,
+            },
         ];
-        let trcs = [g as *mut std::ffi::c_void,
-                    g as *mut std::ffi::c_void,
-                    g as *mut std::ffi::c_void];
+        let trcs = [
+            g as *mut std::ffi::c_void,
+            g as *mut std::ffi::c_void,
+            g as *mut std::ffi::c_void,
+        ];
         let msp = c::cmsCreateRGBProfileTHR(
             std::ptr::null_mut(),
             &wp as *const _ as *const _,
             prim.as_ptr() as *const _,
-            trcs.as_ptr());
+            trcs.as_ptr(),
+        );
         // CSA/CRD on named-color + matrix-shaper + srgb,
         //   all intents + flag combos
-        for (prof, pname) in [
-            (ncp, "ncl"), (srgb, "srgb"),
-        ] {
+        for (prof, pname) in [(ncp, "ncl"), (srgb, "srgb")] {
             // named-color CSA only valid at intent 0 —
             //   intents 1+ crash upstream on ncl2
-            let ints: &[u32] = if prof == ncp {
-                &[0] } else { &[0, 1, 2, 3] };
+            let ints: &[u32] = if prof == ncp { &[0] } else { &[0, 1, 2, 3] };
             for int_ in ints.iter().copied() {
                 for fl in [0u32, 0x0040, 0x0100] {
                     let mut buf = vec![0u8; 1 << 18];
                     let csa = c::cmsGetPostScriptCSA(
-                        std::ptr::null_mut(), prof, int_,
-                        fl, buf.as_mut_ptr() as *mut _,
-                        buf.len() as u32);
+                        std::ptr::null_mut(),
+                        prof,
+                        int_,
+                        fl,
+                        buf.as_mut_ptr() as *mut _,
+                        buf.len() as u32,
+                    );
                     let mut buf2 = vec![0u8; 1 << 18];
                     let crd = c::cmsGetPostScriptCRD(
-                        std::ptr::null_mut(), prof, int_,
-                        fl, buf2.as_mut_ptr() as *mut _,
-                        buf2.len() as u32);
+                        std::ptr::null_mut(),
+                        prof,
+                        int_,
+                        fl,
+                        buf2.as_mut_ptr() as *mut _,
+                        buf2.len() as u32,
+                    );
                     if int_ == 0 && fl == 0 {
-                        eprintln!("{pname} csa={csa} \
-                            crd={crd}");
+                        eprintln!(
+                            "{pname} csa={csa} \
+                            crd={crd}"
+                        );
                     }
                 }
             }
@@ -822,14 +986,21 @@ fn ps2_named_intent_arms() {
             let io = c::cmsOpenIOhandlerFromMem(
                 std::ptr::null_mut(),
                 buf.as_mut_ptr() as *mut _,
-                nb, b"w\0".as_ptr() as *const _);
+                nb,
+                b"w\0".as_ptr() as *const _,
+            );
             if io.is_null() {
                 eprintln!("cres ty={ty} io=0");
                 continue;
             }
             let r = c::cmsGetPostScriptColorResource(
-                std::ptr::null_mut(), ty, srgb, 0, 0,
-                io as *mut _);
+                std::ptr::null_mut(),
+                ty,
+                srgb,
+                0,
+                0,
+                io as *mut _,
+            );
             eprintln!("cres ty={ty} r={r}");
             let _ = nb;
             c::cmsCloseIOhandler(io);
@@ -837,7 +1008,8 @@ fn ps2_named_intent_arms() {
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(ncp);
         if !msp.is_null() {
-            c::cmsCloseProfile(msp); }
+            c::cmsCloseProfile(msp);
+        }
         c::cmsFreeNamedColorList(nl);
         c::cmsFreeToneCurve(g);
     }
@@ -850,49 +1022,48 @@ fn ps2_named_intent_arms() {
 fn ps2_tail_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab4 = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // CSA + CRD emit on srgb/lab4 at intents+flags
         let mut buf = vec![0u8; 1 << 19];
-        for (prof, name) in [
-            (srgb, "srgb"), (lab4, "lab4"),
-        ] {
+        for (prof, name) in [(srgb, "srgb"), (lab4, "lab4")] {
             for intent in [0u32, 1, 2] {
                 for flags in [0u32, 0x10, 0x20] {
                     let n = c::cmsGetPostScriptCSA(
-                        std::ptr::null_mut(), prof,
-                        intent, flags,
+                        std::ptr::null_mut(),
+                        prof,
+                        intent,
+                        flags,
                         buf.as_mut_ptr() as *mut _,
-                        buf.len() as u32);
+                        buf.len() as u32,
+                    );
                     let n2 = c::cmsGetPostScriptCRD(
-                        std::ptr::null_mut(), prof,
-                        intent, flags,
+                        std::ptr::null_mut(),
+                        prof,
+                        intent,
+                        flags,
                         buf.as_mut_ptr() as *mut _,
-                        buf.len() as u32);
-                    eprintln!("{name} i{intent} f{flags:#x}: \
-                        csa={n} crd={n2}");
+                        buf.len() as u32,
+                    );
+                    eprintln!(
+                        "{name} i{intent} f{flags:#x}: \
+                        csa={n} crd={n2}"
+                    );
                 }
             }
         }
         // error-handler set + fire via a bad read
-        unsafe extern "C" fn myerr(
-            _ctx: *mut std::ffi::c_void, code: u32,
-            _msg: *const i8) {
+        unsafe extern "C" fn myerr(_ctx: *mut std::ffi::c_void, code: u32, _msg: *const i8) {
             eprintln!("  myerr {code}");
         }
-        let fp: unsafe extern "C" fn(
-            *mut std::ffi::c_void, u32, *const i8) = myerr;
-        c::cmsSetLogErrorHandlerTHR(
-            std::ptr::null_mut(), fp as *mut _);
+        let fp: unsafe extern "C" fn(*mut std::ffi::c_void, u32, *const i8) = myerr;
+        c::cmsSetLogErrorHandlerTHR(std::ptr::null_mut(), fp as *mut _);
         // trigger an error so the handler fires
-        let bad = c::cmsOpenProfileFromMem(
-            b"\x00".as_ptr() as *const _, 1);
+        let bad = c::cmsOpenProfileFromMem(b"\x00".as_ptr() as *const _, 1);
         eprintln!("bad-open={}", !bad.is_null());
         if !bad.is_null() {
-            c::cmsCloseProfile(bad); }
-        c::cmsSetLogErrorHandlerTHR(
-            std::ptr::null_mut(),
-            std::ptr::null_mut());
+            c::cmsCloseProfile(bad);
+        }
+        c::cmsSetLogErrorHandlerTHR(std::ptr::null_mut(), std::ptr::null_mut());
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab4);
     }
@@ -905,58 +1076,63 @@ fn ps2_tail_arms() {
 fn ps2_cpd_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab4 = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let mut buf = vec![0u8; 1 << 19];
         // devicelink profile for CSA/CRD emit
         let dl = {
-            let p = c::cmsCreateProfilePlaceholder(
-                std::ptr::null_mut());
+            let p = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(p, 0x6C696E6B);
             c::cmsSetColorSpace(p, 0x52474220);
             c::cmsSetPCS(p, 0x4C616220);
             c::cmsSetProfileVersion(p, 4.4);
-            let g = c::cmsBuildGamma(
-                std::ptr::null_mut(), 1.0);
-            let pipe = c::cmsPipelineAlloc(
-                std::ptr::null_mut(), 3, 3);
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+            let pipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let tcs = [g, g, g];
-            c::cmsPipelineInsertStage(pipe, 0,
-                c::cmsStageAllocToneCurves(
-                    std::ptr::null_mut(), 3,
-                    tcs.as_ptr() as *mut _));
-            c::cmsWriteTag(p, 0x41324230,
-                pipe as *const _);
+            c::cmsPipelineInsertStage(
+                pipe,
+                0,
+                c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, tcs.as_ptr() as *mut _),
+            );
+            c::cmsWriteTag(p, 0x41324230, pipe as *const _);
             let mut bb = [0u8; 1 << 17];
             let mut n = bb.len() as u32;
-            let sv = c::cmsSaveProfileToMem(p,
-                bb.as_mut_ptr() as *mut _, &mut n);
+            let sv = c::cmsSaveProfileToMem(p, bb.as_mut_ptr() as *mut _, &mut n);
             let pr = if sv != 0 {
-                c::cmsOpenProfileFromMem(
-                    bb.as_ptr() as *const _, n)
-            } else { std::ptr::null_mut() };
+                c::cmsOpenProfileFromMem(bb.as_ptr() as *const _, n)
+            } else {
+                std::ptr::null_mut()
+            };
             c::cmsCloseProfile(p);
             c::cmsPipelineFree(pipe);
             pr
         };
-        for (prof, name) in [
-            (srgb, "srgb"), (lab4, "lab4"), (dl, "dl"),
-        ] {
-            if prof.is_null() { continue; }
+        for (prof, name) in [(srgb, "srgb"), (lab4, "lab4"), (dl, "dl")] {
+            if prof.is_null() {
+                continue;
+            }
             for i in [0u32, 2] {
                 let n = c::cmsGetPostScriptCSA(
-                    std::ptr::null_mut(), prof, i, 0,
+                    std::ptr::null_mut(),
+                    prof,
+                    i,
+                    0,
                     buf.as_mut_ptr() as *mut _,
-                    buf.len() as u32);
+                    buf.len() as u32,
+                );
                 let n2 = c::cmsGetPostScriptCRD(
-                    std::ptr::null_mut(), prof, i, 0,
+                    std::ptr::null_mut(),
+                    prof,
+                    i,
+                    0,
                     buf.as_mut_ptr() as *mut _,
-                    buf.len() as u32);
+                    buf.len() as u32,
+                );
                 eprintln!("{name} i{i} csa={n} crd={n2}");
             }
         }
         if !dl.is_null() {
-            c::cmsCloseProfile(dl); }
+            c::cmsCloseProfile(dl);
+        }
         c::cmsCloseProfile(srgb);
         c::cmsCloseProfile(lab4);
     }

@@ -8,8 +8,8 @@
 //!
 //! Slots are added as the modules that consume them are ported.
 
-use std::sync::OnceLock;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 /// `cmsLogErrorHandlerFunction` — receives the error code and the formatted text.
@@ -87,21 +87,10 @@ pub struct Context {
 /// Bridge fn — FFI builds a C-ABI `_cmstransform_struct` view of the Rust
 /// `Transform` and invokes the plugin's `_cmsTransformFn`. Args:
 /// `(transform_ptr, in, out, ppl, lines, bpl_in, bpl_out, bpp_in, bpp_out)`.
-pub type XformInvokeFn = fn(
-    usize,
-    *const u8,
-    *mut u8,
-    u32,
-    u32,
-    u32,
-    u32,
-    u32,
-    u32,
-);
+pub type XformInvokeFn = fn(usize, *const u8, *mut u8, u32, u32, u32, u32, u32, u32);
 
 /// Set once by the FFI layer (`ensure_foreign_hooks`).
-pub static XFORM_HOOKS: std::sync::RwLock<Option<XformInvokeFn>> =
-    std::sync::RwLock::new(None);
+pub static XFORM_HOOKS: std::sync::RwLock<Option<XformInvokeFn>> = std::sync::RwLock::new(None);
 
 /// A C-registered `cmsPluginHeader` entry — FFI fn ptrs (`_cmsRead/WriteProfileHeaderFn`).
 #[derive(Clone, Copy, Default)]
@@ -120,8 +109,7 @@ pub struct CHeaderSet {
 pub type HeaderInvokeFn = fn(usize, usize, usize, bool) -> bool;
 
 /// Set once by the FFI layer (`ensure_foreign_hooks`); `None` = no bridge.
-pub static HEADER_INVOKE: std::sync::RwLock<Option<HeaderInvokeFn>> =
-    std::sync::RwLock::new(None);
+pub static HEADER_INVOKE: std::sync::RwLock<Option<HeaderInvokeFn>> = std::sync::RwLock::new(None);
 
 // ---------------------------------------------------------------------------
 // Foreign (C-registered) tag-type callbacks — `cmsTagTypeHandler` fn ptrs
@@ -144,8 +132,7 @@ pub struct TagTypeHooks {
 }
 
 /// Set once by the FFI layer (`ensure_foreign_hooks`).
-pub static TAGTYPE_HOOKS: std::sync::RwLock<Option<TagTypeHooks>> =
-    std::sync::RwLock::new(None);
+pub static TAGTYPE_HOOKS: std::sync::RwLock<Option<TagTypeHooks>> = std::sync::RwLock::new(None);
 
 /// Bridge fns for a C `cmsStage` placeholder (`_cmsStageAllocPlaceholder`) —
 /// the FFI builds a C-ABI `cmsStage` view of the Rust stage and invokes the
@@ -159,26 +146,22 @@ pub struct StageHooks {
 }
 
 /// Set once by the FFI layer (`ensure_foreign_hooks`).
-pub static STAGE_HOOKS: std::sync::RwLock<Option<StageHooks>> =
-    std::sync::RwLock::new(None);
+pub static STAGE_HOOKS: std::sync::RwLock<Option<StageHooks>> = std::sync::RwLock::new(None);
 
 /// MPE-elem handler lookup — the FFI resolves a stamped `*const Context`
 /// (an opaque token in core, which is `forbid(unsafe_code)`) into that
 /// context's `mpe_handlers` entry for `sig`.
-pub type MpeLookupFn =
-    fn(ctx_token: usize, sig: u32) -> Option<crate::tagtypes::MpeElemHandler>;
+pub type MpeLookupFn = fn(ctx_token: usize, sig: u32) -> Option<crate::tagtypes::MpeElemHandler>;
 
 /// Set once by the FFI layer (`ensure_foreign_hooks`).
-pub static MPE_LOOKUP: std::sync::RwLock<Option<MpeLookupFn>> =
-    std::sync::RwLock::new(None);
+pub static MPE_LOOKUP: std::sync::RwLock<Option<MpeLookupFn>> = std::sync::RwLock::new(None);
 
 /// Re-box a `*mut lut::Stage` produced by `_cmsStageAllocPlaceholder` into an
 /// owned `Stage` — the FFI does the `from_raw` so core stays unsafe-free.
 pub type StageBoxFn = fn(ptr: usize) -> Option<Box<crate::lut::Stage>>;
 
 /// Set once by the FFI layer (`ensure_foreign_hooks`).
-pub static STAGE_BOX: std::sync::RwLock<Option<StageBoxFn>> =
-    std::sync::RwLock::new(None);
+pub static STAGE_BOX: std::sync::RwLock<Option<StageBoxFn>> = std::sync::RwLock::new(None);
 
 /// A C-registered `cmsPluginRenderingIntent` entry — `cmsIntentFn` ptr.
 #[derive(Clone, Copy, Default)]
@@ -199,8 +182,9 @@ pub struct CParametricSet {
 }
 
 /// C `DEFAULT_ALARM_CODES_VALUE`
-pub const DEFAULT_ALARM_CODES: [u16; 16] =
-    [0x7F00, 0x7F00, 0x7F00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+pub const DEFAULT_ALARM_CODES: [u16; 16] = [
+    0x7F00, 0x7F00, 0x7F00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
 
 impl Default for Context {
     fn default() -> Self {

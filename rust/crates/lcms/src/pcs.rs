@@ -4,10 +4,10 @@
 //! Gate: `tests/c_parity_pcs.rs`
 
 use crate::fixed::{quick_saturate_word, s15_fixed16_to_double};
+use crate::gmath::GmathExt;
 use crate::signatures::colorspace as cs;
 use crate::types::{CpowExt, *};
 use crate::wtpnt::d50_xyz;
-use crate::gmath::GmathExt;
 use std::f64::consts::PI;
 
 const MAX_ENCODEABLE_XYZ: f64 = 1.0 + 32767.0 / 32768.0;

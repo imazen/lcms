@@ -19,14 +19,24 @@ fn line_stride_transform() {
         let intents = [0u32; 2];
         let adapt = [1.0f64; 2];
         let mut rt = xform::create_extended_transform(
-            None, &mut rp, &mut bpc, &intents, &adapt, None, 0,
-            in_fmt, in_fmt, 0).unwrap();
+            None, &mut rp, &mut bpc, &intents, &adapt, None, 0, in_fmt, in_fmt, 0,
+        )
+        .unwrap();
         // 4 lines x 6 px Lab16 (3ch x 2B = 6B/px), strided
         let inp: Vec<u8> = (0..24 * 6).map(|i| (i * 37) as u8).collect();
         let mut co = vec![0u8; 24 * 6];
         let mut ro = vec![0u8; 24 * 6];
-        c::cmsDoTransformLineStride(ct, inp.as_ptr() as _, co.as_mut_ptr() as _,
-            6, 4, 36, 36, 6, 6);
+        c::cmsDoTransformLineStride(
+            ct,
+            inp.as_ptr() as _,
+            co.as_mut_ptr() as _,
+            6,
+            4,
+            36,
+            36,
+            6,
+            6,
+        );
         rt.do_transform_line_stride(&inp, &mut ro, 6, 4, 36, 36, 6, 6);
         assert_eq!(co, ro, "line-stride out");
         c::cmsDeleteTransform(ct);
@@ -52,15 +62,20 @@ fn change_buffers_format() {
         let intents = [0u32; 2];
         let adapt = [1.0f64; 2];
         let mut rt = xform::create_extended_transform(
-            None, &mut rp, &mut bpc, &intents, &adapt, None, 0,
-            in16, out16, 0).unwrap();
+            None, &mut rp, &mut bpc, &intents, &adapt, None, 0, in16, out16, 0,
+        )
+        .unwrap();
         // status parity — 16->8 change succeeds when CAN_CHANGE_FORMATTER
         assert_eq!(
             c::cmsChangeBuffersFormat(ct, in8, out16) != 0,
-            rt.change_buffers_format(in8, out16), "change 16->8 in");
+            rt.change_buffers_format(in8, out16),
+            "change 16->8 in"
+        );
         assert_eq!(
             c::cmsChangeBuffersFormat(ct, in8, in8) != 0,
-            rt.change_buffers_format(in8, in8), "change both");
+            rt.change_buffers_format(in8, in8),
+            "change both"
+        );
         c::cmsDeleteTransform(ct);
         c::cmsCloseProfile(h1);
         c::cmsCloseProfile(h2);
@@ -95,7 +110,7 @@ fn change_buffers_format_matrix() {
         ];
         let h1 = c::cmsCreate_sRGBProfile();
         let h2 = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let cs: u32 = (4 << 16) | (3 << 3) | 2;  // TYPE_RGB_16
+        let cs: u32 = (4 << 16) | (3 << 3) | 2; // TYPE_RGB_16
         let co_fmt: u32 = (10 << 16) | (3 << 3) | 2; // TYPE_Lab_16
         let ct = c::cmsCreateTransform(h1, cs, h2, co_fmt, 0, 0);
         let _ = c::cmsCloseProfile(h1);
@@ -114,8 +129,9 @@ fn change_buffers_format_matrix() {
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let mut rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                fi, fo, 0).unwrap();
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, 0,
+            )
+            .unwrap();
             let rok = rt.change_buffers_format(base | bit, fo | bit);
             assert_eq!(ok != 0, rok, "{name} change status");
         }

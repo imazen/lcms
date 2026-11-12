@@ -1,7 +1,11 @@
 //! cmsvirt parameterized builders + linearization/ink-limiting/BCHSW
 //! device links — the deeper virt machinery.
 
-use lcms::{virt, named, gamma, xform, profile, types::{CiexyY, CiexyYTriple}};
+use lcms::{
+    gamma, named, profile,
+    types::{CiexyY, CiexyYTriple},
+    virt, xform,
+};
 use lcms_cref as c;
 use std::ffi::c_void;
 
@@ -11,30 +15,56 @@ fn parameterized_builders() {
         // RGB profile with explicit primaries + a non-identity curve
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.4);
         let curves = [g; 3];
-        let white = c::CieXyz { X: 0.9505, Y: 1.0, Z: 1.089 };
+        let white = c::CieXyz {
+            X: 0.9505,
+            Y: 1.0,
+            Z: 1.089,
+        };
         let prim = [0.64f64, 0.33, 1.0, 0.30, 0.60, 1.0, 0.15, 0.06, 1.0];
-        let ch = c::cmsCreateRGBProfileTHR(std::ptr::null_mut(),
-            &white as *const _ as *const _, prim.as_ptr() as *const _,
-            curves.as_ptr() as *const *mut c_void);
+        let ch = c::cmsCreateRGBProfileTHR(
+            std::ptr::null_mut(),
+            &white as *const _ as *const _,
+            prim.as_ptr() as *const _,
+            curves.as_ptr() as *const *mut c_void,
+        );
         let rg = gamma::build_gamma(None, 2.4).unwrap();
-        let d50 = CiexyY { x: 0.3457, y: 0.3585, Y: 1.0 };
+        let d50 = CiexyY {
+            x: 0.3457,
+            y: 0.3585,
+            Y: 1.0,
+        };
         let rec709 = CiexyYTriple {
-            Red: CiexyY { x: 0.64, y: 0.33, Y: 1.0 },
-            Green: CiexyY { x: 0.30, y: 0.60, Y: 1.0 },
-            Blue: CiexyY { x: 0.15, y: 0.06, Y: 1.0 } };
-        let mut rp = virt::create_rgb_profile(None,
-            Some(&d50), Some(&rec709), Some([&rg, &rg, &rg]));
+            Red: CiexyY {
+                x: 0.64,
+                y: 0.33,
+                Y: 1.0,
+            },
+            Green: CiexyY {
+                x: 0.30,
+                y: 0.60,
+                Y: 1.0,
+            },
+            Blue: CiexyY {
+                x: 0.15,
+                y: 0.06,
+                Y: 1.0,
+            },
+        };
+        let mut rp =
+            virt::create_rgb_profile(None, Some(&d50), Some(&rec709), Some([&rg, &rg, &rg]));
         assert_eq!(ch.is_null(), rp.is_none(), "rgb param build");
         // gray profile
         let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.0);
-        let ch2 = c::cmsCreateGrayProfile(
-            &white as *const _ as *const _, g2);
+        let ch2 = c::cmsCreateGrayProfile(&white as *const _ as *const _, g2);
         let rg2 = gamma::build_gamma(None, 2.0).unwrap();
-        let mut rp2 = virt::create_gray_profile(None,
-            Some(&d50), Some(&rg2));
+        let mut rp2 = virt::create_gray_profile(None, Some(&d50), Some(&rg2));
         assert_eq!(ch2.is_null(), rp2.is_none(), "gray build");
-        if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
-        if !ch2.is_null() { let _ = c::cmsCloseProfile(ch2); }
+        if !ch.is_null() {
+            let _ = c::cmsCloseProfile(ch);
+        }
+        if !ch2.is_null() {
+            let _ = c::cmsCloseProfile(ch2);
+        }
         c::cmsFreeToneCurve(g);
         c::cmsFreeToneCurve(g2);
     }
@@ -49,33 +79,46 @@ fn device_link_variants() {
             (33, -20.0, 5.0, 15.0, -10.0, 6500, 5000),
             (256, 0.0, 0.0, -30.0, 0.0, 4000, 9300),
         ] {
-            let ch = c::cmsCreateBCHSWabstractProfile(
-                lut, bright, contrast, hue, sat, tsrc, tdst);
-            let mut rp = virt::create_bchsw_abstract_profile(None,
-                lut, bright, contrast, hue, sat, tsrc, tdst);
-            assert_eq!(ch.is_null(), rp.is_none(),
-                "bchsw {lut}/{bright}/{contrast}/{hue}/{sat}/{tsrc}/{tdst}");
-            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            let ch = c::cmsCreateBCHSWabstractProfile(lut, bright, contrast, hue, sat, tsrc, tdst);
+            let mut rp = virt::create_bchsw_abstract_profile(
+                None, lut, bright, contrast, hue, sat, tsrc, tdst,
+            );
+            assert_eq!(
+                ch.is_null(),
+                rp.is_none(),
+                "bchsw {lut}/{bright}/{contrast}/{hue}/{sat}/{tsrc}/{tdst}"
+            );
+            if !ch.is_null() {
+                let _ = c::cmsCloseProfile(ch);
+            }
         }
         // linearization device link — one curve for all channels
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
         let curves = [g; 3];
         let ch = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(), 4 /* PT_RGB */,
-            curves.as_ptr());
+            std::ptr::null_mut(),
+            4, /* PT_RGB */
+            curves.as_ptr(),
+        );
         let rg = gamma::build_gamma(None, 1.8).unwrap();
-        let mut rp = virt::create_linearization_device_link(None, 4,
-            &[&rg, &rg, &rg]);
+        let mut rp = virt::create_linearization_device_link(None, 4, &[&rg, &rg, &rg]);
         assert_eq!(ch.is_null(), rp.is_none(), "linearization link");
-        if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+        if !ch.is_null() {
+            let _ = c::cmsCloseProfile(ch);
+        }
         c::cmsFreeToneCurve(g);
         // ink-limiting device link
         for limit in [50.0f64, 100.0, 200.0, 350.0] {
             let ch2 = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), 4 /* PT_CMY */, limit);
+                std::ptr::null_mut(),
+                4, /* PT_CMY */
+                limit,
+            );
             let mut rp2 = virt::create_ink_limiting_device_link(None, 4, limit);
             assert_eq!(ch2.is_null(), rp2.is_none(), "ink limit {limit}");
-            if !ch2.is_null() { let _ = c::cmsCloseProfile(ch2); }
+            if !ch2.is_null() {
+                let _ = c::cmsCloseProfile(ch2);
+            }
         }
     }
 }
@@ -85,34 +128,34 @@ fn device_link_variants() {
 #[test]
 fn bchsw_transform() {
     unsafe {
-        let ch = c::cmsCreateBCHSWabstractProfile(
-            33, 10.0, 10.0, 0.0, 10.0, 5000, 6500);
+        let ch = c::cmsCreateBCHSWabstractProfile(33, 10.0, 10.0, 0.0, 10.0, 5000, 6500);
         assert!(!ch.is_null());
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2; // TYPE_Lab_16
         let ct = c::cmsCreateTransform(ch, lab_fmt, ch, lab_fmt, 0, 0);
         assert!(!ct.is_null(), "bchsw xform");
-        let mut rp = virt::create_bchsw_abstract_profile(None,
-            33, 10.0, 10.0, 0.0, 10.0, 5000, 6500).unwrap();
+        let mut rp =
+            virt::create_bchsw_abstract_profile(None, 33, 10.0, 10.0, 0.0, 10.0, 5000, 6500)
+                .unwrap();
         let mut profs = vec![rp.clone(), rp.clone()];
         let mut bpc = [false; 2];
         let intents = [0u32; 2];
         let adapt = [1.0f64; 2];
         let rt = xform::create_extended_transform(
-            None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-            lab_fmt, lab_fmt, 0);
+            None, &mut profs, &mut bpc, &intents, &adapt, None, 0, lab_fmt, lab_fmt, 0,
+        );
         assert_eq!(ct.is_null(), rt.is_none(), "bchsw rust xform");
         if rt.is_some() {
             let mut rt = rt.unwrap();
             let inp = [0x4000u16, 0x8000, 0x2000];
-            let inb: Vec<u8> = inp.iter()
-                .flat_map(|v| v.to_be_bytes()).collect();
+            let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
             let mut co = [0u16; 3];
             let mut ro = vec![0u8; 6];
-            c::cmsDoTransform(ct, inp.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             rt.do_transform(&inb, &mut ro, 1);
-            let ro16: Vec<u16> = ro.chunks_exact(2)
-                .map(|b| u16::from_be_bytes([b[0], b[1]])).collect();
+            let ro16: Vec<u16> = ro
+                .chunks_exact(2)
+                .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                .collect();
             // FINDING: the BCHSW abstract-profile eval diverges —
             // C [65535, 39932, 58070] vs Rust [65535, 0, 20770] on
             // input [0x4000,0x8000,0x2000]. The MPE/float-LUT reader
@@ -133,25 +176,33 @@ fn device_link_colorspaces() {
         // linearization on gray (PT_GRAY=3), CMYK(PT_CMY=12), MCH5(14)
         for cs in [3u32, 12, 14] {
             let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
-            let nch = if cs == 3 { 1 } else if cs == 12 { 4 } else { 5 };
+            let nch = if cs == 3 {
+                1
+            } else if cs == 12 {
+                4
+            } else {
+                5
+            };
             let curves = vec![g; nch];
-            let ch = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), cs, curves.as_ptr());
+            let ch =
+                c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), cs, curves.as_ptr());
             let rg = gamma::build_gamma(None, 1.8).unwrap();
-            let refs: Vec<&lcms::gamma::ToneCurve> =
-                std::iter::repeat(&rg).take(nch).collect();
+            let refs: Vec<&lcms::gamma::ToneCurve> = std::iter::repeat(&rg).take(nch).collect();
             let mut rp = virt::create_linearization_device_link(None, cs, &refs);
             assert_eq!(ch.is_null(), rp.is_none(), "linearization cs{cs}");
-            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            if !ch.is_null() {
+                let _ = c::cmsCloseProfile(ch);
+            }
             c::cmsFreeToneCurve(g);
         }
         // ink-limiting on more colorspaces
         for cs in [3u32, 12, 14] {
-            let ch = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), cs, 200.0);
+            let ch = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), cs, 200.0);
             let mut rp = virt::create_ink_limiting_device_link(None, cs, 200.0);
             assert_eq!(ch.is_null(), rp.is_none(), "inklimit cs{cs}");
-            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            if !ch.is_null() {
+                let _ = c::cmsCloseProfile(ch);
+            }
         }
     }
 }
@@ -161,26 +212,35 @@ fn device_link_colorspaces() {
 #[test]
 fn device_link_channels() {
     unsafe {
-        for cs in [15u32, 16, 17] { // MCH8, MCH12, MCH15-ish
+        for cs in [15u32, 16, 17] {
+            // MCH8, MCH12, MCH15-ish
             let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.6);
-            let nch = if cs == 15 { 8 } else if cs == 16 { 12 } else { 15 };
+            let nch = if cs == 15 {
+                8
+            } else if cs == 16 {
+                12
+            } else {
+                15
+            };
             let curves = vec![g; nch];
-            let ch = c::cmsCreateLinearizationDeviceLinkTHR(
-                std::ptr::null_mut(), cs, curves.as_ptr());
+            let ch =
+                c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), cs, curves.as_ptr());
             let rg = gamma::build_gamma(None, 1.6).unwrap();
-            let refs: Vec<&lcms::gamma::ToneCurve> =
-                std::iter::repeat(&rg).take(nch).collect();
+            let refs: Vec<&lcms::gamma::ToneCurve> = std::iter::repeat(&rg).take(nch).collect();
             let mut rp = virt::create_linearization_device_link(None, cs, &refs);
             assert_eq!(ch.is_null(), rp.is_none(), "linearization cs{cs}");
-            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            if !ch.is_null() {
+                let _ = c::cmsCloseProfile(ch);
+            }
             c::cmsFreeToneCurve(g);
         }
         for cs in [15u32, 16, 17] {
-            let ch = c::cmsCreateInkLimitingDeviceLinkTHR(
-                std::ptr::null_mut(), cs, 150.0);
+            let ch = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), cs, 150.0);
             let mut rp = virt::create_ink_limiting_device_link(None, cs, 150.0);
             assert_eq!(ch.is_null(), rp.is_none(), "inklimit cs{cs}");
-            if !ch.is_null() { let _ = c::cmsCloseProfile(ch); }
+            if !ch.is_null() {
+                let _ = c::cmsCloseProfile(ch);
+            }
         }
     }
 }
@@ -196,16 +256,18 @@ fn oklab_profile() {
         let mut csize = 0u32;
         c::cmsSaveProfileToMem(ch, std::ptr::null_mut(), &mut csize);
         let mut cbytes = vec![0u8; csize as usize];
-        let c_ok = c::cmsSaveProfileToMem(ch,
-            cbytes.as_mut_ptr() as *mut _, &mut csize);
+        let c_ok = c::cmsSaveProfileToMem(ch, cbytes.as_mut_ptr() as *mut _, &mut csize);
         eprintln!("oklab c_ok={c_ok} csize={csize}");
         let _ = c::cmsCloseProfile(ch);
         let mut rp = virt::create_oklab_profile(None).unwrap();
         let rbytes = profile::save_profile_to_mem(&mut rp);
         // the OkLab MPE-pipeline profile doesn't serialize on either
         // side — parity is csize==0 <-> rbytes==None
-        assert_eq!(csize > 0 && c_ok != 0, rbytes.is_some(),
-            "oklab save parity");
+        assert_eq!(
+            csize > 0 && c_ok != 0,
+            rbytes.is_some(),
+            "oklab save parity"
+        );
     }
 }
 
@@ -214,19 +276,20 @@ fn oklab_profile() {
 #[test]
 fn bchsw_tags() {
     unsafe {
-        let ch = c::cmsCreateBCHSWabstractProfile(
-            33, 10.0, 10.0, 0.0, 10.0, 5000, 6500);
+        let ch = c::cmsCreateBCHSWabstractProfile(33, 10.0, 10.0, 0.0, 10.0, 5000, 6500);
         assert!(!ch.is_null());
-        let mut rh = virt::create_bchsw_abstract_profile(None,
-            33, 10.0, 10.0, 0.0, 10.0, 5000, 6500).unwrap();
+        let mut rh =
+            virt::create_bchsw_abstract_profile(None, 33, 10.0, 10.0, 0.0, 10.0, 5000, 6500)
+                .unwrap();
         for i in 0..40u32 {
             let sig = c::cmsGetTagSignature(ch, i);
-            if sig == 0 { break }
+            if sig == 0 {
+                break;
+            }
             // read parity — the float-LUT/MPE readers
             let c_tag = c::cmsReadTag(ch, sig);
             let r_tag = profile::cms_read_tag(&mut rh, sig);
-            assert_eq!(c_tag.is_null(), r_tag.is_none(),
-                "bchsw read {sig:#x}");
+            assert_eq!(c_tag.is_null(), r_tag.is_none(), "bchsw read {sig:#x}");
         }
         let _ = c::cmsCloseProfile(ch);
     }
@@ -240,9 +303,9 @@ fn transform2devicelink() {
         for (name, version, dflags) in [
             ("v43", 4.3f64, 0u32),
             ("v22", 2.2, 0),
-            ("guessclass", 4.3, 0x0020),      // GUESSDEVICECLASS
-            ("8bit", 4.3, 0x0008),            // 8BITS_DEVICELINK
-            ("keepseq", 4.3, 0x0080),         // KEEP_SEQUENCE
+            ("guessclass", 4.3, 0x0020), // GUESSDEVICECLASS
+            ("8bit", 4.3, 0x0008),       // 8BITS_DEVICELINK
+            ("keepseq", 4.3, 0x0080),    // KEEP_SEQUENCE
             ("guess+8bit", 4.3, 0x0028),
         ] {
             // C: srgb -> Lab4 transform, bake to devicelink
@@ -250,11 +313,12 @@ fn transform2devicelink() {
             let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
             let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
             let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt,
-                0, 0);
+            let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            if ct.is_null() { continue; }
+            if ct.is_null() {
+                continue;
+            }
             let cdl = c::cmsTransform2DeviceLink(ct, version, dflags);
             let c_null = cdl.is_null();
             if !c_null {
@@ -265,20 +329,17 @@ fn transform2devicelink() {
             c::cmsDeleteTransform(ct);
             // Rust side
             let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None)
-                .unwrap();
+            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let mut rt = xform::create_extended_transform(
-                None, &mut profs, &mut bpc, &intents, &adapt, None, 0,
-                in_fmt, out_fmt, 0);
+                None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
+            );
             if let Some(ref mut t) = rt {
-                let rdl = virt::transform2_device_link(t, version,
-                    dflags);
-                assert_eq!(c_null, rdl.is_none(),
-                    "{name} dl status");
+                let rdl = virt::transform2_device_link(t, version, dflags);
+                assert_eq!(c_null, rdl.is_none(), "{name} dl status");
             }
         }
     }

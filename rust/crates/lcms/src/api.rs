@@ -154,10 +154,10 @@ pub use crate::named::Mlu;
 /// # Ok::<(), lcms::api::Error>(())
 /// ```
 pub use crate::named::NamedColorList;
-/// A profile sequence descriptor — `cmsSEQ` (`'pseq'`/`'psid'` tags).
-pub use crate::named::ProfileSeqDesc;
 /// One entry of a [`ProfileSeqDesc`] — `cmsPSEQDESC`.
 pub use crate::named::PSeqDesc as ProfileSeqEntry;
+/// A profile sequence descriptor — `cmsSEQ` (`'pseq'`/`'psid'` tags).
+pub use crate::named::ProfileSeqDesc;
 /// An ICC `'data'` tag payload — `cmsICCData` (ASCII text or binary bytes).
 pub use crate::tagtypes::IccData;
 /// ICC `'view'` viewing conditions — `cmsICCViewingConditions`.
@@ -803,7 +803,8 @@ impl From<Intent> for u32 {
 impl TryFrom<u32> for Intent {
     type Error = Error;
     fn try_from(v: u32) -> Result<Intent> {
-        Intent::from_u32(v).ok_or_else(|| Error::new(types::ERROR_RANGE, format!("unknown rendering intent {v}")))
+        Intent::from_u32(v)
+            .ok_or_else(|| Error::new(types::ERROR_RANGE, format!("unknown rendering intent {v}")))
     }
 }
 
@@ -1254,11 +1255,15 @@ impl Profile {
     }
     /// `cmsCreateLab4Profile(NULL)` — Lab (D50) identity, ICC v4 encoding.
     pub fn lab4() -> Self {
-        Self::builtin("create_lab4_profile", || virt::create_lab4_profile(None, None))
+        Self::builtin("create_lab4_profile", || {
+            virt::create_lab4_profile(None, None)
+        })
     }
     /// `cmsCreateLab2Profile(NULL)` — Lab (D50) identity, ICC v2 encoding.
     pub fn lab2() -> Self {
-        Self::builtin("create_lab2_profile", || virt::create_lab2_profile(None, None))
+        Self::builtin("create_lab2_profile", || {
+            virt::create_lab2_profile(None, None)
+        })
     }
     /// `cmsCreateLab4Profile` with a custom white point.
     pub fn lab4_with_white_point(white_point: &CiexyY) -> Result<Self> {
@@ -1319,12 +1324,7 @@ impl Profile {
         curves: [&ToneCurve; 3],
     ) -> Result<Self> {
         Self::wrap("create_rgb_profile", || {
-            virt::create_rgb_profile(
-                None,
-                Some(white_point),
-                Some(primaries),
-                Some(curves),
-            )
+            virt::create_rgb_profile(None, Some(white_point), Some(primaries), Some(curves))
         })
     }
     /// `cmsCreateGrayProfile` — white point + a custom tone curve.
@@ -1381,7 +1381,8 @@ impl Profile {
     }
     /// `cmsOpenProfileFromFile` — read an ICC file off disk.
     pub fn open_file(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let data = std::fs::read(path.as_ref()).map_err(|e| Error::new(types::ERROR_FILE, e.to_string()))?;
+        let data = std::fs::read(path.as_ref())
+            .map_err(|e| Error::new(types::ERROR_FILE, e.to_string()))?;
         Self::open(&data)
     }
 
@@ -1398,7 +1399,8 @@ impl Profile {
     /// `cmsSaveProfileToFile` — write the serialized ICC bytes to disk.
     pub fn save_file(&self, path: impl AsRef<std::path::Path>) -> Result<()> {
         let bytes = self.save()?;
-        std::fs::write(path.as_ref(), bytes).map_err(|e| Error::new(types::ERROR_WRITE, e.to_string()))
+        std::fs::write(path.as_ref(), bytes)
+            .map_err(|e| Error::new(types::ERROR_WRITE, e.to_string()))
     }
     /// Eagerly materialize all tags — a no-op on profiles built by this
     /// API (constructors freeze already); kept for explicitness.
@@ -1443,7 +1445,11 @@ impl Profile {
     /// type (e.g. text for `'rTRC'`). As with C's `cmsWriteTag`, a failed
     /// write has already released any previous value: the tag is then
     /// absent.
-    pub fn write_tag<'a>(&mut self, tag: impl Into<Tag>, value: impl Into<TagData<'a>>) -> Result<()> {
+    pub fn write_tag<'a>(
+        &mut self,
+        tag: impl Into<Tag>,
+        value: impl Into<TagData<'a>>,
+    ) -> Result<()> {
         let obj = match value.into() {
             TagData::Xyz(x) => TagObject::Xyz(x),
             TagData::Chromaticity(c) => TagObject::Chromaticity(c),
@@ -1468,7 +1474,11 @@ impl Profile {
                 if s.n_channels as usize > s.channels.len() {
                     return Err(Error::new(
                         types::ERROR_RANGE,
-                        format!("screening has {} channels; at most {} fit", s.n_channels, s.channels.len()),
+                        format!(
+                            "screening has {} channels; at most {} fit",
+                            s.n_channels,
+                            s.channels.len()
+                        ),
                     ));
                 }
                 TagObject::Screening(s)
@@ -1476,7 +1486,10 @@ impl Profile {
             TagData::VideoSignal(v) => TagObject::VideoSignal(v),
             TagData::Mhc2(m) => {
                 let n = m.curve_entries as usize;
-                if [&m.red_curve, &m.green_curve, &m.blue_curve].iter().any(|c| c.len() != n) {
+                if [&m.red_curve, &m.green_curve, &m.blue_curve]
+                    .iter()
+                    .any(|c| c.len() != n)
+                {
                     return Err(Error::new(
                         types::ERROR_RANGE,
                         format!(
@@ -1762,7 +1775,11 @@ pub struct PlanOptions {
 impl PlanOptions {
     /// Perceptual intent, no flags, the global adaptation state.
     pub const fn new() -> PlanOptions {
-        PlanOptions { intent: Intent::Perceptual, flags: 0, adaptation_state: None }
+        PlanOptions {
+            intent: Intent::Perceptual,
+            flags: 0,
+            adaptation_state: None,
+        }
     }
     /// Set the rendering intent.
     pub const fn intent(mut self, intent: Intent) -> PlanOptions {
@@ -1777,7 +1794,11 @@ impl PlanOptions {
     /// Set or clear [`flags::BLACK_POINT_COMPENSATION`].
     pub const fn black_point_compensation(mut self, on: bool) -> PlanOptions {
         let bit = flags::BLACK_POINT_COMPENSATION;
-        self.flags = if on { self.flags | bit } else { self.flags & !bit };
+        self.flags = if on {
+            self.flags | bit
+        } else {
+            self.flags & !bit
+        };
         self
     }
     /// Chromatic adaptation for absolute colorimetric: `1.0` = full
@@ -1821,7 +1842,13 @@ impl Plan {
         intent: Intent,
         flags: u32,
     ) -> Result<Self> {
-        Self::with_options(src, dst, fmt_in, fmt_out, &PlanOptions::new().intent(intent).flags(flags))
+        Self::with_options(
+            src,
+            dst,
+            fmt_in,
+            fmt_out,
+            &PlanOptions::new().intent(intent).flags(flags),
+        )
     }
 
     /// `cmsCreateTransform` with [`PlanOptions`] — the same link C builds:
@@ -1866,7 +1893,13 @@ impl Plan {
         options: &PlanOptions,
     ) -> Result<Self> {
         if profiles.is_empty() || profiles.len() > 255 {
-            return Err(Error::new(types::ERROR_RANGE, format!("a profile chain needs 1..=255 profiles, got {}", profiles.len())));
+            return Err(Error::new(
+                types::ERROR_RANGE,
+                format!(
+                    "a profile chain needs 1..=255 profiles, got {}",
+                    profiles.len()
+                ),
+            ));
         }
         Self::link(profiles, None, fmt_in, fmt_out, options, None)
     }
@@ -1932,8 +1965,8 @@ impl Plan {
             profiles.iter().map(|p| p.icc.clone()).collect();
         let mut gamut = gamut.map(|g| g.icc.clone());
         let n = profs.len();
-        let (intents, mut bpc) = per_profile
-            .unwrap_or_else(|| (vec![options.intent.code(); n], vec![options.bpc(); n]));
+        let (intents, mut bpc) =
+            per_profile.unwrap_or_else(|| (vec![options.intent.code(); n], vec![options.bpc(); n]));
         let states = vec![options.adaptation(); n];
         let gamut_pcs_position = if gamut.is_some() { 1 } else { 0 };
         let t = attempt(types::ERROR_NOT_SUITABLE, "create_transform", || {
@@ -2023,7 +2056,10 @@ impl Plan {
     fn pixel_count(&self, in_len: usize, out_len: usize) -> u32 {
         let (fi, fo) = (self.input_format(), self.output_format());
         let (pi, po) = (fi.pixel_size(), fo.pixel_size());
-        assert!(pi > 0 && po > 0, "plan formats {fi:?} -> {fo:?} have zero-size pixels");
+        assert!(
+            pi > 0 && po > 0,
+            "plan formats {fi:?} -> {fo:?} have zero-size pixels"
+        );
         assert!(
             in_len % pi == 0,
             "input is {in_len} bytes, not a whole number of {pi}-byte {fi:?} pixels"
@@ -2058,7 +2094,10 @@ impl Plan {
     /// # Panics
     /// If either buffer holds fewer than `n` pixels.
     pub fn apply_n(&self, scratch: &mut Scratch, input: &[u8], output: &mut [u8], n: u32) {
-        let (pi, po) = (self.input_format().pixel_size(), self.output_format().pixel_size());
+        let (pi, po) = (
+            self.input_format().pixel_size(),
+            self.output_format().pixel_size(),
+        );
         assert!(
             input.len() >= n as usize * pi && output.len() >= n as usize * po,
             "{n} pixels need {} input / {} output bytes; got {} / {}",
@@ -2091,7 +2130,11 @@ impl Plan {
         input: &[I],
         output: &mut [O],
     ) {
-        self.apply(scratch, bytemuck::cast_slice(input), bytemuck::cast_slice_mut(output));
+        self.apply(
+            scratch,
+            bytemuck::cast_slice(input),
+            bytemuck::cast_slice_mut(output),
+        );
     }
     /// [`Plan::apply`] with a fresh internal [`Scratch`] — the one-call
     /// form when you don't manage scratch yourself. Output is identical.
@@ -2105,7 +2148,11 @@ impl Plan {
     ///
     /// # Panics
     /// As [`Plan::apply`].
-    pub fn transform_pixels<I: bytemuck::Pod, O: bytemuck::Pod>(&self, input: &[I], output: &mut [O]) {
+    pub fn transform_pixels<I: bytemuck::Pod, O: bytemuck::Pod>(
+        &self,
+        input: &[I],
+        output: &mut [O],
+    ) {
         self.apply_pixels(&mut self.scratch(), input, output);
     }
     /// In-place apply, for plans whose input and output pixels have the
@@ -2122,13 +2169,17 @@ impl Plan {
             px > 0 && px == fo.pixel_size() && !fi.is_planar() && !fo.is_planar(),
             "in-place needs equal interleaved pixel sizes, got {fi:?} -> {fo:?}"
         );
-        assert!(buf.len() % px == 0, "buffer is not a whole number of {px}-byte pixels");
+        assert!(
+            buf.len() % px == 0,
+            "buffer is not a whole number of {px}-byte pixels"
+        );
         let mut tmp = [0u8; 4096];
         let per_chunk = tmp.len() / px * px;
         for chunk in buf.chunks_mut(per_chunk) {
             let src = &mut tmp[..chunk.len()];
             src.copy_from_slice(chunk);
-            self.inner.apply(&mut scratch.0, src, chunk, (chunk.len() / px) as u32);
+            self.inner
+                .apply(&mut scratch.0, src, chunk, (chunk.len() / px) as u32);
         }
     }
     /// A `width × height` image whose rows start `input_stride` /
@@ -2167,10 +2218,22 @@ impl Plan {
         if width == 0 || height == 0 {
             return;
         }
-        let (bpl_in, bpp_in) =
-            stride_layout(self.input_format(), input.len(), input_stride, width, height, "input");
-        let (bpl_out, bpp_out) =
-            stride_layout(self.output_format(), output.len(), output_stride, width, height, "output");
+        let (bpl_in, bpp_in) = stride_layout(
+            self.input_format(),
+            input.len(),
+            input_stride,
+            width,
+            height,
+            "input",
+        );
+        let (bpl_out, bpp_out) = stride_layout(
+            self.output_format(),
+            output.len(),
+            output_stride,
+            width,
+            height,
+            "output",
+        );
         let w = u32::try_from(width).expect("width exceeds u32");
         let h = u32::try_from(height).expect("height exceeds u32");
         self.inner.apply_strided(
@@ -2221,7 +2284,10 @@ fn stride_layout(
     } else {
         (width * f.pixel_size(), 1)
     };
-    assert!(stride >= row, "{what} stride {stride} < row size {row} for {f:?}");
+    assert!(
+        stride >= row,
+        "{what} stride {stride} < row size {row} for {f:?}"
+    );
     let plane = stride * height;
     let needed = plane * (planes - 1) + stride * (height - 1) + row;
     assert!(
@@ -2239,7 +2305,9 @@ fn stride_layout(
 impl ToneCurve {
     /// `cmsBuildGamma` — a plain `v^g` curve.
     pub fn gamma(g: f64) -> Result<Self> {
-        attempt(types::ERROR_RANGE, "build_gamma", || crate::gamma::build_gamma(None, g))
+        attempt(types::ERROR_RANGE, "build_gamma", || {
+            crate::gamma::build_gamma(None, g)
+        })
     }
     /// A linear (identity) curve — `gamma(1.0)`.
     pub fn linear() -> Self {
@@ -2259,9 +2327,11 @@ impl ToneCurve {
     }
     /// `cmsBuildTabulatedToneCurveFloat` — an `f32` table over `0.0..=1.0`.
     pub fn tabulated_float(values: &[f32]) -> Result<Self> {
-        attempt(types::ERROR_RANGE, "build_tabulated_tone_curve_float", || {
-            crate::gamma::build_tabulated_tone_curve_float(None, values)
-        })
+        attempt(
+            types::ERROR_RANGE,
+            "build_tabulated_tone_curve_float",
+            || crate::gamma::build_tabulated_tone_curve_float(None, values),
+        )
     }
     /// `cmsBuildParametricToneCurve` — ICC parametric function `ty` with
     /// its `params` (type 1, pure gamma: `[g]`; type 4, sRGB-style:
@@ -2929,7 +2999,12 @@ impl Stage {
     /// `cmsStageAllocCLut16bit` — a CLUT with `points` grid points per
     /// input dimension. `table` holds `points^in_chan × out_chan` values
     /// (`None` = all zero).
-    pub fn clut16(points: u32, in_chan: u32, out_chan: u32, table: Option<&[u16]>) -> Result<Stage> {
+    pub fn clut16(
+        points: u32,
+        in_chan: u32,
+        out_chan: u32,
+        table: Option<&[u16]>,
+    ) -> Result<Stage> {
         attempt(types::ERROR_RANGE, "stage_alloc_clut16bit", || {
             crate::lut::stage_alloc_clut16bit(None, points, in_chan, out_chan, table)
         })
@@ -2938,11 +3013,22 @@ impl Stage {
     /// input dimension (`points.len()` inputs).
     pub fn clut16_granular(points: &[u32], out_chan: u32, table: Option<&[u16]>) -> Result<Stage> {
         attempt(types::ERROR_RANGE, "stage_alloc_clut16bit_granular", || {
-            crate::lut::stage_alloc_clut16bit_granular(None, points, points.len() as u32, out_chan, table)
+            crate::lut::stage_alloc_clut16bit_granular(
+                None,
+                points,
+                points.len() as u32,
+                out_chan,
+                table,
+            )
         })
     }
     /// `cmsStageAllocCLutFloat` — [`Stage::clut16`] with `f32` entries.
-    pub fn clut_float(points: u32, in_chan: u32, out_chan: u32, table: Option<&[f32]>) -> Result<Stage> {
+    pub fn clut_float(
+        points: u32,
+        in_chan: u32,
+        out_chan: u32,
+        table: Option<&[f32]>,
+    ) -> Result<Stage> {
         attempt(types::ERROR_RANGE, "stage_alloc_clut_float", || {
             crate::lut::stage_alloc_clut_float(None, points, in_chan, out_chan, table)
         })
@@ -2974,7 +3060,10 @@ impl Mlu {
     /// `cmsMLUsetASCII` — [`Mlu::set`] for ASCII text; fails on non-ASCII.
     pub fn set_ascii(&mut self, locale: Locale, text: &str) -> Result<()> {
         if !text.is_ascii() {
-            return Err(Error::new(types::ERROR_RANGE, "set_ascii: text is not ASCII"));
+            return Err(Error::new(
+                types::ERROR_RANGE,
+                "set_ascii: text is not ASCII",
+            ));
         }
         attempt_bool(types::ERROR_RANGE, "mlu_set_ascii", || {
             named::mlu_set_ascii(self, &locale.language, &locale.country, text.as_bytes())
@@ -3034,7 +3123,8 @@ fn trimmed(n: u32, mut buf: Vec<u8>) -> Option<String> {
 impl From<&str> for Mlu {
     fn from(text: &str) -> Mlu {
         let mut m = Mlu::new();
-        m.set(Locale::NONE, text).expect("UTF-8 text always fits an MLU");
+        m.set(Locale::NONE, text)
+            .expect("UTF-8 text always fits an MLU");
         m
     }
 }
@@ -3167,11 +3257,15 @@ impl Dict {
             .map(|e| e.value.as_deref().map(narrow).unwrap_or_default())
     }
     /// `(name, value)` pairs in the order they were added.
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (String, String)> + ExactSizeIterator + '_ {
-        self.entries
-            .iter()
-            .rev()
-            .map(|e| (narrow(&e.name), e.value.as_deref().map(narrow).unwrap_or_default()))
+    pub fn iter(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (String, String)> + ExactSizeIterator + '_ {
+        self.entries.iter().rev().map(|e| {
+            (
+                narrow(&e.name),
+                e.value.as_deref().map(narrow).unwrap_or_default(),
+            )
+        })
     }
     /// Entry count.
     pub fn len(&self) -> usize {
@@ -3186,7 +3280,12 @@ impl Dict {
 fn narrow(w: &[named::Wchar]) -> String {
     w.iter()
         .take_while(|&&c| c != 0)
-        .map(|&c| u32::try_from(c).ok().and_then(char::from_u32).unwrap_or('\u{fffd}'))
+        .map(|&c| {
+            u32::try_from(c)
+                .ok()
+                .and_then(char::from_u32)
+                .unwrap_or('\u{fffd}')
+        })
         .collect()
 }
 impl fmt::Debug for Dict {
@@ -3315,22 +3414,46 @@ pub fn version() -> u32 {
     types::LCMS_VERSION
 }
 /// The D50 white point (the ICC PCS illuminant) in XYZ — `cmsD50_XYZ()`.
-pub const D50_XYZ: CieXyz = CieXyz { X: types::D50X, Y: types::D50Y, Z: types::D50Z };
+pub const D50_XYZ: CieXyz = CieXyz {
+    X: types::D50X,
+    Y: types::D50Y,
+    Z: types::D50Z,
+};
 /// The D50 white point in xyY — bit-identical to `cmsD50_xyY()` (same
 /// arithmetic as `cmsXYZ2xyY`).
 pub const D50: CiexyY = {
     let i_sum = 1. / (types::D50X + types::D50Y + types::D50Z);
-    CiexyY { x: types::D50X * i_sum, y: types::D50Y * i_sum, Y: types::D50Y }
+    CiexyY {
+        x: types::D50X * i_sum,
+        y: types::D50Y * i_sum,
+        Y: types::D50Y,
+    }
 };
 /// The D65 white point in xyY (CIE 15 / IEC 61966-2.1, the value
 /// [`Profile::srgb`] is built with).
-pub const D65: CiexyY = CiexyY { x: 0.3127, y: 0.3290, Y: 1.0 };
+pub const D65: CiexyY = CiexyY {
+    x: 0.3127,
+    y: 0.3290,
+    Y: 1.0,
+};
 /// Rec. 709 / sRGB primaries in xyY (the values [`Profile::srgb`] is
 /// built with).
 pub const REC709_PRIMARIES: CiexyYTriple = CiexyYTriple {
-    Red: CiexyY { x: 0.6400, y: 0.3300, Y: 1.0 },
-    Green: CiexyY { x: 0.3000, y: 0.6000, Y: 1.0 },
-    Blue: CiexyY { x: 0.1500, y: 0.0600, Y: 1.0 },
+    Red: CiexyY {
+        x: 0.6400,
+        y: 0.3300,
+        Y: 1.0,
+    },
+    Green: CiexyY {
+        x: 0.3000,
+        y: 0.6000,
+        Y: 1.0,
+    },
+    Blue: CiexyY {
+        x: 0.1500,
+        y: 0.0600,
+        Y: 1.0,
+    },
 };
 
 /// `cmsWhitePointFromTemp` — white point (xyY) for a blackbody/`D`

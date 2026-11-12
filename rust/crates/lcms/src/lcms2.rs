@@ -66,8 +66,8 @@
 //! t.transform_pixels(&[[255, 0, 0]], &mut dst);
 //! ```
 
-use crate::{profile as prof, types, virt, xform};
 use crate::tagtypes::{TagObject, VcgtData};
+use crate::{profile as prof, types, virt, xform};
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -136,12 +136,16 @@ pub struct GlobalContext;
 pub struct ThreadContext(pub(crate) crate::context::Context);
 impl ThreadContext {
     /// `ThreadContext::new` — a fresh context.
-    pub fn new() -> Self { ThreadContext(crate::context::Context::default()) }
+    pub fn new() -> Self {
+        ThreadContext(crate::context::Context::default())
+    }
     /// `unregister_plugins` — clear plugin state (context-local no-op here;
     /// plugin registries live on the global context).
     pub fn unregister_plugins(&mut self) {}
     /// `cmsGetContextUserData` — the context's user-data pointer.
-    pub fn user_data(&self) -> *const std::ffi::c_void { std::ptr::null() }
+    pub fn user_data(&self) -> *const std::ffi::c_void {
+        std::ptr::null()
+    }
     /// `supported_intents` — the intent->code map (all intents supported).
     pub fn supported_intents(&self) -> std::collections::HashMap<Intent, u32> {
         use std::collections::HashMap;
@@ -154,7 +158,9 @@ impl ThreadContext {
     }
 }
 impl Default for ThreadContext {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // -- flags / intents --------------------------------------------------------
@@ -166,7 +172,9 @@ pub struct Flags<F = AllowCache>(pub u32, pub F);
 /// Concrete `Default` — `Flags::default()` resolves to `Flags<AllowCache>`
 /// (a generic impl would leave `F` uninferable on a bare `Flags::default()`).
 impl Default for Flags<AllowCache> {
-    fn default() -> Self { Flags(0, AllowCache) }
+    fn default() -> Self {
+        Flags(0, AllowCache)
+    }
 }
 /// `AllowCache` / `DisallowCache` — the lcms2-crate cache markers.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -200,8 +208,7 @@ impl Flags<AllowCache> {
     pub const FORCE_CLUT: Flags = Flags(crate::types::FLAGS_FORCE_CLUT, AllowCache);
 }
 impl Flags<DisallowCache> {
-    pub const NO_CACHE: Flags<DisallowCache> =
-        Flags(crate::types::FLAGS_NOCACHE, DisallowCache);
+    pub const NO_CACHE: Flags<DisallowCache> = Flags(crate::types::FLAGS_NOCACHE, DisallowCache);
 }
 impl core::ops::BitOr for Flags<AllowCache> {
     type Output = Flags<AllowCache>;
@@ -223,7 +230,9 @@ impl core::ops::BitOr<Flags<DisallowCache>> for Flags<AllowCache> {
 }
 impl<F> Flags<F> {
     /// `has(flag)` — flags.contains(flag).
-    pub fn has(&self, flag: Flags<F>) -> bool { self.0 & flag.0 != 0 }
+    pub fn has(&self, flag: Flags<F>) -> bool {
+        self.0 & flag.0 != 0
+    }
 }
 
 /// `Intent` — the lcms2-crate rendering intent.
@@ -237,8 +246,12 @@ pub enum Intent {
 }
 impl From<u32> for Intent {
     fn from(v: u32) -> Self {
-        match v { 0 => Intent::Perceptual, 1 => Intent::RelativeColorimetric,
-                  2 => Intent::Saturation, _ => Intent::AbsoluteColorimetric }
+        match v {
+            0 => Intent::Perceptual,
+            1 => Intent::RelativeColorimetric,
+            2 => Intent::Saturation,
+            _ => Intent::AbsoluteColorimetric,
+        }
     }
 }
 
@@ -272,9 +285,13 @@ impl PixelFormat {
     pub const CMYK_FLT: PixelFormat = PixelFormat(ff32(PT_CMYK, 4));
     pub const CMYK_DBL: PixelFormat = PixelFormat(fdbl(PT_CMYK, 4));
     /// Any packed `cmsFORMAT` — escape hatch.
-    pub const fn raw(code: u32) -> PixelFormat { PixelFormat(code) }
+    pub const fn raw(code: u32) -> PixelFormat {
+        PixelFormat(code)
+    }
     /// Bytes per pixel.
-    pub fn bytes(self) -> usize { crate::pack::t_bytes(self.0) as usize }
+    pub fn bytes(self) -> usize {
+        crate::pack::t_bytes(self.0) as usize
+    }
 }
 
 const PT_GRAY: u32 = 3;
@@ -282,15 +299,31 @@ const PT_RGB: u32 = 4;
 const PT_CMYK: u32 = 6;
 const PT_XYZ: u32 = 9;
 const PT_LAB: u32 = 10;
-const fn f8(pt: u32, ch: u32) -> u32 { pt << 16 | ch << 3 | 1 }
-const fn f16(pt: u32, ch: u32) -> u32 { pt << 16 | ch << 3 | 2 }
-const fn f8e(pt: u32, ch: u32, ex: u32) -> u32 { pt << 16 | ex << 7 | ch << 3 | 1 }
-const fn f16e(pt: u32, ch: u32, ex: u32) -> u32 { pt << 16 | ex << 7 | ch << 3 | 2 }
-const fn ff32(pt: u32, ch: u32) -> u32 { 1 << 22 | pt << 16 | ch << 3 | 4 }
-const fn ff32e(pt: u32, ch: u32, ex: u32) -> u32 { 1 << 22 | pt << 16 | ex << 7 | ch << 3 | 4 }
+const fn f8(pt: u32, ch: u32) -> u32 {
+    pt << 16 | ch << 3 | 1
+}
+const fn f16(pt: u32, ch: u32) -> u32 {
+    pt << 16 | ch << 3 | 2
+}
+const fn f8e(pt: u32, ch: u32, ex: u32) -> u32 {
+    pt << 16 | ex << 7 | ch << 3 | 1
+}
+const fn f16e(pt: u32, ch: u32, ex: u32) -> u32 {
+    pt << 16 | ex << 7 | ch << 3 | 2
+}
+const fn ff32(pt: u32, ch: u32) -> u32 {
+    1 << 22 | pt << 16 | ch << 3 | 4
+}
+const fn ff32e(pt: u32, ch: u32, ex: u32) -> u32 {
+    1 << 22 | pt << 16 | ex << 7 | ch << 3 | 4
+}
 // `TYPE_*_DBL`: FLOAT_SH(1) | BYTES_SH(0) — 8-byte doubles (lcms's 0 = 8).
-const fn fdbl(pt: u32, ch: u32) -> u32 { 1 << 22 | pt << 16 | ch << 3 }
-const fn fdble(pt: u32, ch: u32, ex: u32) -> u32 { 1 << 22 | pt << 16 | ex << 7 | ch << 3 }
+const fn fdbl(pt: u32, ch: u32) -> u32 {
+    1 << 22 | pt << 16 | ch << 3
+}
+const fn fdble(pt: u32, ch: u32, ex: u32) -> u32 {
+    1 << 22 | pt << 16 | ex << 7 | ch << 3
+}
 
 // -- CIE type aliases --------------------------------------------------------
 
@@ -318,17 +351,31 @@ pub type SEQ = crate::named::ProfileSeqDesc;
 pub type ICCMeasurementConditions = types::IccMeasurementConditions;
 pub type ICCViewingConditions = crate::tagtypes::IccViewingConditions;
 /// `ColorimetricIntentImageState` — the ciii-tag state.
-pub enum ColorimetricIntentImageState { Unknown = 0, NormalAppearance, Vivid, Contrast, Simulation }
-impl ColorimetricIntentImageState { fn to_u32(self) -> u32 { self as u32 } }
+pub enum ColorimetricIntentImageState {
+    Unknown = 0,
+    NormalAppearance,
+    Vivid,
+    Contrast,
+    Simulation,
+}
+impl ColorimetricIntentImageState {
+    fn to_u32(self) -> u32 {
+        self as u32
+    }
+}
 fn _colorim_unused() {}
 
 impl CIEXYZ {
     /// `CIEXYZ::d50()` — the D50 white point.
-    pub fn d50() -> Self { crate::wtpnt::d50_xyz() }
+    pub fn d50() -> Self {
+        crate::wtpnt::d50_xyz()
+    }
 }
 impl CIExyY {
     /// `CIExyY::d50()` — D50 in xyY.
-    pub fn d50() -> Self { crate::wtpnt::d50_xyy() }
+    pub fn d50() -> Self {
+        crate::wtpnt::d50_xyy()
+    }
 }
 
 // -- tone curves ------------------------------------------------------------
@@ -341,25 +388,33 @@ pub trait FloatOrU16: Copy {
     fn eval_pipeline(p: &PipelineRef, input: &[Self], output: &mut [Self]);
 }
 impl FloatOrU16 for u16 {
-    fn eval_curve(&self, t: &ToneCurveRef) -> u16 { t.eval16(*self) }
+    fn eval_curve(&self, t: &ToneCurveRef) -> u16 {
+        t.eval16(*self)
+    }
     fn eval_pipeline(p: &PipelineRef, input: &[u16], output: &mut [u16]) {
         p.eval16(input, output);
     }
 }
 impl FloatOrU16 for f32 {
-    fn eval_curve(&self, t: &ToneCurveRef) -> f32 { t.eval_float(*self) }
+    fn eval_curve(&self, t: &ToneCurveRef) -> f32 {
+        t.eval_float(*self)
+    }
     fn eval_pipeline(p: &PipelineRef, input: &[f32], output: &mut [f32]) {
         p.eval_float(input, output);
     }
 }
 impl FloatOrU16 for f64 {
-    fn eval_curve(&self, t: &ToneCurveRef) -> f64 { t.eval_float(*self as f32) as f64 }
+    fn eval_curve(&self, t: &ToneCurveRef) -> f64 {
+        t.eval_float(*self as f32) as f64
+    }
     fn eval_pipeline(p: &PipelineRef, input: &[f64], output: &mut [f64]) {
         // the C path evaluates f64 curves via f32 — same here
         let ii: Vec<f32> = input.iter().map(|v| *v as f32).collect();
         let mut oo = vec![0f32; output.len()];
         p.eval_float(&ii, &mut oo);
-        for (o, v) in output.iter_mut().zip(oo) { *o = v as f64; }
+        for (o, v) in output.iter_mut().zip(oo) {
+            *o = v as f64;
+        }
     }
 }
 
@@ -374,30 +429,37 @@ pub type ToneCurveRef = crate::gamma::ToneCurve;
 pub struct ToneCurve(pub ToneCurveRef);
 impl Deref for ToneCurve {
     type Target = ToneCurveRef;
-    fn deref(&self) -> &ToneCurveRef { &self.0 }
+    fn deref(&self) -> &ToneCurveRef {
+        &self.0
+    }
 }
 impl core::ops::DerefMut for ToneCurve {
-    fn deref_mut(&mut self) -> &mut ToneCurveRef { &mut self.0 }
+    fn deref_mut(&mut self) -> &mut ToneCurveRef {
+        &mut self.0
+    }
 }
 impl ToneCurve {
     /// `ToneCurve::new(gamma)` — `cmsBuildGamma` (plain gamma exponent).
     /// Panics on NULL like the lcms2 crate's `from_ptr`.
     #[must_use]
     pub fn new(gamma: f64) -> Self {
-        ToneCurve(crate::gamma::build_gamma(None, gamma)
-            .expect("cmsBuildGamma returned NULL"))
+        ToneCurve(crate::gamma::build_gamma(None, gamma).expect("cmsBuildGamma returned NULL"))
     }
     /// `ToneCurve::new_tabulated(&[u16])` — `cmsBuildTabulatedToneCurve16`.
     #[must_use]
     pub fn new_tabulated(values: &[u16]) -> Self {
-        ToneCurve(crate::gamma::build_tabulated_tone_curve16(None, values.len() as u32, Some(values))
-            .expect("cmsBuildTabulatedToneCurve16 returned NULL"))
+        ToneCurve(
+            crate::gamma::build_tabulated_tone_curve16(None, values.len() as u32, Some(values))
+                .expect("cmsBuildTabulatedToneCurve16 returned NULL"),
+        )
     }
     /// `ToneCurve::new_tabulated_float(&[f32])` — `cmsBuildTabulatedToneCurveFloat`.
     #[must_use]
     pub fn new_tabulated_float(values: &[f32]) -> Self {
-        ToneCurve(crate::gamma::build_tabulated_tone_curve_float(None, values)
-            .expect("cmsBuildTabulatedToneCurveFloat returned NULL"))
+        ToneCurve(
+            crate::gamma::build_tabulated_tone_curve_float(None, values)
+                .expect("cmsBuildTabulatedToneCurveFloat returned NULL"),
+        )
     }
     /// `ToneCurve::new_parametric(ty, params)` — `cmsBuildParametricToneCurve`.
     pub fn new_parametric(ty: i16, params: &[f64]) -> LCMSResult<Self> {
@@ -414,33 +476,44 @@ impl ToneCurve {
 /// and are defined there once for both layers.
 impl crate::gamma::ToneCurve {
     /// `cmsEvalToneCurve*` on a `FloatOrU16` input.
-    pub fn eval<V: FloatOrU16>(&self, v: V) -> V { v.eval_curve(self) }
+    pub fn eval<V: FloatOrU16>(&self, v: V) -> V {
+        v.eval_curve(self)
+    }
     /// `cmsGetToneCurveEstimatedTable`
-    pub fn estimated_entries(&self) -> &[u16] { self.estimated_table() }
+    pub fn estimated_entries(&self) -> &[u16] {
+        self.estimated_table()
+    }
     /// `cmsGetToneCurveEstimatedTableEntries`
-    pub fn estimated_entry_count(&self) -> u32 { self.estimated_table_entries() }
+    pub fn estimated_entry_count(&self) -> u32 {
+        self.estimated_table_entries()
+    }
     /// `cmsSmoothToneCurve`
     pub fn smooth(&mut self, lambda: f64) -> bool {
         crate::gamma::smooth_tone_curve(None, self, lambda)
     }
     /// `cmsReverseToneCurve`
     pub fn reversed(&self) -> ToneCurve {
-        ToneCurve(crate::gamma::reverse_tone_curve(self)
-            .unwrap_or_else(|| self.clone()))
+        ToneCurve(crate::gamma::reverse_tone_curve(self).unwrap_or_else(|| self.clone()))
     }
     /// `cmsReverseToneCurveEx`
     pub fn reversed_samples(&self, samples: usize) -> ToneCurve {
-        ToneCurve(crate::gamma::reverse_tone_curve_ex(samples as u32, self)
-            .unwrap_or_else(|| self.clone()))
+        ToneCurve(
+            crate::gamma::reverse_tone_curve_ex(samples as u32, self)
+                .unwrap_or_else(|| self.clone()),
+        )
     }
     /// `cmsJoinToneCurve` — Y^-1(X(t)); self is X.
     pub fn join(&self, y: &ToneCurveRef, points: usize) -> ToneCurve {
-        ToneCurve(crate::gamma::join_tone_curve(None, self, y, points as u32)
-            .unwrap_or_else(|| self.clone()))
+        ToneCurve(
+            crate::gamma::join_tone_curve(None, self, y, points as u32)
+                .unwrap_or_else(|| self.clone()),
+        )
     }
     /// `to_owned` on `&ToneCurveRef` -> `ToneCurve` — inherent, shadows
     /// `ToOwned` so `let z: ToneCurve = r.to_owned()` works.
-    pub fn to_owned(&self) -> ToneCurve { ToneCurve(self.clone()) }
+    pub fn to_owned(&self) -> ToneCurve {
+        ToneCurve(self.clone())
+    }
 }
 
 // -- MLU / locale -------------------------------------------------------------
@@ -455,7 +528,12 @@ pub struct Locale {
 }
 impl Locale {
     /// `Locale::none()` — the null/none locale (all zeros).
-    pub fn none() -> Self { Locale { language: [0; 3], country: [0; 3] } }
+    pub fn none() -> Self {
+        Locale {
+            language: [0; 3],
+            country: [0; 3],
+        }
+    }
     /// `Locale::new("en_US")` — 2-letter language, `_`, 2-letter country.
     pub fn new(s: &str) -> Self {
         let (lang, country) = s.split_at(s.len().min(3));
@@ -469,21 +547,36 @@ impl Locale {
         l
     }
     /// Raw pointer accessors (`*const c_char`).
-    pub fn language_ptr(&self) -> *const c_char { self.language.as_ptr() }
-    pub fn country_ptr(&self) -> *const c_char { self.country.as_ptr() }
+    pub fn language_ptr(&self) -> *const c_char {
+        self.language.as_ptr()
+    }
+    pub fn country_ptr(&self) -> *const c_char {
+        self.country.as_ptr()
+    }
     /// The `[u8;3]` form our MLU fns take.
-    fn l3(&self) -> [u8; 3] { [self.language[0] as u8, self.language[1] as u8, 0] }
-    fn c3(&self) -> [u8; 3] { [self.country[0] as u8, self.country[1] as u8, 0] }
+    fn l3(&self) -> [u8; 3] {
+        [self.language[0] as u8, self.language[1] as u8, 0]
+    }
+    fn c3(&self) -> [u8; 3] {
+        [self.country[0] as u8, self.country[1] as u8, 0]
+    }
 }
 impl fmt::Display for Locale {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}{}{}",
-            (self.language[0] as u8) as char, (self.language[1] as u8) as char,
-            (self.country[0] as u8) as char, (self.country[1] as u8) as char)
+        write!(
+            f,
+            "{}{}{}{}",
+            (self.language[0] as u8) as char,
+            (self.language[1] as u8) as char,
+            (self.country[0] as u8) as char,
+            (self.country[1] as u8) as char
+        )
     }
 }
 impl From<&str> for Locale {
-    fn from(s: &str) -> Self { Locale::new(s) }
+    fn from(s: &str) -> Self {
+        Locale::new(s)
+    }
 }
 
 /// `MLURef` — the lcms2-crate borrowed MLU view (`&MLU` derefs to it).
@@ -493,10 +586,14 @@ pub type MLURef = crate::named::Mlu;
 pub struct MLU(pub MLURef);
 impl Deref for MLU {
     type Target = MLURef;
-    fn deref(&self) -> &MLURef { &self.0 }
+    fn deref(&self) -> &MLURef {
+        &self.0
+    }
 }
 impl core::ops::DerefMut for MLU {
-    fn deref_mut(&mut self) -> &mut MLURef { &mut self.0 }
+    fn deref_mut(&mut self) -> &mut MLURef {
+        &mut self.0
+    }
 }
 impl MLU {
     /// `MLU::new(n)` — allocate for `n` translations.
@@ -517,17 +614,25 @@ impl crate::named::Mlu {
     /// `text(locale)` — UTF-8 string for the locale.
     pub fn text(&self, locale: Locale) -> Result<String, ()> {
         let (n, mut buf) = crate::named::mlu_get_utf8(self, &locale.l3(), &locale.c3(), Some(256));
-        if n == 0 { return Err(()); }
+        if n == 0 {
+            return Err(());
+        }
         buf.truncate(n as usize);
-        while buf.last() == Some(&0) { buf.pop(); }
+        while buf.last() == Some(&0) {
+            buf.pop();
+        }
         String::from_utf8(buf).map_err(|_| ())
     }
     /// `text_ascii(locale)` — ASCII string for the locale.
     pub fn text_ascii(&self, locale: Locale) -> Result<String, ()> {
         let (n, mut buf) = crate::named::mlu_get_ascii(self, &locale.l3(), &locale.c3(), Some(256));
-        if n == 0 { return Err(()); }
+        if n == 0 {
+            return Err(());
+        }
         buf.truncate(n as usize);
-        while buf.last() == Some(&0) { buf.pop(); }
+        while buf.last() == Some(&0) {
+            buf.pop();
+        }
         String::from_utf8(buf).map_err(|_| ())
     }
     /// `translations_count`
@@ -544,10 +649,14 @@ pub type NamedColorListRef = crate::named::NamedColorList;
 pub struct NamedColorList(pub NamedColorListRef);
 impl Deref for NamedColorList {
     type Target = NamedColorListRef;
-    fn deref(&self) -> &NamedColorListRef { &self.0 }
+    fn deref(&self) -> &NamedColorListRef {
+        &self.0
+    }
 }
 impl core::ops::DerefMut for NamedColorList {
-    fn deref_mut(&mut self) -> &mut NamedColorListRef { &mut self.0 }
+    fn deref_mut(&mut self) -> &mut NamedColorListRef {
+        &mut self.0
+    }
 }
 /// `NamedColorInfo` — a single named-color entry (lcms2-crate shape).
 #[derive(Clone, Debug, PartialEq)]
@@ -560,12 +669,18 @@ pub struct NamedColorInfo {
 }
 impl NamedColorList {
     /// `NamedColorList::new(spot_colors, colorant_count, prefix, suffix)`.
-    pub fn new(spot_colors: usize, colorant_count: usize, prefix: &str, suffix: &str)
-        -> LCMSResult<Self>
-    {
+    pub fn new(
+        spot_colors: usize,
+        colorant_count: usize,
+        prefix: &str,
+        suffix: &str,
+    ) -> LCMSResult<Self> {
         crate::named::alloc_named_color_list(
-            None, spot_colors as u32, colorant_count as u32,
-            prefix.as_bytes(), suffix.as_bytes(),
+            None,
+            spot_colors as u32,
+            colorant_count as u32,
+            prefix.as_bytes(),
+            suffix.as_bytes(),
         )
         .map(NamedColorList)
         .ok_or_else(|| last_or(types::ERROR_UNDEFINED, "alloc_named_color_list failed"))
@@ -574,7 +689,9 @@ impl NamedColorList {
 /// Methods on `NamedColorListRef` (= `named::NamedColorList`).
 impl crate::named::NamedColorList {
     /// `cmsNamedColorCount`
-    pub fn count(&self) -> usize { crate::named::named_color_count(self) as usize }
+    pub fn count(&self) -> usize {
+        crate::named::named_color_count(self) as usize
+    }
     /// `cmsNamedColorIndex`
     pub fn index_of(&self, name: &str) -> usize {
         self.list[..self.n_colors as usize]
@@ -596,7 +713,9 @@ impl crate::named::NamedColorList {
     }
     /// All entries.
     pub fn colors(&self) -> Vec<NamedColorInfo> {
-        (0..self.n_colors as usize).filter_map(|i| self.get(i)).collect()
+        (0..self.n_colors as usize)
+            .filter_map(|i| self.get(i))
+            .collect()
     }
     /// `cmsAppendNamedColor`
     pub fn append(&mut self, name: &str, pcs: [u16; 3], colorant: [u16; 16]) -> bool {
@@ -618,19 +737,27 @@ pub type StageRef = crate::lut::Stage;
 pub struct Pipeline(pub PipelineRef);
 impl Deref for Pipeline {
     type Target = PipelineRef;
-    fn deref(&self) -> &PipelineRef { &self.0 }
+    fn deref(&self) -> &PipelineRef {
+        &self.0
+    }
 }
 impl core::ops::DerefMut for Pipeline {
-    fn deref_mut(&mut self) -> &mut PipelineRef { &mut self.0 }
+    fn deref_mut(&mut self) -> &mut PipelineRef {
+        &mut self.0
+    }
 }
 /// `Stage` — the lcms2-crate owned stage.
 pub struct Stage(pub StageRef);
 impl Deref for Stage {
     type Target = StageRef;
-    fn deref(&self) -> &StageRef { &self.0 }
+    fn deref(&self) -> &StageRef {
+        &self.0
+    }
 }
 impl core::ops::DerefMut for Stage {
-    fn deref_mut(&mut self) -> &mut StageRef { &mut self.0 }
+    fn deref_mut(&mut self) -> &mut StageRef {
+        &mut self.0
+    }
 }
 impl Pipeline {
     /// `Pipeline::new(input_channels, output_channels)` — `cmsPipelineAlloc`.
@@ -646,21 +773,32 @@ impl Pipeline {
     pub fn stage_count(&self) -> usize {
         let mut n = 0;
         let mut s = self.0.elements.as_deref();
-        while let Some(st) = s { n += 1; s = st.next.as_deref(); }
+        while let Some(st) = s {
+            n += 1;
+            s = st.next.as_deref();
+        }
         n
     }
     /// `cmsPipelineGetFirstStage` — head of the stage chain.
-    pub fn first_stage(&self) -> Option<&StageRef> { self.0.elements.as_deref() }
+    pub fn first_stage(&self) -> Option<&StageRef> {
+        self.0.elements.as_deref()
+    }
     /// `cmsPipelineGetLastStage` — walk to the tail.
     pub fn last_stage(&self) -> Option<&StageRef> {
         let mut s = self.0.elements.as_deref()?;
-        while let Some(n) = s.next.as_deref() { s = n; }
+        while let Some(n) = s.next.as_deref() {
+            s = n;
+        }
         Some(s)
     }
     /// `cmsPipelineInputChannels` (usize — the lcms2-crate return type).
-    pub fn input_channels(&self) -> usize { self.0.input_channels as usize }
+    pub fn input_channels(&self) -> usize {
+        self.0.input_channels as usize
+    }
     /// `cmsPipelineOutputChannels` (usize).
-    pub fn output_channels(&self) -> usize { self.0.output_channels as usize }
+    pub fn output_channels(&self) -> usize {
+        self.0.output_channels as usize
+    }
     /// `cmsPipelineEval*` on `FloatOrU16`.
     pub fn eval<V: FloatOrU16>(&self, input: &[V], output: &mut [V]) {
         V::eval_pipeline(&self.0, input, output);
@@ -669,7 +807,9 @@ impl Pipeline {
     pub fn cat(&mut self, append: &PipelineRef) -> bool {
         // append `append`'s stage chain to the tail
         let mut tail = &mut self.0.elements;
-        while let Some(t) = tail { tail = &mut t.next; }
+        while let Some(t) = tail {
+            tail = &mut t.next;
+        }
         let mut src = append.elements.as_deref();
         while let Some(st) = src {
             *tail = Some(Box::new(st.clone()));
@@ -692,7 +832,10 @@ impl Stage {
     }
     /// `Stage::new_matrix(matrix2d, rows, cols, offsets)` — `cmsStageAllocMatrix`.
     pub fn new_matrix(
-        matrix2d: &[f64], rows: usize, cols: usize, offsets: Option<&[f64]>,
+        matrix2d: &[f64],
+        rows: usize,
+        cols: usize,
+        offsets: Option<&[f64]>,
     ) -> LCMSResult<Self> {
         crate::lut::stage_alloc_matrix(None, rows as u32, cols as u32, matrix2d, offsets)
             .map(Stage)
@@ -702,10 +845,16 @@ impl Stage {
 /// Methods on the owned `Stage` wrapper.
 impl Stage {
     /// `cmsStageInputChannels` / `cmsStageOutputChannels`.
-    pub fn input_channels(&self) -> usize { self.0.input_channels as usize }
-    pub fn output_channels(&self) -> usize { self.0.output_channels as usize }
+    pub fn input_channels(&self) -> usize {
+        self.0.input_channels as usize
+    }
+    pub fn output_channels(&self) -> usize {
+        self.0.output_channels as usize
+    }
     /// `cmsStageType` — the stage signature.
-    pub fn stage_type(&self) -> u32 { self.0.r#type }
+    pub fn stage_type(&self) -> u32 {
+        self.0.r#type
+    }
 }
 
 // -- signature enums -------------------------------------------------------------
@@ -802,7 +951,12 @@ sig_enum! { TechnologySignature {
 
 /// `InfoType` — the lcms2-crate info-text selector.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum InfoType { Description, Manufacturer, Model, Copyright }
+pub enum InfoType {
+    Description,
+    Manufacturer,
+    Model,
+    Copyright,
+}
 
 // -- Tag<'a> ------------------------------------------------------------------
 
@@ -852,7 +1006,9 @@ pub enum Tag<'a> {
 }
 impl Tag<'_> {
     /// `Tag::None` — the lcms2 crate's `is_none`.
-    pub fn is_none(&self) -> bool { matches!(self, Tag::None) }
+    pub fn is_none(&self) -> bool {
+        matches!(self, Tag::None)
+    }
 }
 
 // -- profile -------------------------------------------------------------------
@@ -872,18 +1028,27 @@ impl Profile<GlobalContext> {
         match prof::open_profile_from_mem(None, data) {
             Some(mut icc) => {
                 prof::freeze(&mut icc);
-                Ok(Profile { icc, _ctx: PhantomData })
+                Ok(Profile {
+                    icc,
+                    _ctx: PhantomData,
+                })
             }
             None => Err(last_or(types::ERROR_READ, "open_profile_from_mem failed")),
         }
     }
     /// `cmsOpenProfileFromMemTHR` — the context-generic constructor.
     /// For `GlobalContext` (`None`) it behaves as `new_icc`.
-    pub fn new_icc_context(_ctx: &ThreadContext, data: &[u8]) -> LCMSResult<Profile<ThreadContext>> {
+    pub fn new_icc_context(
+        _ctx: &ThreadContext,
+        data: &[u8],
+    ) -> LCMSResult<Profile<ThreadContext>> {
         match prof::open_profile_from_mem(None, data) {
             Some(mut icc) => {
                 prof::freeze(&mut icc);
-                Ok(Profile { icc, _ctx: PhantomData })
+                Ok(Profile {
+                    icc,
+                    _ctx: PhantomData,
+                })
             }
             None => Err(last_or(types::ERROR_READ, "open_profile_from_mem failed")),
         }
@@ -900,20 +1065,32 @@ impl Profile<GlobalContext> {
     }
     /// `cmsCreateRGBProfileTHR`
     pub fn new_rgb(
-        white_point: &CIExyY, primaries: &CIEXYZTRIPLE,
-        red: &ToneCurveRef, green: &ToneCurveRef, blue: &ToneCurveRef,
+        white_point: &CIExyY,
+        primaries: &CIEXYZTRIPLE,
+        red: &ToneCurveRef,
+        green: &ToneCurveRef,
+        blue: &ToneCurveRef,
     ) -> LCMSResult<Self> {
         match virt::create_rgb_profile(
-            None, Some(white_point), Some(primaries), Some([red, green, blue]),
+            None,
+            Some(white_point),
+            Some(primaries),
+            Some([red, green, blue]),
         ) {
-            Some(icc) => Ok(Profile { icc, _ctx: PhantomData }),
+            Some(icc) => Ok(Profile {
+                icc,
+                _ctx: PhantomData,
+            }),
             None => Err(last_or(types::ERROR_WRITE, "create_rgb_profile failed")),
         }
     }
     /// `cmsCreateGrayProfileTHR`
     pub fn new_gray(white_point: &CIExyY, curve: &ToneCurveRef) -> LCMSResult<Self> {
         match virt::create_gray_profile(None, Some(white_point), Some(curve)) {
-            Some(icc) => Ok(Profile { icc, _ctx: PhantomData }),
+            Some(icc) => Ok(Profile {
+                icc,
+                _ctx: PhantomData,
+            }),
             None => Err(last_or(types::ERROR_WRITE, "create_gray_profile failed")),
         }
     }
@@ -940,13 +1117,19 @@ impl Profile<GlobalContext> {
         let mut icc = crate::profile::IccProfile::default();
         icc.color_space = crate::signatures::colorspace::Sig1colorData;
         icc.pcs = crate::signatures::colorspace::SigXYZData;
-        Profile { icc: Box::new(icc), _ctx: PhantomData }
+        Profile {
+            icc: Box::new(icc),
+            _ctx: PhantomData,
+        }
     }
 
     fn wrap(icc: Option<Box<crate::profile::IccProfile>>) -> Self {
         let mut icc = icc.expect("lcms profile create failed");
         prof::freeze(&mut icc);
-        Profile { icc, _ctx: PhantomData }
+        Profile {
+            icc,
+            _ctx: PhantomData,
+        }
     }
 }
 
@@ -963,24 +1146,37 @@ impl<C> Profile<C> {
     }
     /// `cmsGetDeviceClass`
     pub fn device_class(&self) -> ProfileClassSignature {
-        ProfileClassSignature::from_u32(self.icc.device_class).unwrap_or(ProfileClassSignature::DisplayClass)
+        ProfileClassSignature::from_u32(self.icc.device_class)
+            .unwrap_or(ProfileClassSignature::DisplayClass)
     }
     /// `cmsGetColorSpace`
     pub fn color_space(&self) -> ColorSpaceSignature {
         ColorSpaceSignature::from_u32(self.icc.color_space).unwrap_or(ColorSpaceSignature::RgbData)
     }
     /// `cmsGetPCS` — raw signature u32.
-    pub fn pcs(&self) -> u32 { self.icc.pcs }
+    pub fn pcs(&self) -> u32 {
+        self.icc.pcs
+    }
     /// `cmsGetEncodedICCversion`
-    pub fn encoded_icc_version(&self) -> u32 { self.icc.version }
+    pub fn encoded_icc_version(&self) -> u32 {
+        self.icc.version
+    }
     /// `cmsGetHeaderAttributes`
-    pub fn header_attributes(&self) -> u64 { self.icc.attributes }
+    pub fn header_attributes(&self) -> u64 {
+        self.icc.attributes
+    }
     /// `cmsGetHeaderFlags`
-    pub fn header_flags(&self) -> u32 { self.icc.flags }
+    pub fn header_flags(&self) -> u32 {
+        self.icc.flags
+    }
     /// `cmsGetHeaderCreator`
-    pub fn header_creator(&self) -> u32 { self.icc.creator }
+    pub fn header_creator(&self) -> u32 {
+        self.icc.creator
+    }
     /// `cmsGetHeaderProfileID`
-    pub fn header_profile_id(&self) -> crate::types::ProfileId { self.icc.profile_id.clone() }
+    pub fn header_profile_id(&self) -> crate::types::ProfileId {
+        self.icc.profile_id.clone()
+    }
     /// `cmsGetHeaderRenderingIntent`
     pub fn header_rendering_intent(&self) -> Intent {
         match self.icc.rendering_intent {
@@ -991,13 +1187,13 @@ impl<C> Profile<C> {
         }
     }
     /// `cmsGetTagCount`
-    pub fn tag_count(&self) -> u32 { self.icc.tag_count }
+    pub fn tag_count(&self) -> u32 {
+        self.icc.tag_count
+    }
     /// `cmsGetTagSignature`
     pub fn tag_signature(&self, i: u32) -> TagSignature {
-        TagSignature::from_u32(
-            self.icc.tag_names.get(i as usize).copied().unwrap_or(0),
-        )
-        .unwrap_or(TagSignature::ProfileDescriptionTag)
+        TagSignature::from_u32(self.icc.tag_names.get(i as usize).copied().unwrap_or(0))
+            .unwrap_or(TagSignature::ProfileDescriptionTag)
     }
     /// `cmsIsTag` — tag present.
     pub fn is_tag(&self, sig: TagSignature) -> bool {
@@ -1022,8 +1218,10 @@ impl<C> Profile<C> {
             TagObject::Vcgt(VcgtData::Curves(c)) => Tag::VcgtCurves([&c[0], &c[1], &c[2]]),
             TagObject::Chromaticity(c) => Tag::CIExyYTRIPLE(c),
             TagObject::Data(d) => Tag::ICCData(d),
-            TagObject::Lut8(l) | TagObject::Lut16(l)
-            | TagObject::LutA2B(l) | TagObject::LutB2A(l) => Tag::Pipeline(l),
+            TagObject::Lut8(l)
+            | TagObject::Lut16(l)
+            | TagObject::LutA2B(l)
+            | TagObject::LutB2A(l) => Tag::Pipeline(l),
             TagObject::Mpe(l) => Tag::Pipeline(l),
             TagObject::Measurement(m) => Tag::ICCMeasurementConditions(m),
             TagObject::ViewingConditions(v) => Tag::ICCViewingConditions(v),
@@ -1047,9 +1245,9 @@ impl<C> Profile<C> {
             Tag::CIEXYZ(x) => TagObject::Xyz(x.clone()),
             Tag::MLU(m) => TagObject::Mlu(m.clone()),
             Tag::ToneCurve(c) => TagObject::Curve(c.clone()),
-            Tag::VcgtCurves(v) => TagObject::Vcgt(VcgtData::Curves([
-                v[0].clone(), v[1].clone(), v[2].clone(),
-            ])),
+            Tag::VcgtCurves(v) => {
+                TagObject::Vcgt(VcgtData::Curves([v[0].clone(), v[1].clone(), v[2].clone()]))
+            }
             Tag::CIExyYTRIPLE(c) => TagObject::Chromaticity(c.clone()),
             Tag::ICCData(d) => TagObject::Data(d.clone()),
             Tag::NamedColorList(l) => TagObject::NamedColor(l.clone()),
@@ -1060,13 +1258,18 @@ impl<C> Profile<C> {
             Tag::Screening(s) => TagObject::Screening(s.clone()),
             Tag::SEQ(s) => TagObject::ProfileSeqDesc(s.clone()),
             Tag::MHC2(m) => TagObject::Mhc2(m.clone()),
-            Tag::Intent(_) | Tag::ColorimetricIntentImageState(_)
-            | Tag::Technology(_) | Tag::VideoSignal(_) | Tag::None => return false,
+            Tag::Intent(_)
+            | Tag::ColorimetricIntentImageState(_)
+            | Tag::Technology(_)
+            | Tag::VideoSignal(_)
+            | Tag::None => return false,
         };
         crate::profile::cms_write_tag(&mut self.icc, sig.to_u32(), Some(obj))
     }
     /// `has_tag` — `&self`, tag present.
-    pub fn has_tag(&self, sig: TagSignature) -> bool { self.is_tag(sig) }
+    pub fn has_tag(&self, sig: TagSignature) -> bool {
+        self.is_tag(sig)
+    }
     /// `remove_tag` — `&mut self`, clear a tag.
     pub fn remove_tag(&mut self, sig: TagSignature) {
         crate::profile::cms_write_tag(&mut self.icc, sig.to_u32(), None);
@@ -1091,9 +1294,13 @@ impl<C> Profile<C> {
         let obj = prof::read_tag_frozen(&self.icc, sig)?;
         if let TagObject::Mlu(m) = obj {
             let (n, mut buf) = crate::named::mlu_get_utf8(m, &locale.l3(), &locale.c3(), Some(256));
-            if n == 0 { None } else {
+            if n == 0 {
+                None
+            } else {
                 buf.truncate(n as usize);
-                while buf.last() == Some(&0) { buf.pop(); }
+                while buf.last() == Some(&0) {
+                    buf.pop();
+                }
                 String::from_utf8(buf).ok()
             }
         } else {
@@ -1101,9 +1308,13 @@ impl<C> Profile<C> {
         }
     }
     /// The raw parity-layer profile.
-    pub fn inner(&self) -> &crate::profile::IccProfile { &self.icc }
+    pub fn inner(&self) -> &crate::profile::IccProfile {
+        &self.icc
+    }
     /// `&mut` — for plan-building (lazy materialization).
-    pub fn inner_mut(&mut self) -> &mut crate::profile::IccProfile { &mut self.icc }
+    pub fn inner_mut(&mut self) -> &mut crate::profile::IccProfile {
+        &mut self.icc
+    }
 }
 
 impl<C> fmt::Debug for Profile<C> {
@@ -1138,13 +1349,13 @@ pub struct Transform<I, O, C = GlobalContext, F = AllowCache> {
     _f: PhantomData<F>,
 }
 
-impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
-    Transform<I, O, GlobalContext, AllowCache>
-{
+impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod> Transform<I, O, GlobalContext, AllowCache> {
     /// `cmsCreateTransform` — no flags.
     pub fn new(
-        input: &Profile, in_format: PixelFormat,
-        output: &Profile, out_format: PixelFormat,
+        input: &Profile,
+        in_format: PixelFormat,
+        output: &Profile,
+        out_format: PixelFormat,
         intent: Intent,
     ) -> LCMSResult<Self> {
         Self::with_flags(input, in_format, output, out_format, intent, Flags::NONE)
@@ -1152,22 +1363,36 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
 
     /// `cmsCreateTransform` with flags.
     pub fn with_flags(
-        input: &Profile, in_format: PixelFormat,
-        output: &Profile, out_format: PixelFormat,
-        intent: Intent, flags: Flags,
+        input: &Profile,
+        in_format: PixelFormat,
+        output: &Profile,
+        out_format: PixelFormat,
+        intent: Intent,
+        flags: Flags,
     ) -> LCMSResult<Self> {
         let mut profs = [input.icc.clone(), output.icc.clone()];
         let mut bpc = [false, false];
         let intents = [intent as u32; 2];
         let states = [3.0f64; 2];
         let t = xform::create_extended_transform(
-            None, &mut profs, &mut bpc, &intents, &states, None, 0,
-            in_format.0, out_format.0, flags.0,
+            None,
+            &mut profs,
+            &mut bpc,
+            &intents,
+            &states,
+            None,
+            0,
+            in_format.0,
+            out_format.0,
+            flags.0,
         )
         .ok_or(Error::ObjectCreationError)?;
         Ok(Transform {
             inner: Mutex::new(*t),
-            _i: PhantomData, _o: PhantomData, _c: PhantomData, _f: PhantomData,
+            _i: PhantomData,
+            _o: PhantomData,
+            _c: PhantomData,
+            _f: PhantomData,
         })
     }
 }
@@ -1200,15 +1425,21 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod, C, F> Transform<I, O, C, 
 // -- crate fns -------------------------------------------------------------
 
 /// `lcms2::version()` — `cmsGetEncodedCMMversion`.
-pub fn version() -> u32 { types::LCMS_VERSION }
+pub fn version() -> u32 {
+    types::LCMS_VERSION
+}
 /// `lcms2::white_point_from_temp(temp_k)` — `cmsWhitePointFromTemp`.
 pub fn white_point_from_temp(temp_k: f64) -> Option<CIExyY> {
     crate::wtpnt::white_point_from_temp(temp_k)
 }
 /// `lcms2::xyY2XYZ` — `cmsxyY2XYZ`.
-pub fn xyY2XYZ(xyy: &CIExyY) -> CIEXYZ { crate::pcs::xyy2xyz(xyy) }
+pub fn xyY2XYZ(xyy: &CIExyY) -> CIEXYZ {
+    crate::pcs::xyy2xyz(xyy)
+}
 /// `lcms2::XYZ2xyY` — `cmsXYZ2xyY`.
-pub fn XYZ2xyY(xyz: &CIEXYZ) -> CIExyY { crate::pcs::xyz2xyy(xyz) }
+pub fn XYZ2xyY(xyz: &CIEXYZ) -> CIExyY {
+    crate::pcs::xyz2xyy(xyz)
+}
 
 // -- extension traits (lcms2's `ext.rs`) --------------------------------------
 
@@ -1220,7 +1451,9 @@ pub trait ColorSpaceSignatureExt: Sized + Copy {
     fn pixel_type(self) -> u32;
 }
 impl ColorSpaceSignatureExt for ColorSpaceSignature {
-    fn channels(self) -> u32 { crate::pcs::channels_of(self.to_u32()) }
+    fn channels(self) -> u32 {
+        crate::pcs::channels_of(self.to_u32())
+    }
     fn pixel_type(self) -> u32 {
         // the PT_* pixel-type nibble for the color space (no
         // `cms_pixel_type` fn in the port — a direct sig map).
@@ -1239,8 +1472,11 @@ impl ColorSpaceSignatureExt for ColorSpaceSignature {
 /// `CIEXYZExt` — adaptation + Lab conversion + ICC-encoded decode.
 pub trait CIEXYZExt: Sized {
     /// `cmsAdaptToIlluminant` — Bradford-adapt to a target illuminant.
-    fn adapt_to_illuminant(&self, source_white_point: &CIEXYZ, illuminant: &CIEXYZ)
-        -> Option<CIEXYZ>;
+    fn adapt_to_illuminant(
+        &self,
+        source_white_point: &CIEXYZ,
+        illuminant: &CIEXYZ,
+    ) -> Option<CIEXYZ>;
     /// `cmsXYZ2Lab`.
     fn to_lab(&self, white_point: &CIEXYZ) -> CIELAB;
     /// `cmsXYZ2Encoded` — decode an ICC-encoded XYZ.
@@ -1253,7 +1489,9 @@ impl CIEXYZExt for CIEXYZ {
     fn to_lab(&self, white_point: &CIEXYZ) -> CIELAB {
         crate::pcs::xyz2lab(Some(white_point), self)
     }
-    fn from_encoded(icc: &[u16; 3]) -> Self { crate::pcs::xyz_encoded2float(*icc) }
+    fn from_encoded(icc: &[u16; 3]) -> Self {
+        crate::pcs::xyz_encoded2float(*icc)
+    }
 }
 
 /// `CIExzYExt` — the lcms2-crate white-point extension (their `CIExzYExt`
@@ -1263,7 +1501,9 @@ pub trait CIExzYExt: Sized {
     fn temp(&self) -> Option<f64>;
 }
 impl CIExzYExt for CIExyY {
-    fn temp(&self) -> Option<f64> { crate::wtpnt::temp_from_white_point(self) }
+    fn temp(&self) -> Option<f64> {
+        crate::wtpnt::temp_from_white_point(self)
+    }
 }
 
 /// `CIELabExt` — the delta-E family + encoded/convert + desaturate.
@@ -1295,19 +1535,33 @@ impl CIELabExt for CIELAB {
     fn cie2000_delta_e(&self, o: &CIELAB, kl: f64, kc: f64, kh: f64) -> f64 {
         crate::pcs::cie2000_delta_e(self, o, kl, kc, kh)
     }
-    fn cie94_delta_e(&self, o: &CIELAB) -> f64 { crate::pcs::cie94_delta_e(self, o) }
+    fn cie94_delta_e(&self, o: &CIELAB) -> f64 {
+        crate::pcs::cie94_delta_e(self, o)
+    }
     fn cmc_delta_e(&self, o: &CIELAB, l: f64, c: f64) -> f64 {
         crate::pcs::cmc_delta_e(self, o, l, c)
     }
-    fn bfd_delta_e(&self, o: &CIELAB) -> f64 { crate::pcs::bfd_delta_e(self, o) }
-    fn delta_e(&self, o: &CIELAB) -> f64 { crate::pcs::delta_e(self, o) }
+    fn bfd_delta_e(&self, o: &CIELAB) -> f64 {
+        crate::pcs::bfd_delta_e(self, o)
+    }
+    fn delta_e(&self, o: &CIELAB) -> f64 {
+        crate::pcs::delta_e(self, o)
+    }
     fn desaturate(&mut self, amax: f64, amin: f64, bmax: f64, bmin: f64) -> bool {
         crate::sm::desaturate_lab(self, amax, amin, bmax, bmin)
     }
-    fn encoded(&self) -> [u16; 3] { crate::pcs::float2lab_encoded(self) }
-    fn encoded_v2(&self) -> [u16; 3] { crate::pcs::float2lab_encoded_v2(self) }
-    fn from_encoded(icc: &[u16; 3]) -> Self { crate::pcs::lab_encoded2float(*icc) }
-    fn from_encoded_v2(icc: &[u16; 3]) -> Self { crate::pcs::lab_encoded2float_v2(*icc) }
+    fn encoded(&self) -> [u16; 3] {
+        crate::pcs::float2lab_encoded(self)
+    }
+    fn encoded_v2(&self) -> [u16; 3] {
+        crate::pcs::float2lab_encoded_v2(self)
+    }
+    fn from_encoded(icc: &[u16; 3]) -> Self {
+        crate::pcs::lab_encoded2float(*icc)
+    }
+    fn from_encoded_v2(icc: &[u16; 3]) -> Self {
+        crate::pcs::lab_encoded2float_v2(*icc)
+    }
     fn to_xyz(&self, white_point: &CIEXYZ) -> CIEXYZ {
         crate::pcs::lab2xyz(Some(white_point), self)
     }
@@ -1352,39 +1606,68 @@ impl CIECAM02 {
 pub struct Dict(pub(crate) crate::named::Dict);
 impl Dict {
     /// `cmsDictAlloc`
-    pub fn new() -> Self { Dict(crate::named::dict_alloc(None)) }
+    pub fn new() -> Self {
+        Dict(crate::named::dict_alloc(None))
+    }
     /// `cmsDictAddEntry` — add a display-name/display-value pair.
     /// `name`/`value` are the lookup keys (Wchar), the MLUs the display text.
     pub fn add(&mut self, name: &str, value: &str) -> bool {
-        let name_w: Vec<crate::named::Wchar> =
-            name.chars().map(|c| c as crate::named::Wchar).chain([0]).collect();
-        let value_w: Vec<crate::named::Wchar> =
-            value.chars().map(|c| c as crate::named::Wchar).chain([0]).collect();
+        let name_w: Vec<crate::named::Wchar> = name
+            .chars()
+            .map(|c| c as crate::named::Wchar)
+            .chain([0])
+            .collect();
+        let value_w: Vec<crate::named::Wchar> = value
+            .chars()
+            .map(|c| c as crate::named::Wchar)
+            .chain([0])
+            .collect();
         let mut dn = crate::named::mlu_alloc(None, 1).unwrap_or_default();
-        crate::named::mlu_set_ascii(&mut dn, &[0;3], &[0;3], name.as_bytes());
+        crate::named::mlu_set_ascii(&mut dn, &[0; 3], &[0; 3], name.as_bytes());
         let mut dv = crate::named::mlu_alloc(None, 1).unwrap_or_default();
-        crate::named::mlu_set_ascii(&mut dv, &[0;3], &[0;3], value.as_bytes());
+        crate::named::mlu_set_ascii(&mut dv, &[0; 3], &[0; 3], value.as_bytes());
         crate::named::dict_add_entry(&mut self.0, &name_w, Some(&value_w), Some(&dn), Some(&dv))
     }
     /// Lookup a display value by name — `Some(text)` if present.
     pub fn get(&self, name: &str) -> Option<String> {
-        self.0.entries.iter().find(|e| {
-            e.name.iter().take_while(|&&c| c != 0)
-                .map(|&c| c as u8 as char)
-                .collect::<String>() == name
-        }).and_then(|e| e.display_value.as_ref()).and_then(|v| {
-            let (n, mut b) = crate::named::mlu_get_utf8(v, &[0;3], &[0;3], Some(256));
-            if n == 0 { None } else { b.truncate(n as usize); String::from_utf8(b).ok() }
-        })
+        self.0
+            .entries
+            .iter()
+            .find(|e| {
+                e.name
+                    .iter()
+                    .take_while(|&&c| c != 0)
+                    .map(|&c| c as u8 as char)
+                    .collect::<String>()
+                    == name
+            })
+            .and_then(|e| e.display_value.as_ref())
+            .and_then(|v| {
+                let (n, mut b) = crate::named::mlu_get_utf8(v, &[0; 3], &[0; 3], Some(256));
+                if n == 0 {
+                    None
+                } else {
+                    b.truncate(n as usize);
+                    String::from_utf8(b).ok()
+                }
+            })
     }
     /// `cmsDictDup`
-    pub fn dup(&self) -> Self { Dict(crate::named::dict_dup(&self.0)) }
+    pub fn dup(&self) -> Self {
+        Dict(crate::named::dict_dup(&self.0))
+    }
     /// Entry count.
-    pub fn len(&self) -> usize { self.0.entries.len() }
-    pub fn is_empty(&self) -> bool { self.0.entries.is_empty() }
+    pub fn len(&self) -> usize {
+        self.0.entries.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.entries.is_empty()
+    }
 }
 impl Default for Dict {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // -- stage iterator -------------------------------------------------------------
@@ -1402,16 +1685,19 @@ impl<'a> Iterator for StagesIter<'a> {
 }
 impl Pipeline {
     /// `cmsPipelineStageIterator` — iterate stages head -> tail.
-    pub fn stages(&self) -> StagesIter<'_> { StagesIter(self.0.elements.as_deref()) }
+    pub fn stages(&self) -> StagesIter<'_> {
+        StagesIter(self.0.elements.as_deref())
+    }
 }
 
 // -- context-generic + extended transform ctors --------------------------------
 
 impl Profile<GlobalContext> {
     /// `cmsOpenProfileFromFileTHR` — the context-generic open.
-    pub fn new_file_context<P: AsRef<std::path::Path>>(_ctx: &ThreadContext, path: P)
-        -> std::io::Result<Profile<ThreadContext>>
-    {
+    pub fn new_file_context<P: AsRef<std::path::Path>>(
+        _ctx: &ThreadContext,
+        path: P,
+    ) -> std::io::Result<Profile<ThreadContext>> {
         let data = std::fs::read(path)?;
         Profile::<ThreadContext>::new_icc_ctx_data(&data)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))
@@ -1422,7 +1708,10 @@ impl Profile<ThreadContext> {
         match prof::open_profile_from_mem(None, data) {
             Some(mut icc) => {
                 prof::freeze(&mut icc);
-                Ok(Profile { icc, _ctx: PhantomData })
+                Ok(Profile {
+                    icc,
+                    _ctx: PhantomData,
+                })
             }
             None => Err(Error::ObjectCreationError),
         }
@@ -1443,14 +1732,15 @@ impl Profile<ThreadContext> {
     }
 }
 
-impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
-    Transform<I, O, GlobalContext, AllowCache>
-{
+impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod> Transform<I, O, GlobalContext, AllowCache> {
     /// `cmsCreateMultiprofileTransform` — a chain of N profiles
     /// (input -> [intermediate profiles] -> output).
     pub fn new_multiprofile(
-        profiles: &[&Profile], in_format: PixelFormat,
-        out_format: PixelFormat, intent: Intent, flags: Flags,
+        profiles: &[&Profile],
+        in_format: PixelFormat,
+        out_format: PixelFormat,
+        intent: Intent,
+        flags: Flags,
     ) -> LCMSResult<Self> {
         let mut profs: Vec<Box<crate::profile::IccProfile>> =
             profiles.iter().map(|p| p.icc.clone()).collect();
@@ -1459,26 +1749,45 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
         let intents = vec![intent as u32; n];
         let states = vec![3.0f64; n];
         let t = xform::create_extended_transform(
-            None, &mut profs, &mut bpc, &intents, &states, None, 0,
-            in_format.0, out_format.0, flags.0,
+            None,
+            &mut profs,
+            &mut bpc,
+            &intents,
+            &states,
+            None,
+            0,
+            in_format.0,
+            out_format.0,
+            flags.0,
         )
         .ok_or(Error::ObjectCreationError)?;
         Ok(Transform {
             inner: Mutex::new(*t),
-            _i: PhantomData, _o: PhantomData, _c: PhantomData, _f: PhantomData,
+            _i: PhantomData,
+            _o: PhantomData,
+            _c: PhantomData,
+            _f: PhantomData,
         })
     }
 
     /// `cmsCreateProofingTransform` — input -> proof -> output with the
     /// proofing profile's gamut check on `prove_intent`.
     pub fn new_proofing(
-        input: &Profile, in_format: PixelFormat,
-        output: &Profile, out_format: PixelFormat,
-        proofing: &Profile, intent: Intent, prove_intent: Intent, flags: Flags,
+        input: &Profile,
+        in_format: PixelFormat,
+        output: &Profile,
+        out_format: PixelFormat,
+        proofing: &Profile,
+        intent: Intent,
+        prove_intent: Intent,
+        flags: Flags,
     ) -> LCMSResult<Self> {
         Self::new_multiprofile(
-            &[input, proofing, output], in_format, out_format,
-            intent, flags,
+            &[input, proofing, output],
+            in_format,
+            out_format,
+            intent,
+            flags,
         )
         .map(|t| {
             let _ = prove_intent; // gamut state wired in the C-extended call
@@ -1489,9 +1798,13 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
     /// `cmsCreateProofingTransform` with full flag set — kept for
     /// signature parity with the lcms2 crate's `new_proofing_context`.
     pub fn new_proofing_flags(
-        input: &Profile, in_format: PixelFormat,
-        output: &Profile, out_format: PixelFormat,
-        proofing: &Profile, intent: Intent, prove_intent: Intent,
+        input: &Profile,
+        in_format: PixelFormat,
+        output: &Profile,
+        out_format: PixelFormat,
+        proofing: &Profile,
+        intent: Intent,
+        prove_intent: Intent,
         flags: Flags,
     ) -> LCMSResult<Self> {
         let mut profs = [input.icc.clone(), proofing.icc.clone(), output.icc.clone()];
@@ -1499,13 +1812,24 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
         let intents = [intent as u32, prove_intent as u32, intent as u32];
         let states = [3.0f64; 3];
         let t = xform::create_extended_transform(
-            None, &mut profs, &mut bpc, &intents, &states, None, 0,
-            in_format.0, out_format.0, flags.0,
+            None,
+            &mut profs,
+            &mut bpc,
+            &intents,
+            &states,
+            None,
+            0,
+            in_format.0,
+            out_format.0,
+            flags.0,
         )
         .ok_or(Error::ObjectCreationError)?;
         Ok(Transform {
             inner: Mutex::new(*t),
-            _i: PhantomData, _o: PhantomData, _c: PhantomData, _f: PhantomData,
+            _i: PhantomData,
+            _o: PhantomData,
+            _c: PhantomData,
+            _f: PhantomData,
         })
     }
 }
@@ -1514,20 +1838,26 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>
 
 impl Profile<GlobalContext> {
     /// `cmsCreateInkLimitingDeviceLink` — a CMYK->CMYK ink-limiting link.
-    pub fn ink_limiting(color_space: ColorSpaceSignature, limit: f64)
-        -> LCMSResult<Self>
-    {
+    pub fn ink_limiting(color_space: ColorSpaceSignature, limit: f64) -> LCMSResult<Self> {
         virt::create_ink_limiting_device_link(None, color_space.to_u32(), limit)
-            .map(|icc| Profile { icc, _ctx: PhantomData })
+            .map(|icc| Profile {
+                icc,
+                _ctx: PhantomData,
+            })
             .ok_or(Error::ObjectCreationError)
     }
     /// `cmsTransform2DeviceLink` — a devicelink profile from a transform.
     pub fn new_device_link<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod>(
-        transform: &Transform<I, O>, version: f64, _flags: Flags,
+        transform: &Transform<I, O>,
+        version: f64,
+        _flags: Flags,
     ) -> LCMSResult<Self> {
         let mut xf = transform.inner.lock().unwrap_or_else(|e| e.into_inner());
         virt::transform2_device_link(&mut xf, version, 0)
-            .map(|icc| Profile { icc, _ctx: PhantomData })
+            .map(|icc| Profile {
+                icc,
+                _ctx: PhantomData,
+            })
             .ok_or(Error::ObjectCreationError)
     }
 }
@@ -1550,33 +1880,52 @@ impl Stage {
     /// `cmsStageAllocCLut16bit` — a uniform-16bit CLUT stage.
     /// `points` = per-dim grid points; `dim` = input dims; `in_chan`/`out_chan`.
     pub fn new_clut(
-        points: usize, dim: usize, in_chan: usize, out_chan: usize,
+        points: usize,
+        dim: usize,
+        in_chan: usize,
+        out_chan: usize,
         table: Option<Vec<u16>>,
     ) -> LCMSResult<Self> {
         crate::lut::stage_alloc_clut16bit(
-            None, points as u32, in_chan as u32, out_chan as u32, table.as_deref(),
+            None,
+            points as u32,
+            in_chan as u32,
+            out_chan as u32,
+            table.as_deref(),
         )
         .map(Stage)
         .ok_or(Error::ObjectCreationError)
     }
     /// `cmsStageAllocCLut16bitGranular` — per-dim grid points.
     pub fn new_clut_granular(
-        points: &[usize], dim: usize, out_chan: usize, table: Option<Vec<u16>>,
+        points: &[usize],
+        dim: usize,
+        out_chan: usize,
+        table: Option<Vec<u16>>,
     ) -> LCMSResult<Self> {
         crate::lut::stage_alloc_clut16bit_granular(
             None,
             &points.iter().map(|&p| p as u32).collect::<Vec<u32>>(),
-            dim as u32, out_chan as u32, table.as_deref(),
+            dim as u32,
+            out_chan as u32,
+            table.as_deref(),
         )
         .map(Stage)
         .ok_or(Error::ObjectCreationError)
     }
     /// `cmsStageAllocCLutFloat` — float CLUT stage.
     pub fn new_clut_float(
-        points: usize, dim: usize, out_chan: usize, table: Option<Vec<f32>>,
+        points: usize,
+        dim: usize,
+        out_chan: usize,
+        table: Option<Vec<f32>>,
     ) -> LCMSResult<Self> {
         crate::lut::stage_alloc_clut_float(
-            None, points as u32, dim as u32, out_chan as u32, table.as_deref(),
+            None,
+            points as u32,
+            dim as u32,
+            out_chan as u32,
+            table.as_deref(),
         )
         .map(Stage)
         .ok_or(Error::ObjectCreationError)
@@ -1610,11 +1959,17 @@ impl crate::lut::Pipeline {
 impl ThreadContext {
     /// `cmsGetContextUserData` — the adaptation state (0..1) on this context.
     pub fn adaptation_state(&self) -> f64 {
-        f64::from_bits(self.0.adaptation_state.load(core::sync::atomic::Ordering::Relaxed))
+        f64::from_bits(
+            self.0
+                .adaptation_state
+                .load(core::sync::atomic::Ordering::Relaxed),
+        )
     }
     /// `cmsSetAdaptationState` — set the white-point adaptation state.
     pub fn set_adaptation_state(&mut self, state: f64) {
-        self.0.adaptation_state.store(state.to_bits(), core::sync::atomic::Ordering::Relaxed);
+        self.0
+            .adaptation_state
+            .store(state.to_bits(), core::sync::atomic::Ordering::Relaxed);
     }
     /// `cmsGetAlarmCodes` — the out-of-gamut alarm codes.
     pub fn alarm_codes(&self) -> [u16; 16] {

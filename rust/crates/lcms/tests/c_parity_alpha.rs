@@ -19,17 +19,53 @@ const COPY_ALPHA: u32 = 0x0400_0000;
 #[derive(Clone, Copy)]
 struct Aw {
     name: &'static str,
-    bytes: u32,    // T_BYTES field (DBL is 0)
-    float: bool,   // T_FLOAT
+    bytes: u32,     // T_BYTES field (DBL is 0)
+    float: bool,    // T_FLOAT
     endian16: bool, // T_ENDIAN16
-    elem: usize,   // actual bytes per channel element
+    elem: usize,    // actual bytes per channel element
 }
-const W8: Aw = Aw { name: "8", bytes: 1, float: false, endian16: false, elem: 1 };
-const W16: Aw = Aw { name: "16", bytes: 2, float: false, endian16: false, elem: 2 };
-const W16SE: Aw = Aw { name: "16SE", bytes: 2, float: false, endian16: true, elem: 2 };
-const WHLF: Aw = Aw { name: "HLF", bytes: 2, float: true, endian16: false, elem: 2 };
-const WFLT: Aw = Aw { name: "FLT", bytes: 4, float: true, endian16: false, elem: 4 };
-const WDBL: Aw = Aw { name: "DBL", bytes: 0, float: true, endian16: false, elem: 8 };
+const W8: Aw = Aw {
+    name: "8",
+    bytes: 1,
+    float: false,
+    endian16: false,
+    elem: 1,
+};
+const W16: Aw = Aw {
+    name: "16",
+    bytes: 2,
+    float: false,
+    endian16: false,
+    elem: 2,
+};
+const W16SE: Aw = Aw {
+    name: "16SE",
+    bytes: 2,
+    float: false,
+    endian16: true,
+    elem: 2,
+};
+const WHLF: Aw = Aw {
+    name: "HLF",
+    bytes: 2,
+    float: true,
+    endian16: false,
+    elem: 2,
+};
+const WFLT: Aw = Aw {
+    name: "FLT",
+    bytes: 4,
+    float: true,
+    endian16: false,
+    elem: 4,
+};
+const WDBL: Aw = Aw {
+    name: "DBL",
+    bytes: 0,
+    float: true,
+    endian16: false,
+    elem: 8,
+};
 const WIDTHS: [Aw; 6] = [W8, W16, W16SE, WHLF, WFLT, WDBL];
 
 fn fmt(w: Aw, extra: u32, planar: bool, doswap: bool, swapfirst: bool) -> u32 {
@@ -152,8 +188,7 @@ fn r_run(in_fmt: u32, out_fmt: u32, inp: &[u8], n: usize, out_len: usize) -> Opt
     let intents = [0u32, 0];
     let adapt = [1.0f64, 1.0];
     let mut t = xform::create_extended_transform(
-        None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt,
-        COPY_ALPHA,
+        None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, COPY_ALPHA,
     )?;
     let mut out = vec![0u8; out_len];
     t.do_transform(inp, &mut out, n as u32);
@@ -226,7 +261,8 @@ fn check_out(wi: Aw, wo: Aw, extra: u32, c: &[u8], r: &[u8], tag: &str) {
             // too (u8->f32 normalization is re-rounded differently in C's
             // codegen). Alpha is strict everywhere else; in the relaxed
             // quadrant we still bound the diff to <=2 ulp.
-            let alpha_ok = same || (!color_strict && ulp2(&c[off..off + elem], &r[off..off + elem], wo));
+            let alpha_ok =
+                same || (!color_strict && ulp2(&c[off..off + elem], &r[off..off + elem], wo));
             if ch >= 3 {
                 assert!(
                     alpha_ok,
@@ -330,26 +366,25 @@ fn alpha_multi_extra_and_swaps() {
 #[test]
 fn alpha_machinery() {
     unsafe {
-        for h in [c::cmsCreate_sRGBProfile(),
-                  c::cmsCreateXYZProfile(),
-                  c::cmsCreateLab4Profile(std::ptr::null_mut()),
-                  c::cmsCreateLab2Profile(std::ptr::null_mut()),
-                  c::cmsCreateNULLProfile()] {
+        for h in [
+            c::cmsCreate_sRGBProfile(),
+            c::cmsCreateXYZProfile(),
+            c::cmsCreateLab4Profile(std::ptr::null_mut()),
+            c::cmsCreateLab2Profile(std::ptr::null_mut()),
+            c::cmsCreateNULLProfile(),
+        ] {
             // 4-channel RGBA in/out on a 3-channel profile —
             // the alpha-channel machinery
             let rgba: u32 = (4 << 16) | (4 << 3) | 2;
-            let lab4 = c::cmsCreateLab4Profile(
-                std::ptr::null_mut());
+            let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
             let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-            let ct = c::cmsCreateTransform(h, rgba, lab4,
-                lab_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(h, rgba, lab4, lab_fmt, 0, 0);
             if !ct.is_null() {
                 // transform a buffer with an alpha channel —
                 // the alpha-extraction/injection machinery
                 let mut inp = [30000u16, 40000, 50000, 0xFFFF];
                 let mut out = [0u16; 3];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
             let _ = c::cmsCloseProfile(lab4);
@@ -368,26 +403,22 @@ fn half_alpha() {
         // 3ch in -> 4ch out (alpha injected)
         let in3: u32 = (4 << 16) | (3 << 3) | 2;
         let out4: u32 = (10 << 16) | (4 << 3) | 2;
-        let ct1 = c::cmsCreateTransform(h, in3, lab4, out4,
-            0, 0);
+        let ct1 = c::cmsCreateTransform(h, in3, lab4, out4, 0, 0);
         if !ct1.is_null() {
             let inp = [30000u16, 40000, 50000];
             let mut out = [0u16; 4];
-            c::cmsDoTransform(ct1, inp.as_ptr() as _,
-                out.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct1, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
             eprintln!("3->4 out[3]={:#x} (alpha)", out[3]);
             c::cmsDeleteTransform(ct1);
         }
         // 4ch in -> 3ch out (alpha extracted)
         let in4: u32 = (10 << 16) | (4 << 3) | 2;
         let out3: u32 = (4 << 16) | (3 << 3) | 2;
-        let ct2 = c::cmsCreateTransform(lab4, in4, h, out3,
-            0, 0);
+        let ct2 = c::cmsCreateTransform(lab4, in4, h, out3, 0, 0);
         if !ct2.is_null() {
             let inp = [30000u16, 40000, 50000, 0xFFFF];
             let mut out = [0u16; 3];
-            c::cmsDoTransform(ct2, inp.as_ptr() as _,
-                out.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct2, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
             eprintln!("4->3 out={:?}", out);
             c::cmsDeleteTransform(ct2);
         }
@@ -405,24 +436,20 @@ fn alpha_format_variants() {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         // alpha-last RGBA + alpha-first ARGB + premul variants
         for (name, in_fmt) in [
-            ("rgba-al", (4 << 16) | (4 << 3) | 2),      // RGBA
-            ("argb-al", (4 << 16) | (4 << 3) | 2
-                | (1 << 10)),                          // swapfirst
-            ("rgba-pm", (4 << 16) | (4 << 3) | 2
-                | (1 << 14)),                          // premul
-            ("rgba-pkd", (4 << 16) | (4 << 3) | 0),     // packed
-            ("rgba-8",  (4 << 16) | (4 << 3) | 1),      // 8-bit
-            ("rgba-fl", (4 << 16) | (4 << 3) | 6),      // float
+            ("rgba-al", (4 << 16) | (4 << 3) | 2),             // RGBA
+            ("argb-al", (4 << 16) | (4 << 3) | 2 | (1 << 10)), // swapfirst
+            ("rgba-pm", (4 << 16) | (4 << 3) | 2 | (1 << 14)), // premul
+            ("rgba-pkd", (4 << 16) | (4 << 3) | 0),            // packed
+            ("rgba-8", (4 << 16) | (4 << 3) | 1),              // 8-bit
+            ("rgba-fl", (4 << 16) | (4 << 3) | 6),             // float
         ] {
             let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-            let ct = c::cmsCreateTransform(h, in_fmt, lab4,
-                lab_fmt, 0, 0);
+            let ct = c::cmsCreateTransform(h, in_fmt, lab4, lab_fmt, 0, 0);
             eprintln!("{name} null={}", ct.is_null());
             if !ct.is_null() {
                 let inp = [30000u16, 40000, 50000, 0xFFFF];
                 let mut out = [0u16; 3];
-                c::cmsDoTransform(ct, inp.as_ptr() as _,
-                    out.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
             }
         }
@@ -468,14 +495,12 @@ fn alpha_format_cells() {
             (in8, out16, "8->16"),
             (in16se, out8, "16se->8"),
         ] {
-            let t = c::cmsCreateTransform(srgb, ifmt, lab, ofmt, 0,
-                copy_alpha);
+            let t = c::cmsCreateTransform(srgb, ifmt, lab, ofmt, 0, copy_alpha);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x80u8; 16];
                 let mut ob = [0u8; 32];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -518,14 +543,12 @@ fn alpha_16se_sources() {
             (indbl, outflt, "dbl->flt"),
             (in16se, indbl, "16se->dbl2"),
         ] {
-            let t = c::cmsCreateTransform(srgb, if_, lab, of_, 0,
-                copy_alpha);
+            let t = c::cmsCreateTransform(srgb, if_, lab, of_, 0, copy_alpha);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let ib = [0x80u8; 32];
                 let mut ob = [0u8; 64];
-                c::cmsDoTransform(t, ib.as_ptr() as *const _,
-                    ob.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -546,32 +569,35 @@ fn pack_alpha_arms() {
         let l8 = (10u32 << 16) | (3 << 3) | 1;
         // transform on every alpha format combo
         for (ac, name) in [
-            (0u32, "ac0"), (1, "ac1"), (2, "ac2"), (3, "ac3"),
-            (4, "ac4"), (5, "ac5"), (6, "ac6"), (7, "ac7"),
+            (0u32, "ac0"),
+            (1, "ac1"),
+            (2, "ac2"),
+            (3, "ac3"),
+            (4, "ac4"),
+            (5, "ac5"),
+            (6, "ac6"),
+            (7, "ac7"),
         ] {
-            for (doswap, name2) in [
-                (false, "n"), (true, "s"),
-            ] {
-                for (swapfirst, name3) in [
-                    (false, "n"), (true, "f"),
-                ] {
-                    for (planar, name4) in [
-                        (false, "p"), (true, "c"),
-                    ] {
+            for (doswap, name2) in [(false, "n"), (true, "s")] {
+                for (swapfirst, name3) in [(false, "n"), (true, "f")] {
+                    for (planar, name4) in [(false, "p"), (true, "c")] {
                         let fmt = (4u32 << 16)
-                            | (3 << 3) | 1
+                            | (3 << 3)
+                            | 1
                             | (ac << 20)
                             | ((doswap as u32) << 12)
                             | ((swapfirst as u32) << 13)
                             | ((planar as u32) << 10);
-                        let t = c::cmsCreateTransform(
-                            srgb, fmt, lab, l8, 0, 0);
+                        let t = c::cmsCreateTransform(srgb, fmt, lab, l8, 0, 0);
                         if !t.is_null() {
                             let ib = [0x55u8; 16];
                             let mut ob = [0u8; 16];
-                            c::cmsDoTransform(t,
+                            c::cmsDoTransform(
+                                t,
                                 ib.as_ptr() as *const _,
-                                ob.as_mut_ptr() as *mut _, 1);
+                                ob.as_mut_ptr() as *mut _,
+                                1,
+                            );
                             c::cmsDeleteTransform(t);
                         }
                     }
@@ -599,65 +625,72 @@ fn alpha_se_planar_arms() {
         //   EXTRA<<7 | CH<<3 | BYTES
         for (fmt, name) in [
             // u16 + extra1 + endian16-swap
-            ((4u32 << 16) | (1 << 11) | (1 << 7)
-                | (3 << 3) | 2, "u16-se-ex1"),
+            (
+                (4u32 << 16) | (1 << 11) | (1 << 7) | (3 << 3) | 2,
+                "u16-se-ex1",
+            ),
             // u16 + extra1 (no swap) — baseline
-            ((4u32 << 16) | (1 << 7) | (3 << 3) | 2,
-                "u16-ex1"),
+            ((4u32 << 16) | (1 << 7) | (3 << 3) | 2, "u16-ex1"),
             // u16 + extra2 + se
-            ((4u32 << 16) | (1 << 11) | (2 << 7)
-                | (3 << 3) | 2, "u16-se-ex2"),
+            (
+                (4u32 << 16) | (1 << 11) | (2 << 7) | (3 << 3) | 2,
+                "u16-se-ex2",
+            ),
             // float + extra1 + se-ish (swapfirst)
-            ((1u32 << 22) | (4 << 16) | (1 << 14)
-                | (1 << 7) | (3 << 3) | 4,
-                "flt-sf-ex1"),
+            (
+                (1u32 << 22) | (4 << 16) | (1 << 14) | (1 << 7) | (3 << 3) | 4,
+                "flt-sf-ex1",
+            ),
             // double + extra1 + se
-            ((1u32 << 22) | (4 << 16) | (1 << 11)
-                | (1 << 7) | (3 << 3) | 8,
-                "dbl-se-ex1"),
+            (
+                (1u32 << 22) | (4 << 16) | (1 << 11) | (1 << 7) | (3 << 3) | 8,
+                "dbl-se-ex1",
+            ),
             // half (bytes=0) + extra1
-            ((1u32 << 22) | (4 << 16) | (1 << 7)
-                | (3 << 3) | 0, "hlf-ex1"),
+            (
+                (1u32 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 0,
+                "hlf-ex1",
+            ),
             // planar u16 + extra1
-            ((4u32 << 16) | (1 << 12) | (1 << 7)
-                | (3 << 3) | 2, "u16-planar-ex1"),
+            (
+                (4u32 << 16) | (1 << 12) | (1 << 7) | (3 << 3) | 2,
+                "u16-planar-ex1",
+            ),
             // planar u8 + extra1
-            ((4u32 << 16) | (1 << 12) | (1 << 7)
-                | (3 << 3) | 1, "u8-planar-ex1"),
+            (
+                (4u32 << 16) | (1 << 12) | (1 << 7) | (3 << 3) | 1,
+                "u8-planar-ex1",
+            ),
         ] {
-            let t = c::cmsCreateTransform(srgb, fmt,
-                srgb, fmt, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fmt, srgb, fmt, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0x8000u16; 8];
                 let mut dst = [0u16; 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 eprintln!("  {name} {src:?}->{dst:?}");
                 c::cmsDeleteTransform(t);
             }
         }
         // directions: swapped input format ↔ normal
         for (fin, fout, name) in [
-            ((4u32 << 16) | (1 << 11) | (1 << 7)
-                | (3 << 3) | 2,
-             (4u32 << 16) | (1 << 7) | (3 << 3) | 2,
-             "se->norm"),
-            ((1u32 << 22) | (4 << 16) | (1 << 7)
-                | (3 << 3) | 4,
-             (1u32 << 22) | (4 << 16) | (1 << 7)
-                | (3 << 3) | 2, "flt->hlf-ex1"),
+            (
+                (4u32 << 16) | (1 << 11) | (1 << 7) | (3 << 3) | 2,
+                (4u32 << 16) | (1 << 7) | (3 << 3) | 2,
+                "se->norm",
+            ),
+            (
+                (1u32 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 4,
+                (1u32 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 2,
+                "flt->hlf-ex1",
+            ),
         ] {
-            let t = c::cmsCreateTransform(srgb, fin,
-                srgb, fout, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fin, srgb, fout, 0, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
                 let src = [0x8000u16; 8];
                 let mut dst = [0u16; 8];
-                c::cmsDoTransform(t,
-                    src.as_ptr() as *const _,
-                    dst.as_mut_ptr() as *mut _, 1);
+                c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(t);
             }
         }
@@ -672,44 +705,57 @@ fn alpha_se_planar_arms() {
 fn alpha_tail_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
-        let lab4 = c::cmsCreateLab4Profile(
-            std::ptr::null_mut());
+        let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let flab = (10u32 << 16) | (3 << 3) | 2;
         // alpha formats: EXTRA<<7 on each base+swap
         for (fmt, nch, name) in [
-            ((4u32 << 16) | (1 << 7) | (4 << 3) | 1,
-                4, "rgbx8"),
-            ((4u32 << 16) | (2 << 7) | (5 << 3) | 1,
-                5, "rgbxx8"),
-            ((4u32 << 16) | (1 << 7) | (1 << 10)
-                | (4 << 3) | 1, 4, "rgbx8-ds"),
-            ((4u32 << 16) | (1 << 7) | (1 << 14)
-                | (4 << 3) | 1, 4, "rgbx8-sf"),
-            ((4u32 << 16) | (1 << 7) | (4 << 3) | 2,
-                4, "rgbx16"),
-            ((4u32 << 16) | (1 << 7) | (1 << 11)
-                | (4 << 3) | 2, 4, "rgbx16-e16"),
-            ((4u32 << 16) | (1 << 7) | (1 << 12)
-                | (4 << 3) | 2, 4, "rgbx16-plan"),
-            ((1u32 << 22) | (4 << 16) | (1 << 7)
-                | (4 << 3) | 4, 4, "rgbx-flt"),
-            ((1u32 << 22) | (4 << 16) | (1 << 7)
-                | (1 << 10) | (4 << 3) | 4, 4, "rgbx-flt-ds"),
-            ((4u32 << 16) | (1 << 7) | (1 << 10)
-                | (1 << 14) | (4 << 3) | 2, 4, "rgbx16-both"),
+            ((4u32 << 16) | (1 << 7) | (4 << 3) | 1, 4, "rgbx8"),
+            ((4u32 << 16) | (2 << 7) | (5 << 3) | 1, 5, "rgbxx8"),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 10) | (4 << 3) | 1,
+                4,
+                "rgbx8-ds",
+            ),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 14) | (4 << 3) | 1,
+                4,
+                "rgbx8-sf",
+            ),
+            ((4u32 << 16) | (1 << 7) | (4 << 3) | 2, 4, "rgbx16"),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 11) | (4 << 3) | 2,
+                4,
+                "rgbx16-e16",
+            ),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 12) | (4 << 3) | 2,
+                4,
+                "rgbx16-plan",
+            ),
+            (
+                (1u32 << 22) | (4 << 16) | (1 << 7) | (4 << 3) | 4,
+                4,
+                "rgbx-flt",
+            ),
+            (
+                (1u32 << 22) | (4 << 16) | (1 << 7) | (1 << 10) | (4 << 3) | 4,
+                4,
+                "rgbx-flt-ds",
+            ),
+            (
+                (4u32 << 16) | (1 << 7) | (1 << 10) | (1 << 14) | (4 << 3) | 2,
+                4,
+                "rgbx16-both",
+            ),
         ] {
-            let t = c::cmsCreateTransform(srgb, fmt,
-                lab4, flab, 0, 0);
+            let t = c::cmsCreateTransform(srgb, fmt, lab4, flab, 0, 0);
             if t.is_null() {
-                let t2 = c::cmsCreateTransform(lab4, flab,
-                    srgb, fmt, 0, 0);
+                let t2 = c::cmsCreateTransform(lab4, flab, srgb, fmt, 0, 0);
                 eprintln!("{name} rev={}", !t2.is_null());
                 if !t2.is_null() {
                     let src = [0x8000u16; 4];
                     let mut dst = [0u8; 16];
-                    c::cmsDoTransform(t2,
-                        src.as_ptr() as *const _,
-                        dst.as_mut_ptr() as *mut _, 1);
+                    c::cmsDoTransform(t2, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
                     eprintln!("  {dst:?}");
                     c::cmsDeleteTransform(t2);
                 }
@@ -717,9 +763,7 @@ fn alpha_tail_arms() {
             }
             let src = [128u8, 64, 200, 255, 99, 42];
             let mut dst = [0u16; 4];
-            c::cmsDoTransform(t,
-                src.as_ptr() as *const _,
-                dst.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(t, src.as_ptr() as *const _, dst.as_mut_ptr() as *mut _, 1);
             eprintln!("{name} {dst:?}");
             c::cmsDeleteTransform(t);
             let _ = nch;

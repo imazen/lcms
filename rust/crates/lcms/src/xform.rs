@@ -4,15 +4,14 @@
 
 use crate::cnvrt;
 use crate::context::Context;
-use archmage::SimdToken;
 use crate::lut::Pipeline;
 use crate::pack::{
     CMS_PACK_FLAGS_16BITS, CMS_PACK_FLAGS_FLOAT, Formatter, FormatterDir, PackInfo,
-    get_formatter_ctx,
-    t_channels,
+    get_formatter_ctx, t_channels,
 };
 use crate::profile::IccProfile;
 use crate::types::{CieXyz, INTENT_PERCEPTUAL};
+use archmage::SimdToken;
 
 pub const FLAGS_NOOPTIMIZE: u32 = 0x0100;
 pub const FLAGS_NOCACHE: u32 = 0x0040;
@@ -131,10 +130,14 @@ pub struct Transform {
 
 impl std::ops::Deref for Transform {
     type Target = TransformPlan;
-    fn deref(&self) -> &TransformPlan { &self.plan }
+    fn deref(&self) -> &TransformPlan {
+        &self.plan
+    }
 }
 impl std::ops::DerefMut for Transform {
-    fn deref_mut(&mut self) -> &mut TransformPlan { &mut self.plan }
+    fn deref_mut(&mut self) -> &mut TransformPlan {
+        &mut self.plan
+    }
 }
 
 fn pixel_size(fmt: u32) -> u32 {
@@ -160,7 +163,6 @@ fn clut16_tetra_loop_v3(
     ipx: usize,
     opx: usize,
 ) {
-
     let ppli = ppl as usize * ipx;
     let pplo = ppl as usize * opx;
     let mut i_off = 0usize;
@@ -207,19 +209,21 @@ fn clutflt_tetra_loop_v3(
         let oline = &mut output[o_off..o_off + ppl16];
         for i in 0..ppl as usize {
             let px = i * 16;
-            let rd = |o: usize| {
-                f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap())
-            };
+            let rd = |o: usize| f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap());
             let vin = [
                 crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
                 crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
                 crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
             ];
             let [r, g, b] = crate::intrp::tetra3_i32x4(token, vin, p);
-            let outv = [r as f32 / 65535.0, g as f32 / 65535.0, b as f32 / 65535.0, 0.0];
+            let outv = [
+                r as f32 / 65535.0,
+                g as f32 / 65535.0,
+                b as f32 / 65535.0,
+                0.0,
+            ];
             for (cch, v) in outv.iter().enumerate() {
-                oline[px + cch * 4..px + cch * 4 + 4]
-                    .copy_from_slice(&v.to_le_bytes());
+                oline[px + cch * 4..px + cch * 4 + 4].copy_from_slice(&v.to_le_bytes());
             }
         }
         i_off += stride.bytes_per_line_in as usize;
@@ -248,9 +252,7 @@ fn clutflt_eval4_loop_v3(
         let oline = &mut output[o_off..o_off + ppl16];
         for i in 0..ppl as usize {
             let px = i * 16;
-            let rd = |o: usize| {
-                f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap())
-            };
+            let rd = |o: usize| f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap());
             let vin = [
                 crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
                 crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
@@ -260,8 +262,7 @@ fn clutflt_eval4_loop_v3(
             let outv = crate::intrp::eval4_i32x4(token, vin, 4, p);
             for (cch, v) in outv.iter().enumerate() {
                 let fv = *v as f32 / 65535.0;
-                oline[px + cch * 4..px + cch * 4 + 4]
-                    .copy_from_slice(&fv.to_le_bytes());
+                oline[px + cch * 4..px + cch * 4 + 4].copy_from_slice(&fv.to_le_bytes());
             }
         }
         i_off += stride.bytes_per_line_in as usize;
@@ -468,11 +469,11 @@ fn prelin8_rgb8_loop_v3(
                 (V::zero_t(token), V::zero_t(token), V::zero_t(token))
             };
             // rest = c1*rx + c2*ry + c3*rz + 0x8001 — i32 wrapping (C math)
-            let rest = (c1 * V::splat_t(token, rx) + c2 * V::splat_t(token, ry)
+            let rest = (c1 * V::splat_t(token, rx)
+                + c2 * V::splat_t(token, ry)
                 + c3 * V::splat_t(token, rz))
                 + V::splat_t(token, 0x8001);
-            let out = c0
-                + ((rest + rest.shr_arithmetic::<16>()).shr_arithmetic::<16>());
+            let out = c0 + ((rest + rest.shr_arithmetic::<16>()).shr_arithmetic::<16>());
             let a = (out & V::splat_t(token, 0xffff)).to_array();
             for oc in 0..n_out {
                 oline[px + oc] = crate::pack::f16to8(a[oc] as u16);
@@ -543,12 +544,8 @@ fn clut16_tetra_cached_v3(
     let pplo = ppl as usize * opx;
     // Seed from the transform cache — C pre-fills CacheOut with
     // Eval16(zeros) so a leading black pixel isn't a stale hit.
-    let mut cv = cache_in[0] as u64
-        | (cache_in[1] as u64) << 16
-        | (cache_in[2] as u64) << 32;
-    let mut co = cache_out[0] as u64
-        | (cache_out[1] as u64) << 16
-        | (cache_out[2] as u64) << 32;
+    let mut cv = cache_in[0] as u64 | (cache_in[1] as u64) << 16 | (cache_in[2] as u64) << 32;
+    let mut co = cache_out[0] as u64 | (cache_out[1] as u64) << 16 | (cache_out[2] as u64) << 32;
     let mut i_off = 0usize;
     let mut o_off = 0usize;
     for _ in 0..lines {
@@ -556,16 +553,9 @@ fn clut16_tetra_cached_v3(
         let oline = &mut output[o_off..o_off + pplo];
         for i in 0..ppl as usize {
             let px = i * ipx;
-            let v64 = (u16::from_le_bytes(iline[px..px + 2].try_into().unwrap())
-                as u64)
-                | ((u16::from_le_bytes(
-                    iline[px + 2..px + 4].try_into().unwrap(),
-                ) as u64)
-                    << 16)
-                | ((u16::from_le_bytes(
-                    iline[px + 4..px + 6].try_into().unwrap(),
-                ) as u64)
-                    << 32);
+            let v64 = (u16::from_le_bytes(iline[px..px + 2].try_into().unwrap()) as u64)
+                | ((u16::from_le_bytes(iline[px + 2..px + 4].try_into().unwrap()) as u64) << 16)
+                | ((u16::from_le_bytes(iline[px + 4..px + 6].try_into().unwrap()) as u64) << 32);
             let px64 = if v64 == cv {
                 co
             } else {
@@ -596,7 +586,6 @@ fn clut16_tetra_loop_scalar(
     ipx: usize,
     opx: usize,
 ) {
-
     let ppli = ppl as usize * ipx;
     let pplo = ppl as usize * opx;
     let mut i_off = 0usize;
@@ -740,16 +729,24 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
             if std::ptr::fn_addr_eq(pack, pk::pack3_bytes_and_skip1 as P16F) {
                 go!($u, pk::pack3_bytes_and_skip1);
             }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F) && is_ch_ex1(info.output_format, 4, 2) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F)
+                && is_ch_ex1(info.output_format, 4, 2)
+            {
                 go!($u, pk::pack4_words_skip1);
             }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F) && is_ch_ex1(info.output_format, 3, 2) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F)
+                && is_ch_ex1(info.output_format, 3, 2)
+            {
                 go!($u, pk::pack3_words_and_skip1);
             }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F) && is_ch_ex1(info.output_format, 4, 1) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F)
+                && is_ch_ex1(info.output_format, 4, 1)
+            {
                 go!($u, pk::pack4_bytes_skip1);
             }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F) && is_ch_ex1(info.output_format, 3, 1) {
+            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F)
+                && is_ch_ex1(info.output_format, 3, 1)
+            {
                 go!($u, pk::pack3_bytes_and_skip1);
             }
             go!($u, pack);
@@ -767,16 +764,24 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     if std::ptr::fn_addr_eq(unroll, pk::unroll3_words as U16F) {
         with_pack!(pk::unroll3_words);
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F) && is_ch_ex1(info.input_format, 4, 2) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F)
+        && is_ch_ex1(info.input_format, 4, 2)
+    {
         with_pack!(pk::unroll4_words_skip1);
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F) && is_ch_ex1(info.input_format, 3, 2) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F)
+        && is_ch_ex1(info.input_format, 3, 2)
+    {
         with_pack!(pk::unroll3_words_skip1);
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F) && is_ch_ex1(info.input_format, 4, 1) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F)
+        && is_ch_ex1(info.input_format, 4, 1)
+    {
         with_pack!(pk::unroll4_bytes_skip1);
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F) && is_ch_ex1(info.input_format, 3, 1) {
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F)
+        && is_ch_ex1(info.input_format, 3, 1)
+    {
         with_pack!(pk::unroll3_bytes_skip1);
     }
     with_pack!(unroll);
@@ -810,7 +815,12 @@ fn xform_f32_eval_loop<E, U, P>(
         for _ in 0..ppl {
             accum += unroll(info, &mut f_in, &input[accum..], stride.bytes_per_plane_in);
             eval(&f_in, &mut f_out);
-            out_pos += pack(info, &f_out, &mut output[out_pos..], stride.bytes_per_plane_out);
+            out_pos += pack(
+                info,
+                &f_out,
+                &mut output[out_pos..],
+                stride.bytes_per_plane_out,
+            );
         }
         i_off += stride.bytes_per_line_in as usize;
         o_off += stride.bytes_per_line_out as usize;
@@ -836,9 +846,7 @@ fn xform_f32_run<E: Fn(&[f32], &mut [f32])>(
     type PF = crate::pack::PackF32Fn;
     macro_rules! go {
         ($u:expr, $p:expr) => {
-            return xform_f32_eval_loop(
-                $u, $p, info, input, output, ppl, lines, stride, eval,
-            )
+            return xform_f32_eval_loop($u, $p, info, input, output, ppl, lines, stride, eval)
         };
     }
     macro_rules! with_pack {
@@ -970,7 +978,6 @@ fn handle_extra_channels(
     );
 }
 
-
 /// `cmsTRANSFORM` parity entry points — delegate to the plan with the
 /// transform's own scratch.
 impl Transform {
@@ -981,7 +988,8 @@ impl Transform {
 
     /// `cmsDoTransformStride`
     pub fn do_transform_stride(&mut self, input: &[u8], output: &mut [u8], n: u32, stride_b: u32) {
-        self.plan.apply_stride(&mut self.scratch, input, output, n, stride_b);
+        self.plan
+            .apply_stride(&mut self.scratch, input, output, n, stride_b);
     }
 
     /// `cmsDoTransformLineStride`
@@ -996,7 +1004,17 @@ impl Transform {
         bytes_per_plane_in: u32,
         bytes_per_plane_out: u32,
     ) {
-        self.plan.apply_line_stride(&mut self.scratch, input, output, ppl, lines, bytes_per_line_in, bytes_per_line_out, bytes_per_plane_in, bytes_per_plane_out);
+        self.plan.apply_line_stride(
+            &mut self.scratch,
+            input,
+            output,
+            ppl,
+            lines,
+            bytes_per_line_in,
+            bytes_per_line_out,
+            bytes_per_plane_in,
+            bytes_per_plane_out,
+        );
     }
 
     /// Parallel `cmsDoTransform` — each chunk gets a fresh 64B scratch
@@ -1009,26 +1027,50 @@ impl Transform {
 impl TransformPlan {
     /// `cmsDoTransform` — n pixels, default stride
     /// Fresh per-run scratch — clones the seeded cache state.
-    pub fn scratch(&self) -> TransformScratch { self.scratch_seed.clone() }
+    pub fn scratch(&self) -> TransformScratch {
+        self.scratch_seed.clone()
+    }
 
     /// `cmsDoTransform` on the shared plan — `scratch` is the only
     /// mutable state; `&self` is `Sync`.
     pub fn apply(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], n: u32) {
-        self.apply_strided(scratch, input, output, n, 1, &Stride {
-            bytes_per_line_in: 0,
-            bytes_per_line_out: 0,
-            bytes_per_plane_in: n * pixel_size(self.input_format),
-            bytes_per_plane_out: n * pixel_size(self.output_format),
-        });
+        self.apply_strided(
+            scratch,
+            input,
+            output,
+            n,
+            1,
+            &Stride {
+                bytes_per_line_in: 0,
+                bytes_per_line_out: 0,
+                bytes_per_plane_in: n * pixel_size(self.input_format),
+                bytes_per_plane_out: n * pixel_size(self.output_format),
+            },
+        );
     }
 
     /// `cmsDoTransformStride`-shaped: ppl x lines with caller strides.
-    pub fn apply_strided(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], ppl: u32, lines: u32, stride: &Stride) {
+    pub fn apply_strided(
+        &self,
+        scratch: &mut TransformScratch,
+        input: &[u8],
+        output: &mut [u8],
+        ppl: u32,
+        lines: u32,
+        stride: &Stride,
+    ) {
         self.xform(scratch, input, output, ppl, lines, stride);
     }
 
     /// `cmsDoTransformStride` — n pixels, byte-stride
-    pub fn apply_stride(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], n: u32, stride_b: u32) {
+    pub fn apply_stride(
+        &self,
+        scratch: &mut TransformScratch,
+        input: &[u8],
+        output: &mut [u8],
+        n: u32,
+        stride_b: u32,
+    ) {
         let stride = Stride {
             bytes_per_line_in: 0,
             bytes_per_line_out: 0,
@@ -1103,9 +1145,17 @@ impl TransformPlan {
         });
     }
 
-        /// `xform` dispatch — worker chosen at create time.
+    /// `xform` dispatch — worker chosen at create time.
     /// All mutable state lives in `scratch`; `&self` is read-only.
-    fn xform(&self, scratch: &mut TransformScratch, input: &[u8], output: &mut [u8], ppl: u32, lines: u32, stride: &Stride) {
+    fn xform(
+        &self,
+        scratch: &mut TransformScratch,
+        input: &[u8],
+        output: &mut [u8],
+        ppl: u32,
+        lines: u32,
+        stride: &Stride,
+    ) {
         handle_extra_channels(
             input,
             output,
@@ -1120,12 +1170,16 @@ impl TransformPlan {
         match self.worker {
             Worker::Null => self.null_xform(input, output, ppl, lines, stride),
             Worker::NullFloat => self.null_float_xform(input, output, ppl, lines, stride),
-            Worker::Precalculated => self.xform16(scratch, input, output, ppl, lines, stride, false, false),
+            Worker::Precalculated => {
+                self.xform16(scratch, input, output, ppl, lines, stride, false, false)
+            }
             Worker::PrecalculatedGamutCheck => {
                 self.xform16(scratch, input, output, ppl, lines, stride, true, false)
             }
             Worker::Cached => self.xform16(scratch, input, output, ppl, lines, stride, false, true),
-            Worker::CachedGamutCheck => self.xform16(scratch, input, output, ppl, lines, stride, true, true),
+            Worker::CachedGamutCheck => {
+                self.xform16(scratch, input, output, ppl, lines, stride, true, true)
+            }
             Worker::Float => self.xform_f32(input, output, ppl, lines, stride, false),
             Worker::Noop => {}
             Worker::Foreign => {
@@ -1146,14 +1200,7 @@ impl TransformPlan {
         }
     }
 
-    fn null_xform(
-        &self,
-        input: &[u8],
-        output: &mut [u8],
-        ppl: u32,
-        lines: u32,
-        stride: &Stride,
-    ) {
+    fn null_xform(&self, input: &[u8], output: &mut [u8], ppl: u32, lines: u32, stride: &Stride) {
         let info = PackInfo {
             input_format: self.input_format,
             output_format: self.output_format,
@@ -1313,7 +1360,8 @@ impl TransformPlan {
                         return;
                     }
                     if let Some(crate::opt::OptData::Prelin8(p8)) = l.opt_data.as_ref() {
-                        if p8.clut.n_outputs >= 1 && p8.clut.n_outputs <= 4
+                        if p8.clut.n_outputs >= 1
+                            && p8.clut.n_outputs <= 4
                             && p8.clut.tab16.is_some()
                         {
                             if let Some(token) = archmage::X64V3Token::summon() {
@@ -1340,13 +1388,16 @@ impl TransformPlan {
                                 let px = i * 6;
                                 let r = p.shaper1[0][(u16::from_le_bytes(
                                     iline[px..px + 2].try_into().unwrap(),
-                                ) & 0xff) as usize];
+                                ) & 0xff)
+                                    as usize];
                                 let g = p.shaper1[1][(u16::from_le_bytes(
                                     iline[px + 2..px + 4].try_into().unwrap(),
-                                ) & 0xff) as usize];
+                                ) & 0xff)
+                                    as usize];
                                 let b = p.shaper1[2][(u16::from_le_bytes(
                                     iline[px + 4..px + 6].try_into().unwrap(),
-                                ) & 0xff) as usize];
+                                ) & 0xff)
+                                    as usize];
                                 let l1 = (p.mat[0][0]
                                     .wrapping_mul(r)
                                     .wrapping_add(p.mat[0][1].wrapping_mul(g))
@@ -1372,8 +1423,7 @@ impl TransformPlan {
                                     &p.shaper2[l1.clamp(0, 16384) as usize].to_le_bytes(),
                                 );
                                 oline[px + 2..px + 4].copy_from_slice(
-                                    &p.shaper2[16385 + l2.clamp(0, 16384) as usize]
-                                        .to_le_bytes(),
+                                    &p.shaper2[16385 + l2.clamp(0, 16384) as usize].to_le_bytes(),
                                 );
                                 oline[px + 4..px + 6].copy_from_slice(
                                     &p.shaper2[2 * 16385 + l3.clamp(0, 16384) as usize]
@@ -1398,17 +1448,29 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = crate::intrp::x64v3_cached()
-                            {
+                            if let Some(token) = crate::intrp::x64v3_cached() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_loop_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride, 6, 6,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
+                                    6,
+                                    6,
                                 );
                             }
                             return clut16_tetra_loop_scalar(
-                                &c.params16, input, output, ppl, lines, stride,
-                                6, 6,
+                                &c.params16,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                6,
+                                6,
                             );
                         }
                     }
@@ -1416,15 +1478,10 @@ impl TransformPlan {
                         // Fused `unroll3_words`→`Curves16`→`pack3_words` —
                         // 3 full-width tables indexed straight from registers,
                         // no `w_in`/`w_out` stack round-trip.
-                        if c.curves.len() == 3
-                            && c.curves.iter().all(|t| t.len() == 0x10000)
-                        {
-                            let t0: &[u16; 0x10000] =
-                                c.curves[0].as_slice().try_into().unwrap();
-                            let t1: &[u16; 0x10000] =
-                                c.curves[1].as_slice().try_into().unwrap();
-                            let t2: &[u16; 0x10000] =
-                                c.curves[2].as_slice().try_into().unwrap();
+                        if c.curves.len() == 3 && c.curves.iter().all(|t| t.len() == 0x10000) {
+                            let t0: &[u16; 0x10000] = c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 0x10000] = c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 0x10000] = c.curves[2].as_slice().try_into().unwrap();
                             let ppl6 = ppl as usize * 6;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
@@ -1435,21 +1492,15 @@ impl TransformPlan {
                                     let px = i * 6;
                                     let r = t0[u16::from_le_bytes(
                                         iline[px..px + 2].try_into().unwrap(),
-                                    )
-                                        as usize];
+                                    ) as usize];
                                     let g = t1[u16::from_le_bytes(
                                         iline[px + 2..px + 4].try_into().unwrap(),
-                                    )
-                                        as usize];
+                                    ) as usize];
                                     let b = t2[u16::from_le_bytes(
                                         iline[px + 4..px + 6].try_into().unwrap(),
-                                    )
-                                        as usize];
-                                    let px64 = (r as u64)
-                                        | ((g as u64) << 16)
-                                        | ((b as u64) << 32);
-                                    oline[px..px + 6]
-                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                    ) as usize];
+                                    let px64 = (r as u64) | ((g as u64) << 16) | ((b as u64) << 32);
+                                    oline[px..px + 6].copy_from_slice(&px64.to_le_bytes()[..6]);
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
                                 o_off += stride.bytes_per_line_out as usize;
@@ -1474,16 +1525,25 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
-                            {
+                            if let Some(token) = archmage::X64V3Token::summon() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clut8_eval4_loop_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
                                 );
                             }
                             return clut8_eval4_loop_scalar(
-                                &c.params16, input, output, ppl, lines, stride,
+                                &c.params16,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
                             );
                         }
                     }
@@ -1505,12 +1565,16 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
-                            {
+                            if let Some(token) = archmage::X64V3Token::summon() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clut16_eval4_loop_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
                                 );
                             }
                             let p = &c.params16;
@@ -1532,16 +1596,10 @@ impl TransformPlan {
                                                 .unwrap(),
                                         );
                                     }
-                                    crate::intrp::eval4_inputs(
-                                        &w_in,
-                                        &mut w_out[..n_out],
-                                        p,
-                                    );
+                                    crate::intrp::eval4_inputs(&w_in, &mut w_out[..n_out], p);
                                     for cch in 0..n_out {
                                         oline[px + cch * 2..px + cch * 2 + 2]
-                                            .copy_from_slice(
-                                                &w_out[cch].to_le_bytes(),
-                                            );
+                                            .copy_from_slice(&w_out[cch].to_le_bytes());
                                     }
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
@@ -1568,31 +1626,38 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
-                            {
+                            if let Some(token) = archmage::X64V3Token::summon() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_loop_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride, 8, 8,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
+                                    8,
+                                    8,
                                 );
                             }
                             return clut16_tetra_loop_scalar(
-                                &c.params16, input, output, ppl, lines, stride,
-                                8, 8,
+                                &c.params16,
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                8,
+                                8,
                             );
                         }
                     }
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
                         // `unroll3_words_skip1`→Curves16→`pack3_words_and_skip1`
-                        if c.curves.len() == 3
-                            && c.curves.iter().all(|t| t.len() == 0x10000)
-                        {
-                            let t0: &[u16; 0x10000] =
-                                c.curves[0].as_slice().try_into().unwrap();
-                            let t1: &[u16; 0x10000] =
-                                c.curves[1].as_slice().try_into().unwrap();
-                            let t2: &[u16; 0x10000] =
-                                c.curves[2].as_slice().try_into().unwrap();
+                        if c.curves.len() == 3 && c.curves.iter().all(|t| t.len() == 0x10000) {
+                            let t0: &[u16; 0x10000] = c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 0x10000] = c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 0x10000] = c.curves[2].as_slice().try_into().unwrap();
                             let ppl8 = ppl as usize * 8;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
@@ -1603,21 +1668,15 @@ impl TransformPlan {
                                     let px = i * 8;
                                     let r = t0[u16::from_le_bytes(
                                         iline[px..px + 2].try_into().unwrap(),
-                                    )
-                                        as usize];
+                                    ) as usize];
                                     let g = t1[u16::from_le_bytes(
                                         iline[px + 2..px + 4].try_into().unwrap(),
-                                    )
-                                        as usize];
+                                    ) as usize];
                                     let b = t2[u16::from_le_bytes(
                                         iline[px + 4..px + 6].try_into().unwrap(),
-                                    )
-                                        as usize];
-                                    let px64 = (r as u64)
-                                        | ((g as u64) << 16)
-                                        | ((b as u64) << 32);
-                                    oline[px..px + 6]
-                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                    ) as usize];
+                                    let px64 = (r as u64) | ((g as u64) << 16) | ((b as u64) << 32);
+                                    oline[px..px + 6].copy_from_slice(&px64.to_le_bytes()[..6]);
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
                                 o_off += stride.bytes_per_line_out as usize;
@@ -1642,12 +1701,16 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
-                            {
+                            if let Some(token) = archmage::X64V3Token::summon() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clut8_tetra_loop_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
                                 );
                             }
                             let p = &c.params16;
@@ -1664,8 +1727,7 @@ impl TransformPlan {
                                         crate::pack::f8to16(iline[px + 1]),
                                         crate::pack::f8to16(iline[px + 2]),
                                     ];
-                                    let [r, g, b] =
-                                        crate::intrp::tetra3_interp16(vin, p);
+                                    let [r, g, b] = crate::intrp::tetra3_interp16(vin, p);
                                     oline[px] = crate::pack::f16to8(r);
                                     oline[px + 1] = crate::pack::f16to8(g);
                                     oline[px + 2] = crate::pack::f16to8(b);
@@ -1678,15 +1740,10 @@ impl TransformPlan {
                     }
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
                         // `unroll3_bytes`→Curves8 (256-pt)→`pack3_bytes`
-                        if c.curves.len() == 3
-                            && c.curves.iter().all(|t| t.len() == 256)
-                        {
-                            let t0: &[u16; 256] =
-                                c.curves[0].as_slice().try_into().unwrap();
-                            let t1: &[u16; 256] =
-                                c.curves[1].as_slice().try_into().unwrap();
-                            let t2: &[u16; 256] =
-                                c.curves[2].as_slice().try_into().unwrap();
+                        if c.curves.len() == 3 && c.curves.iter().all(|t| t.len() == 256) {
+                            let t0: &[u16; 256] = c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 256] = c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 256] = c.curves[2].as_slice().try_into().unwrap();
                             let ppl3 = ppl as usize * 3;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
@@ -1695,15 +1752,9 @@ impl TransformPlan {
                                 let oline = &mut output[o_off..o_off + ppl3];
                                 for i in 0..ppl as usize {
                                     let px = i * 3;
-                                    oline[px] = crate::pack::f16to8(
-                                        t0[iline[px] as usize],
-                                    );
-                                    oline[px + 1] = crate::pack::f16to8(
-                                        t1[iline[px + 1] as usize],
-                                    );
-                                    oline[px + 2] = crate::pack::f16to8(
-                                        t2[iline[px + 2] as usize],
-                                    );
+                                    oline[px] = crate::pack::f16to8(t0[iline[px] as usize]);
+                                    oline[px + 1] = crate::pack::f16to8(t1[iline[px + 1] as usize]);
+                                    oline[px + 2] = crate::pack::f16to8(t2[iline[px + 2] as usize]);
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
                                 o_off += stride.bytes_per_line_out as usize;
@@ -1745,8 +1796,7 @@ impl TransformPlan {
                                         let v = iline[i] as usize;
                                         let po = i * n_out;
                                         for (cch, t) in c.curves.iter().enumerate() {
-                                            oline[po + cch] =
-                                                crate::pack::f16to8(t[v]);
+                                            oline[po + cch] = crate::pack::f16to8(t[v]);
                                         }
                                     }
                                     i_off += stride.bytes_per_line_in as usize;
@@ -1761,26 +1811,18 @@ impl TransformPlan {
                                 crate::intrp::Interpolation::Lerp16(f)
                                     if std::ptr::fn_addr_eq(
                                         f,
-                                        crate::intrp::eval1_input
-                                            as crate::intrp::InterpFn16,
+                                        crate::intrp::eval1_input as crate::intrp::InterpFn16,
                                     ) =>
                                 {
-                                    Some(
-                                        crate::intrp::eval1_input
-                                            as crate::intrp::InterpFn16,
-                                    )
+                                    Some(crate::intrp::eval1_input as crate::intrp::InterpFn16)
                                 }
                                 crate::intrp::Interpolation::Lerp16(f)
                                     if std::ptr::fn_addr_eq(
                                         f,
-                                        crate::intrp::lin_lerp_1d
-                                            as crate::intrp::InterpFn16,
+                                        crate::intrp::lin_lerp_1d as crate::intrp::InterpFn16,
                                     ) =>
                                 {
-                                    Some(
-                                        crate::intrp::lin_lerp_1d
-                                            as crate::intrp::InterpFn16,
-                                    )
+                                    Some(crate::intrp::lin_lerp_1d as crate::intrp::InterpFn16)
                                 }
                                 _ => None,
                             };
@@ -1798,13 +1840,11 @@ impl TransformPlan {
                                     let oline = &mut output[o_off..o_off + pplo];
                                     let mut w_out = [0u16; 4];
                                     for i in 0..ppl as usize {
-                                        let v =
-                                            crate::pack::f8to16(iline[i]);
+                                        let v = crate::pack::f8to16(iline[i]);
                                         eval1d(&[v], &mut w_out, p);
                                         let po = i * n_out;
                                         for cch in 0..n_out {
-                                            oline[po + cch] =
-                                                crate::pack::f16to8(w_out[cch]);
+                                            oline[po + cch] = crate::pack::f16to8(w_out[cch]);
                                         }
                                     }
                                     i_off += stride.bytes_per_line_in as usize;
@@ -1835,8 +1875,7 @@ impl TransformPlan {
                             crate::intrp::Interpolation::Lerp16(f)
                                 if std::ptr::fn_addr_eq(
                                     f,
-                                    crate::intrp::eval1_input
-                                        as crate::intrp::InterpFn16,
+                                    crate::intrp::eval1_input as crate::intrp::InterpFn16,
                                 ) =>
                             {
                                 Some(crate::intrp::eval1_input as crate::intrp::InterpFn16)
@@ -1844,8 +1883,7 @@ impl TransformPlan {
                             crate::intrp::Interpolation::Lerp16(f)
                                 if std::ptr::fn_addr_eq(
                                     f,
-                                    crate::intrp::lin_lerp_1d
-                                        as crate::intrp::InterpFn16,
+                                    crate::intrp::lin_lerp_1d as crate::intrp::InterpFn16,
                                 ) =>
                             {
                                 Some(crate::intrp::lin_lerp_1d as crate::intrp::InterpFn16)
@@ -1870,9 +1908,8 @@ impl TransformPlan {
                                 let mut w_out = [0u16; 4];
                                 for i in 0..ppl as usize {
                                     let px = i * 2;
-                                    let v = u16::from_le_bytes(
-                                        iline[px..px + 2].try_into().unwrap(),
-                                    );
+                                    let v =
+                                        u16::from_le_bytes(iline[px..px + 2].try_into().unwrap());
                                     eval1d(&[v], &mut w_out, p);
                                     let po = i * obpp;
                                     for cch in 0..n_out {
@@ -1893,8 +1930,7 @@ impl TransformPlan {
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
                         // Fused `unroll1_word`→1-curve `Curves16`→`pack1_word`.
                         if c.curves.first().map(|t| t.len()) == Some(0x10000) {
-                            let t: &[u16; 0x10000] =
-                                c.curves[0].as_slice().try_into().unwrap();
+                            let t: &[u16; 0x10000] = c.curves[0].as_slice().try_into().unwrap();
                             let ppl2 = ppl as usize * 2;
                             let mut i_off = 0usize;
                             let mut o_off = 0usize;
@@ -1903,10 +1939,9 @@ impl TransformPlan {
                                 let oline = &mut output[o_off..o_off + ppl2];
                                 for i in 0..ppl as usize {
                                     let px = i * 2;
-                                    let v = t[u16::from_le_bytes(
-                                        iline[px..px + 2].try_into().unwrap(),
-                                    )
-                                        as usize];
+                                    let v =
+                                        t[u16::from_le_bytes(iline[px..px + 2].try_into().unwrap())
+                                            as usize];
                                     oline[px..px + 2].copy_from_slice(&v.to_le_bytes());
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
@@ -1942,15 +1977,10 @@ impl TransformPlan {
             if ipx != 0 && opx != 0 {
                 if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
-                        if c.curves.len() == 3
-                            && c.curves.iter().all(|t| t.len() == 0x10000)
-                        {
-                            let t0: &[u16; 0x10000] =
-                                c.curves[0].as_slice().try_into().unwrap();
-                            let t1: &[u16; 0x10000] =
-                                c.curves[1].as_slice().try_into().unwrap();
-                            let t2: &[u16; 0x10000] =
-                                c.curves[2].as_slice().try_into().unwrap();
+                        if c.curves.len() == 3 && c.curves.iter().all(|t| t.len() == 0x10000) {
+                            let t0: &[u16; 0x10000] = c.curves[0].as_slice().try_into().unwrap();
+                            let t1: &[u16; 0x10000] = c.curves[1].as_slice().try_into().unwrap();
+                            let t2: &[u16; 0x10000] = c.curves[2].as_slice().try_into().unwrap();
                             let ppli = ppl as usize * ipx;
                             let pplo = ppl as usize * opx;
                             let mut cv = scratch.cache_in[0] as u64
@@ -1966,35 +1996,31 @@ impl TransformPlan {
                                 let oline = &mut output[o_off..o_off + pplo];
                                 for i in 0..ppl as usize {
                                     let px = i * ipx;
-                                    let v64 = (u16::from_le_bytes(
-                                        iline[px..px + 2].try_into().unwrap(),
-                                    )
-                                        as u64)
-                                        | ((u16::from_le_bytes(
-                                            iline[px + 2..px + 4].try_into().unwrap(),
-                                        )
+                                    let v64 =
+                                        (u16::from_le_bytes(iline[px..px + 2].try_into().unwrap())
                                             as u64)
-                                            << 16)
-                                        | ((u16::from_le_bytes(
-                                            iline[px + 4..px + 6].try_into().unwrap(),
-                                        )
-                                            as u64)
-                                            << 32);
+                                            | ((u16::from_le_bytes(
+                                                iline[px + 2..px + 4].try_into().unwrap(),
+                                            )
+                                                as u64)
+                                                << 16)
+                                            | ((u16::from_le_bytes(
+                                                iline[px + 4..px + 6].try_into().unwrap(),
+                                            )
+                                                as u64)
+                                                << 32);
                                     let px64 = if v64 == cv {
                                         co
                                     } else {
                                         let o64 = (t0[v64 as u16 as usize] as u64)
-                                            | ((t1[(v64 >> 16) as u16 as usize] as u64)
-                                                << 16)
-                                            | ((t2[(v64 >> 32) as u16 as usize] as u64)
-                                                << 32);
+                                            | ((t1[(v64 >> 16) as u16 as usize] as u64) << 16)
+                                            | ((t2[(v64 >> 32) as u16 as usize] as u64) << 32);
                                         cv = v64;
                                         co = o64;
                                         o64
                                     };
                                     let po = i * opx;
-                                    oline[po..po + 6]
-                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                    oline[po..po + 6].copy_from_slice(&px64.to_le_bytes()[..6]);
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
                                 o_off += stride.bytes_per_line_out as usize;
@@ -2014,13 +2040,20 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
-                            {
+                            if let Some(token) = archmage::X64V3Token::summon() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_cached_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride, ipx, opx,
-                                    &scratch.cache_in, &scratch.cache_out,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
+                                    ipx,
+                                    opx,
+                                    &scratch.cache_in,
+                                    &scratch.cache_out,
                                 );
                             }
                             let p = &c.params16;
@@ -2039,40 +2072,33 @@ impl TransformPlan {
                                 let oline = &mut output[o_off..o_off + pplo];
                                 for i in 0..ppl as usize {
                                     let px = i * ipx;
-                                    let v64 = (u16::from_le_bytes(
-                                        iline[px..px + 2].try_into().unwrap(),
-                                    )
-                                        as u64)
-                                        | ((u16::from_le_bytes(
-                                            iline[px + 2..px + 4].try_into().unwrap(),
-                                        )
+                                    let v64 =
+                                        (u16::from_le_bytes(iline[px..px + 2].try_into().unwrap())
                                             as u64)
-                                            << 16)
-                                        | ((u16::from_le_bytes(
-                                            iline[px + 4..px + 6].try_into().unwrap(),
-                                        )
-                                            as u64)
-                                            << 32);
+                                            | ((u16::from_le_bytes(
+                                                iline[px + 2..px + 4].try_into().unwrap(),
+                                            )
+                                                as u64)
+                                                << 16)
+                                            | ((u16::from_le_bytes(
+                                                iline[px + 4..px + 6].try_into().unwrap(),
+                                            )
+                                                as u64)
+                                                << 32);
                                     let px64 = if v64 == cv {
                                         co
                                     } else {
-                                        let vin = [
-                                            v64 as u16,
-                                            (v64 >> 16) as u16,
-                                            (v64 >> 32) as u16,
-                                        ];
-                                        let [r, g, b] =
-                                            crate::intrp::tetra3_interp16(vin, p);
-                                        let o64 = (r as u64)
-                                            | ((g as u64) << 16)
-                                            | ((b as u64) << 32);
+                                        let vin =
+                                            [v64 as u16, (v64 >> 16) as u16, (v64 >> 32) as u16];
+                                        let [r, g, b] = crate::intrp::tetra3_interp16(vin, p);
+                                        let o64 =
+                                            (r as u64) | ((g as u64) << 16) | ((b as u64) << 32);
                                         cv = v64;
                                         co = o64;
                                         o64
                                     };
                                     let po = i * opx;
-                                    oline[po..po + 6]
-                                        .copy_from_slice(&px64.to_le_bytes()[..6]);
+                                    oline[po..po + 6].copy_from_slice(&px64.to_le_bytes()[..6]);
                                 }
                                 i_off += stride.bytes_per_line_in as usize;
                                 o_off += stride.bytes_per_line_out as usize;
@@ -2126,9 +2152,13 @@ impl TransformPlan {
                             // once so the per-pixel call inlines fully.
                             if std::ptr::fn_addr_eq(f, ip::eval4_inputs as InterpFn16) {
                                 run!(ip::eval4_inputs)
-                            } else if std::ptr::fn_addr_eq(f, ip::tetrahedral_interp16 as InterpFn16) {
+                            } else if std::ptr::fn_addr_eq(
+                                f,
+                                ip::tetrahedral_interp16 as InterpFn16,
+                            ) {
                                 run!(ip::tetrahedral_interp16)
-                            } else if std::ptr::fn_addr_eq(f, ip::trilinear_interp16 as InterpFn16) {
+                            } else if std::ptr::fn_addr_eq(f, ip::trilinear_interp16 as InterpFn16)
+                            {
                                 run!(ip::trilinear_interp16)
                             } else if std::ptr::fn_addr_eq(f, ip::bilinear_interp16 as InterpFn16) {
                                 run!(ip::bilinear_interp16)
@@ -2332,12 +2362,16 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
-                            {
+                            if let Some(token) = archmage::X64V3Token::summon() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clutflt_tetra_loop_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
                                 );
                             }
                             let p = &c.params16;
@@ -2351,24 +2385,15 @@ impl TransformPlan {
                                     let px = i * 16;
                                     let rd = |o: usize| {
                                         f32::from_le_bytes(
-                                            iline[px + o..px + o + 4]
-                                                .try_into()
-                                                .unwrap(),
+                                            iline[px + o..px + o + 4].try_into().unwrap(),
                                         )
                                     };
                                     let vin = [
-                                        crate::fixed::quick_saturate_word(
-                                            rd(0) as f64 * 65535.0,
-                                        ),
-                                        crate::fixed::quick_saturate_word(
-                                            rd(4) as f64 * 65535.0,
-                                        ),
-                                        crate::fixed::quick_saturate_word(
-                                            rd(8) as f64 * 65535.0,
-                                        ),
+                                        crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
+                                        crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
+                                        crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
                                     ];
-                                    let [r, g, b] =
-                                        crate::intrp::tetra3_interp16(vin, p);
+                                    let [r, g, b] = crate::intrp::tetra3_interp16(vin, p);
                                     let out128 = [
                                         r as f32 / 65535.0,
                                         g as f32 / 65535.0,
@@ -2405,12 +2430,16 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon()
-                            {
+                            if let Some(token) = archmage::X64V3Token::summon() {
                                 #[cfg(target_arch = "x86_64")]
                                 return clutflt_eval4_loop_v3(
-                                    token, &c.params16, input, output, ppl,
-                                    lines, stride,
+                                    token,
+                                    &c.params16,
+                                    input,
+                                    output,
+                                    ppl,
+                                    lines,
+                                    stride,
                                 );
                             }
                             let p = &c.params16;
@@ -2424,29 +2453,17 @@ impl TransformPlan {
                                     let px = i * 16;
                                     let rd = |o: usize| {
                                         f32::from_le_bytes(
-                                            iline[px + o..px + o + 4]
-                                                .try_into()
-                                                .unwrap(),
+                                            iline[px + o..px + o + 4].try_into().unwrap(),
                                         )
                                     };
                                     let vin = [
-                                        crate::fixed::quick_saturate_word(
-                                            rd(0) as f64 * 65535.0,
-                                        ),
-                                        crate::fixed::quick_saturate_word(
-                                            rd(4) as f64 * 65535.0,
-                                        ),
-                                        crate::fixed::quick_saturate_word(
-                                            rd(8) as f64 * 65535.0,
-                                        ),
-                                        crate::fixed::quick_saturate_word(
-                                            rd(12) as f64 * 65535.0,
-                                        ),
+                                        crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
+                                        crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
+                                        crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
+                                        crate::fixed::quick_saturate_word(rd(12) as f64 * 65535.0),
                                     ];
                                     let mut w_out = [0u16; 4];
-                                    crate::intrp::eval4_inputs(
-                                        &vin, &mut w_out, p,
-                                    );
+                                    crate::intrp::eval4_inputs(&vin, &mut w_out, p);
                                     for cch in 0..4 {
                                         let fv = w_out[cch] as f32 / 65535.0;
                                         oline[px + cch * 4..px + cch * 4 + 4]
@@ -2484,9 +2501,15 @@ impl TransformPlan {
                         }
                         if std::ptr::fn_addr_eq(f, ip::eval4_inputs_float as InterpFnFloat) {
                             run!(ip::eval4_inputs_float)
-                        } else if std::ptr::fn_addr_eq(f, ip::tetrahedral_interp_float as InterpFnFloat) {
+                        } else if std::ptr::fn_addr_eq(
+                            f,
+                            ip::tetrahedral_interp_float as InterpFnFloat,
+                        ) {
                             run!(ip::tetrahedral_interp_float)
-                        } else if std::ptr::fn_addr_eq(f, ip::trilinear_interp_float as InterpFnFloat) {
+                        } else if std::ptr::fn_addr_eq(
+                            f,
+                            ip::trilinear_interp_float as InterpFnFloat,
+                        ) {
                             run!(ip::trilinear_interp_float)
                         } else {
                             run!(f)
@@ -2533,55 +2556,63 @@ impl TransformPlan {
                         } else {
                             run16!(f)
                         }
-                }
-                // Fused [ToneCurves, Matrix, ToneCurves] eval for
-                // matshaper pipelines — C walks the stage chain per
-                // pixel; we fold all 3 stages into one inlined eval.
-                if !matches!(
-                    l.opt_data.as_ref(),
-                    Some(crate::opt::OptData::ClutOnly(_))
-                ) {
-                    let mut s = l.elements.as_deref();
-                    let mut parts = (None, None, None);
-                    for slot in 0..3 {
-                        let Some(st) = s else { break };
-                        match &st.data {
-                            crate::lut::StageData::ToneCurves(v) if slot != 1 => {
-                                if slot == 0 { parts.0 = Some(v) } else { parts.2 = Some(v) }
-                            }
-                            crate::lut::StageData::Matrix { double, offset } if slot == 1 => {
-                                parts.1 = Some((double, offset))
-                            }
-                            _ => break,
-                        }
-                        s = st.next.as_deref();
                     }
-                    if s.is_none() {
-                        if let (Some(ci), Some((m, off)), Some(co)) = parts {
-                            if ci.len() == 3 && m.len() == 9 && co.len() == 3 {
-                                return xform_f32_run(
-                                    unroll, pack, &info, input, output, ppl, lines, stride,
-                                    |i: &[f32], o: &mut [f32]| {
-                                        let a0 = ci[0].eval_float(i[0]);
-                                        let a1 = ci[1].eval_float(i[1]);
-                                        let a2 = ci[2].eval_float(i[2]);
-                                        for r in 0..3 {
-                                            let mut t = a0 as f64 * m[r * 3]
-                                                + a1 as f64 * m[r * 3 + 1]
-                                                + a2 as f64 * m[r * 3 + 2];
-                                            if let Some(of) = off {
-                                                t += of[r];
+                    // Fused [ToneCurves, Matrix, ToneCurves] eval for
+                    // matshaper pipelines — C walks the stage chain per
+                    // pixel; we fold all 3 stages into one inlined eval.
+                    if !matches!(l.opt_data.as_ref(), Some(crate::opt::OptData::ClutOnly(_))) {
+                        let mut s = l.elements.as_deref();
+                        let mut parts = (None, None, None);
+                        for slot in 0..3 {
+                            let Some(st) = s else { break };
+                            match &st.data {
+                                crate::lut::StageData::ToneCurves(v) if slot != 1 => {
+                                    if slot == 0 {
+                                        parts.0 = Some(v)
+                                    } else {
+                                        parts.2 = Some(v)
+                                    }
+                                }
+                                crate::lut::StageData::Matrix { double, offset } if slot == 1 => {
+                                    parts.1 = Some((double, offset))
+                                }
+                                _ => break,
+                            }
+                            s = st.next.as_deref();
+                        }
+                        if s.is_none() {
+                            if let (Some(ci), Some((m, off)), Some(co)) = parts {
+                                if ci.len() == 3 && m.len() == 9 && co.len() == 3 {
+                                    return xform_f32_run(
+                                        unroll,
+                                        pack,
+                                        &info,
+                                        input,
+                                        output,
+                                        ppl,
+                                        lines,
+                                        stride,
+                                        |i: &[f32], o: &mut [f32]| {
+                                            let a0 = ci[0].eval_float(i[0]);
+                                            let a1 = ci[1].eval_float(i[1]);
+                                            let a2 = ci[2].eval_float(i[2]);
+                                            for r in 0..3 {
+                                                let mut t = a0 as f64 * m[r * 3]
+                                                    + a1 as f64 * m[r * 3 + 1]
+                                                    + a2 as f64 * m[r * 3 + 2];
+                                                if let Some(of) = off {
+                                                    t += of[r];
+                                                }
+                                                o[r] = co[r].eval_float(t as f32);
                                             }
-                                            o[r] = co[r].eval_float(t as f32);
-                                        }
-                                    },
-                                );
+                                        },
+                                    );
+                                }
                             }
                         }
                     }
                 }
             }
-        }
         }
         let mut f_in = [0f32; MAX_CHANNELS];
         let mut f_out = [0f32; MAX_CHANNELS];
@@ -2634,12 +2665,20 @@ impl TransformPlan {
         // C cmsxform.c:1482-1494 — always the 16-bit formatter table,
         // even for FLOAT-bit formats (UnrollFloatTo16/PackFloatFrom16
         // are only reachable this way); the xform worker is untouched.
-        let dir_in = get_formatter_ctx(self.ctx.as_ref(), input_format, FormatterDir::Input, CMS_PACK_FLAGS_16BITS);
-        let dir_out = get_formatter_ctx(self.ctx.as_ref(), output_format, FormatterDir::Output, CMS_PACK_FLAGS_16BITS);
+        let dir_in = get_formatter_ctx(
+            self.ctx.as_ref(),
+            input_format,
+            FormatterDir::Input,
+            CMS_PACK_FLAGS_16BITS,
+        );
+        let dir_out = get_formatter_ctx(
+            self.ctx.as_ref(),
+            output_format,
+            FormatterDir::Output,
+            CMS_PACK_FLAGS_16BITS,
+        );
         let fmt = match (dir_in, dir_out) {
-            (Formatter::Unpack16(u), Formatter::Pack16(p)) => {
-                Fmt::F16 { unroll: u, pack: p }
-            }
+            (Formatter::Unpack16(u), Formatter::Pack16(p)) => Fmt::F16 { unroll: u, pack: p },
             _ => {
                 crate::err::signal_error(
                     self.ctx.as_ref(),
@@ -2708,13 +2747,23 @@ fn alloc_empty_transform(
     // C's `IsFloat` = `T_FLOAT(in) || T_FLOAT(out)` — bit 22 only (see
     // `change_buffers_format`); `t_bytes==0` wrongly routes BYTES_SH(0)
     // 16-bit formats (TYPE_RGB_565) to the float formatter path.
-    let is_float = crate::pack::t_float(input_format) != 0
-        || crate::pack::t_float(output_format) != 0;
+    let is_float =
+        crate::pack::t_float(input_format) != 0 || crate::pack::t_float(output_format) != 0;
     let fmt: Fmt;
     let worker: Worker;
     if is_float {
-        let dir_in = get_formatter_ctx(ctx.as_ref(), input_format, FormatterDir::Input, CMS_PACK_FLAGS_FLOAT);
-        let dir_out = get_formatter_ctx(ctx.as_ref(), output_format, FormatterDir::Output, CMS_PACK_FLAGS_FLOAT);
+        let dir_in = get_formatter_ctx(
+            ctx.as_ref(),
+            input_format,
+            FormatterDir::Input,
+            CMS_PACK_FLAGS_FLOAT,
+        );
+        let dir_out = get_formatter_ctx(
+            ctx.as_ref(),
+            output_format,
+            FormatterDir::Output,
+            CMS_PACK_FLAGS_FLOAT,
+        );
         fmt = match (dir_in, dir_out) {
             (Formatter::UnpackF32(u), Formatter::PackF32(p)) => Fmt::F32 { unroll: u, pack: p },
             _ => {
@@ -2736,8 +2785,18 @@ fn alloc_empty_transform(
             fmt = Fmt::Noop;
             flags |= FLAGS_CAN_CHANGE_FORMATTER;
         } else {
-            let dir_in = get_formatter_ctx(ctx.as_ref(), input_format, FormatterDir::Input, CMS_PACK_FLAGS_16BITS);
-            let dir_out = get_formatter_ctx(ctx.as_ref(), output_format, FormatterDir::Output, CMS_PACK_FLAGS_16BITS);
+            let dir_in = get_formatter_ctx(
+                ctx.as_ref(),
+                input_format,
+                FormatterDir::Input,
+                CMS_PACK_FLAGS_16BITS,
+            );
+            let dir_out = get_formatter_ctx(
+                ctx.as_ref(),
+                output_format,
+                FormatterDir::Output,
+                CMS_PACK_FLAGS_16BITS,
+            );
             fmt = match (dir_in, dir_out) {
                 (Formatter::Unpack16(u), Formatter::Pack16(p)) => Fmt::F16 { unroll: u, pack: p },
                 _ => {
@@ -2780,39 +2839,39 @@ fn alloc_empty_transform(
     }
     let mut t = Box::new(Transform {
         plan: TransformPlan {
-        input_format,
-        output_format,
-        lut,
-        gamut_check: None,
-        alarm_codes: get_alarm_codes(ctx.as_ref()),
-        ctx,
-        stride: Stride::default(),
-        fmt,
-        worker,
-        scratch_seed: TransformScratch {
-            cache_in: [0; MAX_CHANNELS],
-            cache_out: [0; MAX_CHANNELS],
-        },
-        entry_color_space: 0,
-        exit_color_space: 0,
-        rendering_intent: intent,
-        dw_flags: flags,
-        entry_white_point: CieXyz {
-            X: 0.0,
-            Y: 0.0,
-            Z: 0.0,
-        },
-        exit_white_point: CieXyz {
-            X: 0.0,
-            Y: 0.0,
-            Z: 0.0,
-        },
-        user_data: None,
-        foreign: None,
-        input_colorants: None,
-        output_colorants: None,
-        sequence: None,
-        _pad: (),
+            input_format,
+            output_format,
+            lut,
+            gamut_check: None,
+            alarm_codes: get_alarm_codes(ctx.as_ref()),
+            ctx,
+            stride: Stride::default(),
+            fmt,
+            worker,
+            scratch_seed: TransformScratch {
+                cache_in: [0; MAX_CHANNELS],
+                cache_out: [0; MAX_CHANNELS],
+            },
+            entry_color_space: 0,
+            exit_color_space: 0,
+            rendering_intent: intent,
+            dw_flags: flags,
+            entry_white_point: CieXyz {
+                X: 0.0,
+                Y: 0.0,
+                Z: 0.0,
+            },
+            exit_white_point: CieXyz {
+                X: 0.0,
+                Y: 0.0,
+                Z: 0.0,
+            },
+            user_data: None,
+            foreign: None,
+            input_colorants: None,
+            output_colorants: None,
+            sequence: None,
+            _pad: (),
         },
         scratch: TransformScratch {
             cache_in: [0; MAX_CHANNELS],

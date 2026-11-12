@@ -50,7 +50,12 @@ pub fn signal_error(ctx: Option<&Context>, code: i32, text: &str) {
 /// `Some((code, message))` if a call just failed through the error path.
 pub fn take_last_error() -> Option<(i32, String)> {
     let got = LAST_ERROR.with(|le| le.take());
-    got.map(|(code, _)| (code, LAST_ERROR_TEXT.with(|lt| std::mem::take(&mut *lt.borrow_mut()))))
+    got.map(|(code, _)| {
+        (
+            code,
+            LAST_ERROR_TEXT.with(|lt| std::mem::take(&mut *lt.borrow_mut())),
+        )
+    })
 }
 
 /// `cmsGetEncodedCMMversion` — `LCMS_VERSION`

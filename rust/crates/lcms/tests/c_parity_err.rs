@@ -32,9 +32,7 @@ fn gbd_containment() {
     assert!(!cg.is_null());
     let mut rg = Gbd::alloc(None);
     for p in &hull {
-        let c_ok = unsafe {
-            c::cmsGDBAddPoint(cg, p as *const CieLab as *const c_void)
-        };
+        let c_ok = unsafe { c::cmsGDBAddPoint(cg, p as *const CieLab as *const c_void) };
         assert_eq!(c_ok != 0, rg.add_point(p), "add_point {p:?}");
     }
     let c_comp = unsafe { c::cmsGDBCompute(cg, 0) };
@@ -49,9 +47,7 @@ fn gbd_containment() {
                     a: a as f64,
                     b: b as f64,
                 };
-                let ci = unsafe {
-                    c::cmsGDBCheckPoint(cg, &p as *const CieLab as *const c_void)
-                };
+                let ci = unsafe { c::cmsGDBCheckPoint(cg, &p as *const CieLab as *const c_void) };
                 assert_eq!(ci != 0, rg.check_point(&p), "check {p:?}");
                 checked += 1;
             }
@@ -69,7 +65,9 @@ unsafe extern "C" fn c_handler(_ctx: *mut c_void, code: u32, text: *const i8) {
     let t = if text.is_null() {
         String::new()
     } else {
-        std::ffi::CStr::from_ptr(text).to_string_lossy().into_owned()
+        std::ffi::CStr::from_ptr(text)
+            .to_string_lossy()
+            .into_owned()
     };
     *LAST_C.lock().unwrap() = Some((code, t));
 }
@@ -142,20 +140,30 @@ fn context_lifecycle() {
 fn desaturate_and_gbd_edges() {
     use lcms::types::CieLab;
     // out-of-gamut points get clamped into the box [amin..amax]x[bmin..bmax]
-    for &(l, a, b) in &[(50.0f64, 200.0f64, -200.0f64), (10.0, -50.0, 80.0), (0.0, 0.0, 0.0)] {
+    for &(l, a, b) in &[
+        (50.0f64, 200.0f64, -200.0f64),
+        (10.0, -50.0, 80.0),
+        (0.0, 0.0, 0.0),
+    ] {
         let mut cl = CieLab { L: l, a, b };
         let mut rl = cl;
-        unsafe {
-            c::cmsDesaturateLab(&mut cl as *mut CieLab as *mut _, 80.0, -80.0, 80.0, -80.0)
-        };
+        unsafe { c::cmsDesaturateLab(&mut cl as *mut CieLab as *mut _, 80.0, -80.0, 80.0, -80.0) };
         lcms::sm::desaturate_lab(&mut rl, 80.0, -80.0, 80.0, -80.0);
-        assert_eq!((cl.L, cl.a, cl.b), (rl.L, rl.a, rl.b), "desaturate {l},{a},{b}");
+        assert_eq!(
+            (cl.L, cl.a, cl.b),
+            (rl.L, rl.a, rl.b),
+            "desaturate {l},{a},{b}"
+        );
     }
     // GBD edge cases — empty compute, check-before-compute
     unsafe {
         let cg = c::cmsGBDAlloc(std::ptr::null_mut());
         let mut rg = lcms::gbd::Gbd::alloc(None);
-        let p = CieLab { L: 50.0, a: 0.0, b: 0.0 };
+        let p = CieLab {
+            L: 50.0,
+            a: 0.0,
+            b: 0.0,
+        };
         // check before any add — both should agree (probably false/not-in-gamut)
         assert_eq!(
             c::cmsGDBCheckPoint(cg, &p as *const CieLab as *const _) != 0,
@@ -163,11 +171,7 @@ fn desaturate_and_gbd_edges() {
             "check on empty GBD"
         );
         // compute empty — status parity
-        assert_eq!(
-            c::cmsGDBCompute(cg, 0) != 0,
-            rg.compute(0),
-            "compute empty"
-        );
+        assert_eq!(c::cmsGDBCompute(cg, 0) != 0, rg.compute(0), "compute empty");
         c::cmsGBDFree(cg);
     }
 }
@@ -190,7 +194,9 @@ struct CPluginParametricCurves {
     evaluator: *mut c_void,
 }
 
-unsafe extern "C" fn nop_eval(_t: i32, _p: *const f64, _r: f64) -> f64 { 0.0 }
+unsafe extern "C" fn nop_eval(_t: i32, _p: *const f64, _r: f64) -> f64 {
+    0.0
+}
 
 #[test]
 fn plugin_registration() {
@@ -220,7 +226,9 @@ fn plugin_registration() {
     assert!(c_ok != 0, "C plugin registration");
 
     // Rust: same registration into a context
-    fn r_eval(_t: i32, _p: &[f64; 10], _r: f64) -> f64 { 0.0 }
+    fn r_eval(_t: i32, _p: &[f64; 10], _r: f64) -> f64 {
+        0.0
+    }
     let mut ctx = lcms::context::create_context(None, 0);
     let r_ok = ctx.plugin(&[lcms::context::Plugin::ParametricCurve(
         lcms::gamma::ParametricCurves {
@@ -253,8 +261,7 @@ fn context_accessors() {
         c::cmsSetAdaptationState(old);
         // profile user data
         let mut ud = 42i32;
-        c::_cmsSetProfileUserData(p, &mut ud as *mut _ as *mut _,
-            std::ptr::null_mut());
+        c::_cmsSetProfileUserData(p, &mut ud as *mut _ as *mut _, std::ptr::null_mut());
         c::cmsCloseProfile(p);
     }
 }
@@ -266,24 +273,30 @@ fn context_accessors() {
 fn context_lifecycle_internals() {
     unsafe {
         for _ in 0..4 {
-            let ctx = c::cmsCreateContext(std::ptr::null_mut(),
-                std::ptr::null_mut());
+            let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
             eprintln!("ctx={}", !ctx.is_null());
-            if ctx.is_null() { continue; }
+            if ctx.is_null() {
+                continue;
+            }
             let d = c::cmsDupContext(ctx, std::ptr::null_mut());
             eprintln!("dup={}", !d.is_null());
             let p = c::cmsCreate_sRGBProfileTHR(ctx);
             eprintln!("prof={}", !p.is_null());
-            if !p.is_null() { c::cmsCloseProfile(p); }
-            if !d.is_null() { c::cmsDeleteContext(d); }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
+            if !d.is_null() {
+                c::cmsDeleteContext(d);
+            }
             c::cmsDeleteContext(ctx);
         }
         // context-with-plugin-data
-        let ctx2 = c::cmsCreateContext(std::ptr::null_mut(),
-            0xdeadbeefusize as *mut _);
+        let ctx2 = c::cmsCreateContext(std::ptr::null_mut(), 0xdeadbeefusize as *mut _);
         if !ctx2.is_null() {
             let p = c::cmsCreate_sRGBProfileTHR(ctx2);
-            if !p.is_null() { c::cmsCloseProfile(p); }
+            if !p.is_null() {
+                c::cmsCloseProfile(p);
+            }
             c::cmsDeleteContext(ctx2);
         }
     }

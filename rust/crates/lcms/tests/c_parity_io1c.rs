@@ -6,8 +6,10 @@ use lcms_cref as c;
 
 fn corpus() -> Vec<Vec<u8>> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
-    let mut files: Vec<_> = std::fs::read_dir(&dir).unwrap()
-        .filter_map(|e| e.ok()).map(|e| e.path())
+    let mut files: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
         .filter(|p| p.extension().map(|x| x == "icc").unwrap_or(false))
         .collect();
     files.sort();
@@ -51,15 +53,19 @@ fn devicelink_lut_eval() {
             };
             let rlut = io1::read_devicelink_lut(&mut rp, intent);
             assert_eq!(clut.is_null(), rlut.is_none(), "dlut presence i{intent}");
-            if clut.is_null() || rlut.is_none() { continue; }
+            if clut.is_null() || rlut.is_none() {
+                continue;
+            }
             let rlut = rlut.unwrap();
             let n_in = rlut.input_channels as usize;
             let n_out = rlut.output_channels as usize;
             for _ in 0..8 {
-                let inp: Vec<u16> = (0..n_in).map(|_| {
-                    seed = seed.wrapping_mul(0x9e3779b97f4a7c15) ^ (seed >> 33);
-                    (seed >> 48) as u16
-                }).collect();
+                let inp: Vec<u16> = (0..n_in)
+                    .map(|_| {
+                        seed = seed.wrapping_mul(0x9e3779b97f4a7c15) ^ (seed >> 33);
+                        (seed >> 48) as u16
+                    })
+                    .collect();
                 let mut co = vec![0u16; n_out];
                 let mut ro = vec![0u16; n_out];
                 unsafe { c::cmsPipelineEval16(inp.as_ptr(), co.as_mut_ptr(), clut) };

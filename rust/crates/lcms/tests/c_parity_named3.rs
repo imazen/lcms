@@ -25,7 +25,10 @@ fn mlu_wide_paths() {
         let mut rm = named::mlu_alloc(None, 2).unwrap();
         // wide set — UTF-32 as i32s
         let w = |s: &str| -> Vec<i32> {
-            s.chars().map(|c| c as i32).chain(std::iter::once(0)).collect()
+            s.chars()
+                .map(|c| c as i32)
+                .chain(std::iter::once(0))
+                .collect()
         };
         for (lang, cntry, txt) in [
             ("en", "US", "Hello"),
@@ -34,26 +37,27 @@ fn mlu_wide_paths() {
         ] {
             let wv = w(txt);
             assert_eq!(
-                c::cmsMLUsetWide(cm, cs8(lang), cs8(cntry),
-                    wv.as_ptr()) != 0,
-                named::mlu_set_wide(&mut rm, lang.as_bytes(),
-                    cntry.as_bytes(), &wv),
-                "set_wide {lang}");
+                c::cmsMLUsetWide(cm, cs8(lang), cs8(cntry), wv.as_ptr()) != 0,
+                named::mlu_set_wide(&mut rm, lang.as_bytes(), cntry.as_bytes(), &wv),
+                "set_wide {lang}"
+            );
         }
         // wide get parity
-        for (lang, cntry) in [("en","US"),("ja","JP"),("fr","FR"),("zz","ZZ")] {
+        for (lang, cntry) in [("en", "US"), ("ja", "JP"), ("fr", "FR"), ("zz", "ZZ")] {
             let mut cbuf = [0i32; 128];
-            let cn = c::cmsMLUgetWide(cm, cs8(lang), cs8(cntry),
-                cbuf.as_mut_ptr(), 128);
-            let (rn, rbytes) = named::mlu_get_wide(&rm, lang.as_bytes(),
-                cntry.as_bytes(), Some(128));
+            let cn = c::cmsMLUgetWide(cm, cs8(lang), cs8(cntry), cbuf.as_mut_ptr(), 128);
+            let (rn, rbytes) =
+                named::mlu_get_wide(&rm, lang.as_bytes(), cntry.as_bytes(), Some(128));
             let cstr: Vec<i32> = if cn > 0 {
-                cbuf[..cbuf.iter().position(|&b| b==0).unwrap_or(cn as usize)].to_vec()
-            } else { vec![] };
+                cbuf[..cbuf.iter().position(|&b| b == 0).unwrap_or(cn as usize)].to_vec()
+            } else {
+                vec![]
+            };
             let rstr: Vec<i32> = if rn > 0 {
-                rbytes[..rbytes.iter().position(|&b| b==0)
-                    .unwrap_or(rbytes.len())].to_vec()
-            } else { vec![] };
+                rbytes[..rbytes.iter().position(|&b| b == 0).unwrap_or(rbytes.len())].to_vec()
+            } else {
+                vec![]
+            };
             assert_eq!(cstr, rstr, "get_wide {lang}-{cntry}");
         }
         c::cmsMLUfree(cm);
@@ -80,26 +84,39 @@ fn named_color_machinery() {
     unsafe {
         // a named-color profile — devicelink to named
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 2, 3,
+            std::ptr::null_mut(),
+            2,
+            3,
             b"pre\0".as_ptr() as *const _,
-            b"suf\0".as_ptr() as *const _);
+            b"suf\0".as_ptr() as *const _,
+        );
         let mut buf32 = [0u8; 32];
         let mut pcs = [0u16; 3];
         let mut dev = [0u16; 16];
-        let ok1 = c::cmsAppendNamedColor(ncl,
+        let ok1 = c::cmsAppendNamedColor(
+            ncl,
             b"color1\0".as_ptr() as *const u8,
-            pcs.as_ptr(), dev.as_ptr());
-        let ok2 = c::cmsAppendNamedColor(ncl,
+            pcs.as_ptr(),
+            dev.as_ptr(),
+        );
+        let ok2 = c::cmsAppendNamedColor(
+            ncl,
             b"color2\0".as_ptr() as *const u8,
-            pcs.as_ptr(), dev.as_ptr());
+            pcs.as_ptr(),
+            dev.as_ptr(),
+        );
         // named-color getters
         let n = c::cmsNamedColorCount(ncl);
-        let idx = c::cmsNamedColorIndex(ncl,
-            b"color1\0".as_ptr() as *const u8);
-        let nm = c::cmsNamedColorInfo(ncl, 0,
-            buf32.as_mut_ptr(), std::ptr::null_mut(),
+        let idx = c::cmsNamedColorIndex(ncl, b"color1\0".as_ptr() as *const u8);
+        let nm = c::cmsNamedColorInfo(
+            ncl,
+            0,
+            buf32.as_mut_ptr(),
             std::ptr::null_mut(),
-            pcs.as_mut_ptr(), dev.as_mut_ptr());
+            std::ptr::null_mut(),
+            pcs.as_mut_ptr(),
+            dev.as_mut_ptr(),
+        );
         eprintln!("append={ok1}/{ok2} n={n} idx={idx} info={nm}");
         // dup + free
         let d = c::cmsDupNamedColorList(ncl);
@@ -117,37 +134,42 @@ fn named_color_profile() {
     unsafe {
         // build a named-color profile via a named devicelink
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 2, 3,
+            std::ptr::null_mut(),
+            2,
+            3,
             b"pre\0".as_ptr() as *const _,
-            b"suf\0".as_ptr() as *const _);
+            b"suf\0".as_ptr() as *const _,
+        );
         let mut pcs = [0u16; 3];
         let mut dev = [0u16; 16];
-        c::cmsAppendNamedColor(ncl,
+        c::cmsAppendNamedColor(
+            ncl,
             b"c1\0".as_ptr() as *const u8,
-            pcs.as_ptr(), dev.as_ptr());
-        c::cmsAppendNamedColor(ncl,
+            pcs.as_ptr(),
+            dev.as_ptr(),
+        );
+        c::cmsAppendNamedColor(
+            ncl,
             b"c2\0".as_ptr() as *const u8,
-            pcs.as_ptr(), dev.as_ptr());
+            pcs.as_ptr(),
+            dev.as_ptr(),
+        );
         // write the ncl2 list into a profile tag
         let h = c::cmsCreate_sRGBProfile();
-        let ok = c::cmsWriteTag(h, 0x6E636C32,
-            ncl as *mut std::ffi::c_void); // 'ncl2'
+        let ok = c::cmsWriteTag(h, 0x6E636C32, ncl as *mut std::ffi::c_void); // 'ncl2'
         eprintln!("ncl2 write={ok}");
         // resave + read
         let mut cn = 0u32;
         c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
         let mut cbuf = vec![0u8; cn as usize];
-        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
-            &mut cn);
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _, &mut cn);
         let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
         let r = c::cmsReadTag(h2, 0x6E636C32);
         eprintln!("ncl2 read={}", r.is_null());
         if c::cmsIsTag(h2, 0x6E636C32) != 0 {
             let mut tb = [0u8; 4];
-            c::cmsReadRawTag(h2, 0x6E636C32,
-                tb.as_mut_ptr() as *mut _, 4);
-            eprintln!("ncl2 type={:#010x}",
-                u32::from_be_bytes(tb));
+            c::cmsReadRawTag(h2, 0x6E636C32, tb.as_mut_ptr() as *mut _, 4);
+            eprintln!("ncl2 type={:#010x}", u32::from_be_bytes(tb));
         }
         c::cmsCloseProfile(h2);
         c::cmsCloseProfile(h);
@@ -163,12 +185,14 @@ fn named_transform_formats() {
         // build a named-color transform — input named-color
         // index, output Lab16
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 4, 3,
+            std::ptr::null_mut(),
+            4,
+            3,
             b"pre\0".as_ptr() as *const _,
-            b"suf\0".as_ptr() as *const _);
+            b"suf\0".as_ptr() as *const _,
+        );
         for i in 0..4u32 {
-            let mut pcs = [(0x8000u16) + i as u16 * 0x1000,
-                           0x8000, 0x8000];
+            let mut pcs = [(0x8000u16) + i as u16 * 0x1000, 0x8000, 0x8000];
             let mut dev = [0u16; 16];
             dev[i as usize] = 0xFFFF;
             let name = [
@@ -177,18 +201,15 @@ fn named_transform_formats() {
                 [b'c', b'3', 0],
                 [b'c', b'4', 0],
             ][i as usize];
-            c::cmsAppendNamedColor(ncl,
-                name.as_ptr() as *const u8,
-                pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr() as *const u8, pcs.as_ptr(), dev.as_ptr());
         }
         // a named-color PROFILE — write the ncl2 list into
         // a profile's ncl2 tag, then transform from it
         let h = c::cmsCreate_sRGBProfile();
-        let ok = c::cmsWriteTag(h, 0x6E636C32,
-            ncl as *mut std::ffi::c_void);
+        let ok = c::cmsWriteTag(h, 0x6E636C32, ncl as *mut std::ffi::c_void);
         c::cmsSetDeviceClass(h, 0x6E6D636C); // 'nmcl'
         c::cmsSetColorSpace(h, 0x6E6D636C); // cmsSigNamedData
-        c::cmsSetPCS(h, 0x4C616220);        // Lab PCS
+        c::cmsSetPCS(h, 0x4C616220); // Lab PCS
         // transform named->Lab through the profile's ncl2
         // single-profile named transform — cmscnvrt.c:576
         // fires on nmcl class + nProfiles==1 (multiprofile
@@ -196,15 +217,12 @@ fn named_transform_formats() {
         let nc_fmt: u32 = (1 << 3) | 2; // TYPE_NAMED_COLOR_INDEX
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         let mut profs = [h];
-        let ct = c::cmsCreateMultiprofileTransform(
-            profs.as_mut_ptr(), 1, nc_fmt, lab_fmt, 0, 0);
-        eprintln!("named write={ok} transform null={}",
-            ct.is_null());
+        let ct = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 1, nc_fmt, lab_fmt, 0, 0);
+        eprintln!("named write={ok} transform null={}", ct.is_null());
         if !ct.is_null() {
             let inp = [0u16];
             let mut co = [0u16; 3];
-            c::cmsDoTransform(ct, inp.as_ptr() as _,
-                co.as_mut_ptr() as *mut _, 1);
+            c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
             eprintln!("named eval={:?}", co);
             c::cmsDeleteTransform(ct);
         }
@@ -219,12 +237,14 @@ fn named_transform_formats() {
 fn ncl2_large() {
     unsafe {
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 16, 6,
+            std::ptr::null_mut(),
+            16,
+            6,
             b"pre\0".as_ptr() as *const _,
-            b"suf\0".as_ptr() as *const _);
+            b"suf\0".as_ptr() as *const _,
+        );
         for i in 0..16u32 {
-            let mut pcs = [(0x4000u16) + i as u16 * 0x400,
-                           0x8000, 0x8000];
+            let mut pcs = [(0x4000u16) + i as u16 * 0x400, 0x8000, 0x8000];
             let mut dev = [0u16; 16];
             for j in 0..6 {
                 dev[j] = ((i as u32) * (j as u32) * 0x40) as u16;
@@ -233,18 +253,14 @@ fn ncl2_large() {
             let mut nm = name;
             nm[1] = b'0' + (i / 10) as u8;
             nm[2] = b'0' + (i % 10) as u8;
-            c::cmsAppendNamedColor(ncl,
-                nm.as_ptr() as *const u8,
-                pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(ncl, nm.as_ptr() as *const u8, pcs.as_ptr(), dev.as_ptr());
         }
         let h = c::cmsCreate_sRGBProfile();
-        let ok = c::cmsWriteTag(h, 0x6E636C32,
-            ncl as *mut std::ffi::c_void);
+        let ok = c::cmsWriteTag(h, 0x6E636C32, ncl as *mut std::ffi::c_void);
         let mut cn = 0u32;
         c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
         let mut cbuf = vec![0u8; cn as usize];
-        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _,
-            &mut cn);
+        c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _, &mut cn);
         eprintln!("ncl2 write={ok} save={cn}");
         let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
         let r = c::cmsReadTag(h2, 0x6E636C32);
@@ -266,21 +282,20 @@ fn ncl2_large() {
 fn named_machinery() {
     unsafe {
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 8, 4,
+            std::ptr::null_mut(),
+            8,
+            4,
             b"prefix\0".as_ptr() as *const _,
-            b"suffix\0".as_ptr() as *const _);
+            b"suffix\0".as_ptr() as *const _,
+        );
         for i in 0..8u32 {
-            let mut pcs = [(0x4000u16) + i as u16 * 0x400,
-                           0x8000, 0x8000];
+            let mut pcs = [(0x4000u16) + i as u16 * 0x400, 0x8000, 0x8000];
             let mut dev = [0u16; 16];
             for j in 0..4 {
-                dev[j] = ((i as u32) * (j as u32)
-                    * 0x100) as u16;
+                dev[j] = ((i as u32) * (j as u32) * 0x100) as u16;
             }
             let nm = [b'n', b'0' + i as u8, 0];
-            c::cmsAppendNamedColor(ncl,
-                nm.as_ptr() as *const u8,
-                pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(ncl, nm.as_ptr() as *const u8, pcs.as_ptr(), dev.as_ptr());
         }
         // dup — the Dup machinery
         let ncl2 = c::cmsDupNamedColorList(ncl);
@@ -288,22 +303,31 @@ fn named_machinery() {
         // count + index + info on both
         let n1 = c::cmsNamedColorCount(ncl);
         let n2 = if !ncl2.is_null() {
-            c::cmsNamedColorCount(ncl2) } else { 0 };
+            c::cmsNamedColorCount(ncl2)
+        } else {
+            0
+        };
         eprintln!("counts {n1}/{n2}");
         for i in 0..n1 {
             let nm = [b'n', b'0' + i as u8, 0];
-            let idx = c::cmsNamedColorIndex(ncl,
-                nm.as_ptr() as *const u8);
+            let idx = c::cmsNamedColorIndex(ncl, nm.as_ptr() as *const u8);
             let mut buf = [0u8; 32];
             let mut pcs = [0u16; 3];
             let mut dev = [0u16; 16];
-            let info = c::cmsNamedColorInfo(ncl, i,
-                buf.as_mut_ptr(), std::ptr::null_mut(),
+            let info = c::cmsNamedColorInfo(
+                ncl,
+                i,
+                buf.as_mut_ptr(),
                 std::ptr::null_mut(),
-                pcs.as_mut_ptr(), dev.as_mut_ptr());
+                std::ptr::null_mut(),
+                pcs.as_mut_ptr(),
+                dev.as_mut_ptr(),
+            );
             let _ = (idx, info);
         }
-        if !ncl2.is_null() { c::cmsFreeNamedColorList(ncl2); }
+        if !ncl2.is_null() {
+            c::cmsFreeNamedColorList(ncl2);
+        }
         c::cmsFreeNamedColorList(ncl);
     }
 }
@@ -319,8 +343,7 @@ fn named_transform_machinery() {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let ct = c::cmsCreateTransform(h, in_fmt, lab4, out_fmt,
-            0, 0);
+        let ct = c::cmsCreateTransform(h, in_fmt, lab4, out_fmt, 0, 0);
         let dl = c::cmsTransform2DeviceLink(ct, 4.3, 0);
         // GetNamedColorList — the transform's named list
         // (a named transform's list; NULL on non-named)
@@ -344,31 +367,29 @@ fn named_clut_eval() {
     unsafe {
         // a named-color list with PCS-mapped entries
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 4, 3,
+            std::ptr::null_mut(),
+            4,
+            3,
             b"p\0".as_ptr() as *const _,
-            b"s\0".as_ptr() as *const _);
+            b"s\0".as_ptr() as *const _,
+        );
         for i in 0..4u32 {
-            let pcs = [(0x1000u16) * (i as u16 + 1),
-                       0x8000, 0x8000];
+            let pcs = [(0x1000u16) * (i as u16 + 1), 0x8000, 0x8000];
             let dev = [0x1000u16 * (i as u16 + 1); 16];
             let nm = [b'n', b'0' + i as u8, 0];
-            c::cmsAppendNamedColor(ncl,
-                nm.as_ptr() as *const u8,
-                pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(ncl, nm.as_ptr() as *const u8, pcs.as_ptr(), dev.as_ptr());
         }
         // a named-color stage in a pipeline — eval through
         // cmsPipelineEvalFloat (the stage's EvalPtr machinery)
         let st = c::_cmsStageAllocNamedColor(ncl, 0);
         eprintln!("stage null={}", st.is_null());
         if !st.is_null() {
-            let pl = c::cmsPipelineAlloc(
-                std::ptr::null_mut(), 1, 3);
+            let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
             c::cmsPipelineInsertStage(pl, 1, st);
             for i in 0..4 {
                 let inp = [i as f32];
                 let mut out = [0.0f32; 3];
-                c::cmsPipelineEvalFloat(inp.as_ptr(),
-                    out.as_mut_ptr(), pl);
+                c::cmsPipelineEvalFloat(inp.as_ptr(), out.as_mut_ptr(), pl);
                 let _ = out;
             }
             c::cmsPipelineFree(pl);
@@ -383,17 +404,17 @@ fn named_clut_eval() {
 fn named_stage_pcs() {
     unsafe {
         let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(), 4, 3,
+            std::ptr::null_mut(),
+            4,
+            3,
             b"p\0".as_ptr() as *const _,
-            b"s\0".as_ptr() as *const _);
+            b"s\0".as_ptr() as *const _,
+        );
         for i in 0..4u32 {
-            let pcs = [(0x1000u16) * (i as u16 + 1),
-                       0x8000, 0x8000];
+            let pcs = [(0x1000u16) * (i as u16 + 1), 0x8000, 0x8000];
             let dev = [0x1000u16 * (i as u16 + 1); 16];
             let nm = [b'n', b'0' + i as u8, 0];
-            c::cmsAppendNamedColor(ncl,
-                nm.as_ptr() as *const u8,
-                pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(ncl, nm.as_ptr() as *const u8, pcs.as_ptr(), dev.as_ptr());
         }
         // usePcs=0 (index->PCS) vs usePcs=1 (PCS->index)
         for usepcs in [0, 1] {
@@ -403,13 +424,16 @@ fn named_stage_pcs() {
                 let pl = c::cmsPipelineAlloc(
                     std::ptr::null_mut(),
                     if usepcs == 0 { 1 } else { 3 },
-                    if usepcs == 0 { 3 } else { 1 });
+                    if usepcs == 0 { 3 } else { 1 },
+                );
                 c::cmsPipelineInsertStage(pl, 1, st);
-                let inp = if usepcs == 0 { [0.5f32, 0.0, 0.0] }
-                          else { [0.5, 0.5, 0.5] };
+                let inp = if usepcs == 0 {
+                    [0.5f32, 0.0, 0.0]
+                } else {
+                    [0.5, 0.5, 0.5]
+                };
                 let mut out = [0.0f32; 3];
-                c::cmsPipelineEvalFloat(inp.as_ptr(),
-                    out.as_mut_ptr(), pl);
+                c::cmsPipelineEvalFloat(inp.as_ptr(), out.as_mut_ptr(), pl);
                 c::cmsPipelineFree(pl);
             }
         }

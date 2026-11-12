@@ -10,8 +10,7 @@ fn main() {
     let mut bpc = [false, false];
     let intents = [0u32, 0];
     let adapt = [1.0f64, 1.0];
-    let lut =
-        cnvrt::link_profiles(None, &mut profs, &intents, &mut bpc, &adapt, 0).expect("link");
+    let lut = cnvrt::link_profiles(None, &mut profs, &intents, &mut bpc, &adapt, 0).expect("link");
     let mut s = lut.elements.as_deref();
     let mut i = 0;
     while let Some(st) = s {

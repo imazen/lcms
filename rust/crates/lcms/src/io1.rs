@@ -625,11 +625,19 @@ pub fn is_intent_supported(icc: &IccProfile, intent: u32, used_direction: i32) -
 
 /// `_cmsWriteProfileSequence` — `'pseq'` always, plus `'psid'` on v4+.
 pub fn write_profile_sequence(icc: &mut IccProfile, seq: &crate::named::ProfileSeqDesc) -> bool {
-    if !profile::cms_write_tag(icc, tags::SigProfileSequenceDescTag, Some(TagObject::ProfileSeqDesc(seq.clone()))) {
+    if !profile::cms_write_tag(
+        icc,
+        tags::SigProfileSequenceDescTag,
+        Some(TagObject::ProfileSeqDesc(seq.clone())),
+    ) {
         return false;
     }
     if profile::get_encoded_icc_version(icc) >= 0x4000000
-        && !profile::cms_write_tag(icc, tags::SigProfileSequenceIdTag, Some(TagObject::ProfileSeqId(seq.clone())))
+        && !profile::cms_write_tag(
+            icc,
+            tags::SigProfileSequenceIdTag,
+            Some(TagObject::ProfileSeqId(seq.clone())),
+        )
     {
         return false;
     }
@@ -645,7 +653,9 @@ fn get_mlu_from_profile(icc: &mut IccProfile, sig: u32) -> Option<crate::named::
 }
 
 /// `_cmsCompileProfileSequence` — a sequence description of `profiles`.
-pub fn compile_profile_sequence(profiles: &mut [Box<IccProfile>]) -> Option<crate::named::ProfileSeqDesc> {
+pub fn compile_profile_sequence(
+    profiles: &mut [Box<IccProfile>],
+) -> Option<crate::named::ProfileSeqDesc> {
     let mut seq = crate::named::alloc_profile_seq_desc(None, profiles.len() as u32)?;
     for (ps, h) in seq.seq.iter_mut().zip(profiles.iter_mut()) {
         ps.attributes = h.attributes;

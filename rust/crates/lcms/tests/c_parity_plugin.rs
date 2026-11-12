@@ -48,34 +48,54 @@ unsafe extern "C" fn interp_factory(_a: u32, _b: u32, _c: u32) -> *mut c_void {
 #[test]
 fn plugin_type_matrix() {
     let types: Vec<(u32, *mut c_void)> = vec![
-        (0x696E7048, { // 'inpH' interpolation
+        (0x696E7048, {
+            // 'inpH' interpolation
             let p = Box::leak(Box::new(CPluginInterp {
-                base: CPluginBase { magic: MAGIC, expected_version: VERSION,
-                    ty: 0x696E7048, next: std::ptr::null_mut() },
+                base: CPluginBase {
+                    magic: MAGIC,
+                    expected_version: VERSION,
+                    ty: 0x696E7048,
+                    next: std::ptr::null_mut(),
+                },
                 factory: interp_factory,
             })) as *mut CPluginInterp as *mut c_void;
             p
         }),
-        (0x74797048, { // 'typH' tag type
+        (0x74797048, {
+            // 'typH' tag type
             let p = Box::leak(Box::new(CPluginTagType {
-                base: CPluginBase { magic: MAGIC, expected_version: VERSION,
-                    ty: 0x74797048, next: std::ptr::null_mut() },
+                base: CPluginBase {
+                    magic: MAGIC,
+                    expected_version: VERSION,
+                    ty: 0x74797048,
+                    next: std::ptr::null_mut(),
+                },
                 handler: std::ptr::null_mut(),
             })) as *mut CPluginTagType as *mut c_void;
             p
         }),
-        (0x74616748, { // 'tagH' tag
+        (0x74616748, {
+            // 'tagH' tag
             let p = Box::leak(Box::new(CPluginTag {
-                base: CPluginBase { magic: MAGIC, expected_version: VERSION,
-                    ty: 0x74616748, next: std::ptr::null_mut() },
+                base: CPluginBase {
+                    magic: MAGIC,
+                    expected_version: VERSION,
+                    ty: 0x74616748,
+                    next: std::ptr::null_mut(),
+                },
                 descriptor: std::ptr::null_mut(),
             })) as *mut CPluginTag as *mut c_void;
             p
         }),
-        (0x6D706548, { // 'mpeH' multiprocess elements
+        (0x6D706548, {
+            // 'mpeH' multiprocess elements
             let p = Box::leak(Box::new(CPluginMpe {
-                base: CPluginBase { magic: MAGIC, expected_version: VERSION,
-                    ty: 0x6D706548, next: std::ptr::null_mut() },
+                base: CPluginBase {
+                    magic: MAGIC,
+                    expected_version: VERSION,
+                    ty: 0x6D706548,
+                    next: std::ptr::null_mut(),
+                },
                 handler: std::ptr::null_mut(),
             })) as *mut CPluginMpe as *mut c_void;
             p
@@ -114,7 +134,9 @@ fn plugin_type_matrix2() {
         next: *mut c_void,
     }
     // each type = PluginBase + a single factory/handler fn ptr
-    unsafe extern "C" fn stub() -> *mut c_void { std::ptr::null_mut() }
+    unsafe extern "C" fn stub() -> *mut c_void {
+        std::ptr::null_mut()
+    }
     let sigs = [0x66726D48u32, 0x696E7448, 0x6F707448, 0x7A666D48]; // hdrH needs a real Header payload
     for &sig in &sigs {
         #[repr(C)]
@@ -123,8 +145,12 @@ fn plugin_type_matrix2() {
             factory: unsafe extern "C" fn() -> *mut c_void,
         }
         let p = Box::leak(Box::new(CP {
-            base: CPluginBase { magic: MAGIC, expected_version: VERSION,
-                ty: sig, next: std::ptr::null_mut() },
+            base: CPluginBase {
+                magic: MAGIC,
+                expected_version: VERSION,
+                ty: sig,
+                next: std::ptr::null_mut(),
+            },
             factory: stub,
         })) as *mut CP as *mut c_void;
         let c_ok = unsafe { c::cmsPlugin(p) };
@@ -155,7 +181,11 @@ fn plugin_memh_mtxh() {
     unsafe extern "C" fn my_free(_ctx: *mut c_void, ptr: *mut c_void) {
         libc_free(ptr)
     }
-    unsafe extern "C" fn my_realloc(_ctx: *mut c_void, ptr: *mut c_void, size: usize) -> *mut c_void {
+    unsafe extern "C" fn my_realloc(
+        _ctx: *mut c_void,
+        ptr: *mut c_void,
+        size: usize,
+    ) -> *mut c_void {
         libc_realloc(ptr, size)
     }
     unsafe extern "C" {
@@ -163,16 +193,23 @@ fn plugin_memh_mtxh() {
         fn free(p: *mut c_void);
         fn realloc(p: *mut c_void, s: usize) -> *mut c_void;
     }
-    unsafe fn libc_malloc(s: usize) -> *mut c_void { unsafe { malloc(s) } }
-    unsafe fn libc_free(p: *mut c_void) { unsafe { free(p) } }
-    unsafe fn libc_realloc(p: *mut c_void, s: usize) -> *mut c_void { unsafe { realloc(p, s) } }
+    unsafe fn libc_malloc(s: usize) -> *mut c_void {
+        unsafe { malloc(s) }
+    }
+    unsafe fn libc_free(p: *mut c_void) {
+        unsafe { free(p) }
+    }
+    unsafe fn libc_realloc(p: *mut c_void, s: usize) -> *mut c_void {
+        unsafe { realloc(p, s) }
+    }
 
     let mut memh = CPluginMemHandler {
         base: CPluginBase {
-            magic: 0x61637070,       // 'acpp' plugin magic
+            magic: 0x61637070, // 'acpp' plugin magic
             expected_version: 2200,
-            ty: 0x6D656D48,          // 'memH'
-            next: std::ptr::null_mut() },
+            ty: 0x6D656D48, // 'memH'
+            next: std::ptr::null_mut(),
+        },
         malloc_ptr: my_malloc,
         free_ptr: my_free,
         realloc_ptr: my_realloc,
@@ -197,17 +234,22 @@ fn plugin_memh_mtxh() {
         Box::into_raw(Box::new(0u8)) as *mut c_void
     }
     unsafe extern "C" fn mtx_destroy(_c: *mut c_void, m: *mut c_void) {
-        if !m.is_null() { drop(Box::from_raw(m as *mut u8)); }
+        if !m.is_null() {
+            drop(Box::from_raw(m as *mut u8));
+        }
     }
-    unsafe extern "C" fn mtx_lock(_c: *mut c_void, _m: *mut c_void) -> i32 { 1 }
+    unsafe extern "C" fn mtx_lock(_c: *mut c_void, _m: *mut c_void) -> i32 {
+        1
+    }
     unsafe extern "C" fn mtx_unlock(_c: *mut c_void, _m: *mut c_void) {}
 
     let mut mtxp = CPluginMutex {
         base: CPluginBase {
             magic: 0x61637070,
             expected_version: 2200,
-            ty: 0x6D747A48,          // 'mtxH'
-            next: std::ptr::null_mut() },
+            ty: 0x6D747A48, // 'mtxH'
+            next: std::ptr::null_mut(),
+        },
         create: mtx_create,
         destroy: mtx_destroy,
         lock: mtx_lock,
@@ -237,9 +279,12 @@ fn plugin_parh_typh_mpeh() {
         evaluator: unsafe extern "C" fn(i32, *const f64, f64) -> f64,
     }
     let mut parh = CPluginParCurves {
-        base: CPluginBase { magic: 0x61637070,
-            expected_version: 2200, ty: 0x70617248, // 'parH'
-            next: std::ptr::null_mut() },
+        base: CPluginBase {
+            magic: 0x61637070,
+            expected_version: 2200,
+            ty: 0x70617248, // 'parH'
+            next: std::ptr::null_mut(),
+        },
         n_functions: 1,
         function_types: {
             let mut t = [0u32; 20];
@@ -259,12 +304,25 @@ fn plugin_parh_typh_mpeh() {
     }
 
     // typH — cmsPluginTagType: base + cmsTagTypeHandler
-    unsafe extern "C" fn read_stub(_s: *mut c_void, _io: *mut c_void,
-        _n: *mut u32, _sz: u32) -> *mut c_void { std::ptr::null_mut() }
-    unsafe extern "C" fn write_stub(_s: *mut c_void, _io: *mut c_void,
-        _p: *mut c_void, _n: u32) -> i32 { 0 }
-    unsafe extern "C" fn dup_stub(_s: *mut c_void, _p: *const c_void,
-        _n: u32) -> *mut c_void { std::ptr::null_mut() }
+    unsafe extern "C" fn read_stub(
+        _s: *mut c_void,
+        _io: *mut c_void,
+        _n: *mut u32,
+        _sz: u32,
+    ) -> *mut c_void {
+        std::ptr::null_mut()
+    }
+    unsafe extern "C" fn write_stub(
+        _s: *mut c_void,
+        _io: *mut c_void,
+        _p: *mut c_void,
+        _n: u32,
+    ) -> i32 {
+        0
+    }
+    unsafe extern "C" fn dup_stub(_s: *mut c_void, _p: *const c_void, _n: u32) -> *mut c_void {
+        std::ptr::null_mut()
+    }
     unsafe extern "C" fn free_stub(_s: *mut c_void, _p: *mut c_void) {}
     #[repr(C)]
     struct CTagTypeHandler {
@@ -282,9 +340,12 @@ fn plugin_parh_typh_mpeh() {
         handler: CTagTypeHandler,
     }
     let mut typh = CPluginTagTypeFull {
-        base: CPluginBase { magic: 0x61637070,
-            expected_version: 2200, ty: 0x74797048, // 'typH'
-            next: std::ptr::null_mut() },
+        base: CPluginBase {
+            magic: 0x61637070,
+            expected_version: 2200,
+            ty: 0x74797048, // 'typH'
+            next: std::ptr::null_mut(),
+        },
         handler: CTagTypeHandler {
             signature: 0x74657874, // 'text'
             read_ptr: read_stub,
@@ -307,9 +368,12 @@ fn plugin_parh_typh_mpeh() {
         handler: CTagTypeHandler,
     }
     let mut mpeh = CPluginMpeFull {
-        base: CPluginBase { magic: 0x61637070,
-            expected_version: 2200, ty: 0x6D706548, // 'mpeH'
-            next: std::ptr::null_mut() },
+        base: CPluginBase {
+            magic: 0x61637070,
+            expected_version: 2200,
+            ty: 0x6D706548, // 'mpeH'
+            next: std::ptr::null_mut(),
+        },
         handler: CTagTypeHandler {
             signature: 0x6D706574, // 'mpet'
             read_ptr: read_stub,

@@ -151,9 +151,7 @@ fn valid_device_class(cl: u32) -> bool {
 /// `SupportedICCVersion` — plugin chunk else default. A registered header
 /// plugin raises the ceiling to its declared `ICCVersion`.
 fn supported_icc_version(ctx: Option<&Context>) -> u32 {
-    let plugin_max = ctx
-        .map(|c| c.c_header.icc_version)
-        .unwrap_or(0);
+    let plugin_max = ctx.map(|c| c.c_header.icc_version).unwrap_or(0);
     DEFAULT_MAX_VERSION.max(plugin_max)
 }
 
@@ -172,7 +170,13 @@ fn invoke_header_plugin(icc: &IccProfile, io: &mut IoHandler, is_read: bool) -> 
     if cb == 0 {
         return true;
     }
-    invoke_header_raw(cb, ctx_handle, icc as *const IccProfile as usize, io, is_read)
+    invoke_header_raw(
+        cb,
+        ctx_handle,
+        icc as *const IccProfile as usize,
+        io,
+        is_read,
+    )
 }
 
 /// The borrow-free core of `invoke_header_plugin` — call sites that already
@@ -955,11 +959,7 @@ pub fn save_profile_to_iohandler(icc: &mut IccProfile, out: Option<&mut IoHandle
     // maximum ICC version it accepts; above it the save fails.
     if let Some(c) = icc.ctx.as_ref() {
         if c.c_header.write_ptr != 0 && icc.version > c.c_header.icc_version {
-            err::signal_error(
-                Some(c),
-                ERROR_UNKNOWN_EXTENSION,
-                "Unsupported ICC version",
-            );
+            err::signal_error(Some(c), ERROR_UNKNOWN_EXTENSION, "Unsupported ICC version");
             return 0;
         }
     }

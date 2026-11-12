@@ -201,7 +201,7 @@ fn eval_segmented_fn(g: &ToneCurve, r: f64) -> f64 {
                         opta: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                         table: InterpTable::F32(pts),
                         interpolation: Interpolation::LerpFloat(kernel),
-            kernel: kernel_kind(Interpolation::LerpFloat(kernel)),
+                        kernel: kernel_kind(Interpolation::LerpFloat(kernel)),
                         foreign: None,
                     };
                     let mut out32 = [0.0f32; 1];
