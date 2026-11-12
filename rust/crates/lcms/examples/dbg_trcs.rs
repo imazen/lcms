@@ -12,7 +12,7 @@ fn main() {
         if let Some(TagObject::Curve(t)) = profile::cms_read_tag(&mut p, sig) {
             println!(
                 "{nm}[0]={} t16[0..3]={:?} eval16(0)={:04x}",
-                t.table16.get(0).copied().unwrap_or(0),
+                t.table16.first().copied().unwrap_or(0),
                 &t.table16[..3.min(t.table16.len())],
                 t.eval16(0)
             );

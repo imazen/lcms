@@ -502,11 +502,11 @@ fn gray_csa_named_crd() {
         c::cmsSetColorSpace(np, 0x6e636c32); // 'ncl2'
         c::cmsSetPCS(np, 0x4C616220); // 'Lab '
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, b"\0".as_ptr(), b"\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"".as_ptr(), c"".as_ptr());
         let pcs = [0x8000u16, 0x8000, 0x8000];
         let col = [0xFFFFu16, 0, 0, 0];
-        c::cmsAppendNamedColor(ncl, b"Color1\0".as_ptr(), pcs.as_ptr(), col.as_ptr());
-        c::cmsAppendNamedColor(ncl, b"Color2\0".as_ptr(), pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"Color1".as_ptr(), pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"Color2".as_ptr(), pcs.as_ptr(), col.as_ptr());
         c::cmsWriteTag(np, 0x6e636c32, ncl as *const _);
         let mut buf = vec![0u8; BUF];
         let cn = c::cmsGetPostScriptCRD(
@@ -549,12 +549,12 @@ fn named_color_crd() {
             std::ptr::null_mut(),
             2,
             3,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         let lab = [0xF000u16, 0x8000, 0x8000];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab.as_ptr(), lab.as_ptr());
-        c::cmsAppendNamedColor(ncl, b"c2\0".as_ptr(), lab.as_ptr(), lab.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab.as_ptr(), lab.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c2".as_ptr(), lab.as_ptr(), lab.as_ptr());
         let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof, 0x6e6d636c); // 'nmcl'
         c::cmsSetColorSpace(prof, 0x6e6d636c); // 'nmcl' colorspace
@@ -713,9 +713,9 @@ fn ps2_gray_named_emitters() {
         c::cmsSetColorSpace(nmcl, 0x34e434e); // NCLR-ish
         c::cmsSetPCS(nmcl, 0x4c616220);
         let mut buf = vec![0u8; 1 << 18];
-        let mut n = buf.len() as u32;
+        let n = buf.len() as u32;
         for (prof, name) in [(gray, "gray"), (nmcl, "nmcl")] {
-            let mut n2 = buf.len() as u32;
+            let n2 = buf.len() as u32;
             let csa = c::cmsGetPostScriptCSA(
                 std::ptr::null_mut(),
                 prof,
@@ -725,7 +725,7 @@ fn ps2_gray_named_emitters() {
                 n2,
             );
             eprintln!("{name}-csa={csa}");
-            let mut n3 = buf.len() as u32;
+            let n3 = buf.len() as u32;
             let crd = c::cmsGetPostScriptCRD(
                 std::ptr::null_mut(),
                 prof,
@@ -758,8 +758,8 @@ fn ps2_named_crd_internals() {
             std::ptr::null_mut(),
             4,
             3,
-            b"pre\0".as_ptr(),
-            b"post\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"post".as_ptr(),
         );
         for i in 0..4u32 {
             let mut name = [0u8; 256];
@@ -776,8 +776,8 @@ fn ps2_named_crd_internals() {
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
         c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wk.as_mut_ptr() as *const _,
         );
         c::cmsWriteTag(nmcl, 0x64657363, ml as *const _);
@@ -785,7 +785,7 @@ fn ps2_named_crd_internals() {
         c::cmsWriteTag(nmcl, 0x77747074, wp.as_ptr() as *const _);
         let mut buf = vec![0u8; 1 << 18];
         for (intent, name) in [(0u32, "i0"), (1, "i1"), (3, "i3")] {
-            let mut n = buf.len() as u32;
+            let n = buf.len() as u32;
             let crd = c::cmsGetPostScriptCRD(
                 std::ptr::null_mut(),
                 nmcl,
@@ -795,7 +795,7 @@ fn ps2_named_crd_internals() {
                 n,
             );
             eprintln!("{name} crd={crd}");
-            let mut n2 = buf.len() as u32;
+            let n2 = buf.len() as u32;
             let csa = c::cmsGetPostScriptCSA(
                 std::ptr::null_mut(),
                 nmcl,
@@ -827,7 +827,7 @@ fn ps2_gray_lut_emitters() {
             1,
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 1, [g].as_ptr() as *mut _),
         );
-        let mut grid = vec![0u16; 17 * 3];
+        let mut grid = [0u16; 17 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 17) * 3855) as u16;
         }
@@ -840,7 +840,7 @@ fn ps2_gray_lut_emitters() {
         eprintln!("a2b0 w={w}");
         let mut buf = vec![0u8; 1 << 18];
         for (intent, name) in [(0u32, "i0"), (1, "i1"), (3, "i3")] {
-            let mut n = buf.len() as u32;
+            let n = buf.len() as u32;
             let csa = c::cmsGetPostScriptCSA(
                 std::ptr::null_mut(),
                 gray,
@@ -850,7 +850,7 @@ fn ps2_gray_lut_emitters() {
                 n,
             );
             eprintln!("{name} csa={csa}");
-            let mut n2 = buf.len() as u32;
+            let n2 = buf.len() as u32;
             let crd = c::cmsGetPostScriptCRD(
                 std::ptr::null_mut(),
                 gray,
@@ -885,20 +885,20 @@ fn ps2_named_intent_arms() {
             std::ptr::null_mut(),
             2,
             3,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let pcs = [0x1000u16, 0x2000, 0x3000];
         let dev = [0x4000u16, 0x5000, 0x6000];
         c::cmsAppendNamedColor(
             nl,
-            b"red\0".as_ptr() as *const _,
+            c"red".as_ptr() as *const _,
             pcs.as_ptr(),
             dev.as_ptr(),
         );
         c::cmsAppendNamedColor(
             nl,
-            b"blue\0".as_ptr() as *const _,
+            c"blue".as_ptr() as *const _,
             pcs.as_ptr(),
             dev.as_ptr(),
         );
@@ -982,12 +982,12 @@ fn ps2_named_intent_arms() {
         //   needs an IOHANDLER arg, not a raw buffer
         for ty in [0u32, 1] {
             let mut buf = vec![0u8; 1 << 18];
-            let mut nb = buf.len() as u32;
+            let nb = buf.len() as u32;
             let io = c::cmsOpenIOhandlerFromMem(
                 std::ptr::null_mut(),
                 buf.as_mut_ptr() as *mut _,
                 nb,
-                b"w\0".as_ptr() as *const _,
+                c"w".as_ptr() as *const _,
             );
             if io.is_null() {
                 eprintln!("cres ty={ty} io=0");
@@ -1052,10 +1052,10 @@ fn ps2_tail_arms() {
             }
         }
         // error-handler set + fire via a bad read
-        unsafe extern "C" fn myerr(_ctx: *mut std::ffi::c_void, code: u32, _msg: *const i8) {
+        unsafe extern "C" fn myerr(_ctx: *mut std::ffi::c_void, code: u32, _msg: *const std::ffi::c_char) {
             eprintln!("  myerr {code}");
         }
-        let fp: unsafe extern "C" fn(*mut std::ffi::c_void, u32, *const i8) = myerr;
+        let fp: unsafe extern "C" fn(*mut std::ffi::c_void, u32, *const std::ffi::c_char) = myerr;
         c::cmsSetLogErrorHandlerTHR(std::ptr::null_mut(), fp as *mut _);
         // trigger an error so the handler fires
         let bad = c::cmsOpenProfileFromMem(b"\x00".as_ptr() as *const _, 1);

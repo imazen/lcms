@@ -20,12 +20,12 @@ fn c_save(h: *mut std::ffi::c_void) -> String {
     }
 }
 
-fn cstr(s: &str) -> *const i8 {
+fn cstr(s: &str) -> *const std::ffi::c_char {
     // leaks a few bytes per call — test code
-    Box::leak(format!("{s}\0").into_boxed_str()).as_ptr() as *const i8
+    Box::leak(format!("{s}\0").into_boxed_str()).as_ptr() as *const std::ffi::c_char
 }
 
-unsafe fn c_build() -> *mut std::ffi::c_void {
+unsafe fn c_build() -> *mut std::ffi::c_void { unsafe {
     let h = c::cmsIT8Alloc(std::ptr::null_mut());
     assert!(!h.is_null(), "C it8 alloc");
     assert!(c::cmsIT8SetSheetType(h, cstr("TESTDOC")) != 0);
@@ -51,7 +51,7 @@ unsafe fn c_build() -> *mut std::ffi::c_void {
     assert!(c::cmsIT8SetPropertyMulti(h, cstr("MULTI"), cstr("sub2"), cstr("v2")) != 0);
     assert!(c::cmsIT8SetPropertyUncooked(h, cstr("RAW"), cstr("rawval")) != 0);
     h
-}
+}}
 
 fn r_build() -> Box<It8> {
     let mut it8 = It8::alloc(None);
@@ -87,16 +87,16 @@ fn writer_byte_exact() {
     assert_eq!(c_out, r_out, "IT8 writer output");
 }
 
-unsafe fn c_getstr(p: *const i8) -> Option<String> {
+unsafe fn c_getstr(p: *const std::ffi::c_char) -> Option<String> { unsafe {
     if p.is_null() {
         return None;
     }
     Some(std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned())
-}
+}}
 
 /// Lean build for the getter matrix (multi/uncooked aren't getter-visible
 /// through the calls exercised below — covered by writer_byte_exact).
-unsafe fn c_build_lean() -> *mut std::ffi::c_void {
+unsafe fn c_build_lean() -> *mut std::ffi::c_void { unsafe {
     let h = c::cmsIT8Alloc(std::ptr::null_mut());
     assert!(c::cmsIT8SetSheetType(h, cstr("TESTDOC")) != 0);
     assert!(c::cmsIT8SetPropertyStr(h, cstr("ORIGINATOR"), cstr("lcms-test")) != 0);
@@ -107,13 +107,13 @@ unsafe fn c_build_lean() -> *mut std::ffi::c_void {
     }
     for (i, p) in ["A1", "A2", "B1", "B2"].iter().enumerate() {
         assert!(c::cmsIT8SetData(h, cstr(p), cstr("SAMPLE_ID"), cstr(p)) != 0);
-        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64 as f64) != 0);
+        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64) != 0);
         assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_A"), 0.5 - i as f64) != 0);
         assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_B"), -2.0 + i as f64) != 0);
     }
     assert!(c::cmsIT8SetDataRowCol(h, 0, 3, cstr("99.5")) != 0);
     h
-}
+}}
 
 fn r_build_lean() -> Box<It8> {
     let mut it8 = It8::alloc(None);
@@ -183,7 +183,7 @@ fn writer_getters() {
         );
         // patch name — buffer MUST be >= MAXSTR (1024); C strncpys that
         // many bytes regardless of name length.
-        let mut buf = [0i8; 1024];
+        let mut buf = [0 as std::ffi::c_char; 1024];
         c::cmsIT8GetPatchName(ch, 2, buf.as_mut_ptr());
         assert_eq!(c_getstr(buf.as_ptr()), it8.get_patch_name(2), "patch name");
         c::cmsIT8Free(ch);
@@ -268,7 +268,7 @@ fn multitables_and_enums() {
     let mut it8 = r_build_lean();
     unsafe {
         // enum properties + data formats: compare sets, not order (impl detail)
-        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let cn = c::cmsIT8EnumProperties(ch, &mut names);
         let c_props: std::collections::BTreeSet<String> = (0..cn)
             .map(|i| c_getstr(*names.offset(i as isize)).unwrap_or_default())
@@ -280,7 +280,7 @@ fn multitables_and_enums() {
             .collect();
         assert_eq!(c_props, r_props, "enum properties");
 
-        let mut df: *mut *mut i8 = std::ptr::null_mut();
+        let mut df: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let cd = c::cmsIT8EnumDataFormat(ch, &mut df);
         let c_fmt: Vec<String> = (0..cd)
             .map(|i| c_getstr(*df.offset(i as isize)).unwrap_or_default())
@@ -378,7 +378,7 @@ fn it8_parser_shapes() {
               END_DATA\n",
             ),
         ] {
-            let mut err = 0;
+            let err = 0;
             let it8 = c::cmsIT8LoadFromMem(
                 std::ptr::null_mut(),
                 doc.as_ptr() as *const std::ffi::c_void,
@@ -409,14 +409,14 @@ fn it8_get_set_machinery() {
             return;
         }
         // property getters on the loaded doc
-        let p1 = c::cmsIT8GetPropertyDbl(it8, b"NUMBER_OF_FIELDS\0".as_ptr() as _);
-        let p2 = c::cmsIT8GetPropertyDbl(it8, b"NUMBER_OF_SETS\0".as_ptr() as _);
-        let p3 = c::cmsIT8GetProperty(it8, b"ORIGINATOR\0".as_ptr() as _);
+        let p1 = c::cmsIT8GetPropertyDbl(it8, c"NUMBER_OF_FIELDS".as_ptr() as _);
+        let p2 = c::cmsIT8GetPropertyDbl(it8, c"NUMBER_OF_SETS".as_ptr() as _);
+        let p3 = c::cmsIT8GetProperty(it8, c"ORIGINATOR".as_ptr() as _);
         // data access — the cell machinery
-        let d = c::cmsIT8GetDataDbl(it8, b"A\0".as_ptr() as _, b"1\0".as_ptr() as _);
+        let d = c::cmsIT8GetDataDbl(it8, c"A".as_ptr() as _, c"1".as_ptr() as _);
         // set/get round-trip — the property machinery
-        c::cmsIT8SetPropertyDbl(it8, b"CUSTOM_PROP\0".as_ptr() as _, 42.5);
-        let cp = c::cmsIT8GetPropertyDbl(it8, b"CUSTOM_PROP\0".as_ptr() as _);
+        c::cmsIT8SetPropertyDbl(it8, c"CUSTOM_PROP".as_ptr() as _, 42.5);
+        let cp = c::cmsIT8GetPropertyDbl(it8, c"CUSTOM_PROP".as_ptr() as _);
         eprintln!(
             "fields={p1} sets={p2} orig={:?} a0={d} custom={cp}",
             if p3.is_null() { "null" } else { "set" }
@@ -432,16 +432,16 @@ fn it8_table_enum() {
     unsafe {
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
         // set a sheet type + data formats — the table machinery
-        c::cmsIT8SetSheetType(it8, b"TEST\0".as_ptr() as _);
+        c::cmsIT8SetSheetType(it8, c"TEST".as_ptr() as _);
         for fmt in [b"FIELD_A\0" as &[u8], b"FIELD_B\0", b"FIELD_C\0"] {
             let _ = c::cmsIT8SetDataFormat(it8, 0, fmt.as_ptr() as _);
         }
         // enum the data formats — the out-param version
-        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let n = c::cmsIT8EnumDataFormat(it8, &mut names);
         // set data + read it back — the cell machinery
-        c::cmsIT8SetDataDbl(it8, b"P1\0".as_ptr() as _, b"FIELD_A\0".as_ptr() as _, 1.5);
-        let d = c::cmsIT8GetDataDbl(it8, b"P1\0".as_ptr() as _, b"FIELD_A\0".as_ptr() as _);
+        c::cmsIT8SetDataDbl(it8, c"P1".as_ptr() as _, c"FIELD_A".as_ptr() as _, 1.5);
+        let d = c::cmsIT8GetDataDbl(it8, c"P1".as_ptr() as _, c"FIELD_A".as_ptr() as _);
         // row/col access — the row machinery
         let rc = c::cmsIT8GetDataRowCol(it8, 0, 0);
         eprintln!("enum={n} data={d} rc={}", rc.is_null());
@@ -455,7 +455,6 @@ fn it8_table_enum() {
 fn it8_writer_arms() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
-        let ps = |x: &str| format!("{x}\0").as_ptr() as *const i8;
         // leak the CStrings (test scope)
         let keep: Vec<_> = [
             "NUMBER_OF_SETS",
@@ -481,7 +480,7 @@ fn it8_writer_arms() {
             keep.iter()
                 .find(|k| k.trim_end_matches('\0') == x)
                 .unwrap()
-                .as_ptr() as *const i8
+                .as_ptr() as *const std::ffi::c_char
         };
         c::cmsIT8SetPropertyDbl(h, g("NUMBER_OF_SETS"), 3.0);
         c::cmsIT8SetPropertyDbl(h, g("NUMBER_OF_FIELDS"), 4.0);
@@ -502,7 +501,6 @@ fn it8_writer_arms() {
         let s = c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
         eprintln!("save={s} n={n}");
         c::cmsIT8Free(h);
-        let _ = ps;
     }
 }
 
@@ -533,7 +531,7 @@ fn it8_api_bodies() {
             keep.iter()
                 .find(|s| s.trim_end_matches('\0') == x)
                 .unwrap()
-                .as_ptr() as *const i8
+                .as_ptr() as *const std::ffi::c_char
         };
         // sheet type + comment
         c::cmsIT8SetSheetType(h, k("CGATS.17"));
@@ -555,7 +553,7 @@ fn it8_api_bodies() {
             std::ffi::CStr::from_ptr(pm)
         );
         // data format enum
-        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let nf = c::cmsIT8EnumDataFormat(h, &mut names);
         eprintln!("enumfmt={nf}");
         // patch by name
@@ -621,20 +619,20 @@ fn cgats_type_detection() {
             keep.iter()
                 .find(|s| s.trim_end_matches('\0') == x)
                 .unwrap()
-                .as_ptr() as *const i8
+                .as_ptr() as *const std::ffi::c_char
         };
         // SetProperty parses the value to detect type
         c::cmsIT8SetPropertyDbl(h, k("P1"), 1.5);
         c::cmsIT8SetPropertyHex(h, k("P2"), 0xABCD);
-        c::cmsIT8SetPropertyStr(h, k("P3"), b"str\0".as_ptr() as *const i8);
-        c::cmsIT8SetPropertyUncooked(h, k("P4"), b"raw data\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyStr(h, k("P3"), c"str".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetPropertyUncooked(h, k("P4"), c"raw data".as_ptr() as *const std::ffi::c_char);
         // data-format + data-set
         c::cmsIT8SetDataFormat(h, 0, k("SAMPLE_ID"));
         c::cmsIT8SetDataFormat(h, 1, k("V1"));
         let _ = c::cmsIT8SetDataDbl(h, k("p0"), k("V1"), 42.0);
-        let mut nm: *mut *mut i8 = std::ptr::null_mut();
+        let mut nm: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let n = c::cmsIT8EnumDataFormat(h, &mut nm);
-        let mut pm: *mut *mut i8 = std::ptr::null_mut();
+        let mut pm: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let props = c::cmsIT8EnumProperties(h, &mut pm);
         eprintln!("fmt={n} props={props}");
         c::cmsIT8Free(h);
@@ -650,29 +648,29 @@ fn it8_writer_internals() {
         // populate header + data
         c::cmsIT8SetPropertyStr(
             h,
-            b"ORIGINATOR\0".as_ptr() as *const i8,
-            b"lcms\0".as_ptr() as *const i8,
+            c"ORIGINATOR".as_ptr() as *const std::ffi::c_char,
+            c"lcms".as_ptr() as *const std::ffi::c_char,
         );
         c::cmsIT8SetPropertyStr(
             h,
-            b"CREATED\0".as_ptr() as *const i8,
-            b"2024\0".as_ptr() as *const i8,
+            c"CREATED".as_ptr() as *const std::ffi::c_char,
+            c"2024".as_ptr() as *const std::ffi::c_char,
         );
-        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8, 2.0);
-        c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_SETS\0".as_ptr() as *const i8, 2.0);
-        c::cmsIT8SetSheetType(h, b"CGATS.5\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataFormat(h, 1, b"VAL\0".as_ptr() as *const i8);
+        c::cmsIT8SetPropertyDbl(h, c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char, 2.0);
+        c::cmsIT8SetPropertyDbl(h, c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char, 2.0);
+        c::cmsIT8SetSheetType(h, c"CGATS.5".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetDataFormat(h, 0, c"ID".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetDataFormat(h, 1, c"VAL".as_ptr() as *const std::ffi::c_char);
         c::cmsIT8SetData(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"ID\0".as_ptr() as *const i8,
-            b"r1\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"ID".as_ptr() as *const std::ffi::c_char,
+            c"r1".as_ptr() as *const std::ffi::c_char,
         );
         c::cmsIT8SetDataDbl(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"VAL\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"VAL".as_ptr() as *const std::ffi::c_char,
             42.0,
         );
         // write to memory -> the writer bodies
@@ -798,46 +796,46 @@ END_DATA"#
 fn it8_data_arms2() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
-        c::cmsIT8SetSheetType(h, b"CGATS.5\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataFormat(h, 1, b"HEX\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataFormat(h, 2, b"NUM\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataFormat(h, 3, b"STR\0".as_ptr() as *const i8);
+        c::cmsIT8SetSheetType(h, c"CGATS.5".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetDataFormat(h, 0, c"ID".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetDataFormat(h, 1, c"HEX".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetDataFormat(h, 2, c"NUM".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetDataFormat(h, 3, c"STR".as_ptr() as *const std::ffi::c_char);
         // SetData variants — string/dbl/uncooked/hex
         c::cmsIT8SetData(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"ID\0".as_ptr() as *const i8,
-            b"r1\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"ID".as_ptr() as *const std::ffi::c_char,
+            c"r1".as_ptr() as *const std::ffi::c_char,
         );
         c::cmsIT8SetData(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"HEX\0".as_ptr() as *const i8,
-            b"0xAB\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"HEX".as_ptr() as *const std::ffi::c_char,
+            c"0xAB".as_ptr() as *const std::ffi::c_char,
         );
         c::cmsIT8SetDataDbl(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"NUM\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"NUM".as_ptr() as *const std::ffi::c_char,
             1.5,
         );
         c::cmsIT8SetData(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"STR\0".as_ptr() as *const i8,
-            b"str\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"STR".as_ptr() as *const std::ffi::c_char,
+            c"str".as_ptr() as *const std::ffi::c_char,
         );
         // GetData variants
         let hx = c::cmsIT8GetData(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"HEX\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"HEX".as_ptr() as *const std::ffi::c_char,
         );
         let d = c::cmsIT8GetDataDbl(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"NUM\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"NUM".as_ptr() as *const std::ffi::c_char,
         );
         // Enum data formats + rowcol access
         let mut names = [std::ptr::null_mut(); 8];
@@ -845,13 +843,13 @@ fn it8_data_arms2() {
         let rc = c::cmsIT8GetDataRowCol(h, 0, 2);
         let rcd = c::cmsIT8GetDataRowColDbl(h, 0, 2);
         // property arms
-        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8, 0xFF);
+        c::cmsIT8SetPropertyHex(h, c"PHEX".as_ptr() as *const std::ffi::c_char, 0xFF);
         c::cmsIT8SetPropertyUncooked(
             h,
-            b"PU\0".as_ptr() as *const i8,
-            b"raw\0".as_ptr() as *const i8,
+            c"PU".as_ptr() as *const std::ffi::c_char,
+            c"raw".as_ptr() as *const std::ffi::c_char,
         );
-        let pv = c::cmsIT8GetProperty(h, b"PHEX\0".as_ptr() as *const i8);
+        let pv = c::cmsIT8GetProperty(h, c"PHEX".as_ptr() as *const std::ffi::c_char);
         eprintln!(
             "hex={} num={d} nf={nf} rc={:?} rcd={rcd} pv={:?}",
             hx.is_null(),
@@ -940,38 +938,38 @@ fn cube_parse_arms() {
 fn it8_writer_modes() {
     unsafe {
         let h = c::cmsIT8Alloc(std::ptr::null_mut());
-        c::cmsIT8SetSheetType(h, b"CGATS.17\0".as_ptr() as *const i8);
-        c::cmsIT8SetComment(h, b"a comment\0".as_ptr() as *const i8);
+        c::cmsIT8SetSheetType(h, c"CGATS.17".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetComment(h, c"a comment".as_ptr() as *const std::ffi::c_char);
         c::cmsIT8SetPropertyStr(
             h,
-            b"PSTR\0".as_ptr() as *const i8,
-            b"str val\0".as_ptr() as *const i8,
+            c"PSTR".as_ptr() as *const std::ffi::c_char,
+            c"str val".as_ptr() as *const std::ffi::c_char,
         );
-        c::cmsIT8SetPropertyDbl(h, b"PDBL\0".as_ptr() as *const i8, 1.5);
-        c::cmsIT8SetPropertyHex(h, b"PHEX\0".as_ptr() as *const i8, 0xABCD);
+        c::cmsIT8SetPropertyDbl(h, c"PDBL".as_ptr() as *const std::ffi::c_char, 1.5);
+        c::cmsIT8SetPropertyHex(h, c"PHEX".as_ptr() as *const std::ffi::c_char, 0xABCD);
         c::cmsIT8SetPropertyMulti(
             h,
-            b"PMULTI\0".as_ptr() as *const i8,
-            b"sub\0".as_ptr() as *const i8,
-            b"val\0".as_ptr() as *const i8,
+            c"PMULTI".as_ptr() as *const std::ffi::c_char,
+            c"sub".as_ptr() as *const std::ffi::c_char,
+            c"val".as_ptr() as *const std::ffi::c_char,
         );
         c::cmsIT8SetPropertyUncooked(
             h,
-            b"PUNC\0".as_ptr() as *const i8,
-            b"0b1011\0".as_ptr() as *const i8,
+            c"PUNC".as_ptr() as *const std::ffi::c_char,
+            c"0b1011".as_ptr() as *const std::ffi::c_char,
         );
-        c::cmsIT8SetDataFormat(h, 0, b"ID\0".as_ptr() as *const i8);
-        c::cmsIT8SetDataFormat(h, 1, b"V\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataFormat(h, 0, c"ID".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetDataFormat(h, 1, c"V".as_ptr() as *const std::ffi::c_char);
         c::cmsIT8SetData(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"ID\0".as_ptr() as *const i8,
-            b"r1\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"ID".as_ptr() as *const std::ffi::c_char,
+            c"r1".as_ptr() as *const std::ffi::c_char,
         );
         c::cmsIT8SetDataDbl(
             h,
-            b"r1\0".as_ptr() as *const i8,
-            b"V\0".as_ptr() as *const i8,
+            c"r1".as_ptr() as *const std::ffi::c_char,
+            c"V".as_ptr() as *const std::ffi::c_char,
             0.25,
         );
         let mut buf = vec![0u8; 1 << 16];
@@ -1031,33 +1029,33 @@ fn it8_table_api_arms() {
         // table switch
         let st = c::cmsIT8SetTable(h, 0);
         eprintln!("settable0={st}");
-        let pn = c::cmsIT8GetPatchByName(h, b"b\0".as_ptr() as *const i8);
+        let pn = c::cmsIT8GetPatchByName(h, c"b".as_ptr() as *const std::ffi::c_char);
         eprintln!("patch_b={pn}");
         let _ = c::cmsIT8SetTable(h, 1);
         let stl = c::cmsIT8SetTableByLabel(
             h,
-            b"K\0".as_ptr() as *const i8,
-            b"W\0".as_ptr() as *const i8,
+            c"K".as_ptr() as *const std::ffi::c_char,
+            c"W".as_ptr() as *const std::ffi::c_char,
             std::ptr::null(),
         );
         eprintln!("setbylabel={stl}");
         // index column + rowcol ops
         let _ = c::cmsIT8SetTable(h, 0);
-        let sic = c::cmsIT8SetIndexColumn(h, b"ID\0".as_ptr() as *const i8);
+        let sic = c::cmsIT8SetIndexColumn(h, c"ID".as_ptr() as *const std::ffi::c_char);
         eprintln!("setindex={sic}");
-        c::cmsIT8SetDataRowCol(h, 0, 1, b"7\0".as_ptr() as *const i8);
+        c::cmsIT8SetDataRowCol(h, 0, 1, c"7".as_ptr() as *const std::ffi::c_char);
         c::cmsIT8SetDataRowColDbl(h, 1, 1, 3.5);
         let v = c::cmsIT8GetDataRowColDbl(h, 1, 1);
         eprintln!("rc-dbl={v}");
         // define dbl format + save
-        c::cmsIT8DefineDblFormat(h, b"%.4f\0".as_ptr() as *const i8);
+        c::cmsIT8DefineDblFormat(h, c"%.4f".as_ptr() as *const std::ffi::c_char);
         let mut buf = vec![0u8; 1 << 16];
         let mut n = buf.len() as u32;
         c::cmsIT8SaveToMem(h, buf.as_mut_ptr() as *mut _, &mut n);
         eprintln!("save-n={n}");
         // property getters
-        let _ = c::cmsIT8SetPropertyDbl(h, b"PD\0".as_ptr() as *const i8, 2.5);
-        let pd = c::cmsIT8GetPropertyDbl(h, b"PD\0".as_ptr() as *const i8);
+        let _ = c::cmsIT8SetPropertyDbl(h, c"PD".as_ptr() as *const std::ffi::c_char, 2.5);
+        let pd = c::cmsIT8GetPropertyDbl(h, c"PD".as_ptr() as *const std::ffi::c_char);
         eprintln!("propdbl={pd}");
         c::cmsIT8Free(h);
     }
@@ -1092,12 +1090,12 @@ fn it8_deep_arms() {
             let nf = c::cmsIT8EnumDataFormat(h, names.as_mut_ptr());
             eprintln!("nf={nf}");
 
-            let pn = c::cmsIT8GetPatchByName(h, b"2\0".as_ptr() as *const i8);
+            let pn = c::cmsIT8GetPatchByName(h, c"2".as_ptr() as *const std::ffi::c_char);
             eprintln!("patch={pn}");
             let v = c::cmsIT8GetData(
                 h,
-                b"1\0".as_ptr() as *const i8,
-                b"S\0".as_ptr() as *const i8,
+                c"1".as_ptr() as *const std::ffi::c_char,
+                c"S".as_ptr() as *const std::ffi::c_char,
             );
             eprintln!("data={:?}", v);
             let mut buf = vec![0u8; 1 << 16];
@@ -1167,11 +1165,11 @@ fn it8_header_arms() {
                     // pair form which HeaderSection then parses
                     c::cmsIT8SetPropertyMulti(
                         p,
-                        b"PAIR\0".as_ptr() as *const _,
-                        b"k1\0".as_ptr() as *const _,
-                        b"v1\0".as_ptr() as *const _,
+                        c"PAIR".as_ptr() as *const _,
+                        c"k1".as_ptr() as *const _,
+                        c"v1".as_ptr() as *const _,
                     );
-                    let v = c::cmsIT8GetProperty(p, b"PAIR\0".as_ptr() as *const _);
+                    let v = c::cmsIT8GetProperty(p, c"PAIR".as_ptr() as *const _);
                     eprintln!("  pair-val={}", !v.is_null());
                 }
                 let _nt = c::cmsIT8TableCount(p);
@@ -1372,18 +1370,18 @@ fn it8_deep_arms4() {
             let s = c::cmsIT8SaveToMem(p, buf.as_mut_ptr() as *mut _, &mut n);
             eprintln!("save={s}");
             // write with different enum values
-            c::cmsIT8DefineDblFormat(p, b"%.12g\0".as_ptr() as *const _);
+            c::cmsIT8DefineDblFormat(p, c"%.12g".as_ptr() as *const _);
             let v = c::cmsIT8GetDataRowCol(p, 0, 0);
             eprintln!("getdata={}", !v.is_null());
             c::cmsIT8Free(p);
         }
         // enum value coverage — read all predefined properties
         for (prop, name) in [
-            (b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, "nof"),
-            (b"NUMBER_OF_SETS\0".as_ptr() as *const _, "nos"),
-            (b"ORIGINATOR\0".as_ptr() as *const _, "orig"),
-            (b"DATA_IDENTIFIER\0".as_ptr() as *const _, "dataid"),
-            (b"NUMBER_OF_TABLES\0".as_ptr() as *const _, "notables"),
+            (c"NUMBER_OF_FIELDS".as_ptr() as *const _, "nof"),
+            (c"NUMBER_OF_SETS".as_ptr() as *const _, "nos"),
+            (c"ORIGINATOR".as_ptr() as *const _, "orig"),
+            (c"DATA_IDENTIFIER".as_ptr() as *const _, "dataid"),
+            (c"NUMBER_OF_TABLES".as_ptr() as *const _, "notables"),
         ] {
             let p2 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
                 b"IT8FILE\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".as_ptr() as *const _, 106);
@@ -1397,7 +1395,7 @@ fn it8_deep_arms4() {
         let p3 = c::cmsIT8LoadFromMem(std::ptr::null_mut(),
             b"IT8FILE\nNUMBER_OF_FIELDS 2\nNUMBER_OF_SETS 2\nBEGIN_DATA_FORMAT\nA B\nEND_DATA_FORMAT\nBEGIN_DATA\n1 2\n3 4\nEND_DATA\n".as_ptr() as *const _, 106);
         if !p3.is_null() {
-            let r = c::cmsIT8SetDataRowCol(p3, 0, 0, b"99\0".as_ptr() as *const _);
+            let r = c::cmsIT8SetDataRowCol(p3, 0, 0, c"99".as_ptr() as *const _);
             eprintln!("setdata={r}");
             let v = c::cmsIT8GetDataRowCol(p3, 0, 0);
             eprintln!("getdata-val={}", !v.is_null());
@@ -1499,26 +1497,26 @@ fn it8_deep_arms6() {
         );
         if !p.is_null() {
             for (prop, name) in [
-                (b"ORIGINATOR\0".as_ptr() as *const _, "orig"),
-                (b"DESCRIPTOR\0".as_ptr() as *const _, "desc"),
-                (b"CREATED\0".as_ptr() as *const _, "created"),
-                (b"MANUFACTURER\0".as_ptr() as *const _, "mfg"),
-                (b"PROD_DATE\0".as_ptr() as *const _, "pdate"),
-                (b"SERIAL\0".as_ptr() as *const _, "serial"),
-                (b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, "nof"),
-                (b"NUMBER_OF_SETS\0".as_ptr() as *const _, "nos"),
-                (b"DATA_IDENTIFIER\0".as_ptr() as *const _, "dataid"),
-                (b"NUMBER_OF_TABLES\0".as_ptr() as *const _, "notables"),
-                (b"MISSING\0".as_ptr() as *const _, "missing"),
+                (c"ORIGINATOR".as_ptr() as *const _, "orig"),
+                (c"DESCRIPTOR".as_ptr() as *const _, "desc"),
+                (c"CREATED".as_ptr() as *const _, "created"),
+                (c"MANUFACTURER".as_ptr() as *const _, "mfg"),
+                (c"PROD_DATE".as_ptr() as *const _, "pdate"),
+                (c"SERIAL".as_ptr() as *const _, "serial"),
+                (c"NUMBER_OF_FIELDS".as_ptr() as *const _, "nof"),
+                (c"NUMBER_OF_SETS".as_ptr() as *const _, "nos"),
+                (c"DATA_IDENTIFIER".as_ptr() as *const _, "dataid"),
+                (c"NUMBER_OF_TABLES".as_ptr() as *const _, "notables"),
+                (c"MISSING".as_ptr() as *const _, "missing"),
             ] {
                 let v = c::cmsIT8GetProperty(p, prop);
                 eprintln!("prop {name}={}", !v.is_null());
             }
             // enum navigation arms
-            let mut names: *mut *mut i8 = std::ptr::null_mut();
+            let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
             let np = c::cmsIT8EnumProperties(p, &mut names);
             eprintln!("enumprops={np}");
-            let mut fmts: *mut *mut i8 = std::ptr::null_mut();
+            let mut fmts: *mut *mut std::ffi::c_char = std::ptr::null_mut();
             let nf = c::cmsIT8EnumDataFormat(p, &mut fmts);
             eprintln!("enumfmt={nf}");
             c::cmsIT8Free(p);
@@ -1677,16 +1675,16 @@ fn it8_deep_arms9() {
                 }
             }
             // SetDataRowCol writes
-            let ok = c::cmsIT8SetDataRowCol(p, 0, 0, b"99\0".as_ptr() as *const _);
+            let ok = c::cmsIT8SetDataRowCol(p, 0, 0, c"99".as_ptr() as *const _);
             eprintln!("setdata={ok}");
-            let ok2 = c::cmsIT8SetDataRowCol(p, -1, 0, b"bad\0".as_ptr() as *const _);
+            let ok2 = c::cmsIT8SetDataRowCol(p, -1, 0, c"bad".as_ptr() as *const _);
             eprintln!("setdata-neg={ok2}");
             // GetDataDbl on numeric cells
             let d =
-                c::cmsIT8GetDataDbl(p, b"L\0".as_ptr() as *const _, b"1\0".as_ptr() as *const _);
+                c::cmsIT8GetDataDbl(p, c"L".as_ptr() as *const _, c"1".as_ptr() as *const _);
             eprintln!("getdbldbl={d}");
             // property enum + get on all
-            let mut names: *mut *mut i8 = std::ptr::null_mut();
+            let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
             let np = c::cmsIT8EnumProperties(p, &mut names);
             eprintln!("enumprops={np}");
             // save + reload
@@ -1716,13 +1714,13 @@ fn it8_deep_arms9() {
             // SetTableByLabel on each sheet
             let ok = c::cmsIT8SetTableByLabel(
                 p2,
-                b"A\0".as_ptr() as *const _,
-                b"1\0".as_ptr() as *const _,
-                b"\0".as_ptr() as *const _,
+                c"A".as_ptr() as *const _,
+                c"1".as_ptr() as *const _,
+                c"".as_ptr() as *const _,
             );
             eprintln!("settab={ok}");
             let d =
-                c::cmsIT8GetDataDbl(p2, b"A\0".as_ptr() as *const _, b"1\0".as_ptr() as *const _);
+                c::cmsIT8GetDataDbl(p2, c"A".as_ptr() as *const _, c"1".as_ptr() as *const _);
             eprintln!("getdata={d}");
             c::cmsIT8Free(p2);
         }
@@ -2357,9 +2355,9 @@ fn it8_header_pair_arms() {
                 // round-trip via SetPropertyMulti + save
                 c::cmsIT8SetPropertyMulti(
                     p,
-                    "WEIGHTING_FUNCTION\0".as_ptr() as *const i8,
-                    "observer\0".as_ptr() as *const i8,
-                    "2deg\0".as_ptr() as *const i8,
+                    "WEIGHTING_FUNCTION\0".as_ptr() as *const std::ffi::c_char,
+                    "observer\0".as_ptr() as *const std::ffi::c_char,
+                    "2deg\0".as_ptr() as *const std::ffi::c_char,
                 );
                 let mut buf = vec![0u8; 1 << 16];
                 let mut n = buf.len() as u32;
@@ -2515,8 +2513,8 @@ fn it8_parsefloat_arms() {
             if !p.is_null() {
                 let v = c::cmsIT8GetDataDbl(
                     p,
-                    b"A\0".as_ptr() as *const i8,
-                    b"A\0".as_ptr() as *const i8,
+                    c"A".as_ptr() as *const std::ffi::c_char,
+                    c"A".as_ptr() as *const std::ffi::c_char,
                 );
                 eprintln!("  val={v}");
                 c::cmsIT8Free(p);
@@ -2636,8 +2634,8 @@ fn header_arms2() {
             );
             eprintln!("{name} ok={}", !p.is_null());
             if !p.is_null() {
-                let v = c::cmsIT8GetProperty(p, b"ORIGINATOR\0".as_ptr() as *const i8);
-                let v2 = c::cmsIT8GetProperty(p, b"CUSTOMKEY\0".as_ptr() as *const i8);
+                let v = c::cmsIT8GetProperty(p, c"ORIGINATOR".as_ptr() as *const std::ffi::c_char);
+                let v2 = c::cmsIT8GetProperty(p, c"CUSTOMKEY".as_ptr() as *const std::ffi::c_char);
                 eprintln!("  orig={v:?} cust={v2:?}");
                 c::cmsIT8Free(p);
             }
@@ -2671,9 +2669,9 @@ fn it8_table_by_label_arms() {
             ] {
                 let r = c::cmsIT8SetTableByLabel(
                     p,
-                    set.as_ptr() as *const i8,
-                    field.as_ptr() as *const i8,
-                    exp.as_ptr() as *const i8,
+                    set.as_ptr() as *const std::ffi::c_char,
+                    field.as_ptr() as *const std::ffi::c_char,
+                    exp.as_ptr() as *const std::ffi::c_char,
                 );
                 eprintln!("{name}={r}");
             }
@@ -2856,7 +2854,7 @@ fn it8_cookptr_arms() {
             eprintln!("{name} load={}", !p.is_null());
             if !p.is_null() {
                 let n = c::cmsIT8SetTable(p, 0);
-                let p0 = c::cmsIT8GetPatchByName(p, b"1\0".as_ptr() as *const i8);
+                let p0 = c::cmsIT8GetPatchByName(p, c"1".as_ptr() as *const std::ffi::c_char);
                 let d = c::cmsIT8GetDataRowCol(p, 0, 1);
                 eprintln!("  tbl={n} patch={p0} d={d:?}");
                 c::cmsIT8Free(p);
@@ -2897,28 +2895,29 @@ fn it8_setdata_arms() {
             ] {
                 let r = c::cmsIT8SetData(
                     p,
-                    patch.as_ptr() as *const i8,
-                    field.as_ptr() as *const i8,
-                    val.as_ptr() as *const i8,
+                    patch.as_ptr() as *const std::ffi::c_char,
+                    field.as_ptr() as *const std::ffi::c_char,
+                    val.as_ptr() as *const std::ffi::c_char,
                 );
                 eprintln!("{name}={r}");
             }
             // row/col forms
-            let r = c::cmsIT8SetDataRowCol(p, 0, 0, b"99\0".as_ptr() as *const i8);
+            let r = c::cmsIT8SetDataRowCol(p, 0, 0, c"99".as_ptr() as *const std::ffi::c_char);
             let d = c::cmsIT8GetDataRowCol(p, 0, 0);
-            let r2 = c::cmsIT8SetDataRowCol(p, 9, 9, b"x\0".as_ptr() as *const i8);
+            let r2 = c::cmsIT8SetDataRowCol(p, 9, 9, c"x".as_ptr() as *const std::ffi::c_char);
             eprintln!("rowcol {r} d={d:?} far={r2}");
             // SetDataDbl
             let rd = c::cmsIT8SetDataDbl(
                 p,
-                b"1\0".as_ptr() as *const i8,
-                b"A\0".as_ptr() as *const i8,
-                3.14159,
+                c"1".as_ptr() as *const std::ffi::c_char,
+                c"A".as_ptr() as *const std::ffi::c_char,
+                #[allow(clippy::approx_constant)] // IT8 fixture value, not π
+                { 3.14159 },
             );
             let dd = c::cmsIT8GetDataDbl(
                 p,
-                b"1\0".as_ptr() as *const i8,
-                b"A\0".as_ptr() as *const i8,
+                c"1".as_ptr() as *const std::ffi::c_char,
+                c"A".as_ptr() as *const std::ffi::c_char,
             );
             eprintln!("dbl {rd}={dd}");
             c::cmsIT8Free(p);
@@ -2945,14 +2944,14 @@ fn it8_api_arms() {
             return;
         }
         // comment + properties
-        c::cmsIT8SetComment(p, b"new comment\0".as_ptr() as *const i8);
-        c::cmsIT8SetComment(p, b"\0".as_ptr() as *const i8);
-        let mut names: *mut *mut i8 = std::ptr::null_mut();
+        c::cmsIT8SetComment(p, c"new comment".as_ptr() as *const std::ffi::c_char);
+        c::cmsIT8SetComment(p, c"".as_ptr() as *const std::ffi::c_char);
+        let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let np = c::cmsIT8EnumProperties(p, &mut names);
-        let mut names2: *mut *mut i8 = std::ptr::null_mut();
-        let np2 = c::cmsIT8EnumPropertyMulti(p, b"ORIGINATOR\0".as_ptr() as *const i8, &mut names2);
-        let mut names3: *mut *mut i8 = std::ptr::null_mut();
-        let np3 = c::cmsIT8EnumPropertyMulti(p, b"NOPROP\0".as_ptr() as *const i8, &mut names3);
+        let mut names2: *mut *mut std::ffi::c_char = std::ptr::null_mut();
+        let np2 = c::cmsIT8EnumPropertyMulti(p, c"ORIGINATOR".as_ptr() as *const std::ffi::c_char, &mut names2);
+        let mut names3: *mut *mut std::ffi::c_char = std::ptr::null_mut();
+        let np3 = c::cmsIT8EnumPropertyMulti(p, c"NOPROP".as_ptr() as *const std::ffi::c_char, &mut names3);
         eprintln!("enumprop={np} multi={np2}/{np3}             n={names:?}/{names2:?}");
         // data format — set/get via SetDataFormat + Enum
         for (i, nm) in [
@@ -2962,22 +2961,22 @@ fn it8_api_arms() {
             (3, b"b\0"),
             (9, b"bad\0"),
         ] {
-            let r = c::cmsIT8SetDataFormat(p, i, nm.as_ptr() as *const i8);
+            let r = c::cmsIT8SetDataFormat(p, i, nm.as_ptr() as *const std::ffi::c_char);
             eprintln!("fmt{i}->{nm:?}={r}");
         }
-        let mut fnames: *mut *mut i8 = std::ptr::null_mut();
+        let mut fnames: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let ne = c::cmsIT8EnumDataFormat(p, &mut fnames);
         eprintln!("enumfmt={ne} n={fnames:?}");
         // patch queries
         for name in [b"1\0" as &[u8], b"2\0", b"9\0", b"\0"] {
-            let i = c::cmsIT8GetPatchByName(p, name.as_ptr() as *const i8);
+            let i = c::cmsIT8GetPatchByName(p, name.as_ptr() as *const std::ffi::c_char);
             eprintln!("patch {:?}={i}", name);
         }
         // data getters — dbl + rowcol forms
         let d = c::cmsIT8GetDataDbl(
             p,
-            b"1\0".as_ptr() as *const i8,
-            b"L\0".as_ptr() as *const i8,
+            c"1".as_ptr() as *const std::ffi::c_char,
+            c"L".as_ptr() as *const std::ffi::c_char,
         );
         let d2 = c::cmsIT8GetDataRowColDbl(p, 0, 1);
         let s_ = c::cmsIT8GetDataRowCol(p, 0, 0);
@@ -2992,15 +2991,15 @@ fn it8_api_arms() {
         // table navigation
         let t0 = c::cmsIT8SetTableByLabel(
             p,
-            b"IT8FILE\0".as_ptr() as *const i8,
+            c"IT8FILE".as_ptr() as *const std::ffi::c_char,
             std::ptr::null(),
             std::ptr::null(),
         );
         let tc = c::cmsIT8TableCount(p);
         let ts = c::cmsIT8SetTable(p, 0);
         let ts2 = c::cmsIT8SetTable(p, 99);
-        let si = c::cmsIT8SetIndexColumn(p, b"SAMPLE_ID\0".as_ptr() as *const i8);
-        let si2 = c::cmsIT8SetIndexColumn(p, b"bad\0".as_ptr() as *const i8);
+        let si = c::cmsIT8SetIndexColumn(p, c"SAMPLE_ID".as_ptr() as *const std::ffi::c_char);
+        let si2 = c::cmsIT8SetIndexColumn(p, c"bad".as_ptr() as *const std::ffi::c_char);
         eprintln!("tab={t0} cnt={tc} ts={ts}/{ts2} idx={si}/{si2}");
         c::cmsIT8Free(p);
     }
@@ -3079,41 +3078,41 @@ fn it8_write_arms() {
     unsafe {
         for n in 0..3 {
             let p = c::cmsIT8Alloc(std::ptr::null_mut());
-            c::cmsIT8SetSheetType(p, b"IT8.7/2\0".as_ptr() as *const i8);
+            c::cmsIT8SetSheetType(p, c"IT8.7/2".as_ptr() as *const std::ffi::c_char);
             // all property types
             c::cmsIT8SetPropertyStr(
                 p,
-                b"ORIGINATOR\0".as_ptr() as *const i8,
-                b"zen\0".as_ptr() as *const i8,
+                c"ORIGINATOR".as_ptr() as *const std::ffi::c_char,
+                c"zen".as_ptr() as *const std::ffi::c_char,
             );
-            c::cmsIT8SetPropertyDbl(p, b"NUM\0".as_ptr() as *const i8, 42.5);
-            c::cmsIT8SetPropertyHex(p, b"HEX\0".as_ptr() as *const i8, 0xdead);
+            c::cmsIT8SetPropertyDbl(p, c"NUM".as_ptr() as *const std::ffi::c_char, 42.5);
+            c::cmsIT8SetPropertyHex(p, c"HEX".as_ptr() as *const std::ffi::c_char, 0xdead);
             c::cmsIT8SetPropertyUncooked(
                 p,
-                b"UNC\0".as_ptr() as *const i8,
-                b"raw $x y\0".as_ptr() as *const i8,
+                c"UNC".as_ptr() as *const std::ffi::c_char,
+                c"raw $x y".as_ptr() as *const std::ffi::c_char,
             );
-            c::cmsIT8SetComment(p, b"a comment\0".as_ptr() as *const i8);
+            c::cmsIT8SetComment(p, c"a comment".as_ptr() as *const std::ffi::c_char);
             c::cmsIT8SetPropertyMulti(
                 p,
-                b"MULTI\0".as_ptr() as *const i8,
-                b"sub1\0".as_ptr() as *const i8,
-                b"val1\0".as_ptr() as *const i8,
+                c"MULTI".as_ptr() as *const std::ffi::c_char,
+                c"sub1".as_ptr() as *const std::ffi::c_char,
+                c"val1".as_ptr() as *const std::ffi::c_char,
             );
             // data format + rows
-            c::cmsIT8SetDataFormat(p, 0, b"SAMPLE_ID\0".as_ptr() as *const i8);
-            c::cmsIT8SetDataFormat(p, 1, b"LAB_L\0".as_ptr() as *const i8);
-            c::cmsIT8SetDataFormat(p, 2, b"LAB_A\0".as_ptr() as *const i8);
-            c::cmsIT8SetDataFormat(p, 3, b"LAB_B\0".as_ptr() as *const i8);
+            c::cmsIT8SetDataFormat(p, 0, c"SAMPLE_ID".as_ptr() as *const std::ffi::c_char);
+            c::cmsIT8SetDataFormat(p, 1, c"LAB_L".as_ptr() as *const std::ffi::c_char);
+            c::cmsIT8SetDataFormat(p, 2, c"LAB_A".as_ptr() as *const std::ffi::c_char);
+            c::cmsIT8SetDataFormat(p, 3, c"LAB_B".as_ptr() as *const std::ffi::c_char);
             let rows = (n + 1) * 4;
-            c::cmsIT8SetPropertyDbl(p, b"NUMBER_OF_SETS\0".as_ptr() as *const i8, rows as f64);
-            c::cmsIT8SetPropertyDbl(p, b"NUMBER_OF_FIELDS\0".as_ptr() as *const i8, 4.0);
+            c::cmsIT8SetPropertyDbl(p, c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char, rows as f64);
+            c::cmsIT8SetPropertyDbl(p, c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char, 4.0);
             for i in 0..rows {
                 let nm = format!("n{i}\0");
-                c::cmsIT8SetDataRowCol(p, i as i32, 0, nm.as_ptr() as *const i8);
-                c::cmsIT8SetDataRowColDbl(p, i as i32, 1, 50.0 + i as f64);
-                c::cmsIT8SetDataRowColDbl(p, i as i32, 2, i as f64 - 10.0);
-                c::cmsIT8SetDataRowColDbl(p, i as i32, 3, i as f64 + 5.0);
+                c::cmsIT8SetDataRowCol(p, i, 0, nm.as_ptr() as *const std::ffi::c_char);
+                c::cmsIT8SetDataRowColDbl(p, i, 1, 50.0 + i as f64);
+                c::cmsIT8SetDataRowColDbl(p, i, 2, i as f64 - 10.0);
+                c::cmsIT8SetDataRowColDbl(p, i, 3, i as f64 + 5.0);
             }
             let mut buf = vec![0u8; 1 << 18];
             let mut sz = buf.len() as u32;
@@ -3130,8 +3129,8 @@ fn it8_write_arms() {
                     b"MULTI\0",
                     b"nonexist\0",
                 ] {
-                    let v = c::cmsIT8GetProperty(rp, name.as_ptr() as *const i8);
-                    let d = c::cmsIT8GetPropertyDbl(rp, name.as_ptr() as *const i8);
+                    let v = c::cmsIT8GetProperty(rp, name.as_ptr() as *const std::ffi::c_char);
+                    let d = c::cmsIT8GetPropertyDbl(rp, name.as_ptr() as *const std::ffi::c_char);
                     eprintln!(
                         "  {:?} v={v:?} d={d}",
                         std::str::from_utf8(name).unwrap_or("?")
@@ -3409,7 +3408,7 @@ fn cgats_cube_arms() {
         let h = c::cmsIT8LoadFromMem(ctx, doc.as_ptr() as *const _, doc.len() as u32 - 1);
         if !h.is_null() {
             for prop in ["ORIGINATOR", "KEYWORD", "NONEXIST", ""] {
-                let mut names: *mut *mut i8 = std::ptr::null_mut();
+                let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
                 let n = c::cmsIT8EnumPropertyMulti(
                     h,
                     format!("{prop}\0").as_ptr() as *const _,
@@ -3589,7 +3588,8 @@ fn cgats_num_bin_arms() {
                 eprintln!("set {name} r={r}");
             }
             // save → satob on binary-valued cells
-            for path in ["/home/lilith/tmp/cb-a.it8"] {
+            {
+                let path = "/home/lilith/tmp/cb-a.it8";
                 let p2 = format!("{path}\0");
                 let s = c::cmsIT8SaveToFile(h, p2.as_ptr() as *const _);
                 let h2 = c::cmsIT8LoadFromFile(ctx, p2.as_ptr() as *const _);
@@ -3656,66 +3656,66 @@ fn cgats_num_bin_arms() {
 fn cgats_label_pair_arms() {
     unsafe {
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
-        c::cmsIT8SetSheetType(it8, b"CGATS.17\0".as_ptr() as *const _);
-        c::cmsIT8SetPropertyDbl(it8, b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, 3.0);
-        c::cmsIT8SetPropertyDbl(it8, b"NUMBER_OF_SETS\0".as_ptr() as *const _, 2.0);
+        c::cmsIT8SetSheetType(it8, c"CGATS.17".as_ptr() as *const _);
+        c::cmsIT8SetPropertyDbl(it8, c"NUMBER_OF_FIELDS".as_ptr() as *const _, 3.0);
+        c::cmsIT8SetPropertyDbl(it8, c"NUMBER_OF_SETS".as_ptr() as *const _, 2.0);
         // declare data format columns incl LABEL, then
         //   write rows whose LABEL cell is
         //   "name nTable type" -> sscanf parse path
-        c::cmsIT8SetDataFormat(it8, 0, b"SAMPLE_ID\0".as_ptr() as *const _);
-        c::cmsIT8SetDataFormat(it8, 1, b"LABEL\0".as_ptr() as *const _);
-        c::cmsIT8SetDataFormat(it8, 2, b"CMYK_C\0".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 0, c"SAMPLE_ID".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 1, c"LABEL".as_ptr() as *const _);
+        c::cmsIT8SetDataFormat(it8, 2, c"CMYK_C".as_ptr() as *const _);
         for (row, id, lbl) in [
             (0i32, b"R1\0".as_slice(), b"L1 0 SAMPLE\0".as_slice()),
             (1, b"R2\0".as_slice(), b"L2 1 OTHER\0".as_slice()),
         ] {
             c::cmsIT8SetDataRowCol(it8, row, 0, id.as_ptr() as *const _);
             c::cmsIT8SetDataRowCol(it8, row, 1, lbl.as_ptr() as *const _);
-            c::cmsIT8SetDataRowCol(it8, row, 2, b"0.5\0".as_ptr() as *const _);
+            c::cmsIT8SetDataRowCol(it8, row, 2, c"0.5".as_ptr() as *const _);
         }
         // SetTableByLabel against the LABEL column
         // cSet = patch name (SAMPLE_ID), cField = data col
         for (set, fld, exp, name) in [
             (
-                b"R1\0".as_ptr(),
-                b"LABEL\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(),
+                c"R1".as_ptr(),
+                c"LABEL".as_ptr(),
+                c"SAMPLE".as_ptr(),
                 "lbl-match",
             ),
             (
-                b"R2\0".as_ptr(),
-                b"LABEL\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(),
+                c"R2".as_ptr(),
+                c"LABEL".as_ptr(),
+                c"SAMPLE".as_ptr(),
                 "lbl-type-mis",
             ),
             (
-                b"R1\0".as_ptr(),
-                b"LABEL\0".as_ptr(),
-                b"\0".as_ptr(),
+                c"R1".as_ptr(),
+                c"LABEL".as_ptr(),
+                c"".as_ptr(),
                 "lbl-exp-empty",
             ),
             (
-                b"R1\0".as_ptr(),
-                b"\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(),
+                c"R1".as_ptr(),
+                c"".as_ptr(),
+                c"SAMPLE".as_ptr(),
                 "lbl-fld-empty",
             ),
             (
-                b"R1\0".as_ptr(),
+                c"R1".as_ptr(),
                 std::ptr::null(),
-                b"SAMPLE\0".as_ptr(),
+                c"SAMPLE".as_ptr(),
                 "lbl-fld-null",
             ),
             (
-                b"NOPE\0".as_ptr(),
-                b"LABEL\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(),
+                c"NOPE".as_ptr(),
+                c"LABEL".as_ptr(),
+                c"SAMPLE".as_ptr(),
                 "lbl-no-patch",
             ),
             (
-                b"R1\0".as_ptr(),
-                b"CMYK_C\0".as_ptr(),
-                b"SAMPLE\0".as_ptr(),
+                c"R1".as_ptr(),
+                c"CMYK_C".as_ptr(),
+                c"SAMPLE".as_ptr(),
                 "lbl-wrong-fld",
             ),
         ] {
@@ -3726,9 +3726,9 @@ fn cgats_label_pair_arms() {
         // WRITE_PAIR: WEIGHTING_FUNCTION predefined pair
         let r = c::cmsIT8SetPropertyMulti(
             it8,
-            b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
-            b"CIE_D65\0".as_ptr() as *const _,
-            b"0.5\0".as_ptr() as *const _,
+            c"WEIGHTING_FUNCTION".as_ptr() as *const _,
+            c"CIE_D65".as_ptr() as *const _,
+            c"0.5".as_ptr() as *const _,
         );
         eprintln!("pair-prop r={r}");
         let mut buf = vec![0u8; 1 << 17];
@@ -3813,15 +3813,15 @@ fn cgats_symbol_arms() {
             if !it8.is_null() {
                 let v = c::cmsIT8GetDataDbl(
                     it8,
-                    b"0\0".as_ptr() as *const _,
-                    b"SAMPLE_ID\0".as_ptr() as *const _,
+                    c"0".as_ptr() as *const _,
+                    c"SAMPLE_ID".as_ptr() as *const _,
                 );
                 eprintln!("  dbl={v}");
                 c::cmsIT8Free(it8);
             }
         }
         // #INCLUDE into a real file — open-success path
-        let inc_path = b"/tmp/lcms_inc.it8\0";
+        let _inc_path = b"/tmp/lcms_inc.it8\0";
         std::fs::write(
             "/tmp/lcms_inc.it8",
             b"CGATS.17\nNUMBER_OF_FIELDS 1\n\
@@ -3840,8 +3840,8 @@ fn cgats_symbol_arms() {
         if !it8.is_null() {
             let v = c::cmsIT8GetDataDbl(
                 it8,
-                b"0\0".as_ptr() as *const _,
-                b"SAMPLE_ID\0".as_ptr() as *const _,
+                c"0".as_ptr() as *const _,
+                c"SAMPLE_ID".as_ptr() as *const _,
             );
             eprintln!("  inc-dbl={v}");
             c::cmsIT8Free(it8);
@@ -4018,21 +4018,21 @@ fn cgats_header_seq_arms() {
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
         c::cmsIT8SetPropertyUncooked(
             it8,
-            b"COMMENT\0".as_ptr() as *const _,
-            b"line1\nline2\nline3\0".as_ptr() as *const _,
+            c"COMMENT".as_ptr() as *const _,
+            c"line1\nline2\nline3".as_ptr() as *const _,
         );
         // WRITE_PAIR prop for EnumPropertyMulti subkeys
         c::cmsIT8SetPropertyMulti(
             it8,
-            b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
-            b"CIE_D65\0".as_ptr() as *const _,
-            b"0.5\0".as_ptr() as *const _,
+            c"WEIGHTING_FUNCTION".as_ptr() as *const _,
+            c"CIE_D65".as_ptr() as *const _,
+            c"0.5".as_ptr() as *const _,
         );
         c::cmsIT8SetPropertyMulti(
             it8,
-            b"COMPUTATIONAL_PARAMETER\0".as_ptr() as *const _,
-            b"MODE_A\0".as_ptr() as *const _,
-            b"1.0\0".as_ptr() as *const _,
+            c"COMPUTATIONAL_PARAMETER".as_ptr() as *const _,
+            c"MODE_A".as_ptr() as *const _,
+            c"1.0".as_ptr() as *const _,
         );
         let mut buf = vec![0u8; 1 << 16];
         let mut n = buf.len() as u32;
@@ -4047,7 +4047,7 @@ fn cgats_header_seq_arms() {
         let mut names = [std::ptr::null_mut::<u8>(); 8];
         let r = c::cmsIT8EnumPropertyMulti(
             it8,
-            b"WEIGHTING_FUNCTION\0".as_ptr() as *const _,
+            c"WEIGHTING_FUNCTION".as_ptr() as *const _,
             names.as_mut_ptr() as *mut _,
         );
         eprintln!("enum-multi r={r}");
@@ -4291,7 +4291,7 @@ fn cgats_write_load_arms() {
         // define a custom double format
         c::cmsIT8DefineDblFormat(it8, "%.12g\0".as_ptr() as *const _);
         // data format + sets
-        let fmt: Vec<*const i8> = [
+        let fmt: Vec<*const std::ffi::c_char> = [
             "SAMPLE_ID\0".as_ptr() as *const _,
             "RGB_R\0".as_ptr() as *const _,
             "RGB_G\0".as_ptr() as *const _,
@@ -4672,25 +4672,25 @@ fn it8_data_arms() {
             return;
         }
         // setter variants
-        let r1 = c::cmsIT8SetSheetType(h, b"CGATS.17\0".as_ptr() as *const _);
-        let r2 = c::cmsIT8SetComment(h, b"a comment\0".as_ptr() as *const _);
+        let r1 = c::cmsIT8SetSheetType(h, c"CGATS.17".as_ptr() as *const _);
+        let r2 = c::cmsIT8SetComment(h, c"a comment".as_ptr() as *const _);
         let r3 = c::cmsIT8SetPropertyStr(
             h,
-            b"ORIGINATOR\0".as_ptr() as *const _,
-            b"Devin\0".as_ptr() as *const _,
+            c"ORIGINATOR".as_ptr() as *const _,
+            c"Devin".as_ptr() as *const _,
         );
-        let r4 = c::cmsIT8SetPropertyDbl(h, b"NUMBER_OF_FIELDS\0".as_ptr() as *const _, 4.0);
-        let r5 = c::cmsIT8SetPropertyHex(h, b"HEXVAL\0".as_ptr() as *const _, 0xDEADBEEF);
+        let r4 = c::cmsIT8SetPropertyDbl(h, c"NUMBER_OF_FIELDS".as_ptr() as *const _, 4.0);
+        let r5 = c::cmsIT8SetPropertyHex(h, c"HEXVAL".as_ptr() as *const _, 0xDEADBEEF);
         let r6 = c::cmsIT8SetPropertyUncooked(
             h,
-            b"UNCOOKED\0".as_ptr() as *const _,
-            b"raw stuff ()[]\0".as_ptr() as *const _,
+            c"UNCOOKED".as_ptr() as *const _,
+            c"raw stuff ()[]".as_ptr() as *const _,
         );
         let r7 = c::cmsIT8SetPropertyMulti(
             h,
-            b"MULTI\0".as_ptr() as *const _,
-            b"SUB\0".as_ptr() as *const _,
-            b"sub-val\0".as_ptr() as *const _,
+            c"MULTI".as_ptr() as *const _,
+            c"SUB".as_ptr() as *const _,
+            c"sub-val".as_ptr() as *const _,
         );
         eprintln!("set: {r1}{r2}{r3}{r4}{r5}{r6}{r7}");
         // data format + data set/get
@@ -4701,9 +4701,9 @@ fn it8_data_arms() {
         // SetData via the public set-property on data fields
         let d1 = c::cmsIT8SetData(
             h,
-            b"F0\0".as_ptr() as *const _,
-            b"F1\0".as_ptr() as *const _,
-            b"42\0".as_ptr() as *const _,
+            c"F0".as_ptr() as *const _,
+            c"F1".as_ptr() as *const _,
+            c"42".as_ptr() as *const _,
         );
         eprintln!("setdata={d1}");
         // save to memory (WriteHeader + WriteDataFormat +
@@ -4726,25 +4726,25 @@ fn it8_data_arms() {
         // GetData returns a C string ptr
         let g = c::cmsIT8GetData(
             h,
-            b"F0\0".as_ptr() as *const _,
-            b"F1\0".as_ptr() as *const _,
+            c"F0".as_ptr() as *const _,
+            c"F1".as_ptr() as *const _,
         );
         eprintln!("getdata={}", !g.is_null());
         // row/col accessors + dbl variants
         let rc = c::cmsIT8GetDataRowCol(h, 0, 1);
         let rd = c::cmsIT8GetDataRowColDbl(h, 0, 1);
-        let s1 = c::cmsIT8SetDataRowCol(h, 0, 2, b"7\0".as_ptr() as *const _);
+        let s1 = c::cmsIT8SetDataRowCol(h, 0, 2, c"7".as_ptr() as *const _);
         let s2 = c::cmsIT8SetDataRowColDbl(h, 1, 0, 3.5);
         let s3 = c::cmsIT8SetDataDbl(
             h,
-            b"F0\0".as_ptr() as *const _,
-            b"F1\0".as_ptr() as *const _,
+            c"F0".as_ptr() as *const _,
+            c"F1".as_ptr() as *const _,
             9.5,
         );
-        let fd = c::cmsIT8FindDataFormat(h, b"F2\0".as_ptr() as *const _);
+        let fd = c::cmsIT8FindDataFormat(h, c"F2".as_ptr() as *const _);
         eprintln!("rc={} rd={rd} s={s1}{s2}{s3} fd={fd}", !rc.is_null());
         // bad-property / out-of-range arms
-        let r9 = c::cmsIT8SetPropertyStr(h, std::ptr::null(), b"val\0".as_ptr() as *const _);
+        let r9 = c::cmsIT8SetPropertyStr(h, std::ptr::null(), c"val".as_ptr() as *const _);
         eprintln!("null-prop={r9}");
         c::cmsIT8Free(h);
     }

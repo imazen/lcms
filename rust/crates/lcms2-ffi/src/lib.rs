@@ -205,7 +205,7 @@ pub unsafe extern "C" fn cmsGetPCS(h: Handle) -> c_uint {
 /// `cmsGetEncodedICCversion`
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cmsGetEncodedICCversion(h: Handle) -> c_uint {
-    hdr(h, |p| profile::get_encoded_icc_version(p), 0)
+    hdr(h, profile::get_encoded_icc_version, 0)
 }
 /// `cmsGetHeaderRenderingIntent`
 #[unsafe(no_mangle)]
@@ -1204,7 +1204,7 @@ fn create_transform_ctx(
     // `cmsFLAGS_NULLTRANSFORM` needs no profiles at all (C checks the flag
     // before dereferencing them).
     if flags & lcms::types::FLAGS_NULLTRANSFORM == 0 {
-        let Some(i) = prof_ref(input) else {
+        let Some(_i) = prof_ref(input) else {
             return ptr::null_mut();
         };
     }
@@ -1731,7 +1731,7 @@ fn rust_to_tc(ctx: Handle, tc: lcms::gamma::ToneCurve) -> Handle {
                 if let Some(ev) = parametric_eval_for(ctx, s.r#type) {
                     ev
                 } else {
-                    eval_parametric_c as usize
+                    eval_parametric_c as *const () as usize
                 }
             })
             .collect();
@@ -1783,7 +1783,7 @@ fn make_bare_cparams(ctx: Handle) -> *mut CmsInterpParams {
         domain: [0; 15],
         opta: [0; 15],
         table: ptr::null(),
-        interpolation: lerp16_c as usize,
+        interpolation: lerp16_c as *const () as usize,
     }))
 }
 
@@ -2989,7 +2989,7 @@ pub unsafe extern "C" fn cmsSetAlarmCodes(codes: *const u16, n: c_uint) {
 /// `cmsGetProfileVersion` — encoded version as `cmsFloat64Number`
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn cmsGetProfileVersion(h: Handle) -> f64 {
-    hdr(h, |p| profile::get_profile_version(p), 0.0)
+    hdr(h, profile::get_profile_version, 0.0)
 }
 /// `cmsSetProfileVersion`
 #[unsafe(no_mangle)]
@@ -3605,9 +3605,9 @@ fn make_cparams(
     cp.domain = domain;
     cp.opta = opta;
     cp.interpolation = if flags & 1 != 0 {
-        lerp_float_c as usize
+        lerp_float_c as *const () as usize
     } else {
-        lerp16_c as usize
+        lerp16_c as *const () as usize
     };
     // `cmsComputeInterpParams` consults the context's Interpolators chain
     // first — a registered `cmsInterpFnFactory` that returns a non-NULL
@@ -3932,12 +3932,12 @@ unsafe extern "C" fn def_dup(ctx: Handle, org: *const c_void, size: c_uint) -> *
 /// Malloc, MallocZero, Free, Realloc, Calloc, Dup.
 fn default_mem_fns() -> [usize; 6] {
     [
-        def_malloc as usize,
-        def_malloczero as usize,
-        def_free as usize,
-        def_realloc as usize,
-        def_calloc as usize,
-        def_dup as usize,
+        def_malloc as *const () as usize,
+        def_malloczero as *const () as usize,
+        def_free as *const () as usize,
+        def_realloc as *const () as usize,
+        def_calloc as *const () as usize,
+        def_dup as *const () as usize,
     ]
 }
 
@@ -4046,7 +4046,7 @@ fn stage_box(ptr: usize) -> Option<Box<lcms::lut::Stage>> {
     if ptr == 0 {
         return None;
     }
-    Some(unsafe { *Box::from_raw(ptr as *mut lcms::lut::Stage) }).map(Box::new)
+    Some(Box::new(unsafe { *Box::from_raw(ptr as *mut lcms::lut::Stage) }))
 }
 
 // ---------------------------------------------------------------------------
@@ -4229,11 +4229,11 @@ fn with_cio<R>(io: usize, ctx_handle: usize, f: impl FnOnce(&mut CIohandler) -> 
         used_space: unsafe { (*ioh).used_space },
         reported_size: unsafe { (*ioh).reported_size },
         physical_file: [0; 256],
-        read: cio_read as usize,
-        seek: cio_seek as usize,
-        close: cio_close as usize,
-        tell: cio_tell as usize,
-        write: cio_write as usize,
+        read: cio_read as *const () as usize,
+        seek: cio_seek as *const () as usize,
+        close: cio_close as *const () as usize,
+        tell: cio_tell as *const () as usize,
+        write: cio_write as *const () as usize,
     };
     let key = &mut shim as *mut CIohandler as usize;
     CIO_LIVE.lock().unwrap().insert(key);
@@ -4964,10 +4964,10 @@ pub unsafe extern "C" fn _cmsGetFormatter(ctx: Handle, ty: c_uint, dir: c_int, f
     }
     let float = flags & 1 != 0;
     match (dir, float) {
-        (0, false) => fmt16_unpack as usize,
-        (0, true) => fmt_float_unpack as usize,
-        (1, false) => fmt16_pack as usize,
-        _ => fmt_float_pack as usize,
+        (0, false) => fmt16_unpack as *const () as usize,
+        (0, true) => fmt_float_unpack as *const () as usize,
+        (1, false) => fmt16_pack as *const () as usize,
+        _ => fmt_float_pack as *const () as usize,
     }
 }
 /// `_cmsOptimizePipeline` — takes `cmsPipeline**` (the optimizer may replace

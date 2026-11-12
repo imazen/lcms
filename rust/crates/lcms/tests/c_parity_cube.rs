@@ -12,7 +12,7 @@ fn cube_devicelink() {
     // found"); Rust must reject identically (parity, was accept-all
     // before the binary-search/unknown-symbol fix).
     let ch =
-        unsafe { c::cmsCreateDeviceLinkFromCubeFile(b"/tmp/test.cube\0".as_ptr() as *const i8) };
+        unsafe { c::cmsCreateDeviceLinkFromCubeFile(c"/tmp/test.cube".as_ptr() as *const std::ffi::c_char) };
     let rp = It8::create_device_link_from_cube_file(None, "/tmp/test.cube");
     assert_eq!(
         ch.is_null(),
@@ -30,7 +30,7 @@ fn cube_devicelink() {
         "TITLE \"ok\"\nLUT_3D_SIZE 2\n         0 0 0\n0 0 1\n0 1 0\n0 1 1\n         1 0 0\n1 0 1\n1 1 0\n1 1 1\n").unwrap();
     let mut p =
         It8::create_device_link_from_cube_file(None, path).expect("rust cube→devicelink failed");
-    let lut = lcms::profile::cms_read_tag(&mut (*p), lcms::signatures::tag::SigAToB0Tag);
+    let lut = lcms::profile::cms_read_tag(&mut p, lcms::signatures::tag::SigAToB0Tag);
     let lcms::tagtypes::TagObject::LutA2B(pl) = lut.expect("AToB0 missing") else {
         panic!("AToB0 is not a pipeline");
     };
@@ -42,7 +42,7 @@ fn cube_devicelink() {
         [0, 0xffff, 0],
         [0, 0, 0xffff],
     ] {
+        // Must not panic; every u16 output is in range by type.
         pl.eval16(&inp, &mut out);
-        assert!(out.iter().all(|&v| v <= 0xffff));
     }
 }

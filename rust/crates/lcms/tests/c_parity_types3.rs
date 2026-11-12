@@ -20,7 +20,7 @@ fn corpus() -> Vec<Vec<u8>> {
 #[test]
 fn tag_table_matrix() {
     for data in corpus() {
-        let mut rp = profile::open_profile_from_mem(None, &data).unwrap();
+        let rp = profile::open_profile_from_mem(None, &data).unwrap();
         unsafe {
             let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             // count + signature parity
@@ -98,7 +98,7 @@ fn mpe_tag_read() {
     // readers
     unsafe {
         for mk in [0u32, 1, 2] {
-            let (ch, mut rp): (*mut _, Option<Box<lcms::profile::IccProfile>>) = match mk {
+            let (ch, rp): (*mut _, Option<Box<lcms::profile::IccProfile>>) = match mk {
                 0 => (
                     c::cmsCreateBCHSWabstractProfile(17, 0.0, 20.0, 30.0, 40.0, 5000, 6000),
                     virt::create_bchsw_abstract_profile(
@@ -107,7 +107,7 @@ fn mpe_tag_read() {
                 ),
                 1 => {
                     let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-                    let curves = vec![g; 3];
+                    let curves = [g; 3];
                     (
                         c::cmsCreateLinearizationDeviceLinkTHR(
                             std::ptr::null_mut(),
@@ -172,8 +172,8 @@ fn dict_machinery() {
             let cm1 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
             let cm2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
             let c_ok = c::cmsDictAddEntry(cd, kw.as_ptr(), vw.as_ptr(), cm1, cm2);
-            let mut rm1 = named::mlu_alloc(None, 1).unwrap();
-            let mut rm2 = named::mlu_alloc(None, 1).unwrap();
+            let rm1 = named::mlu_alloc(None, 1).unwrap();
+            let rm2 = named::mlu_alloc(None, 1).unwrap();
             let r_ok = named::dict_add_entry(&mut rd, &kw, Some(&vw), Some(&rm1), Some(&rm2));
             assert_eq!(c_ok != 0, r_ok, "dict add {k}");
             c::cmsMLUfree(cm1);

@@ -1,7 +1,7 @@
 use lcms::{
     cnvrt, gamma,
     opt::{self, OptData},
-    virt, wtpnt,
+    virt,
 };
 fn main() {
     let g22 = gamma::build_gamma(None, 2.2).unwrap();

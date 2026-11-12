@@ -29,8 +29,8 @@ fn srgb_identity_transform() {
         out
     };
     // rust side: build two sRGB profiles and a transform
-    let mut p1 = lcms::virt::create_srgb_profile(None).expect("srgb");
-    let mut p2 = lcms::virt::create_srgb_profile(None).expect("srgb");
+    let p1 = lcms::virt::create_srgb_profile(None).expect("srgb");
+    let p2 = lcms::virt::create_srgb_profile(None).expect("srgb");
     let mut profs = vec![p1, p2];
     let mut bpc = [false, false];
     let intents = [0u32, 0u32];

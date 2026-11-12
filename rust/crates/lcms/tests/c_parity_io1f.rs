@@ -32,8 +32,8 @@ fn info_getter_matrix() {
                 let n = c::cmsGetProfileInfoUTF8(
                     h,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut c_void,
                     256,
                 );
@@ -42,8 +42,8 @@ fn info_getter_matrix() {
                 let an = c::cmsGetProfileInfoASCII(
                     h,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     abuf.as_mut_ptr() as *mut c_void,
                     256,
                 );
@@ -56,8 +56,8 @@ fn info_getter_matrix() {
                 let wn = c::cmsGetProfileInfo(
                     h,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     wbuf.as_mut_ptr() as *mut c_void,
                     256,
                 );
@@ -78,13 +78,13 @@ fn info_getter_matrix() {
             let n = c::cmsGetProfileInfoUTF8(
                 h,
                 0,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 buf.as_mut_ptr() as *mut c_void,
                 256,
             );
             assert!(n > 0, "{name} desc utf8 len");
-            let s = std::ffi::CStr::from_ptr(buf.as_ptr() as *const i8)
+            let s = std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char)
                 .to_string_lossy()
                 .into_owned();
             assert!(!s.is_empty(), "{name} desc utf8");

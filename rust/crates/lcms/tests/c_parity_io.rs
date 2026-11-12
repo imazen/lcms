@@ -56,7 +56,7 @@ fn read_write_primitives_roundtrip() {
                 ptr::null_mut(),
                 cbuf.as_mut_ptr(),
                 1024,
-                b"w\0".as_ptr(),
+                c"w".as_ptr(),
             );
             assert!(!io.is_null());
             assert_eq!(c::_cmsWriteUInt8Number(io, v8), 1);
@@ -84,7 +84,7 @@ fn read_write_primitives_roundtrip() {
                 ptr::null_mut(),
                 cbuf.as_mut_ptr(),
                 1024,
-                b"r\0".as_ptr(),
+                c"r".as_ptr(),
             );
             let (mut a8, mut a16, mut a32, mut a64, mut af, mut afx) =
                 (0u8, 0u16, 0u32, 0u64, 0f32, 0f64);
@@ -187,7 +187,7 @@ fn float32_read_safeguard() {
         buf.resize(8, 0);
         let mut cbuf = buf.clone();
         let c_io = unsafe {
-            c::cmsOpenIOhandlerFromMem(ptr::null_mut(), cbuf.as_mut_ptr(), 8, b"r\0".as_ptr())
+            c::cmsOpenIOhandlerFromMem(ptr::null_mut(), cbuf.as_mut_ptr(), 8, c"r".as_ptr())
         };
         let mut cf = 0f32;
         let c_ok = unsafe { c::_cmsReadFloat32Number(c_io, &mut cf) };

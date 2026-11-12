@@ -31,7 +31,7 @@ fn lcms_built_profile_transforms() {
         if !name.contains("lcms2") {
             continue;
         }
-        let mut rp = profile::open_profile_from_mem(None, &data).unwrap();
+        let rp = profile::open_profile_from_mem(None, &data).unwrap();
         unsafe {
             let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             if h.is_null() {
@@ -46,7 +46,7 @@ fn lcms_built_profile_transforms() {
             let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
             let ct = c::cmsCreateTransform(h, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp2 = lcms::virt::create_lab4_profile(None, None).unwrap();
+            let rp2 = lcms::virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -213,7 +213,7 @@ fn rgb_builder_variants() {
                 g: CxyY,
                 b: CxyY,
             }
-            let wpv = CxyY {
+            let _wpv = CxyY {
                 x: wp[0],
                 y: wp[1],
                 Y: wp[2],
@@ -371,9 +371,9 @@ fn placeholder_full() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"ph\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"ph".as_ptr() as *const u8).cast(),
         );
         for (sig, kind) in [
             (0x77747074u32, 1u32),
@@ -465,7 +465,7 @@ fn devicelink_variants2() {
             ("cmyk", 0x434D594B),
             ("lab", 0x4C616220),
         ] {
-            let mut g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
+            let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
             let mut curves = [g; 16];
             let h = c::cmsCreateLinearizationDeviceLink(
                 cs,

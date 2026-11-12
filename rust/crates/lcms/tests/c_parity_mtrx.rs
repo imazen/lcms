@@ -83,7 +83,7 @@ fn mat3_identity_matches_c() {
         assert_eq!(vb(&m.v[i].n), vb(&cm_.v[i].n));
     }
     assert!(mat3_is_identity(&m));
-    assert_eq!(unsafe { c::_cmsMAT3isIdentity(&cm_) } != 0, true);
+    assert!(unsafe { c::_cmsMAT3isIdentity(&cm_) } != 0);
 }
 
 #[test]

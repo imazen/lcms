@@ -19,7 +19,7 @@ struct CTm {
     yday: i32,
     isdst: i32,
     gmtoff: i64,
-    zone: *const i8,
+    zone: *const std::ffi::c_char,
 }
 
 fn corpus() -> Vec<Vec<u8>> {
@@ -116,7 +116,7 @@ fn internal_chad_labv_arms() {
         c::cmsSetPCS(p1, 0x58595A20);
         c::cmsSetProfileVersion(p1, 2.4);
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let trcs = [g, g, g];
+        let _trcs = [g, g, g];
         for sig in [0x72545243u32, 0x67545243, 0x62545243] {
             c::cmsWriteTag(p1, sig, g as *const _);
         }
@@ -129,7 +129,7 @@ fn internal_chad_labv_arms() {
         c::cmsSaveProfileToMem(p1, buf.as_mut_ptr() as *mut _, &mut bn);
         let p1r = c::cmsOpenProfileFromMem(buf.as_ptr() as *const _, 32768);
         eprintln!("v2-disp-no-wtpt prof={}", !p1r.is_null());
-        let fin = (0u32 << 16) | (3 << 3) | 2;
+        let fin = (3 << 3) | 2;
         let t = c::cmsCreateTransform(p1r, fin, p1r, fin, 1, 0);
         eprintln!("  intent1-xform t={}", !t.is_null());
         if !t.is_null() {
@@ -148,20 +148,20 @@ fn internal_chad_labv_arms() {
             std::ptr::null_mut(),
             2,
             3,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let pcs3 = [0x1000u16, 0x2000, 0x3000];
         let dev3 = [0x4000u16, 0x5000, 0x6000];
         c::cmsAppendNamedColor(
             nl,
-            b"a\0".as_ptr() as *const _,
+            c"a".as_ptr() as *const _,
             pcs3.as_ptr(),
             dev3.as_ptr(),
         );
         c::cmsAppendNamedColor(
             nl,
-            b"b\0".as_ptr() as *const _,
+            c"b".as_ptr() as *const _,
             pcs3.as_ptr(),
             dev3.as_ptr(),
         );
@@ -216,7 +216,7 @@ fn internal_pseq_mix_lab_arms() {
             c::cmsSetColorSpace(p, 0x52474220);
             c::cmsSetPCS(p, 0x58595A20);
             c::cmsSetProfileVersion(p, 4.4);
-            let trcs = [g, g, g];
+            let _trcs = [g, g, g];
             for sig in [0x72545243u32, 0x67545243, 0x62545243] {
                 c::cmsWriteTag(p, sig, g as *const _);
             }
@@ -255,9 +255,9 @@ fn internal_pseq_mix_lab_arms() {
                     let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                     c::cmsMLUsetASCII(
                         mlu,
-                        b"en\0".as_ptr() as *const _,
-                        b"US\0".as_ptr() as *const _,
-                        b"desc\0".as_ptr() as *const _,
+                        c"en".as_ptr() as *const _,
+                        c"US".as_ptr() as *const _,
+                        c"desc".as_ptr() as *const _,
                     );
                     (*d).mfr = mlu;
                     (*d).model = mlu;
@@ -297,7 +297,7 @@ fn internal_pseq_mix_lab_arms() {
         c::cmsSetColorSpace(p2, 0x52474220);
         c::cmsSetPCS(p2, 0x4C616220); // Lab PCS
         c::cmsSetProfileVersion(p2, 4.4);
-        let trcs = [g, g, g];
+        let _trcs = [g, g, g];
         for sig in [0x72545243u32, 0x67545243, 0x62545243] {
             c::cmsWriteTag(p2, sig, g as *const _);
         }
@@ -306,7 +306,7 @@ fn internal_pseq_mix_lab_arms() {
             c::cmsWriteTag(p2, sig, xyz.as_ptr() as *const _);
         }
         let srgb = c::cmsCreate_sRGBProfile();
-        let fin = (0u32 << 16) | (3 << 3) | 2;
+        let fin = (3 << 3) | 2;
         let t = c::cmsCreateTransform(p2, fin, srgb, fin, 0, 0);
         eprintln!("rgb-lab-pcs t={}", !t.is_null());
         if !t.is_null() {
@@ -336,12 +336,12 @@ fn internal_hdr_get_arms() {
             let n = c::cmsGetProfileInfoASCII(
                 srgb,
                 which,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
                 info.as_mut_ptr() as *mut _,
                 info.len() as u32,
             );
-            let s = std::ffi::CStr::from_ptr(info.as_ptr() as *const i8).to_string_lossy();
+            let s = std::ffi::CStr::from_ptr(info.as_ptr() as *const std::ffi::c_char).to_string_lossy();
             eprintln!("{name} n={n} '{s}'");
         }
         // bad lang/country + missing fields
@@ -349,8 +349,8 @@ fn internal_hdr_get_arms() {
             let n = c::cmsGetProfileInfoASCII(
                 srgb,
                 which,
-                b"xx\0".as_ptr() as *const _,
-                b"YY\0".as_ptr() as *const _,
+                c"xx".as_ptr() as *const _,
+                c"YY".as_ptr() as *const _,
                 info.as_mut_ptr() as *mut _,
                 info.len() as u32,
             );
@@ -455,9 +455,9 @@ fn internal_pseq_desc_arms() {
                         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                         c::cmsMLUsetASCII(
                             mlu,
-                            b"en\0".as_ptr() as *const _,
-                            b"US\0".as_ptr() as *const _,
-                            b"e\0".as_ptr() as *const _,
+                            c"en".as_ptr() as *const _,
+                            c"US".as_ptr() as *const _,
+                            c"e".as_ptr() as *const _,
                         );
                         match fld {
                             0 => (*d).mfr = mlu,
@@ -553,9 +553,9 @@ fn internal_pseq_mix2_arms() {
                         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                         c::cmsMLUsetASCII(
                             mlu,
-                            b"en\0".as_ptr() as *const _,
-                            b"US\0".as_ptr() as *const _,
-                            b"e\0".as_ptr() as *const _,
+                            c"en".as_ptr() as *const _,
+                            c"US".as_ptr() as *const _,
+                            c"e".as_ptr() as *const _,
                         );
                         match fld {
                             0 => (*d).mfr = mlu,

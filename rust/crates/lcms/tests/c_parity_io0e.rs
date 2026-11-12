@@ -21,7 +21,7 @@ fn file_open_direct() {
     for f in corpus_paths() {
         let name = std::ffi::CString::new(f.to_str().unwrap()).unwrap();
         unsafe {
-            let h = c::cmsOpenProfileFromFile(name.as_ptr(), b"r\0".as_ptr());
+            let h = c::cmsOpenProfileFromFile(name.as_ptr(), c"r".as_ptr());
             let data = std::fs::read(&f).unwrap();
             let rr = profile::open_profile_from_mem(None, &data);
             assert_eq!(h.is_null(), rr.is_none(), "file open {}", f.display());

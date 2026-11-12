@@ -185,7 +185,7 @@ fn context() {
             .contains_key(&Intent::RelativeColorimetric)
     );
 
-    let _ = GlobalContext::default();
+    let _ = GlobalContext;
 }
 
 // -- ext.rs::temp

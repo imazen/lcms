@@ -109,7 +109,7 @@ fn tone_curve_api_matrix() {
             // estimated table
             assert_eq!(
                 c::cmsGetToneCurveEstimatedTableEntries(*ct),
-                rt.estimated_table_entries() as u32,
+                rt.estimated_table_entries(),
                 "{name} est entries"
             );
             let ctab = c::cmsGetToneCurveEstimatedTable(*ct);
@@ -117,7 +117,7 @@ fn tone_curve_api_matrix() {
             if !ctab.is_null() {
                 let n = c::cmsGetToneCurveEstimatedTableEntries(*ct) as usize;
                 let cslice = std::slice::from_raw_parts(ctab, n);
-                assert_eq!(cslice, &rtab[..], "{name} est data");
+                assert_eq!(cslice, rtab, "{name} est data");
             }
             // evalFloat dense
             for i in 0..32 {

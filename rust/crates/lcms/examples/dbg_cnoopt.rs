@@ -6,7 +6,7 @@ fn main() {
     unsafe {
         let cs = std::ffi::CString::new(PATH).unwrap();
         let acc = std::ffi::CString::new("r").unwrap();
-        let p = c::cmsOpenProfileFromFile(cs.as_ptr(), acc.as_ptr() as *const u8);
+        let p = c::cmsOpenProfileFromFile(cs.as_ptr(), (acc.as_ptr() as *const u8).cast());
         let srgb = c::cmsCreate_sRGBProfile();
         for (nm, fl) in [("opt", 0), ("noopt", NOOPT)] {
             let t = c::cmsCreateTransform(p, TYPE_RGB_8, srgb, TYPE_RGB_8, 0, fl);

@@ -64,12 +64,12 @@ fn format_colorspace_check() {
                 c::cmsCloseProfile(h);
                 t
             };
-            let mut rp = profile::open_profile_from_mem(None, data).unwrap();
+            let rp = profile::open_profile_from_mem(None, data).unwrap();
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
             let adapt = [1.0f64; 2];
             let r_t = {
-                let mut rp2 = profile::open_profile_from_mem(None, data).unwrap();
+                let rp2 = profile::open_profile_from_mem(None, data).unwrap();
                 let mut ps = vec![rp, rp2];
                 xform::create_extended_transform(
                     None, &mut ps, &mut bpc, &intents, &adapt, None, 0, in_fmt, in_fmt, 0,
@@ -135,7 +135,7 @@ fn colorspace_chains() {
         let fmts = [
             ((6u32 << 16) | (3 << 3) | 1, "RGB16"),
             ((10u32 << 16) | (3 << 3) | 1, "Lab16"),
-            ((9u32 << 16) | (3 << 3) | 0, "XYZ8"),
+            (((9u32 << 16) | (3 << 3)), "XYZ8"),
             ((1u32 << 16) | (1 << 3) | 1, "Gray16"),
         ];
         let profiles: Vec<(*mut c_void, Option<Box<lcms::profile::IccProfile>>)> = vec![
@@ -193,7 +193,7 @@ fn colorspace_chains() {
 #[test]
 fn intent_link_matrix() {
     unsafe {
-        let in_fmt: u32 = (6 << 16) | (3 << 3) | 1;
+        let _in_fmt: u32 = (6 << 16) | (3 << 3) | 1;
         for intent in 0..4u32 {
             let h1 = c::cmsCreate_sRGBProfile();
             let h2 = c::cmsCreate_sRGBProfile();
@@ -201,8 +201,8 @@ fn intent_link_matrix() {
             let ct = c::cmsCreateTransform(h1, cs, h2, cs, intent, 0);
             let _ = c::cmsCloseProfile(h1);
             let _ = c::cmsCloseProfile(h2);
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_srgb_profile(None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_srgb_profile(None).unwrap();
             let fi = rp1.color_space | 3 << 3 | 1;
             let fo = rp2.color_space | 3 << 3 | 1;
             let mut profs = vec![rp1.clone(), rp2.clone()];
@@ -244,10 +244,10 @@ fn null_profile_link() {
         let ct = c::cmsCreateTransform(h1, cs, h2, cs, 0, 0);
         let _ = c::cmsCloseProfile(h1);
         let _ = c::cmsCloseProfile(h2);
-        let mut rp1 = virt::create_srgb_profile(None).unwrap();
+        let rp1 = virt::create_srgb_profile(None).unwrap();
         let rp2 = virt::create_null_profile(None);
         assert!(rp2.is_some());
-        let mut rp2 = rp2.unwrap();
+        let rp2 = rp2.unwrap();
         let fi = rp1.color_space | 3 << 3 | 1;
         let fo = rp2.color_space | 3 << 3 | 1;
         let mut profs = vec![rp1.clone(), rp2.clone()];
@@ -394,8 +394,8 @@ fn colorspace_mismatch_reject() {
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
             assert_eq!(ct.is_null(), !prof_colorspace_ok, "{name} C reject");
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -423,8 +423,8 @@ fn intent_link_internals() {
         // absolute colorimetric — different link branch
         for intent in [0u32, 1, 2, 3] {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, intent, 0);
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [intent; 2];
@@ -640,7 +640,7 @@ fn optimizer_pipelines() {
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         let xyz_fmt: u32 = (3 << 16) | (3 << 3) | 2;
         // different profile pairs → different optimized shapes
-        for (name, (i, ifmt, o, ofmt)) in [
+        for (_name, (i, ifmt, o, ofmt)) in [
             ("srgb->lab4", (srgb, in_fmt, lab4, lab_fmt)),
             ("srgb->lab2", (srgb, in_fmt, lab2, lab_fmt)),
             ("lab4->srgb", (lab4, lab_fmt, srgb, in_fmt)),
@@ -677,7 +677,7 @@ fn mixed_chains() {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
-        let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
+        let _lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         let ab = c::cmsCreateBCHSWabstractProfileTHR(
             std::ptr::null_mut(),
             17,
@@ -730,7 +730,7 @@ fn proofing_links() {
         let cmyk = c::cmsCreateInkLimitingDeviceLink(0x434D594B, 300.0);
         let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-        let cmyk_fmt: u32 = (6 << 16) | (4 << 3) | 2;
+        let _cmyk_fmt: u32 = (6 << 16) | (4 << 3) | 2;
         // proofing transforms — the gamut-check machinery
         for (name, (i, ifmt, o, ofmt, prf, intents)) in [
             (
@@ -836,8 +836,8 @@ fn intent_direction_combos() {
             ("srgb-gray", srgb, gray, 0),
             ("gray-lab", gray, lab4, 0),
         ] {
-            let in_fmt: u32 = (0 << 16) | (3 << 3) | 2;
-            let out_fmt: u32 = (0 << 16) | (3 << 3) | 2;
+            let in_fmt: u32 = (3 << 3) | 2;
+            let out_fmt: u32 = (3 << 3) | 2;
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, intent, 0);
             eprintln!("{name} t={}", !ct.is_null());
             if !ct.is_null() {

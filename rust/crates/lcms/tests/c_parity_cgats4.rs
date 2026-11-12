@@ -2,18 +2,17 @@
 
 use lcms::cgats;
 use lcms_cref as c;
-use std::ffi::c_void;
 
-fn cs8(s: &str) -> *const i8 {
+fn cs8(s: &str) -> *const std::ffi::c_char {
     thread_local! {
-        static BUF: std::cell::RefCell<Vec<u8>> = std::cell::RefCell::new(Vec::new());
+        static BUF: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
     }
     BUF.with(|b| {
         let mut b = b.borrow_mut();
         b.clear();
         b.extend_from_slice(s.as_bytes());
         b.push(0);
-        b.as_ptr() as *const i8
+        b.as_ptr() as *const std::ffi::c_char
     })
 }
 

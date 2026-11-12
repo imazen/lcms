@@ -4,7 +4,6 @@
 
 use lcms::{profile, types::*, virt, xform};
 use lcms_cref as c;
-use std::ffi::c_void;
 use std::sync::Mutex;
 
 static CTX_LOCK: Mutex<()> = Mutex::new(());
@@ -23,7 +22,7 @@ fn corpus() -> Vec<Vec<u8>> {
 
 #[test]
 fn optimizer_on_off() {
-    let srgb =
+    let _srgb =
         std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../aRGBlcms2.icc"))
             .unwrap();
     let mut seed = 0x1234u64;
@@ -44,8 +43,8 @@ fn optimizer_on_off() {
                     c::cmsCloseProfile(h2);
                     t
                 };
-                let mut rp1 = profile::open_profile_from_mem(None, data).unwrap();
-                let mut rp2 = profile::open_profile_from_mem(None, data2).unwrap();
+                let rp1 = profile::open_profile_from_mem(None, data).unwrap();
+                let rp2 = profile::open_profile_from_mem(None, data2).unwrap();
                 let fi = rp1.color_space | 3 << 3 | 1;
                 let fo = rp2.color_space | 3 << 3 | 1;
                 let mut profs = vec![rp1.clone(), rp2.clone()];
@@ -105,7 +104,7 @@ fn optimizer_branch_matrix() {
                 let ct = c::cmsCreateTransform(h1, cs_in, h2, cs_out, 0, flags);
                 let _ = c::cmsCloseProfile(h1);
                 let _ = c::cmsCloseProfile(h2);
-                let (mut rp1, mut rp2) = match name {
+                let (rp1, rp2) = match name {
                     "srgb->srgb" => (
                         virt::create_srgb_profile(None).unwrap(),
                         virt::create_srgb_profile(None).unwrap(),
@@ -159,7 +158,7 @@ fn opt_matrix_shaper_shapes() {
         // 4-stage: curves->matrix->matrix->curves — build via a
         // devicelink profile carrying that pipeline shape
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let mat2: [f64; 9] = [1.1, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.9];
         for (name, n_stages) in [("m3", 3u8), ("m4", 4u8)] {
@@ -412,14 +411,14 @@ fn optimizer_internals() {
             if p.is_null() {
                 continue;
             }
-            for (flags, name) in [
+            for (flags, _name) in [
                 (0u32, "default"),
                 (0x00000001, "nobpc"),
                 (0x00000200, "noresample"),
                 (0x00000400, "nocache"),
                 (0x00000040, "highresprecalc"),
             ] {
-                for (fmt, fn_) in [(r16, "16"), (r8, "8")] {
+                for (fmt, _fn_) in [(r16, "16"), (r8, "8")] {
                     let t = c::cmsCreateTransform(p, fmt, lab, l16, 0, flags);
                     if !t.is_null() {
                         c::cmsDeleteTransform(t);
@@ -535,7 +534,7 @@ fn opt_eval_internals() {
             0xffff,
         ];
         for f in flags {
-            for (inp, outp, if_, of_, name) in [
+            for (inp, outp, if_, of_, _name) in [
                 (srgb, lab, r8, l8, "rgb-lab-8"),
                 (srgb, lab, r16, l16, "rgb-lab-16"),
                 (lab, srgb, l8, r8, "lab-rgb-8"),
@@ -599,7 +598,7 @@ fn opt_float_eval_internals() {
             0x0002 | 0x0200,
             0xffff,
         ] {
-            for (inp, outp, if_, of_, name) in [
+            for (inp, outp, if_, of_, _name) in [
                 (srgb, lab, rfl, lfl, "rgb-lab"),
                 (lab, srgb, lfl, rfl, "lab-rgb"),
                 (gray, lab, gfl, lfl, "gray-lab"),
@@ -608,10 +607,10 @@ fn opt_float_eval_internals() {
             ] {
                 let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, f);
                 if !t.is_null() {
-                    let ib = [0.5f32; 4];
+                    let _ib = [0.5f32; 4];
                     let mut ob = [0.5f32; 4];
                     for v in [0.1f32, 0.5, 0.9] {
-                        let mut inp_ = [v; 4];
+                        let inp_ = [v; 4];
                         c::cmsDoTransform(
                             t,
                             inp_.as_ptr() as *const _,

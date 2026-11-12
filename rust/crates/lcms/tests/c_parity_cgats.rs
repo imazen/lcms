@@ -20,7 +20,7 @@ END_DATA\n";
 
 #[test]
 fn it8_parse_and_access() {
-    let mut rust =
+    let rust =
         lcms::cgats::It8::load_from_mem(None, IT8_DOC).expect("rust cmsIT8LoadFromMem failed");
     // C side — check each data cell
     unsafe {

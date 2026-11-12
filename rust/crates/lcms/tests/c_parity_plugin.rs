@@ -50,7 +50,8 @@ fn plugin_type_matrix() {
     let types: Vec<(u32, *mut c_void)> = vec![
         (0x696E7048, {
             // 'inpH' interpolation
-            let p = Box::leak(Box::new(CPluginInterp {
+            
+            Box::leak(Box::new(CPluginInterp {
                 base: CPluginBase {
                     magic: MAGIC,
                     expected_version: VERSION,
@@ -58,12 +59,12 @@ fn plugin_type_matrix() {
                     next: std::ptr::null_mut(),
                 },
                 factory: interp_factory,
-            })) as *mut CPluginInterp as *mut c_void;
-            p
+            })) as *mut CPluginInterp as *mut c_void
         }),
         (0x74797048, {
             // 'typH' tag type
-            let p = Box::leak(Box::new(CPluginTagType {
+            
+            Box::leak(Box::new(CPluginTagType {
                 base: CPluginBase {
                     magic: MAGIC,
                     expected_version: VERSION,
@@ -71,12 +72,12 @@ fn plugin_type_matrix() {
                     next: std::ptr::null_mut(),
                 },
                 handler: std::ptr::null_mut(),
-            })) as *mut CPluginTagType as *mut c_void;
-            p
+            })) as *mut CPluginTagType as *mut c_void
         }),
         (0x74616748, {
             // 'tagH' tag
-            let p = Box::leak(Box::new(CPluginTag {
+            
+            Box::leak(Box::new(CPluginTag {
                 base: CPluginBase {
                     magic: MAGIC,
                     expected_version: VERSION,
@@ -84,12 +85,12 @@ fn plugin_type_matrix() {
                     next: std::ptr::null_mut(),
                 },
                 descriptor: std::ptr::null_mut(),
-            })) as *mut CPluginTag as *mut c_void;
-            p
+            })) as *mut CPluginTag as *mut c_void
         }),
         (0x6D706548, {
             // 'mpeH' multiprocess elements
-            let p = Box::leak(Box::new(CPluginMpe {
+            
+            Box::leak(Box::new(CPluginMpe {
                 base: CPluginBase {
                     magic: MAGIC,
                     expected_version: VERSION,
@@ -97,8 +98,7 @@ fn plugin_type_matrix() {
                     next: std::ptr::null_mut(),
                 },
                 handler: std::ptr::null_mut(),
-            })) as *mut CPluginMpe as *mut c_void;
-            p
+            })) as *mut CPluginMpe as *mut c_void
         }),
     ];
     for (sig, plugin) in types {
@@ -175,19 +175,19 @@ fn plugin_memh_mtxh() {
         calloc: *mut c_void,
         dup: *mut c_void,
     }
-    unsafe extern "C" fn my_malloc(_ctx: *mut c_void, size: usize) -> *mut c_void {
+    unsafe extern "C" fn my_malloc(_ctx: *mut c_void, size: usize) -> *mut c_void { unsafe {
         libc_malloc(size)
-    }
-    unsafe extern "C" fn my_free(_ctx: *mut c_void, ptr: *mut c_void) {
+    }}
+    unsafe extern "C" fn my_free(_ctx: *mut c_void, ptr: *mut c_void) { unsafe {
         libc_free(ptr)
-    }
+    }}
     unsafe extern "C" fn my_realloc(
         _ctx: *mut c_void,
         ptr: *mut c_void,
         size: usize,
-    ) -> *mut c_void {
+    ) -> *mut c_void { unsafe {
         libc_realloc(ptr, size)
-    }
+    }}
     unsafe extern "C" {
         fn malloc(s: usize) -> *mut c_void;
         fn free(p: *mut c_void);
@@ -233,11 +233,11 @@ fn plugin_memh_mtxh() {
     unsafe extern "C" fn mtx_create(_c: *mut c_void) -> *mut c_void {
         Box::into_raw(Box::new(0u8)) as *mut c_void
     }
-    unsafe extern "C" fn mtx_destroy(_c: *mut c_void, m: *mut c_void) {
+    unsafe extern "C" fn mtx_destroy(_c: *mut c_void, m: *mut c_void) { unsafe {
         if !m.is_null() {
             drop(Box::from_raw(m as *mut u8));
         }
-    }
+    }}
     unsafe extern "C" fn mtx_lock(_c: *mut c_void, _m: *mut c_void) -> i32 {
         1
     }

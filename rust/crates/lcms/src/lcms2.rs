@@ -1175,7 +1175,7 @@ impl<C> Profile<C> {
     }
     /// `cmsGetHeaderProfileID`
     pub fn header_profile_id(&self) -> crate::types::ProfileId {
-        self.icc.profile_id.clone()
+        self.icc.profile_id
     }
     /// `cmsGetHeaderRenderingIntent`
     pub fn header_rendering_intent(&self) -> Intent {
@@ -1242,17 +1242,17 @@ impl<C> Profile<C> {
     /// `write_tag` — `&mut self` (mutates the stored object).
     pub fn write_tag(&mut self, sig: TagSignature, tag: Tag) -> bool {
         let obj = match tag {
-            Tag::CIEXYZ(x) => TagObject::Xyz(x.clone()),
+            Tag::CIEXYZ(x) => TagObject::Xyz(*x),
             Tag::MLU(m) => TagObject::Mlu(m.clone()),
             Tag::ToneCurve(c) => TagObject::Curve(c.clone()),
             Tag::VcgtCurves(v) => {
                 TagObject::Vcgt(VcgtData::Curves([v[0].clone(), v[1].clone(), v[2].clone()]))
             }
-            Tag::CIExyYTRIPLE(c) => TagObject::Chromaticity(c.clone()),
+            Tag::CIExyYTRIPLE(c) => TagObject::Chromaticity(*c),
             Tag::ICCData(d) => TagObject::Data(d.clone()),
             Tag::NamedColorList(l) => TagObject::NamedColor(l.clone()),
             Tag::Pipeline(p) => TagObject::Lut16(p.clone()),
-            Tag::ICCMeasurementConditions(m) => TagObject::Measurement(m.clone()),
+            Tag::ICCMeasurementConditions(m) => TagObject::Measurement(*m),
             Tag::ICCViewingConditions(v) => TagObject::ViewingConditions(v.clone()),
             Tag::UcrBg(u) => TagObject::UcrBg(u.clone()),
             Tag::Screening(s) => TagObject::Screening(s.clone()),
@@ -1789,9 +1789,8 @@ impl<I: Copy + bytemuck::Pod, O: Copy + bytemuck::Pod> Transform<I, O, GlobalCon
             intent,
             flags,
         )
-        .map(|t| {
+        .inspect(|_t| {
             let _ = prove_intent; // gamut state wired in the C-extended call
-            t
         })
     }
 
@@ -1881,7 +1880,7 @@ impl Stage {
     /// `points` = per-dim grid points; `dim` = input dims; `in_chan`/`out_chan`.
     pub fn new_clut(
         points: usize,
-        dim: usize,
+        _dim: usize,
         in_chan: usize,
         out_chan: usize,
         table: Option<Vec<u16>>,

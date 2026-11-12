@@ -153,7 +153,7 @@ fn bench_cmyk() {
     let (c8, c16) = unsafe {
         let m = b"r\0";
         let cpath = std::ffi::CString::new(path).unwrap();
-        let pr = lcms_cref::cmsOpenProfileFromFile(cpath.as_ptr(), m.as_ptr());
+        let pr = lcms_cref::cmsOpenProfileFromFile(cpath.as_ptr(), m.as_ptr().cast());
         let srgb = lcms_cref::cmsCreate_sRGBProfile();
         let t = lcms_cref::cmsCreateTransform(pr, TYPE_CMYK_8, srgb, TYPE_RGB_8, 0, 0);
         let t0 = Instant::now();

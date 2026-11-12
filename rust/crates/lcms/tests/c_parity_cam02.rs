@@ -1,7 +1,7 @@
 //! Differential test: `lcms::cam02` vs `cmscam02.c`.
 
 use lcms::cam02::CieCam02;
-use lcms::types::{CieXyz, D_CALCULATE, DARK_SURROUND, DIM_SURROUND, JCh, ViewingConditions};
+use lcms::types::{CieXyz, D_CALCULATE, JCh, ViewingConditions};
 use lcms_cref as c;
 use std::ptr;
 

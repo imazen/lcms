@@ -219,7 +219,7 @@ fn save_and_iohandler_roundtrip() {
     let cs = cpath.to_str().unwrap();
     let rs = rpath.to_str().unwrap();
     let cs_c = std::ffi::CString::new(cs).unwrap();
-    let rs_c = std::ffi::CString::new(rs).unwrap();
+    let _rs_c = std::ffi::CString::new(rs).unwrap();
 
     let cph = unsafe { c::cmsCreate_sRGBProfile() };
     let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
@@ -238,9 +238,9 @@ fn save_and_iohandler_roundtrip() {
     unsafe { c::cmsCloseProfile(cph) };
 
     // C open-from-file returns a profile with same tag count as Rust's open
-    let c2 = unsafe { c::cmsOpenProfileFromFile(cs_c.as_ptr(), b"r\0".as_ptr()) };
+    let c2 = unsafe { c::cmsOpenProfileFromFile(cs_c.as_ptr(), c"r".as_ptr()) };
     assert!(!c2.is_null());
-    let mut rp2 = lcms::profile::open_profile_from_mem(None, &c_bytes).unwrap();
+    let rp2 = lcms::profile::open_profile_from_mem(None, &c_bytes).unwrap();
     unsafe {
         assert_eq!(
             c::cmsGetTagCount(c2),
@@ -257,7 +257,7 @@ fn save_and_iohandler_roundtrip() {
             std::ptr::null_mut(),
             wbuf.as_ptr() as *mut u8,
             wbuf.len() as u32,
-            b"w\0".as_ptr(),
+            c"w".as_ptr(),
         );
         assert!(!io_w.is_null(), "IOhandlerFromMem w");
         let p3 = c::cmsCreate_sRGBProfile();
@@ -269,7 +269,7 @@ fn save_and_iohandler_roundtrip() {
         c::cmsCloseProfile(p3);
 
         let io_r =
-            c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), cs_c.as_ptr(), b"r\0".as_ptr());
+            c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), cs_c.as_ptr(), c"r".as_ptr());
         assert!(!io_r.is_null(), "IOhandlerFromFile r");
         let p4 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io_r);
         assert!(!p4.is_null(), "open via IOhandlerFromFile");
@@ -325,7 +325,7 @@ fn io1_lut_reader_eval() {
                 if cp.is_null() || rpl.is_none() {
                     continue;
                 }
-                let mut pipe = rpl.unwrap();
+                let pipe = rpl.unwrap();
                 let n_in = unsafe { c::cmsPipelineInputChannels(cp as _) } as usize;
                 let n_out = unsafe { c::cmsPipelineOutputChannels(cp as _) } as usize;
                 assert_eq!(n_in, pipe.input_channels() as usize, "{name} in ch");
@@ -391,7 +391,7 @@ fn io1_header_getters() {
                 for dir in 0..2u32 {
                     assert_eq!(
                         c::cmsIsCLUT(ch, intent, dir) != 0,
-                        lcms::io1::is_clut(&mut rp.clone(), intent, dir as i32),
+                        lcms::io1::is_clut(&rp.clone(), intent, dir as i32),
                         "{name} is_clut i{intent} d{dir}"
                     );
                 }
@@ -420,7 +420,7 @@ fn io1_intent_support() {
         if ch.is_null() {
             continue;
         }
-        let mut rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
+        let rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
         for intent in 0..8u32 {
             for dir in 0..2u32 {
                 let c_sup = unsafe { c::cmsIsIntentSupported(ch, intent, dir) };
@@ -455,7 +455,7 @@ fn iohandler_variants() {
             std::ptr::null_mut(),
             buf.as_mut_ptr(),
             buf.len() as u32,
-            b"r\0".as_ptr(),
+            c"r".as_ptr(),
         );
         assert!(!io_r.is_null(), "IOhandlerFromMem r");
         let p2 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io_r);

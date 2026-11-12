@@ -2,7 +2,7 @@
 //! format variants; each hits a different Pack/Unroll formatter fn.
 //! C gets native u16s (as_ptr()); Rust gets the byte buffer.
 
-use lcms::{gamma, types::*, virt, xform};
+use lcms::{gamma, virt, xform};
 use lcms_cref as c;
 
 #[test]
@@ -70,12 +70,12 @@ fn format_eval_matrix() {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp1 = if is_lab_in {
+            let rp1 = if is_lab_in {
                 virt::create_lab4_profile(None, None).unwrap()
             } else {
                 virt::create_srgb_profile(None).unwrap()
             };
-            let mut rp2 = if is_lab_in {
+            let rp2 = if is_lab_in {
                 virt::create_srgb_profile(None).unwrap()
             } else {
                 virt::create_lab4_profile(None, None).unwrap()
@@ -136,8 +136,8 @@ fn extra_doswap_corrected() {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, lab16, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -187,8 +187,8 @@ fn mch_formats() {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, lab16, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp1 = virt::create_null_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_null_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -234,8 +234,8 @@ fn packed_float_formats() {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, lab16, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -256,15 +256,15 @@ fn packed_float_formats() {
 fn anyspace_format() {
     unsafe {
         // TYPE_ANY = colorspace PT_ANY(0) — accepts any channels
-        let in_fmt: u32 = (0 << 16) | (3 << 3) | 2; // ANY 3ch u16
+        let in_fmt: u32 = (3 << 3) | 2; // ANY 3ch u16
         let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
-        let mut rp1 = virt::create_srgb_profile(None).unwrap();
-        let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+        let rp1 = virt::create_srgb_profile(None).unwrap();
+        let rp2 = virt::create_lab4_profile(None, None).unwrap();
         let mut profs = vec![rp1.clone(), rp2.clone()];
         let mut bpc = [false; 2];
         let intents = [0u32; 2];
@@ -312,8 +312,8 @@ fn low_channel_formats() {
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
             let rtc = gamma::build_gamma(None, 2.2).unwrap();
-            let mut rp1 = virt::create_gray_profile(None, None, Some(&rtc)).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_gray_profile(None, None, Some(&rtc)).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -356,8 +356,8 @@ fn premul_formats() {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -395,8 +395,8 @@ fn modifier_matrix() {
                 let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
                 let _ = c::cmsCloseProfile(hi);
                 let _ = c::cmsCloseProfile(ho);
-                let mut rp1 = virt::create_srgb_profile(None).unwrap();
-                let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+                let rp1 = virt::create_srgb_profile(None).unwrap();
+                let rp2 = virt::create_lab4_profile(None, None).unwrap();
                 let mut profs = vec![rp1.clone(), rp2.clone()];
                 let mut bpc = [false; 2];
                 let intents = [0u32; 2];
@@ -434,8 +434,8 @@ fn eval_matrix() {
                     let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
                     let _ = c::cmsCloseProfile(hi);
                     let _ = c::cmsCloseProfile(ho);
-                    let mut rp1 = virt::create_srgb_profile(None).unwrap();
-                    let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+                    let rp1 = virt::create_srgb_profile(None).unwrap();
+                    let rp2 = virt::create_lab4_profile(None, None).unwrap();
                     let mut profs = vec![rp1.clone(), rp2.clone()];
                     let mut bpc = [false; 2];
                     let intents = [0u32; 2];
@@ -510,8 +510,8 @@ fn change_buffers_format() {
         let cok = c::cmsChangeBuffersFormat(ct, in8, out_fmt);
         eprintln!("change to u8 cok={cok}");
         // rust side
-        let mut rp1 = virt::create_srgb_profile(None).unwrap();
-        let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+        let rp1 = virt::create_srgb_profile(None).unwrap();
+        let rp2 = virt::create_lab4_profile(None, None).unwrap();
         let mut profs = vec![rp1.clone(), rp2.clone()];
         let mut bpc = [false; 2];
         let intents = [0u32; 2];
@@ -542,7 +542,7 @@ fn change_buffers_format() {
 #[test]
 fn planar_evals() {
     unsafe {
-        for (bname, bytes) in [("u8", 1u32), ("u16", 2), ("f32", 4)] {
+        for (_bname, bytes) in [("u8", 1u32), ("u16", 2), ("f32", 4)] {
             // RGB planar -> Lab chunky
             let in_fmt: u32 = (4 << 16) | (3 << 3) | bytes | (1 << 9); // PLANAR_SH
             let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
@@ -658,8 +658,8 @@ fn cross_format_evals() {
             ((4 << 16) | (4 << 3) | 2 | (1 << 17), "rgb extra"),
             ((4 << 16) | (3 << 3) | 2 | (1 << 9), "rgb planar"),
         ];
-        for (in_fmt, in_name) in &variants {
-            for (out_fmt, out_name) in &variants {
+        for (in_fmt, _in_name) in &variants {
+            for (out_fmt, _out_name) in &variants {
                 let hi = c::cmsCreate_sRGBProfile();
                 let ho = c::cmsCreate_sRGBProfile();
                 let ct = c::cmsCreateTransform(hi, *in_fmt, ho, *out_fmt, 0, 0);
@@ -669,10 +669,10 @@ fn cross_format_evals() {
                     continue;
                 }
                 // in buffer sized to the in-format's byte count
-                let nbytes = ((in_fmt >> 0) & 7).max(1) as usize * ((in_fmt >> 3) & 0xF) as usize;
+                let nbytes = (*in_fmt & 7).max(1) as usize * ((in_fmt >> 3) & 0xF) as usize;
                 let inp = vec![0x55u8; nbytes.max(1)];
                 // out buffer
-                let obytes = ((out_fmt >> 0) & 7).max(1) as usize * ((out_fmt >> 3) & 0xF) as usize;
+                let obytes = (*out_fmt & 7).max(1) as usize * ((out_fmt >> 3) & 0xF) as usize;
                 let mut co = vec![0u8; obytes.max(1)];
                 c::cmsDoTransform(ct, inp.as_ptr() as _, co.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
@@ -714,8 +714,8 @@ fn modifier_format_evals() {
             ((4 << 16) | (3 << 3) | 8, "rgb f64"),
             ((10 << 16) | (3 << 3) | 8, "lab f64"),
         ];
-        for (in_fmt, name) in &variants {
-            for (out_fmt, oname) in &variants {
+        for (in_fmt, _name) in &variants {
+            for (out_fmt, _oname) in &variants {
                 let hi = c::cmsCreate_sRGBProfile();
                 let ho = c::cmsCreate_sRGBProfile();
                 let ct = c::cmsCreateTransform(hi, *in_fmt, ho, *out_fmt, 0, 0);

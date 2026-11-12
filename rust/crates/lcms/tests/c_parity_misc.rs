@@ -3,7 +3,7 @@
 //! context IDs, transform getters, intents, tone-curve segments,
 //! IO variants, pipeline misc, reverse/temp/alarm machinery.
 
-use lcms::{err, gamma, lut, named, pcs, profile, types, virt, wtpnt, xform};
+use lcms::{err, gamma, lut, named, pcs, profile, types, virt, wtpnt};
 use lcms_cref as c;
 use std::ffi::c_void;
 
@@ -120,12 +120,12 @@ fn transform_getters() {
 fn supported_intents() {
     unsafe {
         let mut codes = [0u32; 64];
-        let mut descs: [*mut u8; 64] = [std::ptr::null_mut(); 64];
+        let mut descs: [*mut std::ffi::c_char; 64] = [std::ptr::null_mut(); 64];
         let n = c::cmsGetSupportedIntents(64, codes.as_mut_ptr(), descs.as_mut_ptr());
         eprintln!("supported intents n={n}");
         assert!(n > 0, "C supported intents");
         let mut codes2 = [0u32; 64];
-        let mut descs2: [*mut i8; 64] = [std::ptr::null_mut(); 64];
+        let mut descs2: [*mut std::ffi::c_char; 64] = [std::ptr::null_mut(); 64];
         let n2 = c::cmsGetSupportedIntentsTHR(
             std::ptr::null_mut(),
             64,
@@ -251,7 +251,7 @@ fn dict_next_entry() {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
-        let mut e = c::cmsDictNextEntry(std::ptr::null_mut());
+        let e = c::cmsDictNextEntry(std::ptr::null_mut());
         // C's DictNext on NULL returns the first? or null — probe
         let _ = e;
         let _ = cd;
@@ -261,7 +261,8 @@ fn dict_next_entry() {
 
 #[test]
 fn open_profile_variants() {
-    for data in corpus() {
+    // One profile suffices for the variants.
+    for data in corpus().into_iter().take(1) {
         unsafe {
             // cmsOpenProfileFromMemTHR — THR variant
             let h = c::cmsOpenProfileFromMemTHR(
@@ -278,11 +279,10 @@ fn open_profile_variants() {
             let h2 = c::cmsOpenProfileFromFileTHR(
                 std::ptr::null_mut(),
                 cpath.as_ptr(),
-                b"r\0".as_ptr() as *const _,
+                c"r".as_ptr() as *const _,
             );
             assert!(!h2.is_null(), "FileTHR open");
             c::cmsCloseProfile(h2);
-            break; // one profile suffices for the variants
         }
     }
 }
@@ -321,7 +321,7 @@ fn corpus() -> Vec<Vec<u8>> {
 #[test]
 fn formatter_for_profile() {
     unsafe {
-        for data in corpus() {
+        for data in corpus().into_iter().take(1) {
             let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             for nb in [1u32, 2, 4] {
                 for fl in [0i32, 1] {
@@ -332,7 +332,6 @@ fn formatter_for_profile() {
                 }
             }
             c::cmsCloseProfile(h);
-            break;
         }
     }
 }
@@ -502,7 +501,7 @@ fn stream_io_variants() {
     ) -> usize {
         _n
     }
-    for data in corpus() {
+    for data in corpus().into_iter().take(1) {
         unsafe {
             // write to a temp file, reopen via the stream path
             let path = std::env::temp_dir().join("lcms_test_stream.icc");
@@ -511,17 +510,17 @@ fn stream_io_variants() {
             // cmsOpenProfileFromStream takes FILE* — get one via
             // libc fopen
             unsafe extern "C" {
-                fn fopen(path: *const i8, mode: *const i8) -> *mut c_void;
+                fn fopen(path: *const std::ffi::c_char, mode: *const std::ffi::c_char) -> *mut c_void;
                 fn fclose(f: *mut c_void) -> i32;
             }
-            let f = fopen(_cpath.as_ptr(), b"rb\0".as_ptr() as *const _);
+            let f = fopen(_cpath.as_ptr(), c"rb".as_ptr() as *const _);
             assert!(!f.is_null(), "fopen");
-            let h = c::cmsOpenProfileFromStream(f, b"r\0".as_ptr() as *const _);
+            let h = c::cmsOpenProfileFromStream(f, c"r".as_ptr() as *const _);
             assert!(!h.is_null(), "stream open");
             // save via cmsSaveProfileToStream to a second file
             let path2 = std::env::temp_dir().join("lcms_test_stream_out.icc");
             let cpath2 = std::ffi::CString::new(path2.to_str().unwrap()).unwrap();
-            let f2 = fopen(cpath2.as_ptr(), b"wb\0".as_ptr() as *const _);
+            let f2 = fopen(cpath2.as_ptr(), c"wb".as_ptr() as *const _);
             assert!(!f2.is_null(), "fopen out");
             // C's IOHANDLER owns both FILE* — no manual fclose
             // (fclose in FileClose on save; on cmsCloseProfile for
@@ -537,7 +536,6 @@ fn stream_io_variants() {
             c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _, &mut cn);
             assert_eq!(resaved, cbuf, "stream vs mem bytes");
             c::cmsCloseProfile(h);
-            break;
         }
     }
 }
@@ -651,7 +649,7 @@ fn postscript_color_resource() {
                 std::ptr::null_mut(),
                 cbuf.as_mut_ptr(),
                 65536,
-                b"w\0".as_ptr() as *const _,
+                c"w".as_ptr() as *const _,
             );
             assert!(!cio.is_null(), "{name} io");
             let c_ok = c::cmsGetPostScriptColorResource(std::ptr::null_mut(), ty, h, 0, 0, cio);
@@ -703,14 +701,14 @@ fn thr_transform_variants() {
 #[test]
 fn iohandler_stream_variants() {
     unsafe extern "C" {
-        fn fopen(path: *const i8, mode: *const i8) -> *mut c_void;
+        fn fopen(path: *const std::ffi::c_char, mode: *const std::ffi::c_char) -> *mut c_void;
     }
-    for data in corpus() {
+    for data in corpus().into_iter().take(1) {
         unsafe {
             let path = std::env::temp_dir().join("lcms_test_ioh.icc");
             std::fs::write(&path, &data).unwrap();
             let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
-            let f = fopen(cpath.as_ptr(), b"rb\0".as_ptr() as *const _);
+            let f = fopen(cpath.as_ptr(), c"rb".as_ptr() as *const _);
             assert!(!f.is_null());
             // cmsOpenIOhandlerFromStream — the stream IOHANDLER
             let io = c::cmsOpenIOhandlerFromStream(std::ptr::null_mut(), f);
@@ -720,15 +718,14 @@ fn iohandler_stream_variants() {
             assert!(!h.is_null(), "iohandler2 open");
             c::cmsCloseProfile(h);
             // stream THR variant
-            let f2 = fopen(cpath.as_ptr(), b"rb\0".as_ptr() as *const _);
+            let f2 = fopen(cpath.as_ptr(), c"rb".as_ptr() as *const _);
             let h2 = c::cmsOpenProfileFromStreamTHR(
                 std::ptr::null_mut(),
                 f2,
-                b"r\0".as_ptr() as *const _,
+                c"r".as_ptr() as *const _,
             );
             assert!(!h2.is_null(), "streamTHR open");
             c::cmsCloseProfile(h2);
-            break;
         }
     }
 }

@@ -400,7 +400,7 @@ fn named_colors_roundtrip() {
     assert_eq!(ncl.prefix(), "Spot ");
     assert_eq!(ncl.suffix(), " Ink");
     assert_eq!(ncl.colorant_count(), 4);
-    let entries: Vec<NamedColor> = (&ncl).into_iter().collect();
+    let entries: Vec<NamedColor> = ncl.into_iter().collect();
     assert_eq!(entries[0].name, "red");
     assert_eq!(entries[1].name, "blue");
     assert_eq!(entries[1].pcs[2], 0xffff);

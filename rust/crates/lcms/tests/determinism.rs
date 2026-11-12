@@ -21,7 +21,7 @@ fn fnv(b: &[u8]) -> u64 {
 
 thread_local! {
     static CELLS: std::cell::RefCell<Vec<(String, Vec<u8>, Vec<u8>)>> =
-        std::cell::RefCell::new(Vec::new());
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// manifest-level digest: xxh3 over every cell's bytes in order — one
@@ -282,7 +282,7 @@ unsafe fn c_mft2_pipeline(in_ch: u32, out_ch: u32) -> *mut c_void {
 
 unsafe fn c_mandatory_tags(p: *mut c_void) {
     let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
     c::cmsWriteTag(p, 0x64657363, mlu); // 'desc'
     let mlu2 = c::cmsMLUdup(mlu);
     c::cmsWriteTag(p, 0x63707274, mlu2); // 'cprt'
@@ -341,7 +341,7 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
     let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
     c::cmsWriteTag(p, 0x64657363, mlu);
     let mlu2 = c::cmsMLUdup(mlu);
     c::cmsWriteTag(p, 0x63707274, mlu2);
@@ -358,7 +358,7 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
     let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
     c::cmsWriteTag(p, 0x64657363, mlu);
     let mlu2 = c::cmsMLUdup(mlu);
     c::cmsWriteTag(p, 0x63707274, mlu2);
@@ -375,7 +375,7 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
     let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
     c::cmsWriteTag(p, 0x64657363, mlu);
     let mlu2 = c::cmsMLUdup(mlu);
     c::cmsWriteTag(p, 0x63707274, mlu2);
@@ -392,7 +392,7 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
     let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
     c::cmsWriteTag(p, 0x64657363, mlu);
     let mlu2 = c::cmsMLUdup(mlu);
     c::cmsWriteTag(p, 0x63707274, mlu2);
@@ -409,7 +409,7 @@ unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
     let wt2 = *c::cmsD50_XYZ();
     c::cmsWriteTag(p, 0x77747074, &wt2 as *const _ as *const _);
     let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-    c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+    c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
     c::cmsWriteTag(p, 0x64657363, mlu);
     let mlu2 = c::cmsMLUdup(mlu);
     c::cmsWriteTag(p, 0x63707274, mlu2);
@@ -944,7 +944,7 @@ fn api_smoke() {
     let mut lab4 = Profile::lab4();
     srgb.freeze();
     lab4.freeze();
-    let plan = Plan::new(&mut srgb, &mut lab4, Format::RGB_8, Format::LAB_8).unwrap();
+    let plan = Plan::new(&srgb, &lab4, Format::RGB_8, Format::LAB_8).unwrap();
     let mut sc = plan.scratch();
     let src = [255u8, 0, 0]; // pure red
     let mut dst = [0u8; 3];

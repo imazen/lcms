@@ -10,7 +10,7 @@ fn main() {
     unsafe {
         let cs = std::ffi::CString::new(PATH).unwrap();
         let acc = std::ffi::CString::new("r").unwrap();
-        let p = c::cmsOpenProfileFromFile(cs.as_ptr(), acc.as_ptr() as *const u8);
+        let p = c::cmsOpenProfileFromFile(cs.as_ptr(), (acc.as_ptr() as *const u8).cast());
         for (name, sig) in [
             ("rXYZ", 0x7258595a),
             ("gXYZ", 0x6758595a),

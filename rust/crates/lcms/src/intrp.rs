@@ -2776,7 +2776,8 @@ pub fn default_interpolators_factory(
     }
 }
 
-#[cfg(test)]
+// Every test here compares a scalar kernel against its X64V3 SIMD arm.
+#[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;
 

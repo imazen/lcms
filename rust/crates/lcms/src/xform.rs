@@ -3091,7 +3091,7 @@ pub fn create_extended_transform(
     // white points (cmsxform.c:1220) — the raw `'wtpt'` tag via
     // `cmsReadTag`, NOT `_cmsReadMediaWhitePoint` (which swaps in D50 for
     // v2 display profiles); absent → D50. Only device links read these.
-    let mut raw_wtpt = |icc: &mut IccProfile| match crate::profile::cms_read_tag(
+    let raw_wtpt = |icc: &mut IccProfile| match crate::profile::cms_read_tag(
         icc,
         crate::signatures::tag::SigMediaWhitePointTag,
     ) {

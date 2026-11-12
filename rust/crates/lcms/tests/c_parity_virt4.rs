@@ -2,7 +2,7 @@
 //! device links — the deeper virt machinery.
 
 use lcms::{
-    gamma, named, profile,
+    gamma, profile,
     types::{CiexyY, CiexyYTriple},
     virt, xform,
 };
@@ -50,14 +50,14 @@ fn parameterized_builders() {
                 Y: 1.0,
             },
         };
-        let mut rp =
+        let rp =
             virt::create_rgb_profile(None, Some(&d50), Some(&rec709), Some([&rg, &rg, &rg]));
         assert_eq!(ch.is_null(), rp.is_none(), "rgb param build");
         // gray profile
         let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.0);
         let ch2 = c::cmsCreateGrayProfile(&white as *const _ as *const _, g2);
         let rg2 = gamma::build_gamma(None, 2.0).unwrap();
-        let mut rp2 = virt::create_gray_profile(None, Some(&d50), Some(&rg2));
+        let rp2 = virt::create_gray_profile(None, Some(&d50), Some(&rg2));
         assert_eq!(ch2.is_null(), rp2.is_none(), "gray build");
         if !ch.is_null() {
             let _ = c::cmsCloseProfile(ch);
@@ -80,7 +80,7 @@ fn device_link_variants() {
             (256, 0.0, 0.0, -30.0, 0.0, 4000, 9300),
         ] {
             let ch = c::cmsCreateBCHSWabstractProfile(lut, bright, contrast, hue, sat, tsrc, tdst);
-            let mut rp = virt::create_bchsw_abstract_profile(
+            let rp = virt::create_bchsw_abstract_profile(
                 None, lut, bright, contrast, hue, sat, tsrc, tdst,
             );
             assert_eq!(
@@ -101,7 +101,7 @@ fn device_link_variants() {
             curves.as_ptr(),
         );
         let rg = gamma::build_gamma(None, 1.8).unwrap();
-        let mut rp = virt::create_linearization_device_link(None, 4, &[&rg, &rg, &rg]);
+        let rp = virt::create_linearization_device_link(None, 4, &[&rg, &rg, &rg]);
         assert_eq!(ch.is_null(), rp.is_none(), "linearization link");
         if !ch.is_null() {
             let _ = c::cmsCloseProfile(ch);
@@ -114,7 +114,7 @@ fn device_link_variants() {
                 4, /* PT_CMY */
                 limit,
             );
-            let mut rp2 = virt::create_ink_limiting_device_link(None, 4, limit);
+            let rp2 = virt::create_ink_limiting_device_link(None, 4, limit);
             assert_eq!(ch2.is_null(), rp2.is_none(), "ink limit {limit}");
             if !ch2.is_null() {
                 let _ = c::cmsCloseProfile(ch2);
@@ -133,7 +133,7 @@ fn bchsw_transform() {
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2; // TYPE_Lab_16
         let ct = c::cmsCreateTransform(ch, lab_fmt, ch, lab_fmt, 0, 0);
         assert!(!ct.is_null(), "bchsw xform");
-        let mut rp =
+        let rp =
             virt::create_bchsw_abstract_profile(None, 33, 10.0, 10.0, 0.0, 10.0, 5000, 6500)
                 .unwrap();
         let mut profs = vec![rp.clone(), rp.clone()];
@@ -187,8 +187,8 @@ fn device_link_colorspaces() {
             let ch =
                 c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), cs, curves.as_ptr());
             let rg = gamma::build_gamma(None, 1.8).unwrap();
-            let refs: Vec<&lcms::gamma::ToneCurve> = std::iter::repeat(&rg).take(nch).collect();
-            let mut rp = virt::create_linearization_device_link(None, cs, &refs);
+            let refs: Vec<&lcms::gamma::ToneCurve> = std::iter::repeat_n(&rg, nch).collect();
+            let rp = virt::create_linearization_device_link(None, cs, &refs);
             assert_eq!(ch.is_null(), rp.is_none(), "linearization cs{cs}");
             if !ch.is_null() {
                 let _ = c::cmsCloseProfile(ch);
@@ -198,7 +198,7 @@ fn device_link_colorspaces() {
         // ink-limiting on more colorspaces
         for cs in [3u32, 12, 14] {
             let ch = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), cs, 200.0);
-            let mut rp = virt::create_ink_limiting_device_link(None, cs, 200.0);
+            let rp = virt::create_ink_limiting_device_link(None, cs, 200.0);
             assert_eq!(ch.is_null(), rp.is_none(), "inklimit cs{cs}");
             if !ch.is_null() {
                 let _ = c::cmsCloseProfile(ch);
@@ -226,8 +226,8 @@ fn device_link_channels() {
             let ch =
                 c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), cs, curves.as_ptr());
             let rg = gamma::build_gamma(None, 1.6).unwrap();
-            let refs: Vec<&lcms::gamma::ToneCurve> = std::iter::repeat(&rg).take(nch).collect();
-            let mut rp = virt::create_linearization_device_link(None, cs, &refs);
+            let refs: Vec<&lcms::gamma::ToneCurve> = std::iter::repeat_n(&rg, nch).collect();
+            let rp = virt::create_linearization_device_link(None, cs, &refs);
             assert_eq!(ch.is_null(), rp.is_none(), "linearization cs{cs}");
             if !ch.is_null() {
                 let _ = c::cmsCloseProfile(ch);
@@ -236,7 +236,7 @@ fn device_link_channels() {
         }
         for cs in [15u32, 16, 17] {
             let ch = c::cmsCreateInkLimitingDeviceLinkTHR(std::ptr::null_mut(), cs, 150.0);
-            let mut rp = virt::create_ink_limiting_device_link(None, cs, 150.0);
+            let rp = virt::create_ink_limiting_device_link(None, cs, 150.0);
             assert_eq!(ch.is_null(), rp.is_none(), "inklimit cs{cs}");
             if !ch.is_null() {
                 let _ = c::cmsCloseProfile(ch);
@@ -328,8 +328,8 @@ fn transform2devicelink() {
             }
             c::cmsDeleteTransform(ct);
             // Rust side
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];

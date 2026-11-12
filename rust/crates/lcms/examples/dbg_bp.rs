@@ -20,7 +20,7 @@ fn main() {
     unsafe {
         let cs = std::ffi::CString::new(PATH).unwrap();
         let acc = std::ffi::CString::new("r").unwrap();
-        let ip = c::cmsOpenProfileFromFile(cs.as_ptr(), acc.as_ptr() as *const u8);
+        let ip = c::cmsOpenProfileFromFile(cs.as_ptr(), (acc.as_ptr() as *const u8).cast());
         let mut o = CXyz {
             x: 0.0,
             y: 0.0,

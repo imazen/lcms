@@ -17,7 +17,7 @@ fn run_c(in_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
             let cs = std::ffi::CString::new(in_path).unwrap();
             c::cmsOpenProfileFromFile(
                 cs.as_ptr(),
-                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+                (std::ffi::CString::new("r").unwrap().as_ptr() as *const u8).cast(),
             )
         };
         assert!(!p_in.is_null(), "C open {in_path} failed");
@@ -91,7 +91,7 @@ fn run_c_out(out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> 
             let cs = std::ffi::CString::new(out_path).unwrap();
             c::cmsOpenProfileFromFile(
                 cs.as_ptr(),
-                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+                (std::ffi::CString::new("r").unwrap().as_ptr() as *const u8).cast(),
             )
         };
         assert!(!p_out.is_null(), "C open {out_path} failed");
@@ -139,14 +139,14 @@ fn run_cmm(in_path: &str, out_path: &str, in_fmt: u32, out_fmt: u32, intent: u32
             let cs = std::ffi::CString::new(in_path).unwrap();
             c::cmsOpenProfileFromFile(
                 cs.as_ptr(),
-                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+                (std::ffi::CString::new("r").unwrap().as_ptr() as *const u8).cast(),
             )
         };
         let p_out = {
             let cs = std::ffi::CString::new(out_path).unwrap();
             c::cmsOpenProfileFromFile(
                 cs.as_ptr(),
-                std::ffi::CString::new("r").unwrap().as_ptr() as *const u8,
+                (std::ffi::CString::new("r").unwrap().as_ptr() as *const u8).cast(),
             )
         };
         assert!(!p_in.is_null() && !p_out.is_null());

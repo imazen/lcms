@@ -12,7 +12,7 @@ BEGIN_DATA\n\
 3\t70.5\t80.5\t90.5\n\
 END_DATA\n";
 fn main() {
-    let mut d = It8::load_from_mem(None, D).expect("parse");
+    let d = It8::load_from_mem(None, D).expect("parse");
     let t = d.get_table();
     eprintln!(
         "n_samples={} n_patches={} sample_id={}",

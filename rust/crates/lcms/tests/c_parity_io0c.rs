@@ -46,7 +46,7 @@ fn file_open_save_roundtrip() {
             // open the saved file on both sides — header parity
             let (c_ok2, c_flags) = unsafe {
                 let name = std::ffi::CString::new(tmp.to_str().unwrap()).unwrap();
-                let h = c::cmsOpenProfileFromFile(name.as_ptr(), b"r\0".as_ptr());
+                let h = c::cmsOpenProfileFromFile(name.as_ptr(), c"r".as_ptr());
                 if h.is_null() {
                     (false, 0)
                 } else {
@@ -115,7 +115,7 @@ fn internal_xyz_float_in_arms() {
         // transform: input = xyz profile, output = srgb
         let srgb = c::cmsCreate_sRGBProfile();
         let fin = (1u32 << 22) | (10 << 16) | (3 << 3) | 4;
-        let fout = (0u32 << 16) | (3 << 3) | 1;
+        let fout = (3 << 3) | 1;
         for int_ in [0u32, 1] {
             let t = c::cmsCreateTransform(p, fin, srgb, fout, int_, 0);
             eprintln!("xyz-in int{int_} t={}", !t.is_null());
@@ -150,9 +150,9 @@ fn internal_matshaper_out_arms() {
             std::ptr::null(),
             g as *const std::ffi::c_void,
         );
-        let frgb = (0u32 << 16) | (3 << 3) | 2;
-        let flab = (0u32 << 16) | (3 << 3) | 2;
-        let fgray = (0u32 << 16) | (1 << 3) | 2;
+        let frgb = (3 << 3) | 2;
+        let flab = (3 << 3) | 2;
+        let fgray = (1 << 3) | 2;
         // output direction: PCS -> device
         for (inp, ifmt, out, ofmt, name) in [
             (lab4, flab, srgb, frgb, "lab4->srgb"),
@@ -604,8 +604,8 @@ fn internal_matshaper2_arms() {
 fn internal_floattag2_arms() {
     unsafe {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let frgb = (4u32 << 16) | (3 << 3) | 2;
-        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let _frgb = (4u32 << 16) | (3 << 3) | 2;
+        let _flab = (10u32 << 16) | (3 << 3) | 2;
         // build a 3->3 float cvst+clut+cvst pipeline
         let mk_pipe = || {
             let pipe = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
@@ -924,14 +924,14 @@ fn internal_cam_ncl2_arms() {
     unsafe {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let flab = (10u32 << 16) | (3 << 3) | 2;
-        let fnc = (0u32 << 16) | (1 << 3) | 2;
+        let fnc = (1 << 3) | 2;
         // ncl2 profile + transforms at each intent
         let nl = c::cmsAllocNamedColorList(
             std::ptr::null_mut(),
             4,
             4,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let pcs = [0x4000u16; 16];
         let dev = [0x6000u16; 16];
@@ -1023,7 +1023,7 @@ fn internal_mba_intent_arms() {
     unsafe {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let srgb = c::cmsCreate_sRGBProfile();
-        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let _flab = (10u32 << 16) | (3 << 3) | 2;
         let frgb = (4u32 << 16) | (3 << 3) | 2;
         // mBA : B curves + CLUT + A curves (reverse mAB)
         let mba = |inch: u8, outch: u8| {
@@ -1117,8 +1117,8 @@ fn internal_clrt_chad2_arms() {
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let frgb = (4u32 << 16) | (3 << 3) | 2;
-        let flab = (10u32 << 16) | (3 << 3) | 2;
+        let _frgb = (4u32 << 16) | (3 << 3) | 2;
+        let _flab = (10u32 << 16) | (3 << 3) | 2;
         // chad: Brad-ford / odd matrices on output class
         for (m, name) in [
             ([1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], "ident"),
@@ -1261,7 +1261,7 @@ fn float_pcs_mix_arms() {
                     let srgb = {
                         let pf = format!("{}/../../sRGBlcms2.icc", env!("CARGO_MANIFEST_DIR"));
                         let cs2 = std::ffi::CString::new(pf).unwrap();
-                        c::cmsOpenProfileFromFile(cs2.as_ptr(), b"r\0".as_ptr() as *const _)
+                        c::cmsOpenProfileFromFile(cs2.as_ptr(), c"r".as_ptr() as *const _)
                     };
                     if srgb.is_null() {
                         continue;

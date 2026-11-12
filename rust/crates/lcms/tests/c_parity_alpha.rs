@@ -382,7 +382,7 @@ fn alpha_machinery() {
             if !ct.is_null() {
                 // transform a buffer with an alpha channel —
                 // the alpha-extraction/injection machinery
-                let mut inp = [30000u16, 40000, 50000, 0xFFFF];
+                let inp = [30000u16, 40000, 50000, 0xFFFF];
                 let mut out = [0u16; 3];
                 c::cmsDoTransform(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 1);
                 c::cmsDeleteTransform(ct);
@@ -439,7 +439,7 @@ fn alpha_format_variants() {
             ("rgba-al", (4 << 16) | (4 << 3) | 2),             // RGBA
             ("argb-al", (4 << 16) | (4 << 3) | 2 | (1 << 10)), // swapfirst
             ("rgba-pm", (4 << 16) | (4 << 3) | 2 | (1 << 14)), // premul
-            ("rgba-pkd", (4 << 16) | (4 << 3) | 0),            // packed
+            ("rgba-pkd", ((4 << 16) | (4 << 3))),            // packed
             ("rgba-8", (4 << 16) | (4 << 3) | 1),              // 8-bit
             ("rgba-fl", (4 << 16) | (4 << 3) | 6),             // float
         ] {
@@ -479,7 +479,7 @@ fn alpha_format_cells() {
         // out: u16 + EXTRA
         let out16 = (10u32 << 16) | (3 << 3) | 2 | (1 << 7);
         // out: dbl float + EXTRA (BYTES=0+FLOAT)
-        let outdbl = (10u32 << 16) | (3 << 3) | 0 | (1 << 7) | (1 << 22);
+        let outdbl = ((10u32 << 16) | (3 << 3)) | (1 << 7) | (1 << 22);
         // out: 8 + EXTRA
         let out8 = (10u32 << 16) | (3 << 3) | 1 | (1 << 7);
         for (ifmt, ofmt, name) in [
@@ -522,13 +522,13 @@ fn alpha_16se_sources() {
         // out variants: HLF(u16+float), FLT(f32+float), DBL(b0+float), 8, 16
         let outhlf = (10u32 << 16) | (3 << 3) | 2 | (1 << 7) | (1 << 22);
         let outflt = (10u32 << 16) | (3 << 3) | 4 | (1 << 7) | (1 << 22);
-        let outdbl = (10u32 << 16) | (3 << 3) | 0 | (1 << 7) | (1 << 22);
+        let outdbl = ((10u32 << 16) | (3 << 3)) | (1 << 7) | (1 << 22);
         let out8 = (10u32 << 16) | (3 << 3) | 1 | (1 << 7);
         let out16 = (10u32 << 16) | (3 << 3) | 2 | (1 << 7);
         // in: f32 + EXTRA = FLT alpha
         let inflt = (4u32 << 16) | (3 << 3) | 4 | (1 << 7) | (1 << 22);
         // in: dbl + EXTRA = DBL alpha (BYTES=0+FLOAT)
-        let indbl = (4u32 << 16) | (3 << 3) | 0 | (1 << 7) | (1 << 22);
+        let indbl = ((4u32 << 16) | (3 << 3)) | (1 << 7) | (1 << 22);
         for (if_, of_, name) in [
             (in16se, outhlf, "16se->hlf"),
             (in16se, outflt, "16se->flt"),
@@ -565,10 +565,10 @@ fn pack_alpha_arms() {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let _r8 = (4u32 << 16) | (3 << 3) | 1;
         let l8 = (10u32 << 16) | (3 << 3) | 1;
         // transform on every alpha format combo
-        for (ac, name) in [
+        for (ac, _name) in [
             (0u32, "ac0"),
             (1, "ac1"),
             (2, "ac2"),
@@ -578,9 +578,9 @@ fn pack_alpha_arms() {
             (6, "ac6"),
             (7, "ac7"),
         ] {
-            for (doswap, name2) in [(false, "n"), (true, "s")] {
-                for (swapfirst, name3) in [(false, "n"), (true, "f")] {
-                    for (planar, name4) in [(false, "p"), (true, "c")] {
+            for (doswap, _name2) in [(false, "n"), (true, "s")] {
+                for (swapfirst, _name3) in [(false, "n"), (true, "f")] {
+                    for (planar, _name4) in [(false, "p"), (true, "c")] {
                         let fmt = (4u32 << 16)
                             | (3 << 3)
                             | 1
@@ -648,7 +648,7 @@ fn alpha_se_planar_arms() {
             ),
             // half (bytes=0) + extra1
             (
-                (1u32 << 22) | (4 << 16) | (1 << 7) | (3 << 3) | 0,
+                ((1u32 << 22) | (4 << 16) | (1 << 7) | (3 << 3)),
                 "hlf-ex1",
             ),
             // planar u16 + extra1

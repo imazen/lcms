@@ -17,7 +17,7 @@ fn alarm_codes_get_set() {
         c::cmsGetAlarmCodesTHR(std::ptr::null_mut(), c_out.as_mut_ptr());
         assert_eq!(c_in, c_out, "C alarm round-trip");
         // rust: the same field on the context
-        let mut ctx = lcms::context::create_context(None, 0);
+        let ctx = lcms::context::create_context(None, 0);
         *ctx.alarm_codes.lock().unwrap() = c_in;
         assert_eq!(*ctx.alarm_codes.lock().unwrap(), c_out, "rust alarm");
         // restore default
@@ -252,8 +252,8 @@ fn line_stride_transform() {
         let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
-        let mut rp1 = virt::create_srgb_profile(None).unwrap();
-        let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+        let rp1 = virt::create_srgb_profile(None).unwrap();
+        let rp2 = virt::create_lab4_profile(None, None).unwrap();
         let mut profs = vec![rp1.clone(), rp2.clone()];
         let mut bpc = [false; 2];
         let intents = [0u32; 2];
@@ -320,8 +320,8 @@ fn flag_branches() {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, flags);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let mut profs = vec![rp1.clone(), rp2.clone()];
             let mut bpc = [false; 2];
             let intents = [0u32; 2];
@@ -372,7 +372,7 @@ fn remaining_flags() {
         for (h, lab) in profiles {
             let in_fmt: u32 = (4 << 16) | (3 << 3) | 2;
             let out_fmt: u32 = (10 << 16) | (3 << 3) | 2;
-            for (name, fl) in [
+            for (_name, fl) in [
                 ("nocache", 0x0040u32),
                 ("bpc", 0x2000),
                 ("nowhite", 0x0004),

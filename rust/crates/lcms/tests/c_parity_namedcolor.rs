@@ -150,7 +150,7 @@ fn named_color_index_to_lab() {
                     c::cmsNamedColorInfo(
                         glist,
                         i,
-                        name.as_mut_ptr(),
+                        name.as_mut_ptr().cast(),
                         std::ptr::null_mut(),
                         std::ptr::null_mut(),
                         pcs.as_mut_ptr(),

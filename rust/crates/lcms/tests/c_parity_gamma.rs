@@ -235,7 +235,7 @@ fn reverse_join_smooth() {
         let tv: Vec<u16> = (0..256u16)
             .map(|i| i.wrapping_mul(257).wrapping_add(i % 7))
             .collect();
-        let mut ct = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 256, tv.as_ptr());
+        let ct = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 256, tv.as_ptr());
         let mut rt = gamma::build_tabulated_tone_curve16(None, 256, Some(&tv)).unwrap();
         assert_eq!(
             c::cmsSmoothToneCurve(ct, 5.0) != 0,
@@ -336,7 +336,7 @@ fn dup_join_smooth_variants() {
         }
         c::cmsFreeToneCurve(cj);
         // smooth parametric
-        let mut cs = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let cs = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mut rs = gamma::build_gamma(None, 2.2).unwrap();
         assert_eq!(
             c::cmsSmoothToneCurve(cs, 2.0) != 0,
@@ -607,7 +607,7 @@ fn gamma_internals2() {
             }
         }
         // segmented curve: {x0,x1,type,params,grid,samples}
-        let mut seg = [c::CurveSegment {
+        let seg = [c::CurveSegment {
             x0: 0.0f32,
             x1: 1.0,
             r#type: 6,
@@ -699,21 +699,21 @@ fn tonecurve_alloc_arms() {
         let ml = c::cmsMLUalloc(std::ptr::null_mut(), 2);
         c::cmsMLUsetUTF8(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            "mixed \u{1f600} \u{00e4}\u{4e2d} text\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            "mixed \u{1f600} \u{00e4}\u{4e2d} text\0".as_ptr().cast(),
         );
         c::cmsMLUsetUTF8(
             ml,
-            b"ja\0".as_ptr() as *const _,
-            b"JP\0".as_ptr() as *const _,
-            "\u{30c6}\u{30b9}\u{30c8}\0".as_ptr(),
+            c"ja".as_ptr() as *const _,
+            c"JP".as_ptr() as *const _,
+            "\u{30c6}\u{30b9}\u{30c8}\0".as_ptr().cast(),
         );
         let mut out = [0u8; 256];
         let n = c::cmsMLUgetUTF8(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             out.as_mut_ptr() as *mut _,
             256,
         );
@@ -1237,12 +1237,12 @@ fn seg_validation_arms() {
         fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
-        fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+        fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
     }
     let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
         let f = dlsym(
             std::ptr::null_mut(),
-            b"__llvm_profile_write_file\0".as_ptr() as *const i8,
+            c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
         );
         if f.is_null() {
             None
@@ -1279,12 +1279,12 @@ fn dup_curves_plugin_arms() {
         fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
-        fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+        fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
     }
     let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
         let f = dlsym(
             std::ptr::null_mut(),
-            b"__llvm_profile_write_file\0".as_ptr() as *const i8,
+            c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
         );
         if f.is_null() {
             None
@@ -1512,10 +1512,10 @@ fn smooth_curve_arms() {
             (3, "spike"),
             (4, "saw"),
         ] {
-            let vals: Vec<u16> = (0..256)
+            let vals: Vec<u16> = (0..256i32)
                 .map(|i| match g_ {
                     0 => (i * 257) as u16,
-                    1 => ((i as i32 - 128).abs() * 512) as u16,
+                    1 => ((i - 128).abs() * 512) as u16,
                     2 => 32768,
                     3 => {
                         if i == 128 {
@@ -1659,7 +1659,7 @@ fn gamma_smooth_plugin_arms() {
         let tc = c::cmsBuildParametricToneCurve(ctx, 20, params.as_ptr());
         eprintln!("plugin-curve tc={}", !tc.is_null());
         if !tc.is_null() {
-            let mut v = 0.0f64;
+            let v = 0.0f64;
             c::cmsEvalToneCurveFloat(tc, 0.5);
             let _ = v;
             c::cmsFreeToneCurve(tc);
@@ -1793,8 +1793,8 @@ fn gamma_join_probe_arms() {
             std::ptr::null_mut(),
             3,
             3,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let pcs = [0x1000u16; 16];
         let dev = [0x2000u16; 16];
@@ -1810,8 +1810,8 @@ fn gamma_join_probe_arms() {
         let dict = c::cmsDictAlloc(std::ptr::null_mut());
         c::cmsDictAddEntry(
             dict,
-            b"k1\0".as_ptr() as *const _,
-            b"v1\0".as_ptr() as *const _,
+            c"k1".as_ptr() as *const _,
+            c"v1".as_ptr() as *const _,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
@@ -1918,12 +1918,12 @@ fn gamma_named_tail_arms() {
             std::ptr::null_mut(),
             2,
             4,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let pcs = [0x1000u16; 16];
         let dev = [0x2000u16; 16];
-        c::cmsAppendNamedColor(nl, b"c0\0".as_ptr() as *const _, pcs.as_ptr(), dev.as_ptr());
+        c::cmsAppendNamedColor(nl, c"c0".as_ptr() as *const _, pcs.as_ptr(), dev.as_ptr());
         let np = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(np, 0x6E6D636C);
         c::cmsSetColorSpace(np, 0x4D434834);
@@ -1932,7 +1932,7 @@ fn gamma_named_tail_arms() {
         c::cmsWriteTag(np, 0x6E636C32, nl as *const _);
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let flab = (10u32 << 16) | (3 << 3) | 2;
-        let fnc = (0u32 << 16) | (1 << 3) | 2;
+        let fnc: u32 = (1 << 3) | 2;
         let t = c::cmsCreateTransform(np, fnc, lab4, flab, 0, 0);
         if !t.is_null() {
             let lst = c::cmsGetNamedColorList(t);

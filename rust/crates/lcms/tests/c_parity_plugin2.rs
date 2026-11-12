@@ -43,12 +43,12 @@ fn plugin_validation_arms() {
         fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
-        fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+        fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
     }
     let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
         let f = dlsym(
             std::ptr::null_mut(),
-            b"__llvm_profile_write_file\0".as_ptr() as *const i8,
+            c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
         );
         if f.is_null() {
             None

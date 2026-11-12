@@ -11,7 +11,7 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void};
 
 pub type Bool = i32; // cmsBool
 pub type U8 = u8; // cmsUInt8Number
@@ -311,20 +311,20 @@ unsafe extern "C" {
         context_id: Context,
         buffer: *mut u8,
         size: U32,
-        access_mode: *const u8,
+        access_mode: *const c_char,
     ) -> Handle;
     pub fn cmsCloseIOhandler(io: Handle) -> i32;
     pub fn cmsOpenIOhandlerFromFile(
         context_id: Context,
-        name: *const i8,
-        access: *const u8,
+        name: *const c_char,
+        access: *const c_char,
     ) -> Handle;
     pub fn cmsOpenIOhandlerFromStream(context_id: Context, stream: *mut c_void) -> Handle;
     // --- cmsio0 profile API ---
-    pub fn cmsOpenProfileFromFile(name: *const i8, access: *const u8) -> *mut c_void;
+    pub fn cmsOpenProfileFromFile(name: *const c_char, access: *const c_char) -> *mut c_void;
     pub fn cmsOpenProfileFromMem(mem: *const c_void, size: u32) -> *mut c_void;
     pub fn cmsOpenProfileFromIOhandlerTHR(ctx: *mut c_void, io: Handle) -> *mut c_void;
-    pub fn cmsSaveProfileToFile(p: *mut c_void, name: *const i8) -> i32;
+    pub fn cmsSaveProfileToFile(p: *mut c_void, name: *const c_char) -> i32;
     pub fn cmsSaveProfileToIOhandler(p: *mut c_void, io: Handle) -> i32;
     pub fn cmsGetProfileIOhandler(p: *const c_void) -> Handle;
     pub fn cmsCloseProfile(p: *mut c_void) -> i32;
@@ -401,51 +401,51 @@ unsafe extern "C" {
     pub fn cmsMLUalloc(context_id: Context, n_items: U32) -> Handle;
     pub fn cmsMLUfree(mlu: Handle);
     pub fn cmsMLUdup(mlu: Handle) -> Handle;
-    pub fn cmsMLUsetASCII(mlu: Handle, lang: *const u8, cntry: *const u8, ascii: *const u8) -> i32;
-    pub fn cmsMLUsetUTF8(mlu: Handle, lang: *const u8, cntry: *const u8, utf8: *const u8) -> i32;
-    pub fn cmsMLUsetWide(mlu: Handle, lang: *const u8, cntry: *const u8, wide: *const i32) -> i32;
+    pub fn cmsMLUsetASCII(mlu: Handle, lang: *const c_char, cntry: *const c_char, ascii: *const c_char) -> i32;
+    pub fn cmsMLUsetUTF8(mlu: Handle, lang: *const c_char, cntry: *const c_char, utf8: *const c_char) -> i32;
+    pub fn cmsMLUsetWide(mlu: Handle, lang: *const c_char, cntry: *const c_char, wide: *const i32) -> i32;
     pub fn cmsMLUgetASCII(
         mlu: Handle,
-        lang: *const u8,
-        cntry: *const u8,
-        buffer: *mut u8,
+        lang: *const c_char,
+        cntry: *const c_char,
+        buffer: *mut c_char,
         buffer_size: U32,
     ) -> U32;
     pub fn cmsMLUgetUTF8(
         mlu: Handle,
-        lang: *const u8,
-        cntry: *const u8,
-        buffer: *mut u8,
+        lang: *const c_char,
+        cntry: *const c_char,
+        buffer: *mut c_char,
         buffer_size: U32,
     ) -> U32;
     pub fn cmsMLUgetWide(
         mlu: Handle,
-        lang: *const u8,
-        cntry: *const u8,
+        lang: *const c_char,
+        cntry: *const c_char,
         buffer: *mut i32,
         buffer_size: U32,
     ) -> U32;
     pub fn cmsMLUgetTranslation(
         mlu: Handle,
-        lang: *const u8,
-        cntry: *const u8,
-        obt_lang: *mut u8,
-        obt_cntry: *mut u8,
+        lang: *const c_char,
+        cntry: *const c_char,
+        obt_lang: *mut c_char,
+        obt_cntry: *mut c_char,
     ) -> i32;
     pub fn cmsMLUtranslationsCount(mlu: Handle) -> U32;
-    pub fn cmsMLUtranslationsCodes(mlu: Handle, idx: U32, lang: *mut u8, cntry: *mut u8) -> i32;
+    pub fn cmsMLUtranslationsCodes(mlu: Handle, idx: U32, lang: *mut c_char, cntry: *mut c_char) -> i32;
     pub fn cmsAllocNamedColorList(
         context_id: Context,
         n: U32,
         colorant_count: U32,
-        prefix: *const u8,
-        suffix: *const u8,
+        prefix: *const c_char,
+        suffix: *const c_char,
     ) -> Handle;
     pub fn cmsFreeNamedColorList(list: Handle);
     pub fn cmsDupNamedColorList(list: Handle) -> Handle;
     pub fn cmsAppendNamedColor(
         list: Handle,
-        name: *const u8,
+        name: *const c_char,
         pcs: *const U16,
         colorant: *const U16,
     ) -> i32;
@@ -453,14 +453,14 @@ unsafe extern "C" {
     pub fn cmsNamedColorInfo(
         list: Handle,
         n_color: U32,
-        name: *mut u8,
-        prefix: *mut u8,
-        suffix: *mut u8,
+        name: *mut c_char,
+        prefix: *mut c_char,
+        suffix: *mut c_char,
         pcs: *mut U16,
         colorant: *mut U16,
     ) -> i32;
-    pub fn cmsNamedColorIndex(list: Handle, name: *const u8) -> i32;
-    pub fn cmsstrcasecmp(s1: *const u8, s2: *const u8) -> i32;
+    pub fn cmsNamedColorIndex(list: Handle, name: *const c_char) -> i32;
+    pub fn cmsstrcasecmp(s1: *const c_char, s2: *const c_char) -> i32;
     pub fn _cmsStageAllocNamedColor(list: Handle, use_pcs: i32) -> Handle;
     pub fn cmsAllocProfileSequenceDescription(context_id: Context, n: U32) -> Handle;
     pub fn cmsFreeProfileSequenceDescription(pseq: Handle);
@@ -658,24 +658,24 @@ unsafe extern "C" {
     pub fn cmsGetProfileInfo(
         p: *mut c_void,
         info: u32,
-        lang: *const i8,
-        cntry: *const i8,
+        lang: *const c_char,
+        cntry: *const c_char,
         buf: *mut c_void,
         bufsize: u32,
     ) -> u32;
     pub fn cmsGetProfileInfoASCII(
         p: *mut c_void,
         info: u32,
-        lang: *const i8,
-        cntry: *const i8,
+        lang: *const c_char,
+        cntry: *const c_char,
         buf: *mut c_void,
         bufsize: u32,
     ) -> u32;
     pub fn cmsGetProfileInfoUTF8(
         p: *mut c_void,
         info: u32,
-        lang: *const i8,
-        cntry: *const i8,
+        lang: *const c_char,
+        cntry: *const c_char,
         buf: *mut c_void,
         bufsize: u32,
     ) -> u32;
@@ -702,60 +702,60 @@ unsafe extern "C" {
     // --- cgats / IT8 ---
     pub fn cmsIT8Alloc(ctx: *mut c_void) -> *mut c_void;
     pub fn cmsIT8LoadFromMem(ctx: *mut c_void, ptr: *const c_void, len: u32) -> *mut c_void;
-    pub fn cmsIT8LoadFromFile(ctx: *mut c_void, file_name: *const i8) -> *mut c_void;
-    pub fn cmsIT8SaveToFile(h: *mut c_void, file_name: *const i8) -> i32;
+    pub fn cmsIT8LoadFromFile(ctx: *mut c_void, file_name: *const c_char) -> *mut c_void;
+    pub fn cmsIT8SaveToFile(h: *mut c_void, file_name: *const c_char) -> i32;
     pub fn cmsIT8SaveToMem(h: *mut c_void, mem: *mut c_void, bytes_needed: *mut u32) -> i32;
-    pub fn cmsIT8GetSheetType(h: *mut c_void) -> *const i8;
-    pub fn cmsIT8GetProperty(h: *mut c_void, key: *const i8) -> *const i8;
-    pub fn cmsIT8GetData(h: *mut c_void, patch: *const i8, sample: *const i8) -> *const i8;
+    pub fn cmsIT8GetSheetType(h: *mut c_void) -> *const c_char;
+    pub fn cmsIT8GetProperty(h: *mut c_void, key: *const c_char) -> *const c_char;
+    pub fn cmsIT8GetData(h: *mut c_void, patch: *const c_char, sample: *const c_char) -> *const c_char;
     pub fn cmsIT8Free(h: *mut c_void);
-    pub fn cmsIT8SetSheetType(h: *mut c_void, ty: *const i8) -> i32;
-    pub fn cmsIT8SetComment(h: *mut c_void, comment: *const i8) -> i32;
-    pub fn cmsIT8SetPropertyStr(h: *mut c_void, prop: *const i8, val: *const i8) -> i32;
-    pub fn cmsIT8SetPropertyDbl(h: *mut c_void, prop: *const i8, val: f64) -> i32;
-    pub fn cmsIT8SetPropertyHex(h: *mut c_void, prop: *const i8, val: u32) -> i32;
+    pub fn cmsIT8SetSheetType(h: *mut c_void, ty: *const c_char) -> i32;
+    pub fn cmsIT8SetComment(h: *mut c_void, comment: *const c_char) -> i32;
+    pub fn cmsIT8SetPropertyStr(h: *mut c_void, prop: *const c_char, val: *const c_char) -> i32;
+    pub fn cmsIT8SetPropertyDbl(h: *mut c_void, prop: *const c_char, val: f64) -> i32;
+    pub fn cmsIT8SetPropertyHex(h: *mut c_void, prop: *const c_char, val: u32) -> i32;
     pub fn cmsIT8SetPropertyMulti(
         h: *mut c_void,
-        key: *const i8,
-        subkey: *const i8,
-        val: *const i8,
+        key: *const c_char,
+        subkey: *const c_char,
+        val: *const c_char,
     ) -> i32;
-    pub fn cmsIT8SetPropertyUncooked(h: *mut c_void, key: *const i8, val: *const i8) -> i32;
-    pub fn cmsIT8GetPropertyDbl(h: *mut c_void, prop: *const i8) -> f64;
-    pub fn cmsIT8EnumProperties(h: *mut c_void, names: *mut *mut *mut i8) -> u32;
+    pub fn cmsIT8SetPropertyUncooked(h: *mut c_void, key: *const c_char, val: *const c_char) -> i32;
+    pub fn cmsIT8GetPropertyDbl(h: *mut c_void, prop: *const c_char) -> f64;
+    pub fn cmsIT8EnumProperties(h: *mut c_void, names: *mut *mut *mut c_char) -> u32;
     pub fn cmsIT8EnumPropertyMulti(
         h: *mut c_void,
-        prop: *const i8,
-        names: *mut *mut *mut i8,
+        prop: *const c_char,
+        names: *mut *mut *mut c_char,
     ) -> u32;
-    pub fn cmsIT8GetDataRowCol(h: *mut c_void, row: i32, col: i32) -> *const i8;
+    pub fn cmsIT8GetDataRowCol(h: *mut c_void, row: i32, col: i32) -> *const c_char;
     pub fn cmsIT8TableCount(h: *mut c_void) -> u32;
     pub fn cmsIT8GetDataRowColDbl(h: *mut c_void, row: i32, col: i32) -> f64;
-    pub fn cmsIT8SetDataRowCol(h: *mut c_void, row: i32, col: i32, val: *const i8) -> i32;
+    pub fn cmsIT8SetDataRowCol(h: *mut c_void, row: i32, col: i32, val: *const c_char) -> i32;
     pub fn cmsIT8SetDataRowColDbl(h: *mut c_void, row: i32, col: i32, val: f64) -> i32;
-    pub fn cmsIT8GetDataDbl(h: *mut c_void, patch: *const i8, sample: *const i8) -> f64;
+    pub fn cmsIT8GetDataDbl(h: *mut c_void, patch: *const c_char, sample: *const c_char) -> f64;
     pub fn cmsIT8SetData(
         h: *mut c_void,
-        patch: *const i8,
-        sample: *const i8,
-        val: *const i8,
+        patch: *const c_char,
+        sample: *const c_char,
+        val: *const c_char,
     ) -> i32;
-    pub fn cmsIT8SetDataDbl(h: *mut c_void, patch: *const i8, sample: *const i8, val: f64) -> i32;
-    pub fn cmsIT8FindDataFormat(h: *mut c_void, sample: *const i8) -> i32;
-    pub fn cmsIT8SetDataFormat(h: *mut c_void, n: i32, sample: *const i8) -> i32;
-    pub fn cmsIT8EnumDataFormat(h: *mut c_void, names: *mut *mut *mut i8) -> i32;
-    pub fn cmsIT8GetPatchName(h: *mut c_void, n_patch: i32, buffer: *mut i8) -> *const i8;
-    pub fn cmsIT8GetPatchByName(h: *mut c_void, patch: *const i8) -> i32;
+    pub fn cmsIT8SetDataDbl(h: *mut c_void, patch: *const c_char, sample: *const c_char, val: f64) -> i32;
+    pub fn cmsIT8FindDataFormat(h: *mut c_void, sample: *const c_char) -> i32;
+    pub fn cmsIT8SetDataFormat(h: *mut c_void, n: i32, sample: *const c_char) -> i32;
+    pub fn cmsIT8EnumDataFormat(h: *mut c_void, names: *mut *mut *mut c_char) -> i32;
+    pub fn cmsIT8GetPatchName(h: *mut c_void, n_patch: i32, buffer: *mut c_char) -> *const c_char;
+    pub fn cmsIT8GetPatchByName(h: *mut c_void, patch: *const c_char) -> i32;
     pub fn cmsIT8SetTableByLabel(
         h: *mut c_void,
-        set: *const i8,
-        field: *const i8,
-        expected: *const i8,
+        set: *const c_char,
+        field: *const c_char,
+        expected: *const c_char,
     ) -> i32;
-    pub fn cmsIT8SetIndexColumn(h: *mut c_void, sample: *const i8) -> i32;
-    pub fn cmsIT8DefineDblFormat(h: *mut c_void, formatter: *const i8);
+    pub fn cmsIT8SetIndexColumn(h: *mut c_void, sample: *const c_char) -> i32;
+    pub fn cmsIT8DefineDblFormat(h: *mut c_void, formatter: *const c_char);
     pub fn cmsIT8SetTable(h: *mut c_void, n_table: u32) -> i32;
-    pub fn cmsIT8GetPropertyMulti(h: *mut c_void, key: *const i8, subkey: *const i8) -> *const i8;
+    pub fn cmsIT8GetPropertyMulti(h: *mut c_void, key: *const c_char, subkey: *const c_char) -> *const c_char;
     // --- context + error handling ---
     pub fn cmsCreateContext(plugins: *mut c_void, user_data: *mut c_void) -> *mut c_void;
     pub fn cmsDeleteContext(ctx: *mut c_void);
@@ -763,7 +763,7 @@ unsafe extern "C" {
     pub fn cmsGetContextUserData(ctx: *mut c_void) -> *mut c_void;
     pub fn cmsSetLogErrorHandler(fn_: *mut c_void);
     pub fn cmsSetLogErrorHandlerTHR(ctx: *mut c_void, fn_: *mut c_void);
-    pub fn cmsLogError(ctx: *mut c_void, code: u32, text: *const i8);
+    pub fn cmsLogError(ctx: *mut c_void, code: u32, text: *const c_char);
     pub fn cmsGetLogErrorHandler(ctx: *mut c_void) -> *mut c_void;
     // --- gbd / gamut boundary descriptor ---
     pub fn cmsGBDAlloc(ctx: *mut c_void) -> *mut c_void;
@@ -772,7 +772,7 @@ unsafe extern "C" {
     pub fn cmsGDBCheckPoint(gbd: *mut c_void, lab: *const c_void) -> i32;
     pub fn cmsGDBCompute(gbd: *mut c_void, flags: u32) -> i32;
     // --- cube / devicelink ---
-    pub fn cmsCreateDeviceLinkFromCubeFile(path: *const i8) -> *mut c_void;
+    pub fn cmsCreateDeviceLinkFromCubeFile(path: *const c_char) -> *mut c_void;
     // --- black point / sampling ---
     pub fn cmsDetectBlackPoint(bp: *mut c_void, prof: *mut c_void, intent: u32, flags: u32) -> i32;
     pub fn cmsDetectDestinationBlackPoint(
@@ -785,7 +785,7 @@ unsafe extern "C" {
     pub fn cmsDesaturateLab(lab: *mut c_void, amax: f64, amin: f64, bmax: f64, bmin: f64) -> i32;
     // --- profile info (cmsio1) ---
     pub fn cmsIsIntentSupported(prof: *mut c_void, intent: u32, direction: u32) -> i32;
-    pub fn cmsGetSupportedIntents(n_max: u32, codes: *mut u32, descriptions: *mut *mut u8) -> u32;
+    pub fn cmsGetSupportedIntents(n_max: u32, codes: *mut u32, descriptions: *mut *mut c_char) -> u32;
     pub fn _cmsReadInputLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     pub fn _cmsReadOutputLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     pub fn _cmsReadDevicelinkLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
@@ -888,7 +888,7 @@ unsafe extern "C" {
     pub fn cmsOpenProfileFromStreamTHR(
         ctx: *mut c_void,
         stream: *mut c_void,
-        access: *const i8,
+        access: *const c_char,
     ) -> *mut c_void;
     pub fn cmsDoTransformStride(
         t: *mut c_void,
@@ -968,7 +968,7 @@ unsafe extern "C" {
 
     pub fn cmsCreateDeviceLinkFromCubeFileTHR(
         ctx: *mut c_void,
-        file_name: *const i8,
+        file_name: *const c_char,
     ) -> *mut c_void;
     pub fn cmsDetectRGBProfileGamma(prof: *mut c_void, threshold: f64) -> f64;
     pub fn cmsDictNextEntry(e: *const c_void) -> *const c_void;
@@ -995,15 +995,15 @@ unsafe extern "C" {
         ctx: *mut c_void,
         n_max: u32,
         codes: *mut u32,
-        descriptions: *mut *mut i8,
+        descriptions: *mut *mut c_char,
     ) -> u32;
     pub fn cmsGetToneCurveSegment(n: i32, t: *const ToneCurve) -> *const c_void;
     pub fn cmsOpenProfileFromFileTHR(
         ctx: *mut c_void,
-        profile: *const i8,
-        access: *const i8,
+        profile: *const c_char,
+        access: *const c_char,
     ) -> *mut c_void;
-    pub fn cmsOpenProfileFromStream(stream: *mut c_void, access: *const i8) -> *mut c_void;
+    pub fn cmsOpenProfileFromStream(stream: *mut c_void, access: *const c_char) -> *mut c_void;
     pub fn cmsOpenProfileFromIOhandler2THR(
         ctx: *mut c_void,
         io: *mut c_void,

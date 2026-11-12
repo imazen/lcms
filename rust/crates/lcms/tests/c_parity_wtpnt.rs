@@ -2,7 +2,6 @@
 
 use lcms::{types, wtpnt, xform};
 use lcms_cref as c;
-use std::ffi::c_void;
 
 #[test]
 fn white_point_from_temp() {

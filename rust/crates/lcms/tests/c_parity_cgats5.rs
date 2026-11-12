@@ -3,18 +3,17 @@
 
 use lcms::cgats;
 use lcms_cref as c;
-use std::ffi::c_void;
 
-fn cs8(s: &str) -> *const i8 {
+fn cs8(s: &str) -> *const std::ffi::c_char {
     thread_local! {
-        static BUF: std::cell::RefCell<Vec<u8>> = std::cell::RefCell::new(Vec::new());
+        static BUF: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
     }
     BUF.with(|b| {
         let mut b = b.borrow_mut();
         b.clear();
         b.extend_from_slice(s.as_bytes());
         b.push(0);
-        b.as_ptr() as *const i8
+        b.as_ptr() as *const std::ffi::c_char
     })
 }
 
@@ -89,7 +88,7 @@ fn it8_load_save_roundtrip() {
 fn it8_find_format_patchname() {
     unsafe {
         let ch = c::cmsIT8Alloc(std::ptr::null_mut());
-        let mut rh = cgats::It8::alloc(None);
+        let rh = cgats::It8::alloc(None);
         // set a data format
         for fmt in ["SAMPLE_ID", "LAB_L", "LAB_A", "LAB_B"] {
             let _ = c::cmsIT8SetDataFormat(ch, 0, cs8(fmt));
@@ -101,7 +100,7 @@ fn it8_find_format_patchname() {
             assert_eq!(c_idx, r_idx, "find {name}");
         }
         // patch name
-        let mut buf = [0i8; 256];
+        let mut buf = [0 as std::ffi::c_char; 256];
         let cn = c::cmsIT8GetPatchName(ch, 0, buf.as_mut_ptr());
         let cstr = if cn.is_null() {
             String::new()
@@ -136,11 +135,10 @@ fn it8_file_load_save() {
     let rh = cgats::It8::load_from_file(None, path.to_str().unwrap()).unwrap();
     assert!(
         rh.save_to_file(
-            &std::env::temp_dir()
+            std::env::temp_dir()
                 .join("lcms_test_it8_out2.cgats")
                 .to_str()
                 .unwrap()
-                .to_string()
         )
     );
 }
@@ -220,9 +218,9 @@ fn it8_last_surface() {
         // SetDataRowColDbl
         let ok = c::cmsIT8SetDataRowColDbl(h, 1, 0, 7.5);
         eprintln!("set dbl={ok}");
-        // EnumPropertyMulti — out-param is *mut *mut *mut i8
-        let mut names_arr: *mut *mut i8 = std::ptr::null_mut();
-        let np = c::cmsIT8EnumPropertyMulti(h, b"PROP\0".as_ptr() as *const _, &mut names_arr);
+        // EnumPropertyMulti — out-param is *mut *mut *mut std::ffi::c_char
+        let mut names_arr: *mut *mut std::ffi::c_char = std::ptr::null_mut();
+        let np = c::cmsIT8EnumPropertyMulti(h, c"PROP".as_ptr() as *const _, &mut names_arr);
         eprintln!("prop-multi n={np}");
         c::cmsIT8Free(h);
         // cmsIT8LoadFromIOhandler is commented out in lcms2.h —
@@ -268,14 +266,14 @@ fn it8_multi_table() {
         // set/get on table 1
         let ok1 = c::cmsIT8SetPropertyStr(
             h,
-            b"PROP\0".as_ptr() as *const _,
-            b"val\0".as_ptr() as *const _,
+            c"PROP".as_ptr() as *const _,
+            c"val".as_ptr() as *const _,
         );
         let ok2 = c::cmsIT8SetTable(h, 1);
         let ok3 = c::cmsIT8SetPropertyStr(
             h,
-            b"PROP1\0".as_ptr() as *const _,
-            b"val1\0".as_ptr() as *const _,
+            c"PROP1".as_ptr() as *const _,
+            c"val1".as_ptr() as *const _,
         );
         eprintln!("prop={ok1} table1={ok2} prop1={ok3}");
         // enum props across tables

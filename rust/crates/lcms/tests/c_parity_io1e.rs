@@ -44,7 +44,7 @@ fn corpus_tag_reads() {
         unsafe {
             let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             for i in 0..40u32 {
-                let sig = c::cmsGetTagSignature(h, i as u32);
+                let sig = c::cmsGetTagSignature(h, i);
                 if sig == 0 {
                     break;
                 }
@@ -282,7 +282,7 @@ fn raw_tag_paths() {
     for data in corpus() {
         let mut rp = profile::open_profile_from_mem(None, &data).unwrap();
         unsafe {
-            let mut h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
+            let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             // read a tag's raw bytes — 'desc' or first present tag
             for sig in [0x64657363u32, 0x77747074, 0x72545243] {
                 let cn = c::cmsReadRawTag(h, sig, std::ptr::null_mut(), 0);
@@ -333,7 +333,7 @@ fn type_mismatched_reads() {
         // raw read needs a serialized profile — built profiles
         // have no IOHANDLER (would NULL-deref)
         // and a raw write to a sig that takes text — 'cprt'
-        let ok2 = c::cmsWriteRawTag(h, 0x63707274, b"hello\0".as_ptr() as *const _, 6);
+        let ok2 = c::cmsWriteRawTag(h, 0x63707274, c"hello".as_ptr() as *const _, 6);
         eprintln!("raw cprt write={ok2}");
         let s = c::cmsReadTag(h, 0x63707274);
         eprintln!("cprt read={}", s.is_null());
@@ -393,9 +393,9 @@ fn more_writable_pipeline_sigs() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"desc\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"desc".as_ptr() as *const u8).cast(),
         );
         for sig in [0x646D6E64u32, 0x646D6464] {
             let ok = c::cmsWriteTag(h, sig, mlu as *mut std::ffi::c_void);
@@ -523,7 +523,7 @@ fn corrupt_tag_directory() {
         for (name, off, val) in [
             ("tag-off-past-eof", 136u32, 0xFFu8),
             ("tag-size-huge", 140, 0xFF),
-            ("dup-sig", 144, b'd' as u8), // 2nd tag sig byte
+            ("dup-sig", 144, b'd'), // 2nd tag sig byte
         ] {
             let mut dd = d.clone();
             dd[off as usize] = val;
@@ -545,7 +545,7 @@ fn corrupt_tag_directory() {
 #[test]
 fn class_dependent_reads() {
     unsafe {
-        for (name, cls) in [
+        for (_name, cls) in [
             ("mntr", 0x6D6E7472u32),
             ("scnr", 0x73636E72),
             ("prtr", 0x70727472),
@@ -632,26 +632,26 @@ fn remaining_sig_writes() {
             std::ptr::null_mut(),
             3,
             3,
-            b"pre\0".as_ptr() as *const _,
-            b"suf\0".as_ptr() as *const _,
+            c"pre".as_ptr() as *const _,
+            c"suf".as_ptr() as *const _,
         );
-        let mut pcs = [0u16; 3];
-        let mut dev = [0u16; 16];
+        let pcs = [0u16; 3];
+        let dev = [0u16; 16];
         c::cmsAppendNamedColor(
             ncl,
-            b"R\0".as_ptr() as *const u8,
+            (c"R".as_ptr() as *const u8).cast(),
             pcs.as_ptr(),
             dev.as_ptr(),
         );
         c::cmsAppendNamedColor(
             ncl,
-            b"G\0".as_ptr() as *const u8,
+            (c"G".as_ptr() as *const u8).cast(),
             pcs.as_ptr(),
             dev.as_ptr(),
         );
         c::cmsAppendNamedColor(
             ncl,
-            b"B\0".as_ptr() as *const u8,
+            (c"B".as_ptr() as *const u8).cast(),
             pcs.as_ptr(),
             dev.as_ptr(),
         );
@@ -708,9 +708,9 @@ fn big_tag_table() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"x\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"x".as_ptr() as *const u8).cast(),
         );
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         // write a spread of sigs across types
@@ -766,9 +766,9 @@ fn full_table_serialize() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"x\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"x".as_ptr() as *const u8).cast(),
         );
         for (sig, kind) in [
             (0x626B7074u32, 1u32),
@@ -995,7 +995,7 @@ fn final_sig_writes() {
             yday: i32,
             isdst: i32,
             gmtoff: i64,
-            zone: *const i8,
+            zone: *const std::ffi::c_char,
         }
         let tm = Tm {
             sec: 0,
@@ -1015,9 +1015,9 @@ fn final_sig_writes() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"id\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"id".as_ptr() as *const u8).cast(),
         );
         let o4 = c::cmsWriteTag(h, 0x636C6964, mlu as *mut std::ffi::c_void); // 'clid'
         let o5 = c::cmsWriteTag(h, 0x63696964, mlu as *mut std::ffi::c_void); // 'ciid'
@@ -1027,14 +1027,14 @@ fn final_sig_writes() {
             std::ptr::null_mut(),
             1,
             3,
-            b"pre\0".as_ptr() as *const _,
-            b"suf\0".as_ptr() as *const _,
+            c"pre".as_ptr() as *const _,
+            c"suf".as_ptr() as *const _,
         );
-        let mut pcs = [0u16; 3];
-        let mut dev = [0u16; 16];
+        let pcs = [0u16; 3];
+        let dev = [0u16; 16];
         c::cmsAppendNamedColor(
             ncl,
-            b"n\0".as_ptr() as *const u8,
+            (c"n".as_ptr() as *const u8).cast(),
             pcs.as_ptr(),
             dev.as_ptr(),
         );
@@ -1213,9 +1213,9 @@ fn overwrite_type_change() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"mluc-form\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"mluc-form".as_ptr() as *const u8).cast(),
         );
         let o1 = c::cmsWriteTag(h, 0x64657363, mlu as *mut std::ffi::c_void);
         // 'desc' accepts desc-type too — a TextDesc payload
@@ -1396,9 +1396,9 @@ fn last_writeable_sigs() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"x\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"x".as_ptr() as *const u8).cast(),
         );
         let xyz = c::CieXyz {
             X: 0.5,
@@ -1681,9 +1681,9 @@ fn write_side_dispatch() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"x\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"x".as_ptr() as *const u8).cast(),
         );
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let dict = c::cmsDictAlloc(std::ptr::null_mut());
@@ -1871,9 +1871,9 @@ fn corpus_stored_writes() {
             let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
             c::cmsMLUsetASCII(
                 mlu,
-                b"en\0".as_ptr() as *const u8,
-                b"US\0".as_ptr() as *const u8,
-                b"x\0".as_ptr() as *const u8,
+                (c"en".as_ptr() as *const u8).cast(),
+                (c"US".as_ptr() as *const u8).cast(),
+                (c"x".as_ptr() as *const u8).cast(),
             );
             // write a spread of tags — the stored-table write
             // machinery on a loaded profile
@@ -1916,7 +1916,7 @@ fn corpus_stored_writes() {
 fn final_unusual_sigs() {
     unsafe {
         let h = c::cmsCreate_sRGBProfile();
-        let xyz = c::CieXyz {
+        let _xyz = c::CieXyz {
             X: 0.5,
             Y: 0.4,
             Z: 0.3,
@@ -2124,8 +2124,8 @@ fn mpe_named_element() {
             std::ptr::null_mut(),
             2,
             3,
-            b"P\0".as_ptr() as _,
-            b"S\0".as_ptr() as _,
+            c"P".as_ptr() as _,
+            c"S".as_ptr() as _,
         );
         if !list.is_null() {
             let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
@@ -2409,11 +2409,11 @@ fn mlu_text_resave() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"text\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"text".as_ptr() as *const u8).cast(),
         );
-        for (sig, name) in [
+        for (sig, _name) in [
             (0x64657363u32, "desc"),
             (0x63707274u32, "cprt"),
             (0x646D6464u32, "dmdd"),
@@ -2453,9 +2453,9 @@ fn remaining_object_sigs() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"x\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"x".as_ptr() as *const u8).cast(),
         );
         let sigv: u32 = 0x666F7461;
         for (sig, name, payload) in [
@@ -2496,9 +2496,9 @@ fn remaining_object_resave() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"x\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"x".as_ptr() as *const u8).cast(),
         );
         let _ = c::cmsWriteTag(h, 0x74656368, &sigv as *const _ as *mut std::ffi::c_void);
         let _ = c::cmsWriteTag(h, 0x63696973, &sigv as *const _ as *mut std::ffi::c_void);
@@ -2537,8 +2537,8 @@ fn named_sig_resave() {
             std::ptr::null_mut(),
             2,
             3,
-            b"P\0".as_ptr() as _,
-            b"S\0".as_ptr() as _,
+            c"P".as_ptr() as _,
+            c"S".as_ptr() as _,
         );
         for (sig, name) in [
             (0x636C6F74u32, "clot"),
@@ -2594,7 +2594,8 @@ fn struct_sig_resave2() {
         let mut cbuf = vec![0u8; cn as usize];
         c::cmsSaveProfileToMem(h, cbuf.as_mut_ptr() as *mut _, &mut cn);
         let h2 = c::cmsOpenProfileFromMem(cbuf.as_ptr() as _, cn);
-        for sig in [0x6D656173u32] {
+        {
+            let sig = 0x6D656173u32;
             let r = c::cmsReadTag(h2, sig);
             eprintln!("{sig:#x} read={}", r.is_null());
         }
@@ -2857,9 +2858,9 @@ fn mlu_desc_sigs() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const u8,
-            b"US\0".as_ptr() as *const u8,
-            b"x\0".as_ptr() as *const u8,
+            (c"en".as_ptr() as *const u8).cast(),
+            (c"US".as_ptr() as *const u8).cast(),
+            (c"x".as_ptr() as *const u8).cast(),
         );
         for (sig, name) in [
             (0x6473636Du32, "dscm"),
@@ -2941,7 +2942,7 @@ fn xyz_sig_resave() {
             Y: 0.4,
             Z: 0.3,
         };
-        for (sig, name) in [
+        for (sig, _name) in [
             (0x7258595Au32, "rXYZ"),
             (0x6758595Au32, "gXYZ"),
             (0x6258595Au32, "bXYZ"),
@@ -3131,14 +3132,14 @@ fn readback_types() {
             std::ptr::null_mut(),
             1,
             3,
-            b"P\0".as_ptr() as _,
-            b"S\0".as_ptr() as _,
+            c"P".as_ptr() as _,
+            c"S".as_ptr() as _,
         );
         let dict = c::cmsDictAlloc(std::ptr::null_mut());
         c::cmsDictAddEntry(
             dict,
-            b"k\0".as_ptr() as _,
-            b"v\0".as_ptr() as _,
+            c"k".as_ptr() as _,
+            c"v".as_ptr() as _,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
@@ -3218,8 +3219,8 @@ fn profile_info_types() {
             let n = c::cmsGetProfileInfo(
                 h,
                 info,
-                b"en\0".as_ptr() as _,
-                b"US\0".as_ptr() as _,
+                c"en".as_ptr() as _,
+                c"US".as_ptr() as _,
                 buf.as_mut_ptr() as *mut _,
                 128,
             );
@@ -3227,8 +3228,8 @@ fn profile_info_types() {
             let na = c::cmsGetProfileInfoASCII(
                 h,
                 info,
-                b"en\0".as_ptr() as _,
-                b"US\0".as_ptr() as _,
+                c"en".as_ptr() as _,
+                c"US".as_ptr() as _,
                 abuf.as_mut_ptr() as *mut _,
                 128,
             );
@@ -3247,14 +3248,14 @@ fn profile_info_locales() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 2);
         c::cmsMLUsetWide(
             mlu,
-            b"en\0".as_ptr() as _,
-            b"US\0".as_ptr() as _,
+            c"en".as_ptr() as _,
+            c"US".as_ptr() as _,
             &[0x45u16, 0x6E, 0x67] as *const u16 as _,
         );
         c::cmsMLUsetWide(
             mlu,
-            b"fr\0".as_ptr() as _,
-            b"FR\0".as_ptr() as _,
+            c"fr".as_ptr() as _,
+            c"FR".as_ptr() as _,
             &[0x46u16, 0x72] as *const u16 as _,
         );
         c::cmsWriteTag(h, 0x64657363, mlu as *mut _);
@@ -3299,8 +3300,8 @@ fn profile_info_shapes() {
                 let n = c::cmsGetProfileInfo(
                     h,
                     info,
-                    b"en\0".as_ptr() as _,
-                    b"US\0".as_ptr() as _,
+                    c"en".as_ptr() as _,
+                    c"US".as_ptr() as _,
                     buf.as_mut_ptr() as *mut _,
                     64,
                 );
@@ -3348,8 +3349,8 @@ fn raw_reads_stored() {
         ] {
             // size query
             let n = c::cmsReadRawTag(h, sig, std::ptr::null_mut(), 0);
-            let mut buf = vec![0u8; n.max(0) as usize];
-            let n2 = c::cmsReadRawTag(h, sig, buf.as_mut_ptr() as *mut _, n.max(0) as u32);
+            let mut buf = vec![0u8; n as usize];
+            let n2 = c::cmsReadRawTag(h, sig, buf.as_mut_ptr() as *mut _, n as u32);
             eprintln!("{name} n={n} n2={n2}");
         }
         // absent tag

@@ -93,7 +93,7 @@ fn proofing_transform() {
         let c_out = unsafe {
             let i = c::cmsCreate_sRGBProfile();
             let o = c::cmsCreate_sRGBProfile();
-            let prf = c::cmsOpenProfileFromFile(path.as_ptr() as *const i8, b"r\0".as_ptr());
+            let prf = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
             assert!(!prf.is_null());
             let t = c::cmsCreateProofingTransform(i, RGB8, o, RGB8, prf, 0, 0, flags);
             assert!(!t.is_null(), "C proofing flags={flags:#x}");
@@ -212,7 +212,7 @@ fn stride_variants() {
     // line stride: 4 lines of ppl=px pixels, padded input + output lines
     let ppl = 16u32;
     let lines = 4u32;
-    let bpl_in = (ppl * 3 + stride_extra as u32 * 0) as usize + 5; // padded
+    let bpl_in = (ppl * 3) as usize + 5; // padded
     let bpl_out = (ppl * 3) as usize + 7;
     let inp2 = fill(bpl_in * lines as usize);
     let (c2,) = unsafe {
@@ -324,7 +324,7 @@ fn intent_pipelines() {
             if ch.is_null() {
                 continue;
             }
-            let mut rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
+            let rp = lcms::profile::open_profile_from_mem(None, &data).unwrap();
             // input/output format from the profile's own colorspace
             let cs = rp.color_space;
             let (fi, fo) = (cs | 3 << 3 | 1, cs | 3 << 3 | 1); // u8 chunky
@@ -385,12 +385,12 @@ fn u8_packed_formats() {
             let ct = c::cmsCreateTransform(hi, in_fmt, ho, out_fmt, 0, 0);
             let _ = c::cmsCloseProfile(hi);
             let _ = c::cmsCloseProfile(ho);
-            let mut rp1 = if name == "lab8->srgb" {
+            let rp1 = if name == "lab8->srgb" {
                 virt::create_lab4_profile(None, None).unwrap()
             } else {
                 virt::create_srgb_profile(None).unwrap()
             };
-            let mut rp2 = if name == "lab8->srgb" {
+            let rp2 = if name == "lab8->srgb" {
                 virt::create_srgb_profile(None).unwrap()
             } else {
                 virt::create_lab4_profile(None, None).unwrap()
@@ -431,8 +431,8 @@ fn packed_byte_formats() {
         let ct = c::cmsCreateTransform(hi, packed3, ho, lab8, 0, 0);
         let _ = c::cmsCloseProfile(hi);
         let _ = c::cmsCloseProfile(ho);
-        let mut rp1 = virt::create_srgb_profile(None).unwrap();
-        let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+        let rp1 = virt::create_srgb_profile(None).unwrap();
+        let rp2 = virt::create_lab4_profile(None, None).unwrap();
         let mut profs = vec![rp1.clone(), rp2.clone()];
         let mut bpc = [false; 2];
         let intents = [0u32; 2];
@@ -544,7 +544,7 @@ fn line_stride_variants() {
         assert!(!ct.is_null());
         // (ppl, lines, bpl_in, bpl_out) combos — the stride
         // machinery walks rows at the byte strides
-        let inp = vec![0x55u16; 96];
+        let inp = [0x55u16; 96];
         let mut co = vec![0u16; 96];
         for (ppl, lines, bpl_in, bpl_out) in [
             (4u32, 2u32, 48u32, 48u32),
@@ -807,7 +807,7 @@ fn desaturate_alarm() {
             );
         }
         // alarm codes — set/get
-        let mut ac = [0x8000u16; 16];
+        let ac = [0x8000u16; 16];
         c::cmsSetAlarmCodes(ac.as_ptr());
         let mut out = [0u16; 16];
         c::cmsGetAlarmCodes(out.as_mut_ptr());
@@ -900,7 +900,7 @@ fn flag_combos() {
         let rgb2 = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let fmt = (4 << 16) | (3 << 3) | 1u32;
-        let lfmt = (10 << 16) | (3 << 3) | 2u32;
+        let _lfmt = (10 << 16) | (3 << 3) | 2u32;
         for (name, flags) in [
             ("none", 0u32),
             ("bpc0", 1 << 0),
@@ -1069,7 +1069,7 @@ fn gamutcheck_workers() {
         let c_out = unsafe {
             let i = c::cmsCreate_sRGBProfile();
             let o = c::cmsCreate_sRGBProfile();
-            let prf = c::cmsOpenProfileFromFile(path.as_ptr() as *const i8, b"r\0".as_ptr());
+            let prf = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
             assert!(!prf.is_null());
             let t = c::cmsCreateProofingTransform(i, RGB8, o, RGB8, prf, 0, 0, flags);
             assert!(!t.is_null(), "C gamutcheck flags={flags:#x}");
@@ -1229,7 +1229,7 @@ fn xform_internals() {
             "linlcms2.icc",
         ] {
             let path = format!("{}/../../{name}\0", env!("CARGO_MANIFEST_DIR"));
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as *const i8, b"r\0".as_ptr());
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
             if h.is_null() {
                 continue;
             }
@@ -1251,8 +1251,8 @@ fn partial_adaptation_absolute() {
         xform::set_adaptation_state(None, 0.5);
         let i = c::cmsCreate_sRGBProfile();
         let o = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let mut rp = lcms::virt::create_srgb_profile(None).unwrap();
-        let mut ro = lcms::virt::create_lab4_profile(None, None).unwrap();
+        let rp = lcms::virt::create_srgb_profile(None).unwrap();
+        let ro = lcms::virt::create_lab4_profile(None, None).unwrap();
         let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
         let lab8: u32 = (10 << 16) | (3 << 3) | 1;
         let n = 65;
@@ -1326,10 +1326,10 @@ fn transform2_adaptor() {
         _fi: *mut u32,
         _fo: *mut u32,
         _fl: *mut u32,
-    ) -> i32 {
+    ) -> i32 { unsafe {
         *xform = legacy as *const _;
         1
-    }
+    }}
     unsafe {
         let i = c::cmsCreate_sRGBProfile();
         let o = c::cmsCreate_sRGBProfile();
@@ -1368,7 +1368,7 @@ fn black_preserving_intents() {
     let _g = CTX_LOCK.lock().unwrap();
     unsafe {
         let path = format!("{}/../../lcms2cmyk.icc\0", env!("CARGO_MANIFEST_DIR"));
-        let ch = c::cmsOpenProfileFromFile(path.as_ptr() as *const i8, b"r\0".as_ptr());
+        let ch = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
         let data = std::fs::read(path.trim_end_matches('\0')).unwrap();
         let cmyk8: u32 = (6 << 16) | (4 << 3) | 1; // PT_CMYK=6
         let n = 33;
@@ -1433,7 +1433,8 @@ fn class_intent_dispatch() {
                 }
             }
             if !cmyk.is_null() {
-                for intent2 in [intent] {
+                {
+                    let intent2 = intent;
                     let t = c::cmsCreateTransform(cmyk, 0x4c02f1, srgb, 0x00ff04, intent2, 0);
                     if !t.is_null() {
                         c::cmsDeleteTransform(t);
@@ -1768,11 +1769,11 @@ fn cnvt_named_color() {
     unsafe {
         // build an nmcl profile: placeholder + nmcl class + ncl2
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, b"\0".as_ptr(), b"\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"".as_ptr(), c"".as_ptr());
         let pcs = [0x8000u16; 3];
         let cols = [0x4000u16; 16];
-        c::cmsAppendNamedColor(ncl, b"red\0".as_ptr(), pcs.as_ptr(), cols.as_ptr());
-        c::cmsAppendNamedColor(ncl, b"blue\0".as_ptr(), pcs.as_ptr(), cols.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"red".as_ptr(), pcs.as_ptr(), cols.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"blue".as_ptr(), pcs.as_ptr(), cols.as_ptr());
         let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof, 0x6e6d636c); // 'nmcl'
         c::cmsSetColorSpace(prof, 0x4c616220); // 'Lab '
@@ -1941,10 +1942,10 @@ fn xform_nothing_gamut() {
         let t2 = c::cmsCreateProofingTransform(srgb, r16, srgb, r16, proof, 0, 0, 0x1000);
         eprintln!("gamut t={}", !t2.is_null());
         if !t2.is_null() {
-            let ib = [0x8000u16; 4];
+            let _ib = [0x8000u16; 4];
             let mut ob = [0x8000u16; 4];
             for v in [0x1000u16, 0x8000, 0xf000] {
-                let mut inp = [v; 4];
+                let inp = [v; 4];
                 c::cmsDoTransform(t2, inp.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
             }
             c::cmsDeleteTransform(t2);
@@ -2187,7 +2188,7 @@ fn nonicc_intent_arms() {
             .unwrap_or(std::ptr::null_mut());
         let r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
-        let k16 = (6u32 << 16) | (4 << 3) | 2;
+        let _k16 = (6u32 << 16) | (4 << 3) | 2;
         // multiprofile + proofing with intents 8-11
         if !cmyk.is_null() {
             for intent in [8u32, 9, 10, 11] {
@@ -4329,7 +4330,7 @@ fn devicelink_lut_arms() {
         // link profiles in transforms (input side) →
         // _cmsReadDevicelinkLUT + AddConversion (PCS fixups)
         for (link, name, cs) in &links {
-            let infmt = (*cs as u32 >> 16 & 0x0f) << 16;
+            let infmt = (*cs >> 16 & 0x0f) << 16;
             for (outp, of_, oname) in [(srgb, r8, "srgb"), (lab, l8, "lab"), (cmyk, k8, "cmyk")] {
                 if outp.is_null() {
                     continue;
@@ -4482,12 +4483,12 @@ fn plugin_valid_arms() {
         fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
-        fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+        fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
     }
     let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
         let f = dlsym(
             std::ptr::null_mut(),
-            b"__llvm_profile_write_file\0".as_ptr() as *const i8,
+            c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
         );
         if f.is_null() {
             None
@@ -4540,8 +4541,8 @@ fn plugin_real_arms() {
     }
     unsafe extern "C" fn m_malloc(_c: *mut std::ffi::c_void, n: usize) -> *mut std::ffi::c_void {
         unsafe {
-            let p = libc_malloc(n);
-            p
+            
+            libc_malloc(n)
         }
     }
     unsafe extern "C" fn m_free(_c: *mut std::ffi::c_void, p: *mut std::ffi::c_void) {
@@ -4587,12 +4588,12 @@ fn plugin_real_arms() {
         fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
-        fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+        fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
     }
     let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
         let f = dlsym(
             std::ptr::null_mut(),
-            b"__llvm_profile_write_file\0".as_ptr() as *const i8,
+            c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
         );
         if f.is_null() {
             None
@@ -4606,18 +4607,18 @@ fn plugin_real_arms() {
             // memH — valid alloc/free/realloc
             let mut pl = base(0x6D656D48);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
-            *b.add(5) = m_free as usize;
-            *b.add(6) = m_realloc as usize;
-            *b.add(7) = m_malloc as usize; // MallocZero
-            *b.add(8) = m_malloc as usize; // Calloc
-            *b.add(9) = m_malloc as usize; // Dup
+            *b.add(4) = m_malloc as *const () as usize;
+            *b.add(5) = m_free as *const () as usize;
+            *b.add(6) = m_realloc as *const () as usize;
+            *b.add(7) = m_malloc as *const () as usize; // MallocZero
+            *b.add(8) = m_malloc as *const () as usize; // Calloc
+            *b.add(9) = m_malloc as *const () as usize; // Dup
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("memH r={r}");
             // inpH — interpolation factory
             let mut pl = base(0x696E7048);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize; // factory ptr
+            *b.add(4) = m_malloc as *const () as usize; // factory ptr
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("inpH r={r}");
             // parH — nFunctions + evaluator
@@ -4627,22 +4628,22 @@ fn plugin_real_arms() {
             *(b as *mut u32).add(9) = 200; // FunctionTypes[0]
             *(b as *mut u32).add(9 + 256) = 2; // ParamCount[0]
             let bu = pl.as_mut_ptr() as *mut usize;
-            *bu.add(70) = m_malloc as usize; // Evaluator
+            *bu.add(70) = m_malloc as *const () as usize; // Evaluator
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("parH r={r}");
             // frmH — formatter factory
             let mut pl = base(0x66726D48);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
+            *b.add(4) = m_malloc as *const () as usize;
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("frmH r={r}");
             // typH — tag type handler
             let mut pl = base(0x74797048);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize; // ReadPtr
-            *b.add(5) = m_malloc as usize; // WritePtr
-            *b.add(6) = m_malloc as usize; // DupPtr
-            *b.add(7) = m_malloc as usize; // FreePtr
+            *b.add(4) = m_malloc as *const () as usize; // ReadPtr
+            *b.add(5) = m_malloc as *const () as usize; // WritePtr
+            *b.add(6) = m_malloc as *const () as usize; // DupPtr
+            *b.add(7) = m_malloc as *const () as usize; // FreePtr
             *b.add(8) = 0x74657874; // Sig 'text'
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("typH r={r}");
@@ -4657,49 +4658,49 @@ fn plugin_real_arms() {
             let b = pl.as_mut_ptr() as *mut usize;
             *b.add(4) = 0x1234; // intent
             *b.add(5) = 0; // desc
-            *b.add(6) = m_malloc as usize; // Link
+            *b.add(6) = m_malloc as *const () as usize; // Link
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("intH r={r}");
             // mpeH — MPE element handler
             let mut pl = base(0x6D706548);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
-            *b.add(5) = m_malloc as usize;
-            *b.add(6) = m_malloc as usize;
-            *b.add(7) = m_malloc as usize;
+            *b.add(4) = m_malloc as *const () as usize;
+            *b.add(5) = m_malloc as *const () as usize;
+            *b.add(6) = m_malloc as *const () as usize;
+            *b.add(7) = m_malloc as *const () as usize;
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("mpeH r={r}");
             // optH — optimizer factory
             let mut pl = base(0x6F707448);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
+            *b.add(4) = m_malloc as *const () as usize;
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("optH r={r}");
             // xfmH — transform factory
             let mut pl = base(0x7A666D48);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
+            *b.add(4) = m_malloc as *const () as usize;
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("xfmH r={r}");
             // mtxH — mutex create/lock/unlock/destroy
             let mut pl = base(0x6D747A48);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
-            *b.add(5) = m_malloc as usize;
-            *b.add(6) = m_malloc as usize;
-            *b.add(7) = m_malloc as usize;
+            *b.add(4) = m_malloc as *const () as usize;
+            *b.add(5) = m_malloc as *const () as usize;
+            *b.add(6) = m_malloc as *const () as usize;
+            *b.add(7) = m_malloc as *const () as usize;
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("mtxH r={r}");
             // prlH — parallelization
             let mut pl = base(0x70726C48);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
+            *b.add(4) = m_malloc as *const () as usize;
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("prlH r={r}");
             // hdrH — profile header handler
             let mut pl = base(0x68647248);
             let b = pl.as_mut_ptr() as *mut usize;
-            *b.add(4) = m_malloc as usize;
+            *b.add(4) = m_malloc as *const () as usize;
             let r = c::cmsPluginTHR(std::ptr::null_mut(), pl.as_mut_ptr() as *mut _);
             eprintln!("hdrH r={r}");
             if let Some(f) = flush {
@@ -4745,7 +4746,7 @@ fn blackpoint_fit_arms() {
         c::cmsSetPCS(dev, 0x4C616220); // Lab
         c::cmsSetProfileVersion(dev, 4.4);
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        let mut grid = vec![0u16; 3 * 27];
+        let mut grid = [0u16; 3 * 27];
         // midrange L* offset (deviates the 20-100% band)
         for i in 0..27 {
             let l = ((i % 9) * 4096 + (i / 9) * 8192) as u16;
@@ -4766,7 +4767,7 @@ fn blackpoint_fit_arms() {
             ),
         );
         c::cmsWriteTag(dev, 0x41324231, p as *const _); // a2b1
-        let mut bp = c::CieXyz {
+        let bp = c::CieXyz {
             X: 0.0,
             Y: 0.0,
             Z: 0.0,
@@ -5037,7 +5038,7 @@ fn virt_builder_arms() {
         eprintln!("null={} null-thr={}", !nul.is_null(), !nul2.is_null());
         // null profile transforms — identity in/out arms
         if !nul.is_null() {
-            let r8 = (4u32 << 16) | (3 << 3) | 1;
+            let _r8 = (4u32 << 16) | (3 << 3) | 1;
             let x8 = (9u32 << 16) | (3 << 3) | 1;
             let l8 = (10u32 << 16) | (3 << 3) | 1;
             let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -5134,7 +5135,7 @@ fn formatter_arms() {
         let rgba = enc(4, 4, 1, 0); // RGBA
         let rgb_a2 = enc(4, 4, 1, 0) | EXTRA; // RGB+2 alphas?
         let lab_a = enc(10, 4, 1, 0);
-        let x8 = enc(9, 3, 1, 0);
+        let _x8 = enc(9, 3, 1, 0);
         let fmts: Vec<(*mut std::ffi::c_void, *mut std::ffi::c_void, u32, u32, &str)> = vec![
             (srgb, lab, r8, lab_dbl_in, "r8->labdbl"),
             (lab, srgb, lab_dbl_in, r8, "labdbl->r8"),
@@ -5209,10 +5210,10 @@ fn float_fmt_arms() {
             .ok()
             .map(|d| c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32))
             .unwrap_or(std::ptr::null_mut());
-        let enc = |cs: u32, ch: u32, b: u32, flags: u32| (flags << 22) | (cs << 16) | (ch << 3) | b;
+        let _enc = |cs: u32, ch: u32, b: u32, flags: u32| (flags << 22) | (cs << 16) | (ch << 3) | b;
         // FLOAT_SH=1<<22 → flags arg
         let fl = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16) | (ch << 3) | 4;
-        let db = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16) | (ch << 3) | 0; // bytes=0 → double
+        let db = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16) | (ch << 3); // bytes=0 → double
         let r8 = (4u32 << 16) | (3 << 3) | 1;
         let k8 = (6u32 << 16) | (4 << 3) | 1;
         let g8 = (3u32 << 16) | (1 << 3) | 1;
@@ -5484,7 +5485,7 @@ fn linearize_opt_arms() {
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [tc, tc, tc].as_ptr() as *mut _),
         );
         let dims = [3u32; 3];
-        let mut grid = vec![0u16; 27 * 3];
+        let mut grid = [0u16; 27 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 23) * 2848) as u16;
         }
@@ -5517,7 +5518,7 @@ fn linearize_opt_arms() {
             0,
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
         );
-        let mut grid2 = vec![0u16; 27 * 3];
+        let mut grid2 = [0u16; 27 * 3];
         for (i, v) in grid2.iter_mut().enumerate() {
             *v = (0xffffu32 - ((i % 23) * 2848) as u32) as u16;
         }
@@ -5946,7 +5947,7 @@ fn opt_cnvrt_internal_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.1, 0.0, 0.05, 1.0, 0.02, 0.0, 0.03, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match stages {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -6198,8 +6199,8 @@ fn virt_opt_cnvrt_arms() {
                 trcs.as_ptr() as *const *mut std::ffi::c_void,
             );
             let t = if !prof.is_null() {
-                let t_ = c::cmsCreateTransform(prof, r8, lab, l8, 0, 0);
-                t_
+                
+                c::cmsCreateTransform(prof, r8, lab, l8, 0, 0)
             } else {
                 std::ptr::null_mut()
             };
@@ -6262,7 +6263,7 @@ fn virt_opt_cnvrt_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -6481,7 +6482,7 @@ fn xform_parallel_gamut_arms() {
         };
         let r = c::cmsPluginTHR(ctx, &mut pp as *mut _ as *mut _);
         eprintln!("par-plugin reg={r}");
-        let fin = (0u32 << 16) | (3 << 3) | 1;
+        let fin = (3 << 3) | 1;
         let t = c::cmsCreateTransformTHR(ctx, srgb, fin, srgb, fin, 0, 0);
         eprintln!("par-xform t={}", !t.is_null());
         if !t.is_null() {
@@ -6616,7 +6617,7 @@ fn xform_blacktrail_arms() {
             }
             return;
         }
-        let fcmyk = (0u32 << 16) | (4 << 3) | 2;
+        let fcmyk = (4 << 3) | 2;
         // 4-profile chains ending in cmyk devicelinks
         for (chain, np, name) in [
             ([srgb, io, dl1, dl2].as_slice(), 4usize, "srgb+io+dl+dl"),
@@ -6777,8 +6778,8 @@ fn xform_getter_arms() {
             std::ptr::null_mut(),
             3,
             4,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let pcs = [0x1000u16; 16];
         let dev = [0x2000u16; 16];
@@ -6792,7 +6793,7 @@ fn xform_getter_arms() {
         c::cmsSetPCS(np, 0x4C616220);
         c::cmsSetProfileVersion(np, 4.4);
         c::cmsWriteTag(np, 0x6E636C32, nl as *const _);
-        let fnc = (0u32 << 16) | (1 << 3) | 2;
+        let fnc = (1 << 3) | 2;
         let t2 = c::cmsCreateTransform(np, fnc, lab4, flab, 0, 0);
         eprintln!("nc-xform={}", !t2.is_null());
         if !t2.is_null() {
@@ -6834,7 +6835,7 @@ fn xform_cnvrt_intent_arms() {
             (gray, fgray, srgb, frgb, lab4, 0, 0x0040, "gray->srgb-proof"),
             (srgb, frgb, xyz, flab, lab4, 0, 0x0040, "srgb->xyz-proof"),
         ] {
-            let mut profs = [a, b, p];
+            let profs = [a, b, p];
             let t =
                 c::cmsCreateProofingTransformTHR(std::ptr::null_mut(), a, af, b, bf, p, i, i, fl);
             eprintln!("{name} t={}", !t.is_null());
@@ -6875,7 +6876,7 @@ fn xform_cnvrt2_arms() {
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let frgb = (4u32 << 16) | (3 << 3) | 2;
         let flab = (10u32 << 16) | (3 << 3) | 2;
-        let fcmyk = (0u32 << 16) | (4 << 3) | 2;
+        let fcmyk = (4 << 3) | 2;
         // gamut-check intent (i=6) + proofing intents
         //   on devicelink + cmyk + ncl2 inputs
         let cmyk_dl = {
@@ -6919,7 +6920,7 @@ fn xform_cnvrt2_arms() {
             ([cmyk_dl, cmyk_dl].as_slice(), 2, 0, "cmk+cmk i0"),
             ([cmyk_dl, cmyk_dl, cmyk_dl].as_slice(), 3, 15, "cmk3 i15"),
         ] {
-            let mut ps: Vec<*mut std::ffi::c_void> = profs.iter().copied().collect();
+            let mut ps: Vec<*mut std::ffi::c_void> = profs.to_vec();
             let t = c::cmsCreateMultiprofileTransform(
                 ps.as_mut_ptr(),
                 n,
@@ -7150,7 +7151,7 @@ fn xform_fmtcheck_arms() {
         //   bit-width edges
         for (fin, fout, name) in [
             (
-                (0u32 << 16) | (3 << 3) | 2,
+                (3 << 3) | 2,
                 (10u32 << 16) | (3 << 3) | 2,
                 "cs0",
             ),
@@ -7170,12 +7171,12 @@ fn xform_fmtcheck_arms() {
                 "9ch",
             ),
             (
-                (4u32 << 16) | (0 << 3) | 2,
+                (4u32 << 16) | 2,
                 (10u32 << 16) | (3 << 3) | 2,
                 "0ch",
             ),
             (
-                (4u32 << 16) | (3 << 3) | 0,
+                ((4u32 << 16) | (3 << 3)),
                 (10u32 << 16) | (3 << 3) | 2,
                 "0bit",
             ),

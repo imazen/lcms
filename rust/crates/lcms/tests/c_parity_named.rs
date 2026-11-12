@@ -11,7 +11,7 @@ fn cs8(s: &str) -> *const u8 {
 #[test]
 fn named_color_list() {
     unsafe {
-        let cl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 8, 4, cs8("pre"), cs8("suf"));
+        let cl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 8, 4, cs8("pre").cast(), cs8("suf").cast());
         let mut rl = named::alloc_named_color_list(None, 8, 4, b"pre", b"suf").unwrap();
         assert!(!cl.is_null());
         // append a set of colors — parity on status + count
@@ -27,7 +27,7 @@ fn named_color_list() {
                 d
             };
             assert_eq!(
-                c::cmsAppendNamedColor(cl, cs8(&name), pcs.as_ptr(), dev.as_ptr()) != 0,
+                c::cmsAppendNamedColor(cl, cs8(&name).cast(), pcs.as_ptr(), dev.as_ptr()) != 0,
                 named::append_named_color(&mut rl, Some(name.as_bytes()), Some(&pcs), Some(&dev)),
                 "append {i}"
             );
@@ -41,7 +41,7 @@ fn named_color_list() {
                 "nope".into()
             };
             assert_eq!(
-                c::cmsNamedColorIndex(cl, cs8(&name)),
+                c::cmsNamedColorIndex(cl, cs8(&name).cast()),
                 named::named_color_index(&rl, name.as_bytes()),
                 "index {name}"
             );
@@ -57,17 +57,17 @@ fn named_color_list() {
                 c::cmsNamedColorInfo(
                     cl,
                     i,
-                    cn.as_mut_ptr(),
-                    cp.as_mut_ptr(),
-                    csf.as_mut_ptr(),
+                    cn.as_mut_ptr().cast(),
+                    cp.as_mut_ptr().cast(),
+                    csf.as_mut_ptr().cast(),
                     cpcs.as_mut_ptr(),
                     cdev.as_mut_ptr()
                 ) != 0,
                 "C info {i}"
             );
-            let (rn, rpre, rsuf, rpcs, rdev) = named::named_color_info(&rl, i).expect("rust info");
+            let (rn, _rpre, _rsuf, rpcs, rdev) = named::named_color_info(&rl, i).expect("rust info");
             assert_eq!(
-                std::ffi::CStr::from_ptr(cn.as_ptr() as *const i8).to_bytes(),
+                std::ffi::CStr::from_ptr(cn.as_ptr() as *const std::ffi::c_char).to_bytes(),
                 &rn[..rn.iter().position(|&b| b == 0).unwrap_or(rn.len())],
                 "info name {i}"
             );
@@ -100,7 +100,7 @@ fn mlu_paths() {
             ("ja", "JP", "こんにちは"),
         ] {
             assert_eq!(
-                c::cmsMLUsetASCII(cm, cs8(lang), cs8(cntry), cs8(txt)) != 0,
+                c::cmsMLUsetASCII(cm, cs8(lang).cast(), cs8(cntry).cast(), cs8(txt).cast()) != 0,
                 named::mlu_set_ascii(&mut rm, lang.as_bytes(), cntry.as_bytes(), txt.as_bytes()),
                 "set {lang}-{cntry}"
             );
@@ -115,12 +115,12 @@ fn mlu_paths() {
             ("fr", "FR"),
         ] {
             let mut buf = [0u8; 256];
-            let cn = c::cmsMLUgetASCII(cm, cs8(lang), cs8(cntry), buf.as_mut_ptr(), 256);
+            let cn = c::cmsMLUgetASCII(cm, cs8(lang).cast(), cs8(cntry).cast(), buf.as_mut_ptr().cast(), 256);
             let (rn, rbytes) =
                 named::mlu_get_ascii(&rm, lang.as_bytes(), cntry.as_bytes(), Some(256));
             let cstr = if cn > 0 {
                 Some(
-                    std::ffi::CStr::from_ptr(buf.as_ptr() as *const i8)
+                    std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char)
                         .to_bytes()
                         .to_vec(),
                 )
@@ -143,7 +143,7 @@ fn mlu_paths() {
         for i in 0..named::mlu_translations_count(&rm) {
             let mut cl = [0u8; 3];
             let mut cc = [0u8; 3];
-            assert!(c::cmsMLUtranslationsCodes(cm, i, cl.as_mut_ptr(), cc.as_mut_ptr()) != 0);
+            assert!(c::cmsMLUtranslationsCodes(cm, i, cl.as_mut_ptr().cast(), cc.as_mut_ptr().cast()) != 0);
             let (rl, rc) = named::mlu_translations_codes(&rm, i).unwrap();
             assert_eq!(cl, rl, "trans lang {i}");
             assert_eq!(cc, rc, "trans cntry {i}");
@@ -165,7 +165,7 @@ fn mlu_variants() {
             ("de", "DE", "Grüße"),
         ] {
             assert_eq!(
-                c::cmsMLUsetUTF8(cm, cs8(lang), cs8(cntry), cs8(txt)) != 0,
+                c::cmsMLUsetUTF8(cm, cs8(lang).cast(), cs8(cntry).cast(), cs8(txt).cast()) != 0,
                 named::mlu_set_utf8(&mut rm, lang.as_bytes(), cntry.as_bytes(), txt.as_bytes()),
                 "set_utf8 {lang}"
             );
@@ -173,12 +173,12 @@ fn mlu_variants() {
         // get_utf8 parity
         for (lang, cntry) in [("en", "US"), ("fr", "FR"), ("de", "DE"), ("es", "ES")] {
             let mut buf = [0u8; 256];
-            let cn = c::cmsMLUgetUTF8(cm, cs8(lang), cs8(cntry), buf.as_mut_ptr(), 256);
+            let cn = c::cmsMLUgetUTF8(cm, cs8(lang).cast(), cs8(cntry).cast(), buf.as_mut_ptr().cast(), 256);
             let (rn, rbytes) =
                 named::mlu_get_utf8(&rm, lang.as_bytes(), cntry.as_bytes(), Some(256));
             let cstr = if cn > 0 {
                 Some(
-                    std::ffi::CStr::from_ptr(buf.as_ptr() as *const i8)
+                    std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char)
                         .to_bytes()
                         .to_vec(),
                 )
@@ -198,10 +198,10 @@ fn mlu_variants() {
             let mut cc = [0u8; 3];
             let cn = c::cmsMLUgetTranslation(
                 cm,
-                cs8(lang),
-                cs8(cntry),
-                cl.as_mut_ptr(),
-                cc.as_mut_ptr(),
+                cs8(lang).cast(),
+                cs8(cntry).cast(),
+                cl.as_mut_ptr().cast(),
+                cc.as_mut_ptr().cast(),
             );
             let r = named::mlu_get_translation(&rm, lang.as_bytes(), cntry.as_bytes());
             assert_eq!(cn != 0, r.is_some(), "trans {lang}-{cntry} presence");
@@ -234,8 +234,8 @@ fn named_color_internals() {
                 std::ptr::null_mut(),
                 n,
                 3,
-                b"P\0".as_ptr() as _,
-                b"S\0".as_ptr() as _,
+                c"P".as_ptr() as _,
+                c"S".as_ptr() as _,
             );
             let cnt = c::cmsNamedColorCount(ncl);
             eprintln!("n{n} count={cnt}");
@@ -243,17 +243,17 @@ fn named_color_internals() {
             let pcs = [0x8000u16; 3];
             let dev = [0x4000u16; 4];
             let r =
-                c::cmsAppendNamedColor(ncl, b"spot1\0".as_ptr() as _, pcs.as_ptr(), dev.as_ptr());
+                c::cmsAppendNamedColor(ncl, c"spot1".as_ptr() as _, pcs.as_ptr(), dev.as_ptr());
             eprintln!("  append={r} count={}", c::cmsNamedColorCount(ncl));
             // lookup internals
-            let idx = c::cmsNamedColorIndex(ncl, b"spot1\0".as_ptr() as _);
-            let idx2 = c::cmsNamedColorIndex(ncl, b"nope\0".as_ptr() as _);
+            let idx = c::cmsNamedColorIndex(ncl, c"spot1".as_ptr() as _);
+            let idx2 = c::cmsNamedColorIndex(ncl, c"nope".as_ptr() as _);
             eprintln!("  idx={idx} idx2={idx2}");
             let mut namebuf = [0u8; 64];
             let nr = c::cmsNamedColorInfo(
                 ncl,
                 0,
-                namebuf.as_mut_ptr(),
+                namebuf.as_mut_ptr().cast(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
@@ -279,11 +279,11 @@ fn named_color_devicelink() {
         c::cmsSetColorSpace(p, 0x6e636c32); // 'ncl2'
         c::cmsSetPCS(p, 0x4C616220); // 'Lab '
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, b"\0".as_ptr(), b"\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"".as_ptr(), c"".as_ptr());
         let pcs = [0x8000u16, 0x8000, 0x8000];
         let col = [0xFFFFu16, 0, 0, 0];
-        c::cmsAppendNamedColor(ncl, b"Color1\0".as_ptr(), pcs.as_ptr(), col.as_ptr());
-        c::cmsAppendNamedColor(ncl, b"Color2\0".as_ptr(), pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"Color1".as_ptr(), pcs.as_ptr(), col.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"Color2".as_ptr(), pcs.as_ptr(), col.as_ptr());
         assert_ne!(c::cmsWriteTag(p, 0x6e636c32, ncl as *const _), 0);
         let srgb = c::cmsCreate_sRGBProfile();
         let nc_fmt: u32 = (1 << 3) | 2; // TYPE_NAMED_COLOR_INDEX
@@ -325,7 +325,7 @@ fn named_color_devicelink() {
             0x6e636c32,
             Some(lcms::tagtypes::TagObject::NamedColor(rncl))
         ));
-        let mut rs = lcms::virt::create_srgb_profile(None).unwrap();
+        let rs = lcms::virt::create_srgb_profile(None).unwrap();
         let mut profs: Vec<Box<lcms::profile::IccProfile>> = vec![Box::new(rp), rs];
         let mut bpc = vec![false; 2];
         let intents = vec![0u32; 2];
@@ -369,13 +369,13 @@ fn utf8_mlu_roundtrip() {
             let cm = c::cmsMLUalloc(std::ptr::null_mut(), 1);
             let mut cstr = s.to_vec();
             cstr.push(0);
-            let ok = c::cmsMLUsetUTF8(cm, b"en".as_ptr(), b"US".as_ptr(), cstr.as_ptr());
+            let ok = c::cmsMLUsetUTF8(cm, b"en".as_ptr().cast(), b"US".as_ptr().cast(), cstr.as_ptr().cast());
             let mut buf = vec![0u8; 256];
             let n = c::cmsMLUgetUTF8(
                 cm,
-                b"en".as_ptr(),
-                b"US".as_ptr(),
-                buf.as_mut_ptr(),
+                b"en".as_ptr().cast(),
+                b"US".as_ptr().cast(),
+                buf.as_mut_ptr().cast(),
                 buf.len() as u32,
             );
             let cout = buf[..n as usize].to_vec();
@@ -409,8 +409,8 @@ fn named_color_ops() {
             std::ptr::null_mut(),
             2,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         assert!(!ncl.is_null());
         // appends past initial capacity -> GrowNamedColorList
@@ -418,13 +418,13 @@ fn named_color_ops() {
             let name = format!("c{i}\0");
             let pcs = [0x1000u16, 0x2000, 0x3000];
             let col = [0xFFFFu16; 4];
-            c::cmsAppendNamedColor(ncl, name.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         // NULL-colorant / NULL-pcs / NULL-name defaults
         c::cmsAppendNamedColor(ncl, std::ptr::null(), std::ptr::null(), std::ptr::null());
         // over-cap name (strncpy cap at cmsMAX_PATH-1)
         let long = "x".repeat(300) + "\0";
-        c::cmsAppendNamedColor(ncl, long.as_ptr(), std::ptr::null(), std::ptr::null());
+        c::cmsAppendNamedColor(ncl, long.as_ptr().cast(), std::ptr::null(), std::ptr::null());
         let n = c::cmsNamedColorCount(ncl);
         eprintln!("count={n}");
         // NamedColorInfo reads
@@ -435,7 +435,7 @@ fn named_color_ops() {
             let r = c::cmsNamedColorInfo(
                 ncl,
                 i,
-                nm.as_mut_ptr(),
+                nm.as_mut_ptr().cast(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 pcs.as_mut_ptr(),
@@ -443,7 +443,7 @@ fn named_color_ops() {
             );
             eprintln!(
                 "info[{i}]={r} name={:?} pcs={pcs:?}",
-                std::ffi::CStr::from_ptr(nm.as_ptr() as *const i8)
+                std::ffi::CStr::from_ptr(nm.as_ptr() as *const std::ffi::c_char)
                     .to_str()
                     .unwrap_or("?")
             );
@@ -466,8 +466,8 @@ fn named_color_tag_cycle() {
             std::ptr::null_mut(),
             3,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         for (name, pcs) in [
             ("PANTONE Red\0", [0x9000u16, 0x5500, 0x5500]),
@@ -475,7 +475,7 @@ fn named_color_tag_cycle() {
             ("Metallic\0", [0x7000, 0x7000, 0x6000]),
         ] {
             let col = [0xFFFFu16; 4];
-            c::cmsAppendNamedColor(ncl, name.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         let p = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(p, 0x6e6d636c);
@@ -514,15 +514,15 @@ fn named_color_stage() {
             std::ptr::null_mut(),
             2,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         for (name, pcs) in [
             ("Spot1\0", [0x9000u16, 0x5500, 0x5500]),
             ("Spot2\0", [0x3000, 0x2000, 0x9000]),
         ] {
             let col = [0xFFFFu16; 4];
-            c::cmsAppendNamedColor(ncl, name.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         for use_pcs in [0i32, 1] {
             let st = c::_cmsStageAllocNamedColor(ncl, use_pcs);
@@ -549,33 +549,33 @@ fn mlu_ops_branches() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 2);
         assert!(!m.is_null());
         // UTF8 + wide + ascii sets on multiple langs
-        c::cmsMLUsetUTF8(m, b"en\0".as_ptr(), b"US\0".as_ptr(), b"English\0".as_ptr());
+        c::cmsMLUsetUTF8(m, c"en".as_ptr(), c"US".as_ptr(), c"English".as_ptr());
         let wstr: [i32; 5] = [0x57, 0x69, 0x64, 0x65, 0];
         c::cmsMLUsetWide(
             m,
-            b"fr\0".as_ptr(),
-            b"FR\0".as_ptr(),
+            c"fr".as_ptr(),
+            c"FR".as_ptr(),
             wstr.as_ptr() as *const i32,
         );
-        c::cmsMLUsetASCII(m, b"de\0".as_ptr(), b"DE\0".as_ptr(), b"Deutsch\0".as_ptr());
+        c::cmsMLUsetASCII(m, c"de".as_ptr(), c"DE".as_ptr(), c"Deutsch".as_ptr());
         // gets
         let mut buf = vec![0u8; 256];
         let n = c::cmsMLUgetUTF8(
             m,
-            b"en\0".as_ptr(),
-            b"US\0".as_ptr(),
-            buf.as_mut_ptr(),
+            c"en".as_ptr(),
+            c"US".as_ptr(),
+            buf.as_mut_ptr().cast(),
             buf.len() as u32,
         );
         eprintln!(
             "getUTF8 n={n} {:?}",
-            std::ffi::CStr::from_ptr(buf.as_ptr() as *const i8)
+            std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char)
         );
         let mut wbuf = vec![0i32; 256];
         let n2 = c::cmsMLUgetWide(
             m,
-            b"fr\0".as_ptr(),
-            b"FR\0".as_ptr(),
+            c"fr".as_ptr(),
+            c"FR".as_ptr(),
             wbuf.as_mut_ptr(),
             (wbuf.len() * 4) as u32,
         );
@@ -583,9 +583,9 @@ fn mlu_ops_branches() {
         let mut abuf = vec![0u8; 256];
         let n3 = c::cmsMLUgetASCII(
             m,
-            b"de\0".as_ptr(),
-            b"DE\0".as_ptr(),
-            abuf.as_mut_ptr(),
+            c"de".as_ptr(),
+            c"DE".as_ptr(),
+            abuf.as_mut_ptr().cast(),
             abuf.len() as u32,
         );
         eprintln!("getASCII n={n3}");
@@ -594,17 +594,17 @@ fn mlu_ops_branches() {
         let mut oc = [0u8; 4];
         let n4 = c::cmsMLUgetTranslation(
             m,
-            b"zz\0".as_ptr(),
-            b"ZZ\0".as_ptr(),
-            ol.as_mut_ptr(),
-            oc.as_mut_ptr(),
+            c"zz".as_ptr(),
+            c"ZZ".as_ptr(),
+            ol.as_mut_ptr().cast(),
+            oc.as_mut_ptr().cast(),
         );
         eprintln!("getTrans-miss n={n4}");
         let tc = c::cmsMLUtranslationsCount(m);
         eprintln!("translations={tc}");
         // dup + more entries (growth past initial 2)
         let dp = c::cmsMLUdup(m);
-        c::cmsMLUsetUTF8(dp, b"ja\0".as_ptr(), b"JP\0".as_ptr(), b"j\0".as_ptr());
+        c::cmsMLUsetUTF8(dp, c"ja".as_ptr(), c"JP".as_ptr(), c"j".as_ptr());
         let cnt = c::cmsMLUtranslationsCount(dp);
         eprintln!("dup entries={cnt}");
         if !dp.is_null() {
@@ -631,7 +631,7 @@ fn mlu_serialization_blocks() {
             let langz = format!("{lang}\0");
             let ctryz = format!("{ctry}\0");
             let txtz = format!("{txt}\0");
-            c::cmsMLUsetUTF8(m, langz.as_ptr(), ctryz.as_ptr(), txtz.as_ptr());
+            c::cmsMLUsetUTF8(m, langz.as_ptr().cast(), ctryz.as_ptr().cast(), txtz.as_ptr().cast());
         }
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsWriteTag(prof, 0x64657363, m as *const _); // 'desc'
@@ -725,12 +725,12 @@ fn mlu_offset_alignment() {
         // lengths 1,2,3,...,16 -> every offset-alignment arm
         for i in 1..=16usize {
             let txt = "x".repeat(i);
-            let lang = b"en\0";
+            let _lang = b"en\0";
             let ctry = b"US\0";
             let tz = format!("{txt}\0");
             // vary lang/ctry to force distinct entries
             let lz = format!("e{}\0", (i as u8 + 96) as char);
-            c::cmsMLUsetUTF8(m, lz.as_ptr(), ctry.as_ptr(), tz.as_ptr());
+            c::cmsMLUsetUTF8(m, lz.as_ptr().cast(), ctry.as_ptr().cast(), tz.as_ptr().cast());
         }
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsWriteTag(prof, 0x64657363, m as *const _);
@@ -767,29 +767,29 @@ fn mlu_translation_internals() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         // setWide + setUTF8 + setASCII
         let w: Vec<i32> = "wide text".chars().map(|c| c as i32).chain([0]).collect();
-        c::cmsMLUsetWide(m, b"en\0".as_ptr(), b"US\0".as_ptr(), w.as_ptr());
-        c::cmsMLUsetUTF8(m, b"fr\0".as_ptr(), b"FR\0".as_ptr(), b"utf8".as_ptr());
+        c::cmsMLUsetWide(m, c"en".as_ptr(), c"US".as_ptr(), w.as_ptr());
+        c::cmsMLUsetUTF8(m, c"fr".as_ptr(), c"FR".as_ptr(), b"utf8".as_ptr().cast());
         let mut wb = [0i32; 64];
         let mut ab = [0u8; 64];
-        let n1 = c::cmsMLUgetWide(m, b"en\0".as_ptr(), b"US\0".as_ptr(), wb.as_mut_ptr(), 64);
-        let n2 = c::cmsMLUgetASCII(m, b"en\0".as_ptr(), b"US\0".as_ptr(), ab.as_mut_ptr(), 64);
+        let n1 = c::cmsMLUgetWide(m, c"en".as_ptr(), c"US".as_ptr(), wb.as_mut_ptr(), 64);
+        let n2 = c::cmsMLUgetASCII(m, c"en".as_ptr(), c"US".as_ptr(), ab.as_mut_ptr().cast(), 64);
         eprintln!("wide={n1} ascii={n2}");
         // translation enumeration
         let cnt = c::cmsMLUtranslationsCount(m);
         for i in 0..cnt {
             let mut lang = [0u8; 4];
             let mut ctry = [0u8; 4];
-            let _ = c::cmsMLUtranslationsCodes(m, i, lang.as_mut_ptr(), ctry.as_mut_ptr());
+            let _ = c::cmsMLUtranslationsCodes(m, i, lang.as_mut_ptr().cast(), ctry.as_mut_ptr().cast());
         }
         // getTranslation — returns the entry for a lang/ctry
         let mut ol = [0u8; 4];
         let mut oc = [0u8; 4];
         let t = c::cmsMLUgetTranslation(
             m,
-            b"en\0".as_ptr(),
-            b"US\0".as_ptr(),
-            ol.as_mut_ptr(),
-            oc.as_mut_ptr(),
+            c"en".as_ptr(),
+            c"US".as_ptr(),
+            ol.as_mut_ptr().cast(),
+            oc.as_mut_ptr().cast(),
         );
         eprintln!("trans={cnt} gett={t}");
         c::cmsMLUfree(m);
@@ -805,16 +805,16 @@ fn named_color_index_info() {
             std::ptr::null_mut(),
             3,
             3,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         let lab = [0xF000u16, 0x8000, 0x8000];
-        for n in [b"c1\0".as_ptr(), b"c2\0".as_ptr(), b"c3\0".as_ptr()] {
+        for n in [c"c1".as_ptr(), c"c2".as_ptr(), c"c3".as_ptr()] {
             c::cmsAppendNamedColor(ncl, n, lab.as_ptr(), lab.as_ptr());
         }
         eprintln!("count={}", c::cmsNamedColorCount(ncl));
         // index lookups — hit + miss
-        for n in [b"c1\0".as_ptr(), b"c2\0".as_ptr(), b"zz\0".as_ptr()] {
+        for n in [c"c1".as_ptr(), c"c2".as_ptr(), c"zz".as_ptr()] {
             let i = c::cmsNamedColorIndex(ncl, n);
             eprintln!("idx={i}");
         }
@@ -828,9 +828,9 @@ fn named_color_index_info() {
             let r = c::cmsNamedColorInfo(
                 ncl,
                 i as u32,
-                name.as_mut_ptr(),
-                pre.as_mut_ptr(),
-                suf.as_mut_ptr(),
+                name.as_mut_ptr().cast(),
+                pre.as_mut_ptr().cast(),
+                suf.as_mut_ptr().cast(),
                 pcs.as_mut_ptr(),
                 col.as_mut_ptr(),
             );
@@ -871,9 +871,9 @@ fn dictionary_internals() {
         let dn = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             dn,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"disp\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"disp".as_ptr(),
         );
         c::cmsDictAddEntry(
             d,
@@ -946,9 +946,9 @@ fn mlu_serialization() {
         ] {
             c::cmsMLUsetUTF8(
                 m,
-                lang.as_ptr() as *const i8 as *const u8,
-                ctry.as_ptr() as *const i8 as *const u8,
-                txt.as_ptr(),
+                (lang.as_ptr() as *const std::ffi::c_char as *const u8).cast(),
+                (ctry.as_ptr() as *const std::ffi::c_char as *const u8).cast(),
+                txt.as_ptr().cast(),
             );
         }
         let prof = c::cmsCreate_sRGBProfile();
@@ -998,7 +998,7 @@ fn mlu_dict_internals() {
                 m,
                 l.as_ptr() as *const _,
                 c_.as_ptr() as *const _,
-                t.as_ptr(),
+                t.as_ptr().cast(),
             );
         }
         let prof = c::cmsCreate_sRGBProfile();
@@ -1036,9 +1036,9 @@ fn mlu_dict_internals() {
         let dn = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             dn,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"d\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"d".as_ptr(),
         );
         c::cmsDictAddEntry(d, w("k1").as_ptr(), w("v1").as_ptr(), dn, dn);
         c::cmsDictAddEntry(
@@ -1095,14 +1095,14 @@ fn mlu_dict_internals() {
 fn named_color_write_arms() {
     unsafe {
         for (n_colorant, n_entries, pre, suf, name) in [
-            (3u32, 1, b"p\0".as_ptr(), b"s\0".as_ptr(), "c3-e1"),
-            (4, 2, b"pre\0".as_ptr(), b"suf\0".as_ptr(), "c4-e2"),
-            (0, 1, b"\0".as_ptr(), b"\0".as_ptr(), "c0-e1"),
+            (3u32, 1, c"p".as_ptr(), c"s".as_ptr(), "c3-e1"),
+            (4, 2, c"pre".as_ptr(), c"suf".as_ptr(), "c4-e2"),
+            (0, 1, c"".as_ptr(), c"".as_ptr(), "c0-e1"),
             (
                 15,
                 3,
-                b"long-prefix\0".as_ptr(),
-                b"long-suffix\0".as_ptr(),
+                c"long-prefix".as_ptr(),
+                c"long-suffix".as_ptr(),
                 "c15-e3",
             ),
         ] {
@@ -1114,7 +1114,7 @@ fn named_color_write_arms() {
                 let nm = format!("col{}\0", i);
                 pcs[0] = (i * 1000) as u16;
                 cols[0] = (i * 2000) as u16;
-                c::cmsAppendNamedColor(ncl, nm.as_ptr(), pcs.as_ptr(), cols.as_ptr());
+                c::cmsAppendNamedColor(ncl, nm.as_ptr().cast(), pcs.as_ptr(), cols.as_ptr());
             }
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, 0x6e636c32, ncl as *const _);
@@ -1154,8 +1154,8 @@ fn utf8_decode_arms() {
             std::ptr::null_mut(),
             16,
             4,
-            b"p\0".as_ptr(),
-            b"s\0".as_ptr(),
+            c"p".as_ptr(),
+            c"s".as_ptr(),
         );
         // UTF-8 sequences of every valid/invalid length
         let names: &[&[u8]] = &[
@@ -1175,11 +1175,11 @@ fn utf8_decode_arms() {
             b"a\x00b\0",
         ];
         let mut pcs = [0x1000u16; 4];
-        let mut col = [0x2000u16; 4];
+        let col = [0x2000u16; 4];
         for (i, nm) in names.iter().enumerate() {
             pcs[0] = i as u16;
             let r =
-                c::cmsAppendNamedColor(nl, nm.as_ptr() as *const u8, pcs.as_ptr(), col.as_ptr());
+                c::cmsAppendNamedColor(nl, (nm.as_ptr() as *const u8).cast(), pcs.as_ptr(), col.as_ptr());
             eprintln!("utf8 i{i} append={r}");
         }
         // named-color profile write + reload round-trip
@@ -1210,7 +1210,7 @@ fn utf8_decode_arms() {
                     let rr = c::cmsNamedColorInfo(
                         nl2,
                         i,
-                        nm.as_mut_ptr(),
+                        nm.as_mut_ptr().cast(),
                         std::ptr::null_mut(),
                         std::ptr::null_mut(),
                         pcs2.as_mut_ptr(),
@@ -1246,7 +1246,7 @@ fn named_utf8_dup_arms() {
         let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         // named-color list with all UTF-8 sequence classes
         for (n_, name) in [(1u32, "ascii"), (4, "multi")] {
-            let nl = c::cmsAllocNamedColorList(ctx, n_, 4, b"p\0".as_ptr(), b"s\0".as_ptr());
+            let nl = c::cmsAllocNamedColorList(ctx, n_, 4, c"p".as_ptr(), c"s".as_ptr());
             let mut pcs = [0x1000u16; 16];
             let col = [0x2000u16; 16];
             // UTF-8 sequences: 1/2/3/4-byte valid, overlong,
@@ -1273,7 +1273,7 @@ fn named_utf8_dup_arms() {
             ];
             for (i, nm) in names.iter().enumerate() {
                 pcs[0] = i as u16;
-                let r = c::cmsAppendNamedColor(nl, nm.as_ptr(), pcs.as_ptr(), col.as_ptr());
+                let r = c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
                 eprintln!("{name} [{i}] ap={r}");
             }
             // read back → decodeUTF8 on each
@@ -1288,9 +1288,9 @@ fn named_utf8_dup_arms() {
                 let info = c::cmsNamedColorInfo(
                     nl,
                     i,
-                    nm.as_mut_ptr(),
-                    pfx.as_mut_ptr(),
-                    sfx.as_mut_ptr(),
+                    nm.as_mut_ptr().cast(),
+                    pfx.as_mut_ptr().cast(),
+                    sfx.as_mut_ptr().cast(),
                     pcs2.as_mut_ptr(),
                     col2.as_mut_ptr(),
                 );
@@ -1350,24 +1350,24 @@ fn named_surrogate_arms() {
         ] {
             let ok = c::cmsMLUsetWide(
                 mlu,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
                 seq.as_ptr(),
             );
             let mut buf = [0i32; 64];
             let n = c::cmsMLUgetWide(
                 mlu,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
                 buf.as_mut_ptr(),
                 64 * 2,
             );
             let mut abuf = [0u8; 128];
             let na = c::cmsMLUgetUTF8(
                 mlu,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
-                abuf.as_mut_ptr(),
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
+                abuf.as_mut_ptr().cast(),
                 128,
             );
             eprintln!("{name} set={ok} w={n} u8={na}");
@@ -1378,8 +1378,8 @@ fn named_surrogate_arms() {
             std::ptr::null_mut(),
             4,
             3,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let pcs = [0x1000u16, 0x2000, 0x3000];
         let dev = [0x4000u16, 0x5000, 0x6000];
@@ -1399,9 +1399,9 @@ fn named_surrogate_arms() {
             c::cmsNamedColorInfo(
                 nl,
                 0,
-                nm.as_mut_ptr(),
-                pfx.as_mut_ptr(),
-                sfx.as_mut_ptr(),
+                nm.as_mut_ptr().cast(),
+                pfx.as_mut_ptr().cast(),
+                sfx.as_mut_ptr().cast(),
                 pc.as_mut_ptr(),
                 dv.as_mut_ptr(),
             )
@@ -1429,8 +1429,8 @@ fn named_grow_save_arms() {
             std::ptr::null_mut(),
             2,
             4,
-            b"P\0".as_ptr() as *const _,
-            b"S\0".as_ptr() as *const _,
+            c"P".as_ptr() as *const _,
+            c"S".as_ptr() as *const _,
         );
         let mut pcs = [0u16; 16];
         let mut dev = [0u16; 16];
@@ -1459,15 +1459,15 @@ fn named_grow_save_arms() {
         let dict = c::cmsDictAlloc(std::ptr::null_mut());
         c::cmsDictAddEntry(
             dict,
-            b"k1\0".as_ptr() as *const _,
-            b"v1\0".as_ptr() as *const _,
+            c"k1".as_ptr() as *const _,
+            c"v1".as_ptr() as *const _,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
         c::cmsDictAddEntry(
             dict,
-            b"k2\0".as_ptr() as *const _,
-            b"v2\0".as_ptr() as *const _,
+            c"k2".as_ptr() as *const _,
+            c"v2".as_ptr() as *const _,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
@@ -1475,16 +1475,16 @@ fn named_grow_save_arms() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"desc\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"desc".as_ptr() as *const _,
         );
         c::cmsWriteTag(p, 0x64657363, mlu as *const _);
         let path = std::ffi::CString::new("/tmp/lcms_named_save.icc").unwrap();
         let sf = c::cmsSaveProfileToFile(p, path.as_ptr());
         eprintln!("save-file={sf}");
         // open the file back
-        let pf = c::cmsOpenProfileFromFile(path.as_ptr(), b"r\0".as_ptr() as *const _);
+        let pf = c::cmsOpenProfileFromFile(path.as_ptr(), c"r".as_ptr() as *const _);
         eprintln!("reopen-file={}", !pf.is_null());
         if !pf.is_null() {
             let rd = c::cmsReadTag(pf, 0x6E636C32);
@@ -1507,7 +1507,7 @@ fn named_grow_save_arms() {
         ] {
             let cp = std::ffi::CString::new(pth).unwrap();
             let cm = std::ffi::CString::new(mode).unwrap();
-            let pp = c::cmsOpenProfileFromFile(cp.as_ptr(), cm.as_ptr() as *const u8);
+            let pp = c::cmsOpenProfileFromFile(cp.as_ptr(), (cm.as_ptr() as *const u8).cast());
             eprintln!("{name} prof={}", !pp.is_null());
             if !pp.is_null() {
                 c::cmsCloseProfile(pp);
@@ -1531,8 +1531,8 @@ fn named_info_grow_arms() {
             std::ptr::null_mut(),
             4,
             4,
-            b"PREF\0".as_ptr() as *const _,
-            b"SUFF\0".as_ptr() as *const _,
+            c"PREF".as_ptr() as *const _,
+            c"SUFF".as_ptr() as *const _,
         );
         // grow past 256 (several grows)
         for i in 0..300u32 {
@@ -1552,16 +1552,16 @@ fn named_info_grow_arms() {
             let ok = c::cmsNamedColorInfo(
                 nl,
                 idx,
-                name.as_mut_ptr(),
-                prefix.as_mut_ptr(),
-                suffix.as_mut_ptr(),
+                name.as_mut_ptr().cast(),
+                prefix.as_mut_ptr().cast(),
+                suffix.as_mut_ptr().cast(),
                 pcs.as_mut_ptr(),
                 dev.as_mut_ptr(),
             );
             if idx <= 299 {
-                let s = std::ffi::CStr::from_ptr(name.as_ptr() as *const i8).to_string_lossy();
-                let p = std::ffi::CStr::from_ptr(prefix.as_ptr() as *const i8).to_string_lossy();
-                let sf = std::ffi::CStr::from_ptr(suffix.as_ptr() as *const i8).to_string_lossy();
+                let s = std::ffi::CStr::from_ptr(name.as_ptr() as *const std::ffi::c_char).to_string_lossy();
+                let p = std::ffi::CStr::from_ptr(prefix.as_ptr() as *const std::ffi::c_char).to_string_lossy();
+                let sf = std::ffi::CStr::from_ptr(suffix.as_ptr() as *const std::ffi::c_char).to_string_lossy();
                 eprintln!(
                     "info[{idx}] {ok} '{s}' \
                     '{p}' '{sf}' pcs={}",
@@ -1611,15 +1611,15 @@ fn named_mlu_trans_arms() {
             for i in 0..(cnt + 1) {
                 let mut lang = [0u8; 3];
                 let mut ctry = [0u8; 3];
-                let ok = c::cmsMLUtranslationsCodes(mlu, i, lang.as_mut_ptr(), ctry.as_mut_ptr());
+                let ok = c::cmsMLUtranslationsCodes(mlu, i, lang.as_mut_ptr().cast(), ctry.as_mut_ptr().cast());
                 let mut ol = [0u8; 3];
                 let mut oc = [0u8; 3];
                 let g = c::cmsMLUgetTranslation(
                     mlu,
-                    lang.as_ptr(),
-                    ctry.as_ptr(),
-                    ol.as_mut_ptr(),
-                    oc.as_mut_ptr(),
+                    lang.as_ptr().cast(),
+                    ctry.as_ptr().cast(),
+                    ol.as_mut_ptr().cast(),
+                    oc.as_mut_ptr().cast(),
                 );
                 eprintln!("  tr[{i}] codes={ok}                     get={g}");
             }
@@ -1638,14 +1638,13 @@ fn named_growth_arms() {
         let ctx = std::ptr::null_mut();
         let mlu = c::cmsMLUalloc(ctx, 1);
         // multi-grow: a string way bigger than the initial pool
-        let big: Vec<u8> = std::iter::repeat(b'X')
-            .take(200000)
+        let big: Vec<u8> = std::iter::repeat_n(b'X', 200000)
             .chain(std::iter::once(0))
             .collect();
         let r = c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr(),
-            b"US\0".as_ptr(),
+            c"en".as_ptr(),
+            c"US".as_ptr(),
             big.as_ptr() as *const _,
         );
         eprintln!("bigstr: {r}");
@@ -1656,7 +1655,7 @@ fn named_growth_arms() {
             let r = c::cmsMLUsetASCII(
                 mlu,
                 lang.as_ptr() as *const _,
-                b"US\0".as_ptr(),
+                c"US".as_ptr(),
                 s.as_ptr() as *const _,
             );
             if r == 0 {
@@ -1666,39 +1665,39 @@ fn named_growth_arms() {
         }
         // SearchMLUEntry wildcards
         let mut wb = [0i32; 32];
-        let r1 = c::cmsMLUgetWide(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), wb.as_mut_ptr(), 32);
+        let r1 = c::cmsMLUgetWide(mlu, c"en".as_ptr(), c"US".as_ptr(), wb.as_mut_ptr(), 32);
         let r2 = c::cmsMLUgetWide(
             mlu,
-            b"\0\0".as_ptr(),
-            b"US\0".as_ptr(), // wild lang
+            b"\0\0".as_ptr().cast(),
+            c"US".as_ptr(), // wild lang
             wb.as_mut_ptr(),
             32,
         );
         let r3 = c::cmsMLUgetWide(
             mlu,
-            b"en\0".as_ptr(),
-            b"\0\0".as_ptr(), // wild cntry
+            c"en".as_ptr(),
+            b"\0\0".as_ptr().cast(), // wild cntry
             wb.as_mut_ptr(),
             32,
         );
         let r4 = c::cmsMLUgetWide(
             mlu,
-            b"zz\0".as_ptr(),
-            b"ZZ\0".as_ptr(), // no match
+            c"zz".as_ptr(),
+            c"ZZ".as_ptr(), // no match
             wb.as_mut_ptr(),
             32,
         );
         eprintln!("get: {r1} {r2} {r3} {r4}");
         // dup-lang reject (AddMLUBlock SearchMLUEntry arm)
         let m2 = c::cmsMLUalloc(ctx, 4);
-        c::cmsMLUsetASCII(m2, b"en\0".as_ptr(), b"US\0".as_ptr(), b"first\0".as_ptr());
-        let d = c::cmsMLUsetASCII(m2, b"en\0".as_ptr(), b"US\0".as_ptr(), b"dup\0".as_ptr());
+        c::cmsMLUsetASCII(m2, c"en".as_ptr(), c"US".as_ptr(), c"first".as_ptr());
+        let d = c::cmsMLUsetASCII(m2, c"en".as_ptr(), c"US".as_ptr(), c"dup".as_ptr());
         // same lang, different country = allowed
-        let ok = c::cmsMLUsetASCII(m2, b"en\0".as_ptr(), b"GB\0".as_ptr(), b"brit\0".as_ptr());
+        let ok = c::cmsMLUsetASCII(m2, c"en".as_ptr(), c"GB".as_ptr(), c"brit".as_ptr());
         eprintln!("dup={d} ok={ok}");
         // empty-string fallback (getWide on absent entry
         //   adds empty block)
-        let r5 = c::cmsMLUsetWide(m2, b"fr\0".as_ptr(), b"FR\0".as_ptr(), std::ptr::null());
+        let r5 = c::cmsMLUsetWide(m2, c"fr".as_ptr(), c"FR".as_ptr(), std::ptr::null());
         eprintln!("nullwide={r5}");
         c::cmsMLUfree(mlu);
         c::cmsMLUfree(m2);
@@ -1725,7 +1724,7 @@ fn utf8_edge_arms() {
             ctr += 1;
             let r = c::cmsMLUsetUTF8(
                 mlu,
-                b"en\0".as_ptr(),
+                c"en".as_ptr(),
                 cc.as_ptr() as *const _,
                 sb.as_ptr() as *const _,
             );
@@ -1784,7 +1783,7 @@ fn ncl_write_arms() {
             c::cmsSetColorSpace(p, 0x31434C52);
             c::cmsSetPCS(p, 0x4C616220);
             c::cmsSetProfileVersion(p, 2.1);
-            let ncl = c::cmsAllocNamedColorList(ctx, nc, cc, b"Pre\0".as_ptr(), b"Suf\0".as_ptr());
+            let ncl = c::cmsAllocNamedColorList(ctx, nc, cc, c"Pre".as_ptr(), c"Suf".as_ptr());
             for i in 0..nc {
                 let nm2 = format!("color{i}\0");
                 let pcs = [0x4000u16, i as u16 * 0x200, 0x8000u16 - i as u16];

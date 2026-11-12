@@ -7,13 +7,13 @@ use lcms::lut;
 use lcms_cref as c;
 use std::ffi::c_void;
 
-unsafe extern "C" fn c_samp16(inp: *const u16, out: *mut u16, _cargo: *mut c_void) -> i32 {
+unsafe extern "C" fn c_samp16(inp: *const u16, out: *mut u16, _cargo: *mut c_void) -> i32 { unsafe {
     let (a, b, c_) = (*inp, *inp.add(1), *inp.add(2));
     *out = a.wrapping_mul(37).wrapping_add(b);
     *out.add(1) = b.wrapping_mul(19).wrapping_add(c_);
     *out.add(2) = c_.wrapping_add(7);
     1
-}
+}}
 
 fn r_samp16(inp: &[u16], out: &mut [u16]) -> i32 {
     out[0] = inp[0].wrapping_mul(37).wrapping_add(inp[1]);
@@ -26,7 +26,7 @@ fn r_samp16(inp: &[u16], out: &mut [u16]) -> i32 {
 fn stage_meta_matrix() {
     unsafe {
         let c_g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut r_gamma = [lcms::gamma::build_gamma(None, 2.2).unwrap()];
+        let r_gamma = [lcms::gamma::build_gamma(None, 2.2).unwrap()];
         let stages: Vec<(c::Handle, lut::Stage)> = vec![
             (
                 c::cmsStageAllocIdentity(std::ptr::null_mut(), 3),
@@ -90,7 +90,7 @@ fn stage_meta_matrix() {
         ];
         for (i, (ch, rs)) in stages.iter().enumerate() {
             assert!(!ch.is_null(), "C stage {i}");
-            let mut rs = rs.clone();
+            let rs = rs.clone();
             assert_eq!(
                 c::cmsStageInputChannels(*ch),
                 rs.input_channels(),
@@ -285,12 +285,12 @@ fn clut_float_sampling() {
     unsafe {
         let ch = c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 5, 3, 3, std::ptr::null());
         let mut rs = lut::stage_alloc_clut_float(None, 5, 3, 3, None).unwrap();
-        unsafe extern "C" fn sf(inp: *const f32, out: *mut f32, _c: *mut c_void) -> i32 {
+        unsafe extern "C" fn sf(inp: *const f32, out: *mut f32, _c: *mut c_void) -> i32 { unsafe {
             *out = (*inp * 0.7 + 0.1).clamp(0.0, 1.0);
             *out.add(1) = (*inp.add(1) * 0.5 + 0.2).clamp(0.0, 1.0);
             *out.add(2) = (*inp.add(2) * 0.9).clamp(0.0, 1.0);
             1
-        }
+        }}
         assert!(c::cmsStageSampleCLutFloat(ch, sf, std::ptr::null_mut(), 0) != 0);
         let mut rsf = |inp: &[f32], out: &mut [f32]| -> i32 {
             out[0] = (inp[0] * 0.7 + 0.1).clamp(0.0, 1.0);
@@ -921,8 +921,8 @@ fn named_color_stage() {
             std::ptr::null_mut(),
             2,
             3,
-            b"RGB \0".as_ptr() as *const _,
-            b"Pfx\0".as_ptr() as *const _,
+            c"RGB ".as_ptr() as *const _,
+            c"Pfx".as_ptr() as *const _,
         );
         assert!(!cl.is_null());
         for i in 0..2u32 {
@@ -931,7 +931,7 @@ fn named_color_stage() {
             name[..s.len()].copy_from_slice(s.as_bytes());
             let pcs = [32768u16; 3];
             let dev = [16384u16; 3];
-            c::cmsAppendNamedColor(cl, name.as_ptr(), pcs.as_ptr(), dev.as_ptr());
+            c::cmsAppendNamedColor(cl, name.as_ptr().cast(), pcs.as_ptr(), dev.as_ptr());
         }
         let cst = c::_cmsStageAllocNamedColor(cl, 0);
         assert!(!cst.is_null(), "C named-color stage");
@@ -1142,12 +1142,12 @@ fn stage_machinery() {
             inp: *const u16,
             out: *mut u16,
             _c: *mut std::ffi::c_void,
-        ) -> i32 {
+        ) -> i32 { unsafe {
             *out = *inp;
             *out.add(1) = *inp.add(1);
             *out.add(2) = *inp.add(2);
             1
-        }
+        }}
         c::cmsStageSampleCLut16bit(cl16, samp16, std::ptr::null_mut(), 0);
         // SampleCLutFloat — a float CLUT's eval
         let tabf = [0.5f32; 4 * 4 * 4 * 3];
@@ -1162,20 +1162,20 @@ fn stage_machinery() {
             inp: *const f32,
             out: *mut f32,
             _c: *mut std::ffi::c_void,
-        ) -> i32 {
+        ) -> i32 { unsafe {
             *out = *inp;
             *out.add(1) = *inp.add(1);
             *out.add(2) = *inp.add(2);
             1
-        }
+        }}
         c::cmsStageSampleCLutFloat(clf, sampf, std::ptr::null_mut(), 0);
         // AllocNamedColor — the named-color stage
         let ncl = c::cmsAllocNamedColorList(
             std::ptr::null_mut(),
             2,
             3,
-            b"p\0".as_ptr() as *const _,
-            b"s\0".as_ptr() as *const _,
+            c"p".as_ptr() as *const _,
+            c"s".as_ptr() as *const _,
         );
         let nc = c::_cmsStageAllocNamedColor(ncl, 0);
         eprintln!("namedstage null={}", nc.is_null());
@@ -1254,7 +1254,7 @@ fn identity_stages() {
                     continue;
                 }
                 c::cmsPipelineInsertStage(pl, 1, st);
-                let mut inp = [0.5f32; 16];
+                let inp = [0.5f32; 16];
                 let mut out = [0.0f32; 16];
                 c::cmsPipelineEvalFloat(inp.as_ptr(), out.as_mut_ptr(), pl);
                 let _ = (inp, out);
@@ -1292,7 +1292,7 @@ fn clut_stage_machinery() {
                     continue;
                 }
                 c::cmsPipelineInsertStage(pl, 1, st);
-                let mut inp = [0.5f32; 16];
+                let inp = [0.5f32; 16];
                 let mut out = [0.0f32; 16];
                 c::cmsPipelineEvalFloat(inp.as_ptr(), out.as_mut_ptr(), pl);
                 let _ = (inp, out);
@@ -1489,7 +1489,7 @@ fn pipeline_eval2() {
                 1,
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), n, curves.as_ptr()),
             );
-            let mut inp = [0.5f32; 15];
+            let inp = [0.5f32; 15];
             let mut out = [0.0f32; 15];
             c::cmsPipelineEvalFloat(inp.as_ptr(), out.as_mut_ptr(), pl);
             eprintln!("{name} eval={:.4}", out[0]);
@@ -1549,8 +1549,8 @@ fn named_stage2() {
             std::ptr::null_mut(),
             1,
             3,
-            b"P\0".as_ptr() as _,
-            b"S\0".as_ptr() as _,
+            c"P".as_ptr() as _,
+            c"S".as_ptr() as _,
         );
         let stage = c::_cmsStageAllocNamedColor(ncl, 0);
         eprintln!("alloc={}", !stage.is_null());
@@ -2087,8 +2087,8 @@ fn stage_alloc_valid() {
                 std::ptr::null_mut(),
                 n,
                 n,
-                b"P\0".as_ptr() as _,
-                b"S\0".as_ptr() as _,
+                c"P".as_ptr() as _,
+                c"S".as_ptr() as _,
             );
             let st = c::_cmsStageAllocNamedColor(ncl, 0);
             eprintln!("{name} alloc={}", !st.is_null());
@@ -2178,7 +2178,7 @@ fn mpe_structured_writes() {
                     c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 2, 3, 3, tab.as_ptr()),
                 )
             };
-            let mut rcur = || lut::stage_alloc_tone_curves(None, 3, Some(&[&rg; 3])).unwrap();
+            let rcur = || lut::stage_alloc_tone_curves(None, 3, Some(&[&rg; 3])).unwrap();
             match name {
                 "c-mat-c" => {
                     mk_cur(cpipe);
@@ -2311,7 +2311,7 @@ fn mpet_element_writes() {
                 c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
             );
             let rc: Vec<_> = (0..3)
-                .map(|_| lcms::gamma::build_segmented_tone_curve(None, &[rseg.clone()]).unwrap())
+                .map(|_| lcms::gamma::build_segmented_tone_curve(None, std::slice::from_ref(&rseg)).unwrap())
                 .collect();
             let mut rpipe = lut::pipeline_alloc(None, 3, 3).unwrap();
             rpipe.insert_stage(
@@ -2470,7 +2470,7 @@ fn optimized_pipeline_dup() {
         let srgb = c::cmsCreate_sRGBProfile();
         let pb = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../aRGBlcms2.icc");
         let pth = std::ffi::CString::new(pb.to_str().unwrap()).unwrap();
-        let argb = c::cmsOpenProfileFromFile(pth.as_ptr(), b"r\0".as_ptr());
+        let argb = c::cmsOpenProfileFromFile(pth.as_ptr(), c"r".as_ptr());
         let rgb8: u32 = (4 << 16) | (3 << 3) | 1;
         let rgb16: u32 = (4 << 16) | (3 << 3) | 2;
         // matshaper opt (srgb->argb), u8 (prelin8) + u16 (prelin16)
@@ -2599,7 +2599,7 @@ fn mpe_pipeline_dup_free() {
 fn lut_write_stage_orders() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let tab = {
             let mut t = vec![0u16; 8 * 3];
@@ -2679,7 +2679,7 @@ fn lut_write_stage_orders() {
 fn lut16_write_stage_orders() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let mat2: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let tab: Vec<u16> = (0..8 * 3).map(|i| (i * 3) as u16).collect();
@@ -2763,7 +2763,7 @@ fn lut16_write_stage_orders() {
 fn stage_eval_sweep() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let tab: Vec<u16> = (0..8 * 3).map(|i| (i * 41) as u16).collect();
         let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
@@ -2800,7 +2800,7 @@ fn stage_eval_sweep() {
             }
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             c::cmsPipelineInsertStage(p, 1, *st);
-            let mut i16 = [0x2000u16, 0x6000, 0xA000];
+            let i16 = [0x2000u16, 0x6000, 0xA000];
             let mut o16 = [0u16; 3];
             c::cmsPipelineEval16(i16.as_ptr(), o16.as_mut_ptr(), p);
             let fi = [0.5f32, 0.3, 0.7];
@@ -2825,7 +2825,7 @@ fn stage_eval_sweep() {
 fn lut_readback_cycles() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let tab16: Vec<u16> = (0..8 * 3).map(|i| (i * 11) as u16).collect();
         for (name, eight, parts) in [
@@ -2903,9 +2903,9 @@ fn lut_readback_cycles() {
 fn mab_readback_cycles() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
-        let tab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
+        let _tab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let tab16: Vec<u16> = (0..8 * 3).map(|i| (i * 11) as u16).collect();
         for (name, parts) in [
             ("cv", [0u8].as_slice()),
@@ -3075,7 +3075,7 @@ fn lab_xyz_stages() {
 fn mpe_readback_cycles() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let tab: Vec<u16> = (0..8 * 3).map(|i| (i * 11) as u16).collect();
         let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
@@ -3154,7 +3154,7 @@ fn mpe_readback_cycles() {
 fn pipeline_accessors_reverse() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -3195,7 +3195,7 @@ fn pipeline_accessors_reverse() {
 fn stage_dup_insert_positions() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let mat: [f64; 9] = [0.4, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -3300,7 +3300,7 @@ fn stage_internals() {
         }
         // estimated table entries on a mixed pipeline
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let tab: Vec<u16> = (0..8 * 3).map(|i| (i * 7) as u16).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -3314,7 +3314,7 @@ fn stage_internals() {
             c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 2, 3, 3, tab.as_ptr()),
         );
         let p2 = c::cmsPipelineDup(p);
-        let mut sz1 = 0u32;
+        let sz1 = 0u32;
         let _ = c::cmsPipelineEvalReverseFloat; // silence unused
         eprintln!("dup={}", !p2.is_null());
         if !p2.is_null() {
@@ -3331,7 +3331,7 @@ fn stage_internals() {
 fn save_as_8bits_flag() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
             p,
@@ -3489,7 +3489,7 @@ fn segmented_curve_mpe() {
         let tc = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(), 2, segs.as_ptr() as *const _);
         eprintln!("seg={}", !tc.is_null());
         if !tc.is_null() {
-            let mut cc = [tc; 3];
+            let cc = [tc; 3];
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             c::cmsPipelineInsertStage(
                 p,
@@ -3571,7 +3571,7 @@ fn eval_curves_channels() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         for nch in [1u32, 2, 4, 6, 15] {
-            let mut cc = vec![g; nch as usize];
+            let cc = vec![g; nch as usize];
             let st = c::cmsStageAllocToneCurves(std::ptr::null_mut(), nch, cc.as_ptr());
             if st.is_null() {
                 continue;
@@ -3631,7 +3631,7 @@ fn insert_stage_positions() {
 #[test]
 fn clut8bit_serialization() {
     unsafe {
-        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let _g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let tab: Vec<u16> = (0..27 * 3).map(|i| (i * 5) as u16).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -3725,7 +3725,7 @@ fn mab_writer_offsets() {
 fn pipeline_reverse_eval() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         let m = [2.0f64, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0];
         // invertible: curves + non-singular matrix
         let p1 = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
@@ -4003,7 +4003,7 @@ fn granular_clut_allocs() {
         let n: usize = (dims[0] * dims[1] * dims[2]) as usize * 3;
         let t16: Vec<u16> = (0..n).map(|i| (i * 7) as u16).collect();
         let tf: Vec<f32> = (0..n).map(|i| i as f32 / n as f32).collect();
-        let t8: Vec<u8> = (0..n).map(|i| (i * 3) as u8).collect();
+        let _t8: Vec<u8> = (0..n).map(|i| (i * 3) as u8).collect();
         for (k, name) in [(0, "gran16"), (1, "granf")] {
             let st = match k {
                 0 => c::cmsStageAllocCLut16bitGranular(
@@ -4041,9 +4041,9 @@ fn granular_clut_allocs() {
 fn named_identity_stage_evals() {
     unsafe {
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab = [0xF000u16, 0x8000, 0x8000];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab.as_ptr(), lab.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab.as_ptr(), lab.as_ptr());
         // named-color stage (1->3) in a 1-in pipeline
         let st = c::_cmsStageAllocNamedColor(ncl, 1);
         if !st.is_null() {
@@ -4076,7 +4076,7 @@ fn named_identity_stage_evals() {
 fn pipeline_ptr_accessors() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        let _mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
         let tab: Vec<u16> = (0..27 * 3).map(|i| (i * 9) as u16).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -4448,9 +4448,9 @@ fn mab_reader_offsets() {
 fn named_lab_stage_evals() {
     unsafe {
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         // named-color stage (1-in, 3-out)
         let st = c::_cmsStageAllocNamedColor(ncl, 1);
         if !st.is_null() {
@@ -4779,7 +4779,7 @@ fn mba_writer_offsets() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
-        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
+        let _ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         // mBA element order is reverse of mAB: B first, then Mx, M, CLUT, A
         for (stages, name) in [
             (vec![0], "B-only"),
@@ -5266,9 +5266,9 @@ fn lut_interp_gbd_cam_md5_arms() {
             inp: *const u16,
             out: *mut u16,
             _p: *const std::ffi::c_void,
-        ) {
+        ) { unsafe {
             *out = *inp;
-        }
+        }}
         unsafe extern "C" fn my_factory(_nin: u32, _nout: u32, _flags: u32) -> IFunc {
             IFunc {
                 l16: my_lerp16 as *const std::ffi::c_void,
@@ -5288,7 +5288,7 @@ fn lut_interp_gbd_cam_md5_arms() {
         eprintln!("interp-plugin reg={r}");
         // a transform on ctx forces interp-params compute
         let srgb = c::cmsCreate_sRGBProfile();
-        let fin = (0u32 << 16) | (3 << 3) | 2;
+        let fin = (3 << 3) | 2;
         let t = c::cmsCreateTransformTHR(ctx, srgb, fin, srgb, fin, 0, 0);
         eprintln!("interp-xform t={}", !t.is_null());
         if !t.is_null() {
@@ -5415,8 +5415,8 @@ fn lut_patchlut_arms() {
             );
             c::cmsWriteTag(prof, 0x41324230, pipe as *const _);
             // transform through it — optimizer runs
-            let fin = (0u32 << 16) | (nin << 3) | 2;
-            let fout = (0u32 << 16) | (nout << 3) | 2;
+            let fin = (nin << 3) | 2;
+            let fout = (nout << 3) | 2;
             let srgb = c::cmsCreate_sRGBProfile();
             let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
             let out_prof = if pcs == 0x4C616220u32 { lab } else { srgb };
@@ -5487,7 +5487,7 @@ fn lut_mat_ident_arms() {
         );
         c::cmsWriteTag(prof, 0x41324230, pipe as *const _);
         let srgb = c::cmsCreate_sRGBProfile();
-        let fin = (0u32 << 16) | (3 << 3) | 2;
+        let fin = (3 << 3) | 2;
         for fl in [0u32, 0x0100] {
             let t = c::cmsCreateTransform(prof, fin, srgb, fin, 0, fl);
             eprintln!("mat-ident fl{fl:#x} t={}", !t.is_null());
@@ -5512,11 +5512,11 @@ fn lut_mat_ident_arms() {
 #[test]
 fn lut_nchan_eval_arms() {
     unsafe {
-        unsafe extern "C" fn onerr(_ctx: *mut std::ffi::c_void, code: u32, msg: *const i8) {
+        unsafe extern "C" fn onerr(_ctx: *mut std::ffi::c_void, code: u32, msg: *const std::ffi::c_char) {
             let s = unsafe { std::ffi::CStr::from_ptr(msg).to_string_lossy() };
             eprintln!("  cerr {code}: {s}");
         }
-        let fp: unsafe extern "C" fn(*mut std::ffi::c_void, u32, *const i8) = onerr;
+        let fp: unsafe extern "C" fn(*mut std::ffi::c_void, u32, *const std::ffi::c_char) = onerr;
         c::cmsSetLogErrorHandlerTHR(std::ptr::null_mut(), fp as *mut _);
         // 4ch/5ch/6ch cvst+matf+clut mpet pipelines on
         //   D2B0 -> multi-channel evaluator internals
@@ -5586,7 +5586,7 @@ fn lut_nchan_eval_arms() {
         //   devicelinks (Eval4/EvalNInputs internals)
         let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.5);
         for (fmt, nch, name) in [
-            ((0u32 << 16) | (4 << 3) | 2, 4, "cmyk"),
+            ((4 << 3) | 2, 4, "cmyk"),
             ((17u32 << 16) | (1 << 3) | 2, 1, "mch1"),
             ((21u32 << 16) | (5 << 3) | 2, 5, "mch5"),
             ((22u32 << 16) | (6 << 3) | 2, 6, "mch6"),
@@ -5598,9 +5598,9 @@ fn lut_nchan_eval_arms() {
             if !dl.is_null() {
                 let t = c::cmsCreateTransform(
                     dl,
-                    (0u32 << 16) | (nch << 3) | 2,
+                    (nch << 3) | 2,
                     dl,
-                    (0u32 << 16) | (nch << 3) | 2,
+                    (nch << 3) | 2,
                     0,
                     0,
                 );
@@ -5616,7 +5616,7 @@ fn lut_nchan_eval_arms() {
                 let srgb = c::cmsCreate_sRGBProfile();
                 let t2 = c::cmsCreateTransform(
                     dl,
-                    (0u32 << 16) | (nch << 3) | 2,
+                    (nch << 3) | 2,
                     srgb,
                     (4u32 << 16) | (3 << 3) | 2,
                     0,
@@ -5641,7 +5641,7 @@ fn lut_nchan_eval_arms() {
             0,
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 4, tc4.as_ptr() as *mut _),
         );
-        let dims = vec![2u32; 15];
+        let dims = [2u32; 15];
         let grid = vec![0x8000u16; 2usize.pow(4) * 3];
         c::cmsPipelineInsertStage(
             pipe,
@@ -5675,7 +5675,7 @@ fn lut_nchan_eval_arms() {
         c::cmsSetProfileVersion(lp, 4.4);
         c::cmsWriteTag(lp, 0x41324230, pipe as *const _);
         let srgb = c::cmsCreate_sRGBProfile();
-        let fcmyk = (0u32 << 16) | (4 << 3) | 2;
+        let fcmyk = (4 << 3) | 2;
         let flab = (10u32 << 16) | (3 << 3) | 2;
         let lab4p = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let t3 = c::cmsCreateTransform(lp, fcmyk, lab4p, flab, 0, 0);
@@ -5788,7 +5788,7 @@ fn lut_opt_matshaper_arms() {
             0,
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, tcs.as_ptr() as *mut _),
         );
-        let dims = vec![4u32; 15];
+        let dims = [4u32; 15];
         let grid = vec![0x8000u16; 4usize.pow(3) * 3];
         c::cmsPipelineInsertStage(
             pipe,
@@ -5865,7 +5865,7 @@ fn lut_md5_named_tail_arms() {
         eprintln!("md5-prof={:02x?}", &pid2.id8[..6]);
         // interp dup: alloc a 4-dim interp params,
         //   dup via cmsStageDup on a clut stage
-        let dims = vec![3u32; 15];
+        let dims = [3u32; 15];
         let grid = vec![0x8000u16; 3usize.pow(4) * 4];
         let clut = c::cmsStageAllocCLut16bitGranular(
             std::ptr::null_mut(),
@@ -5888,7 +5888,7 @@ fn lut_md5_named_tail_arms() {
         let lab4p = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let t = c::cmsCreateTransform(
             lp,
-            (0u32 << 16) | (4 << 3) | 2,
+            (4 << 3) | 2,
             lab4p,
             (10u32 << 16) | (3 << 3) | 2,
             0,
@@ -5911,8 +5911,8 @@ fn lut_md5_named_tail_arms() {
             std::ptr::null_mut(),
             5,
             4,
-            b"Prefix\0".as_ptr() as *const _,
-            b"Suffix\0".as_ptr() as *const _,
+            c"Prefix".as_ptr() as *const _,
+            c"Suffix".as_ptr() as *const _,
         );
         let mut pcs = [0u16; 16];
         let mut dev = [0u16; 16];
@@ -5937,21 +5937,21 @@ fn lut_md5_named_tail_arms() {
             let ok = c::cmsNamedColorInfo(
                 nl,
                 i,
-                nm.as_mut_ptr(),
-                pfx.as_mut_ptr(),
-                sfx.as_mut_ptr(),
+                nm.as_mut_ptr().cast(),
+                pfx.as_mut_ptr().cast(),
+                sfx.as_mut_ptr().cast(),
                 pcs2.as_mut_ptr(),
                 dev2.as_mut_ptr(),
             );
             if ok != 0 {
-                let s = std::ffi::CStr::from_ptr(nm.as_ptr() as *const i8).to_string_lossy();
+                let s = std::ffi::CStr::from_ptr(nm.as_ptr() as *const std::ffi::c_char).to_string_lossy();
                 eprintln!("  nc[{i}] '{s}' pcs={:?} dev={:?}", &pcs2[..4], &dev2[..4]);
             }
         }
         // named-color index lookup
-        let idx = c::cmsNamedColorIndex(nl, b"color2\0".as_ptr());
+        let idx = c::cmsNamedColorIndex(nl, c"color2".as_ptr());
         eprintln!("idx(color2)={idx}");
-        let idx2 = c::cmsNamedColorIndex(nl, b"nope\0".as_ptr());
+        let idx2 = c::cmsNamedColorIndex(nl, c"nope".as_ptr());
         eprintln!("idx(nope)={idx2}");
         c::cmsFreeNamedColorList(nl2);
         c::cmsFreeNamedColorList(nl);
@@ -5988,7 +5988,7 @@ fn lut_opt_white_arms() {
                 0,
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, tcs.as_ptr() as *mut _),
             );
-            let dims = vec![4u32; 15];
+            let dims = [4u32; 15];
             let grid = vec![0x8000u16; 4usize.pow(3) * 3];
             c::cmsPipelineInsertStage(
                 pipe,
@@ -6139,20 +6139,20 @@ fn lut_sample_slice_arms() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 3);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"English text\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"English text".as_ptr() as *const _,
         );
         c::cmsMLUsetASCII(
             mlu,
-            b"de\0".as_ptr() as *const _,
-            b"DE\0".as_ptr() as *const _,
-            b"Deutsch\0".as_ptr() as *const _,
+            c"de".as_ptr() as *const _,
+            c"DE".as_ptr() as *const _,
+            c"Deutsch".as_ptr() as *const _,
         );
         c::cmsMLUsetASCII(
             mlu,
-            b"fr\0".as_ptr() as *const _,
-            b"FR\0".as_ptr() as *const _,
+            c"fr".as_ptr() as *const _,
+            c"FR".as_ptr() as *const _,
             "Français\0".as_ptr() as *const _,
         );
         let mut buf = [0u8; 128];
@@ -6167,18 +6167,18 @@ fn lut_sample_slice_arms() {
                 mlu,
                 lang.as_ptr() as *const _,
                 cty.as_ptr() as *const _,
-                buf.as_mut_ptr(),
+                buf.as_mut_ptr().cast(),
                 buf.len() as u32,
             );
-            let s = std::ffi::CStr::from_ptr(buf.as_ptr() as *const i8).to_string_lossy();
+            let s = std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char).to_string_lossy();
             eprintln!("get {lang:?}/{cty:?}: {n} = {s}");
         }
         // UTF8 + Wide variants
         let mut wbuf = [0i32; 64];
         let nw = c::cmsMLUgetWide(
             mlu,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wbuf.as_mut_ptr(),
             (wbuf.len() * 4) as u32,
         );
@@ -6186,9 +6186,9 @@ fn lut_sample_slice_arms() {
         let mut u8buf = [0u8; 128];
         let n8 = c::cmsMLUgetUTF8(
             mlu,
-            b"de\0".as_ptr() as *const _,
-            b"DE\0".as_ptr() as *const _,
-            u8buf.as_mut_ptr(),
+            c"de".as_ptr() as *const _,
+            c"DE".as_ptr() as *const _,
+            u8buf.as_mut_ptr().cast(),
             u8buf.len() as u32,
         );
         eprintln!("getUTF8={n8}");
@@ -6392,7 +6392,7 @@ fn lut_optimize2_arms() {
             let pipe = c::cmsPipelineAlloc(std::ptr::null_mut(), inch, outch);
             for st in 0..nstages as i32 {
                 if st == 1 || nstages as i32 == 1 {
-                    let dims = vec![3u32; 15];
+                    let dims = [3u32; 15];
                     let npts = 3usize.pow(inch.min(4));
                     let grid = vec![0.5f32; npts * outch as usize];
                     c::cmsPipelineInsertStage(

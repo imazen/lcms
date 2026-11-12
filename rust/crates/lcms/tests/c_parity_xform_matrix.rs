@@ -2,7 +2,6 @@
 //! Each case runs the same input through C's `cmsCreateTransform` and
 //! Rust's `create_extended_transform`, comparing the raw output bytes.
 
-use lcms::types::*;
 use lcms::virt;
 use lcms::xform;
 use lcms_cref as c;
@@ -119,7 +118,7 @@ fn lab_to_srgb() {
 
 #[test]
 fn srgb_to_xyz() {
-    const TYPE_XYZ_DBL: u32 = 1 << 22 | 9 << 16 | 3 << 3 | 0;
+    const TYPE_XYZ_DBL: u32 = 1 << 22 | 9 << 16 | 3 << 3;
     let mut c_out = vec![0u8; 85 * 24];
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();

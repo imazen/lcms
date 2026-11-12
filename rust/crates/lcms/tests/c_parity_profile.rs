@@ -28,12 +28,12 @@ fn open_profiles_inventory() {
 
         // C side: open + count tags
         let c_path = std::ffi::CString::new(path.clone()).unwrap();
-        let c_prof = unsafe { c::cmsOpenProfileFromFile(c_path.as_ptr(), b"r\0".as_ptr()) };
+        let c_prof = unsafe { c::cmsOpenProfileFromFile(c_path.as_ptr(), c"r".as_ptr()) };
         assert!(!c_prof.is_null(), "C failed to open {name}");
         let c_n = unsafe { c::cmsGetTagCount(c_prof) };
 
         // Rust side
-        let mut icc = profile::open_profile_from_mem(None, &data)
+        let icc = profile::open_profile_from_mem(None, &data)
             .unwrap_or_else(|| panic!("rust failed to open {name}"));
         assert_eq!(icc.tag_count as i32, c_n, "tag count {name}");
 
@@ -56,7 +56,7 @@ fn read_all_tags_both_sides() {
         let path = format!("{REF}{name}");
         let data = std::fs::read(&path).unwrap();
         let c_path = std::ffi::CString::new(path.clone()).unwrap();
-        let c_prof = unsafe { c::cmsOpenProfileFromFile(c_path.as_ptr(), b"r\0".as_ptr()) };
+        let c_prof = unsafe { c::cmsOpenProfileFromFile(c_path.as_ptr(), c"r".as_ptr()) };
         let mut icc = profile::open_profile_from_mem(None, &data).unwrap();
         let c_n = unsafe { c::cmsGetTagCount(c_prof) };
 
@@ -119,7 +119,7 @@ fn write_read_roundtrip_mem() {
             ptr::null_mut(),
             b2.as_mut_ptr(),
             b2.len() as u32,
-            b"r\0".as_ptr(),
+            c"r".as_ptr(),
         )
     };
     let c_prof = unsafe { c::cmsOpenProfileFromIOhandlerTHR(ptr::null_mut(), cio) };
@@ -145,7 +145,7 @@ fn resave_unmodified_profile() {
         let path = format!("{REF}{name}");
         let data = std::fs::read(&path).unwrap();
         let mut icc = profile::open_profile_from_mem(None, &data).unwrap();
-        let saved = profile::save_profile_to_mem(&mut icc).expect(&format!("save {name}"));
+        let saved = profile::save_profile_to_mem(&mut icc).unwrap_or_else(|| panic!("save {name}"));
 
         // C opens the Rust-saved profile and cooks every tag
         let mut b = saved.clone();
@@ -154,7 +154,7 @@ fn resave_unmodified_profile() {
                 ptr::null_mut(),
                 b.as_mut_ptr(),
                 b.len() as u32,
-                b"r\0".as_ptr(),
+                c"r".as_ptr(),
             )
         };
         let c_prof = unsafe { c::cmsOpenProfileFromIOhandlerTHR(ptr::null_mut(), cio) };

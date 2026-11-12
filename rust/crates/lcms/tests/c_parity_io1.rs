@@ -6,7 +6,7 @@ static CTX_LOCK: Mutex<()> = Mutex::new(());
 // RGB_8 format for the sRGB side
 const RGB8: u32 = 0x00ff04;
 
-fn fmt_for(colorspace: u32, as_input: u32) -> u32 {
+fn fmt_for(colorspace: u32, _as_input: u32) -> u32 {
     // format matching the profile colorspace (u8 chunky)
     let ch = match colorspace {
         0x47524159 => 1u32, // 'GRAY'
@@ -24,13 +24,13 @@ fn fmt_for(colorspace: u32, as_input: u32) -> u32 {
 }
 
 fn make_r_xform(data: &[u8], dir: u32, intent: u32) -> Option<Box<lcms::xform::Transform>> {
-    let mut prof = lcms::profile::open_profile_from_mem(None, data)?;
-    let mut srgb = lcms::virt::create_srgb_profile(None).unwrap();
+    let prof = lcms::profile::open_profile_from_mem(None, data)?;
+    let srgb = lcms::virt::create_srgb_profile(None).unwrap();
     let cs = prof.color_space;
     let (i, o) = if dir == 0 { (prof, srgb) } else { (srgb, prof) };
     let mut profs: Vec<Box<lcms::profile::IccProfile>> = vec![i, o];
     let mut bpc = [false; 2];
-    let mut gamut: Option<&mut lcms::profile::IccProfile> = None;
+    let gamut: Option<&mut lcms::profile::IccProfile> = None;
     lcms::xform::create_extended_transform(
         None,
         &mut profs,
@@ -216,15 +216,15 @@ fn devicelink_lut_dispatch() {
             std::ptr::null_mut(),
             2,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         for (name, pcs) in [
             ("S1\0", [0x9000u16, 0x5500, 0x5500]),
             ("S2\0", [0x3000, 0x2000, 0x9000]),
         ] {
             let col = [0xFFFFu16; 4];
-            c::cmsAppendNamedColor(ncl, name.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(nmcl, 0x6e6d636c); // 'nmcl'
@@ -267,7 +267,7 @@ fn matrix_shaper_directions() {
                 let t = c::cmsCreateTransform(inp, in_fmt, out, out_fmt, intent, 0);
                 eprintln!("{name} i{intent} t={}", !t.is_null());
                 if !t.is_null() {
-                    let mut buf = [0x80u8; 16];
+                    let buf = [0x80u8; 16];
                     let mut ob = [0u8; 16];
                     c::cmsDoTransform(t, buf.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 1);
                     c::cmsDeleteTransform(t);
@@ -288,15 +288,15 @@ fn named_color_input_lut() {
             std::ptr::null_mut(),
             2,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         for (name, pcs) in [
             ("S1\0", [0x9000u16, 0x5500, 0x5500]),
             ("S2\0", [0x3000, 0x2000, 0x9000]),
         ] {
             let col = [0xFFFFu16; 4];
-            c::cmsAppendNamedColor(ncl, name.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(ncl, name.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         let nmcl = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(nmcl, 0x6e6d636c);
@@ -914,15 +914,15 @@ fn devicelink_output_remaining() {
 #[test]
 fn lut_reader_remaining_arms() {
     unsafe {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
+        let _dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let l16 = (10u32 << 16) | (3 << 3) | 2;
-        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let _r16 = (4u32 << 16) | (3 << 3) | 2;
         // named-color input (nmcl profile with ncl2 tag)
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         let nclp = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(nclp, 0x6e6d636c);
         c::cmsSetColorSpace(nclp, 0x6e6d636c);
@@ -1535,7 +1535,7 @@ fn float_reader_normalization_arms() {
             1,
             c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
         );
-        let r16 = (4u32 << 16) | (3 << 3) | 2;
+        let _r16 = (4u32 << 16) | (3 << 3) | 2;
         let l16 = (10u32 << 16) | (3 << 3) | 2;
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         for (cs, sig, name) in [

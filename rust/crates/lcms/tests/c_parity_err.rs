@@ -7,8 +7,8 @@ use lcms_cref as c;
 use std::ffi::c_void;
 use std::sync::Mutex;
 
-fn cstr(s: &str) -> *const i8 {
-    Box::leak(format!("{s}\0").into_boxed_str()).as_ptr() as *const i8
+fn cstr(s: &str) -> *const std::ffi::c_char {
+    Box::leak(format!("{s}\0").into_boxed_str()).as_ptr() as *const std::ffi::c_char
 }
 
 // --- GBD: same hull both sides, check grid ---
@@ -61,7 +61,7 @@ fn gbd_containment() {
 static LAST_C: Mutex<Option<(u32, String)>> = Mutex::new(None);
 static CTX_LOCK: Mutex<()> = Mutex::new(());
 
-unsafe extern "C" fn c_handler(_ctx: *mut c_void, code: u32, text: *const i8) {
+unsafe extern "C" fn c_handler(_ctx: *mut c_void, code: u32, text: *const std::ffi::c_char) { unsafe {
     let t = if text.is_null() {
         String::new()
     } else {
@@ -70,7 +70,7 @@ unsafe extern "C" fn c_handler(_ctx: *mut c_void, code: u32, text: *const i8) {
             .into_owned()
     };
     *LAST_C.lock().unwrap() = Some((code, t));
-}
+}}
 
 #[test]
 fn error_handler_fires() {

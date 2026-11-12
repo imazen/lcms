@@ -1,7 +1,7 @@
 //! cmsxform remaining workers: DoTransformLineStride, ChangeBuffersFormat,
 //! SetAdaptationState — byte-exact or status parity.
 
-use lcms::{profile, types::*, virt, xform};
+use lcms::{virt, xform};
 use lcms_cref as c;
 
 #[test]
@@ -52,7 +52,7 @@ fn change_buffers_format() {
         let h2 = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let in16: u32 = (10 << 16) | (3 << 3) | 1;
         let out16: u32 = (10 << 16) | (3 << 3) | 1;
-        let in8: u32 = (10 << 16) | (3 << 3) | 0;
+        let in8: u32 = (10 << 16) | (3 << 3);
         let ct = c::cmsCreateTransform(h1, in16, h2, out16, 0, 0);
         let mut rp = vec![
             virt::create_lab4_profile(None, None).unwrap(),
@@ -120,8 +120,8 @@ fn change_buffers_format_matrix() {
             let ok = c::cmsChangeBuffersFormat(ct, base | bit, co_fmt | bit);
             // rust side — fresh transform each time (change is
             // destructive)
-            let mut rp1 = virt::create_srgb_profile(None).unwrap();
-            let mut rp2 = virt::create_lab4_profile(None, None).unwrap();
+            let rp1 = virt::create_srgb_profile(None).unwrap();
+            let rp2 = virt::create_lab4_profile(None, None).unwrap();
             let fi: u32 = (4 << 16) | (3 << 3) | 2;
             let fo: u32 = (10 << 16) | (3 << 3) | 2;
             let mut profs = vec![rp1.clone(), rp2.clone()];

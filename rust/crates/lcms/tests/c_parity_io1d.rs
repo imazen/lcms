@@ -1,7 +1,7 @@
 //! cmsio1 remaining getters: version/context/matrix-shaper parity
 //! across the corpus + builder profiles.
 
-use lcms::{profile, virt};
+use lcms::profile;
 use lcms_cref as c;
 
 fn corpus() -> Vec<Vec<u8>> {

@@ -34,7 +34,7 @@ fn path(name: &str) -> String {
 
 fn c_open(name: &str) -> *mut std::ffi::c_void {
     let p = format!("{}\0", path(name));
-    unsafe { c::cmsOpenProfileFromFile(p.as_ptr() as *const i8, b"r\0".as_ptr()) }
+    unsafe { c::cmsOpenProfileFromFile(p.as_ptr() as *const std::ffi::c_char, c"r".as_ptr()) }
 }
 
 fn bits(x: f64) -> u64 {
@@ -695,8 +695,8 @@ fn quadratic_bp_clut() {
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
         c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wk.as_mut_ptr() as *const _,
         );
         c::cmsWriteTag(prof, 0x64657363, ml as *const _);
@@ -810,8 +810,8 @@ fn quadratic_bp_clut2() {
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
         c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wk.as_mut_ptr() as *const _,
         );
         c::cmsWriteTag(prof, 0x64657363, ml as *const _);
@@ -832,6 +832,7 @@ fn quadratic_bp_clut2() {
         let n = 17 * 17 * 17 * 17 * 3;
         for (i, v) in grid.iter_mut().enumerate() {
             let t = i as f64 / (n - 1) as f64;
+            #[allow(clippy::approx_constant)] // fixture shape, not τ
             let shaped = t + 0.45 * (t * 6.28 * 3.0).sin().abs() * (1.0 - t) * t * 4.0;
             *v = (shaped.clamp(0.0, 1.0) * 65535.0) as u16;
         }
@@ -856,7 +857,8 @@ fn quadratic_bp_clut2() {
             );
         }
         // also the source-side on the same profile
-        for intent in [1u32] {
+        {
+            let intent = 1u32;
             let mut bp2 = [0.0f64; 3];
             let r = c::cmsDetectBlackPoint(bp2.as_mut_ptr() as *mut _, prof, intent, 0);
             eprintln!(
@@ -886,8 +888,8 @@ fn quadratic_bp_full() {
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
         c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wk.as_mut_ptr() as *const _,
         );
         c::cmsWriteTag(prof, 0x64657363, ml as *const _);
@@ -1069,14 +1071,14 @@ fn sm_cam02_tail_arms() {
             (0, 1.0, 20.0, "avg-la1"),
             (0, 318.31, 20.0, "avg-la-pi2"),
         ] {
-            let mut vc = c::ViewingConditions {
+            let vc = c::ViewingConditions {
                 white_point: c::CieXyz {
                     X: 95.047,
                     Y: 100.0,
                     Z: 108.883,
                 },
-                yb: yb,
-                la: la,
+                yb,
+                la,
                 surround: sur,
                 d_value: 1.0,
             };
@@ -1128,7 +1130,7 @@ fn sm_cam02_tail_arms() {
         }
         // AdaptationState set/get + AdaptToIlluminant
         let old = c::cmsSetAdaptationState(1.0);
-        let mut xyz = c::CieXyz {
+        let xyz = c::CieXyz {
             X: 95.047,
             Y: 100.0,
             Z: 108.883,
@@ -1272,7 +1274,7 @@ fn sm_gbd_shell_arms() {
             (50.0, 200.0, 200.0, "extreme"),
             (50.0, 5.0, 5.0, "near"),
         ] {
-            let lab = c::CieLab { L: l, a: a, b: b };
+            let lab = c::CieLab { L: l, a, b };
             let chk = c::cmsGDBCheckPoint(gbd, &lab as *const _ as *const _);
             eprintln!("  chk {name}={chk}");
         }

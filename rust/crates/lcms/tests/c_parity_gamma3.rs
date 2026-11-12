@@ -95,7 +95,7 @@ fn smooth_tone_curve() {
         let c_ok = c::cmsSmoothToneCurve(ct, 1.0);
         eprintln!("smooth c_ok={c_ok}");
         // eval before/after
-        let c_v = c::cmsEvalToneCurve16(ct, 32768);
+        let _c_v = c::cmsEvalToneCurve16(ct, 32768);
         // rust side
         let mut rt = gamma::build_tabulated_tone_curve16(None, 256, Some(&vals)).unwrap();
         let r_ok = gamma::smooth_tone_curve(None, &mut rt, 1.0);

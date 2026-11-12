@@ -26,7 +26,7 @@ fn c_write(sig: u32, obj: *const u8, n_items: u32) -> Vec<u8> {
             ptr::null_mut(),
             buf.as_mut_ptr(),
             buf.len() as u32,
-            b"w\0".as_ptr(),
+            c"w".as_ptr(),
         );
         let h = c_handler(sig);
         let ok = ((*h).write_ptr)(h, io, obj as *mut std::ffi::c_void, n_items);
@@ -48,13 +48,13 @@ struct CIoUsed {
 
 /// Call C ReadPtr on `bytes` (the tag BODY, post-type-base), return the raw
 /// object pointer + nItems — caller must free via FreePtr or reuse via Write.
-unsafe fn c_read(sig: u32, bytes: &[u8]) -> (c::Handle, u32) {
+unsafe fn c_read(sig: u32, bytes: &[u8]) -> (c::Handle, u32) { unsafe {
     let mut buf = bytes.to_vec();
     let io = c::cmsOpenIOhandlerFromMem(
         ptr::null_mut(),
         buf.as_mut_ptr(),
         buf.len() as u32,
-        b"r\0".as_ptr(),
+        c"r".as_ptr(),
     );
     let h = c_handler(sig);
     let mut n_items = 0u32;
@@ -62,7 +62,7 @@ unsafe fn c_read(sig: u32, bytes: &[u8]) -> (c::Handle, u32) {
     c::cmsCloseIOhandler(io);
     std::mem::forget(buf);
     (obj, n_items)
-}
+}}
 
 /// Call Rust read on `bytes`, then Rust write — return output bytes + nItems.
 fn r_read_write(sig: u32, bytes: &[u8]) -> (Vec<u8>, u32) {
@@ -208,9 +208,9 @@ fn text_and_desc_mlu() {
             let txt = std::ffi::CString::new(text).unwrap();
             c::cmsMLUsetASCII(
                 c_mlu,
-                b"\0\0".as_ptr(),
-                b"\0\0".as_ptr(),
-                txt.as_ptr() as *const u8,
+                b"\0\0".as_ptr().cast(),
+                b"\0\0".as_ptr().cast(),
+                (txt.as_ptr() as *const u8).cast(),
             );
             let mut r_mlu = mlu_alloc(None, 1).unwrap();
             assert!(mlu_set_ascii(&mut r_mlu, b"\0\0", b"\0\0", txt.as_bytes()));
@@ -587,7 +587,7 @@ fn ucrbg_crdinfo_screening_viewing() {
 
 fn s15(v: f64) -> u32 {
     // encode s15Fixed16 as C does: round(v * 65536)
-    ((v * 65536.0).round() as i32 as u32)
+    (v * 65536.0).round() as i32 as u32
 }
 
 #[test]

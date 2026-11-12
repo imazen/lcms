@@ -32,7 +32,7 @@ fn file_iohandler_open() {
         unsafe {
             let name = std::ffi::CString::new(path.as_str()).unwrap();
             let io =
-                c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), name.as_ptr(), b"r\0".as_ptr());
+                c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), name.as_ptr(), c"r".as_ptr());
             assert!(!io.is_null(), "iohandler open {path}");
             let h = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io);
             let rr = profile::open_profile_from_mem(None, &data);
@@ -56,7 +56,7 @@ fn null_iohandler_dry_run() {
             let ok = c::cmsSaveProfileToIOhandler(prof, io);
             let _ = c::cmsCloseProfile(prof);
             let _ = c::cmsCloseIOhandler(io);
-            assert_eq!(ok != 0, true, "null-handler save");
+            assert!(ok != 0, "null-handler save");
         }
     }
 }
@@ -80,7 +80,7 @@ fn save_to_file_iohandler() {
             // write-mode file handler
             let path = std::ffi::CString::new(tmp.to_str().unwrap()).unwrap();
             let io =
-                c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), path.as_ptr(), b"w\0".as_ptr());
+                c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), path.as_ptr(), c"w".as_ptr());
             assert!(!io.is_null());
             let ok = c::cmsSaveProfileToIOhandler(prof, io);
             assert!(ok != 0, "save to file iohandler");
@@ -149,7 +149,7 @@ fn iohandler_null_it8_contiguous() {
         let mut cn = 0u32;
         let ok = c::cmsIT8SaveToMem(h, cb.as_mut_ptr() as *mut _, &mut cn);
         eprintln!("save mem ok={ok} n={cn}");
-        let f = c::cmsIT8SaveToFile(h, b"/tmp/it8_save.txt\0".as_ptr() as *const _);
+        let f = c::cmsIT8SaveToFile(h, c"/tmp/it8_save.txt".as_ptr() as *const _);
         eprintln!("save file={f}");
         c::cmsIT8Free(h);
     }
@@ -169,8 +169,8 @@ fn profile_info_sweep() {
                 let n = c::cmsGetProfileInfoASCII(
                     h,
                     info,
-                    b"en\0".as_ptr() as *const _,
-                    b"US\0".as_ptr() as *const _,
+                    c"en".as_ptr() as *const _,
+                    c"US".as_ptr() as *const _,
                     buf.as_mut_ptr() as *mut _,
                     256,
                 );
@@ -178,8 +178,8 @@ fn profile_info_sweep() {
                 let n2 = c::cmsGetProfileInfoUTF8(
                     h,
                     info,
-                    b"en\0".as_ptr() as *const _,
-                    b"US\0".as_ptr() as *const _,
+                    c"en".as_ptr() as *const _,
+                    c"US".as_ptr() as *const _,
                     buf.as_mut_ptr() as *mut _,
                     256,
                 );
@@ -188,8 +188,8 @@ fn profile_info_sweep() {
                 let n3 = c::cmsGetProfileInfo(
                     h,
                     info,
-                    b"en\0".as_ptr() as *const _,
-                    b"US\0".as_ptr() as *const _,
+                    c"en".as_ptr() as *const _,
+                    c"US".as_ptr() as *const _,
                     wbuf.as_mut_ptr() as *mut std::ffi::c_void,
                     128,
                 );
@@ -347,7 +347,7 @@ fn open_variants() {
                 std::ptr::null_mut(),
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as u32,
-                b"r\0".as_ptr() as *const _,
+                c"r".as_ptr() as *const _,
             );
             if !io.is_null() {
                 let h2 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io);
@@ -371,7 +371,7 @@ fn file_stream_open() {
             // write the profile to a file
             std::fs::write(&path[..path.len() - 1], data).unwrap();
             let h1 =
-                c::cmsOpenProfileFromFile(path.as_ptr() as *const _, b"r\0".as_ptr() as *const _);
+                c::cmsOpenProfileFromFile(path.as_ptr() as *const _, c"r".as_ptr() as *const _);
             eprintln!("file{i} open={}", !h1.is_null());
             if !h1.is_null() {
                 c::cmsCloseProfile(h1);
@@ -381,7 +381,7 @@ fn file_stream_open() {
             let io = c::cmsOpenIOhandlerFromFile(
                 std::ptr::null_mut(),
                 path.as_ptr() as *const _,
-                b"r\0".as_ptr() as *const _,
+                c"r".as_ptr() as *const _,
             );
             if !io.is_null() {
                 let h2 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io);
@@ -412,7 +412,7 @@ fn save_variants() {
             std::ptr::null_mut(),
             buf.as_mut_ptr() as *mut _,
             65536,
-            b"w\0".as_ptr() as *const _,
+            c"w".as_ptr() as *const _,
         );
         let ok2 = if !io.is_null() {
             let r = c::cmsSaveProfileToIOhandler(h, io);
@@ -820,7 +820,7 @@ fn remaining_open_variants() {
         let f = c::cmsOpenIOhandlerFromFile(
             std::ptr::null_mut(),
             path.as_ptr() as _,
-            b"wb\0".as_ptr() as _,
+            c"wb".as_ptr() as _,
         );
         if !f.is_null() {
             c::cmsSaveProfileToIOhandler(h, f);
@@ -1436,7 +1436,7 @@ fn file_open_variants() {
     unsafe {
         // write a real profile to /tmp
         let h = c::cmsCreate_sRGBProfile();
-        c::cmsSaveProfileToFile(h, b"/tmp/ccov_srgb.icc\0".as_ptr() as _);
+        c::cmsSaveProfileToFile(h, c"/tmp/ccov_srgb.icc".as_ptr() as _);
         c::cmsCloseProfile(h);
         for (name, path) in [
             ("real", b"/tmp/ccov_srgb.icc\0" as &[u8]),
@@ -1449,7 +1449,7 @@ fn file_open_variants() {
             }
             let mut p = [0u8; 256];
             p[..path.len()].copy_from_slice(path);
-            let h2 = c::cmsOpenProfileFromFile(p.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h2 = c::cmsOpenProfileFromFile(p.as_ptr() as _, c"r".as_ptr() as _);
             eprintln!("{name} open={}", !h2.is_null());
             if !h2.is_null() {
                 c::cmsCloseProfile(h2);
@@ -1471,7 +1471,7 @@ fn corpus_profile_transform() {
             ("labv4", b"../../lcms2cmyk.icc\0"),
             ("xyz", b"../../xyzlcms2.icc\0"),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -1509,12 +1509,12 @@ fn corpus_transform_dir() {
             ("labv4", b"../../lcms2cmyk.icc\0", 3),
             ("xyz", b"../../xyzlcms2.icc\0", 3),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
             }
-            let cs_fmt = (0 << 16) | (nch << 3) | 1u32;
+            let cs_fmt = (nch << 3) | 1u32;
             let t1 = c::cmsCreateTransform(h, cs_fmt, srgb, rgb_fmt, 0, 0);
             let t2 = c::cmsCreateTransform(h, cs_fmt, h, cs_fmt, 0, 0);
             eprintln!("{name} c->rgb={} c->c={}", !t1.is_null(), !t2.is_null());
@@ -1543,12 +1543,12 @@ fn corpus_dotransform() {
             ("labv4", b"../../lcms2cmyk.icc\0", 3),
             ("xyz", b"../../xyzlcms2.icc\0", 3),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
             }
-            let cs_fmt = (0 << 16) | (nch << 3) | 1u32;
+            let cs_fmt = (nch << 3) | 1u32;
             let t = c::cmsCreateTransform(h, cs_fmt, srgb, rgb_fmt, 0, 0);
             if t.is_null() {
                 eprintln!("{name} xform=NULL");
@@ -1579,7 +1579,7 @@ fn corpus_mem_roundtrip() {
             ("xyz", b"../../xyzlcms2.icc\0"),
             ("lin", b"../../linlcms2.icc\0"),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -1613,7 +1613,7 @@ fn corpus_tag_walk() {
             ("bright", b"../../brightness.icc\0"),
             ("gray3", b"../../gray3lcms2.icc\0"),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -1649,7 +1649,7 @@ fn corpus_classes() {
             ("null", b"../../nullcms2.icc\0"),
             ("srgb", b"../../sRGBlcms2.icc\0"),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -1717,7 +1717,7 @@ fn corpus_class_transforms() {
                 lab,
             ),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -1762,7 +1762,7 @@ fn corpus_intent_transforms() {
                 (4 << 16) | (3 << 3) | 1,
             ),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -1813,7 +1813,7 @@ fn corpus_intent_eval() {
                 3,
             ),
         ] {
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -1842,12 +1842,12 @@ fn corpus_intent_eval() {
 fn corpus_multiprofile() {
     unsafe {
         let argb =
-            c::cmsOpenProfileFromFile(b"../../aRGBlcms2.icc\0".as_ptr() as _, b"r\0".as_ptr() as _);
+            c::cmsOpenProfileFromFile(c"../../aRGBlcms2.icc".as_ptr() as _, c"r".as_ptr() as _);
         let srgb =
-            c::cmsOpenProfileFromFile(b"../../sRGBlcms2.icc\0".as_ptr() as _, b"r\0".as_ptr() as _);
+            c::cmsOpenProfileFromFile(c"../../sRGBlcms2.icc".as_ptr() as _, c"r".as_ptr() as _);
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let cmyk =
-            c::cmsOpenProfileFromFile(b"../../lcms2cmyk.icc\0".as_ptr() as _, b"r\0".as_ptr() as _);
+            c::cmsOpenProfileFromFile(c"../../lcms2cmyk.icc".as_ptr() as _, c"r".as_ptr() as _);
         let rgb_fmt = (4 << 16) | (3 << 3) | 1u32;
         let lab_fmt = (10 << 16) | (3 << 3) | 1;
         for (name, mut profs, inf, outf) in [
@@ -1887,14 +1887,14 @@ fn corpus_multiprofile() {
 fn corpus_multiprofile2() {
     unsafe {
         let argb =
-            c::cmsOpenProfileFromFile(b"../../aRGBlcms2.icc\0".as_ptr() as _, b"r\0".as_ptr() as _);
+            c::cmsOpenProfileFromFile(c"../../aRGBlcms2.icc".as_ptr() as _, c"r".as_ptr() as _);
         let srgb =
-            c::cmsOpenProfileFromFile(b"../../sRGBlcms2.icc\0".as_ptr() as _, b"r\0".as_ptr() as _);
+            c::cmsOpenProfileFromFile(c"../../sRGBlcms2.icc".as_ptr() as _, c"r".as_ptr() as _);
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let cmyk =
-            c::cmsOpenProfileFromFile(b"../../lcms2cmyk.icc\0".as_ptr() as _, b"r\0".as_ptr() as _);
+            c::cmsOpenProfileFromFile(c"../../lcms2cmyk.icc".as_ptr() as _, c"r".as_ptr() as _);
         let rgb_fmt = (4 << 16) | (3 << 3) | 1u32;
-        let lab_fmt = (10 << 16) | (3 << 3) | 1;
+        let _lab_fmt = (10 << 16) | (3 << 3) | 1;
         let cmyk_fmt = (6 << 16) | (4 << 3) | 1;
         for (name, mut profs, inf, outf) in [
             (
@@ -1953,7 +1953,7 @@ fn corpus_iohandler() {
                 std::ptr::null_mut(),
                 data.as_ptr() as *mut _,
                 data.len() as u32,
-                b"r\0".as_ptr() as _,
+                c"r".as_ptr() as _,
             );
             if io.is_null() {
                 eprintln!("{name} io=NULL");
@@ -1987,7 +1987,7 @@ fn corpus_class_tag_walk() {
             let mut p = [0u8; 256];
             let pb = path.as_bytes();
             p[..pb.len()].copy_from_slice(pb);
-            let h = c::cmsOpenProfileFromFile(p.as_ptr() as _, b"r\0".as_ptr() as _);
+            let h = c::cmsOpenProfileFromFile(p.as_ptr() as _, c"r".as_ptr() as _);
             if h.is_null() {
                 eprintln!("{name} open=NULL");
                 continue;
@@ -2955,7 +2955,7 @@ fn b2atype_dispatch() {
         // lab4 has B2A0
         let pb = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lcms2cmyk.icc");
         let path = std::ffi::CString::new(pb.to_str().unwrap()).unwrap();
-        let src = c::cmsOpenProfileFromFile(path.as_ptr(), b"r\0".as_ptr());
+        let src = c::cmsOpenProfileFromFile(path.as_ptr(), c"r".as_ptr());
         let mut n = 0u32;
         c::cmsSaveProfileToMem(src, std::ptr::null_mut(), &mut n);
         let mut buf = vec![0u8; n as usize];
@@ -3007,7 +3007,7 @@ fn intentlut_read() {
     unsafe {
         let pb = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lcms2cmyk.icc");
         let path = std::ffi::CString::new(pb.to_str().unwrap()).unwrap();
-        let h = c::cmsOpenProfileFromFile(path.as_ptr(), b"r\0".as_ptr());
+        let h = c::cmsOpenProfileFromFile(path.as_ptr(), c"r".as_ptr());
         assert!(!h.is_null());
         // A2B0/1/2 + B2A0/1/2
         for (name, sig) in [
@@ -3046,7 +3046,7 @@ fn distincttype_read() {
         ] {
             let pb = base.join("../../").join(file);
             let path = std::ffi::CString::new(pb.to_str().unwrap()).unwrap();
-            let h = c::cmsOpenProfileFromFile(path.as_ptr(), b"r\0".as_ptr());
+            let h = c::cmsOpenProfileFromFile(path.as_ptr(), c"r".as_ptr());
             let t = if h.is_null() {
                 std::ptr::null()
             } else {
@@ -3127,8 +3127,8 @@ fn iohandler_modes() {
             std::fs::write(tp.trim_end_matches('\0'), &data).unwrap();
             let io = c::cmsOpenIOhandlerFromFile(
                 std::ptr::null_mut(),
-                tp.as_ptr() as *const i8,
-                format!("{mode}\0").as_ptr() as *const u8,
+                tp.as_ptr() as *const std::ffi::c_char,
+                (format!("{mode}\0").as_ptr() as *const u8).cast(),
             );
             eprintln!("{name}: io={}", !io.is_null());
             if !io.is_null() {
@@ -3151,7 +3151,7 @@ fn iohandler_modes() {
                 std::ptr::null_mut(),
                 data.as_ptr() as *mut _,
                 sz as u32,
-                b"r\0".as_ptr() as *const u8,
+                (c"r".as_ptr() as *const u8).cast(),
             );
             let p = if io.is_null() {
                 std::ptr::null_mut()
@@ -3166,8 +3166,8 @@ fn iohandler_modes() {
         // missing file
         let io = c::cmsOpenIOhandlerFromFile(
             std::ptr::null_mut(),
-            b"/tmp/nonexistent_xyz.icc\0".as_ptr() as *const i8,
-            b"r\0".as_ptr() as *const u8,
+            c"/tmp/nonexistent_xyz.icc".as_ptr() as *const std::ffi::c_char,
+            (c"r".as_ptr() as *const u8).cast(),
         );
         eprintln!("missing-file io={}", !io.is_null());
         // NULL iohandler
@@ -3203,9 +3203,9 @@ fn tag_type_sweep() {
             y: 1.0,
             z: 0.82,
         };
-        let sig4 = 0x73696720u32;
+        let _sig4 = 0x73696720u32;
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetUTF8(mlu, b"en".as_ptr(), b"US".as_ptr(), b"demo text\0".as_ptr());
+        c::cmsMLUsetUTF8(mlu, b"en".as_ptr().cast(), b"US".as_ptr().cast(), c"demo text".as_ptr());
         // (tag sig, payload ptr, name) — type-correct payloads
         let cases: &[(u32, *const std::ffi::c_void, &str)] = &[
             (0x77747074, &xyz as *const _ as *const _, "XYZ"),
@@ -3430,7 +3430,7 @@ fn file_open_offset_array() {
         let data = std::fs::read(dir.join("lcms2cmyk.icc")).unwrap();
         let tp = "/tmp/ccov_file_open.icc\0";
         std::fs::write(tp.trim_end_matches('\0'), &data).unwrap();
-        let p = c::cmsOpenProfileFromFile(tp.as_ptr() as *const i8, b"r\0".as_ptr() as *const u8);
+        let p = c::cmsOpenProfileFromFile(tp.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
         eprintln!("file-open={}", !p.is_null());
         if !p.is_null() {
             // header getters + tag enumeration -> ReadOffsetArray
@@ -3450,8 +3450,8 @@ fn file_open_offset_array() {
         // THR variant
         let p2 = c::cmsOpenProfileFromFileTHR(
             std::ptr::null_mut(),
-            tp.as_ptr() as *const i8,
-            b"r\0".as_ptr() as *const i8,
+            tp.as_ptr() as *const std::ffi::c_char,
+            c"r".as_ptr() as *const std::ffi::c_char,
         );
         let _ = p2;
         eprintln!("file-thr={}", !p2.is_null());
@@ -3470,7 +3470,7 @@ fn ucrbg_screening_tags() {
         let u = c::cmsBuildGamma(std::ptr::null_mut(), 1.5);
         let b = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let d = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetUTF8(d, b"en\0".as_ptr(), b"US\0".as_ptr(), b"ucr-bg\0".as_ptr());
+        c::cmsMLUsetUTF8(d, c"en".as_ptr(), c"US".as_ptr(), c"ucr-bg".as_ptr());
         #[repr(C)]
         struct UcrBg {
             ucr: *mut std::ffi::c_void,
@@ -3613,16 +3613,16 @@ fn profile_info_getters() {
             let n = c::cmsGetProfileInfoASCII(
                 p,
                 info,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as u32,
             );
             let n2 = c::cmsGetProfileInfoUTF8(
                 p,
                 info,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as u32,
             );
@@ -3698,7 +3698,7 @@ fn iohandler_internals() {
             std::ptr::null_mut(),
             data.as_ptr() as *mut _,
             data.len() as u32,
-            b"r\0".as_ptr(),
+            c"r".as_ptr(),
         );
         if !io.is_null() {
             let p = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io);
@@ -3884,7 +3884,7 @@ fn malformed_tag_reads() {
             // profile size
             hdr[0..4].copy_from_slice(&(hlen as u32).to_be_bytes());
             hdr[36..40].copy_from_slice(b"acsp");
-            let n_tags = hdr.len() - 128 - 4;
+            let _n_tags = hdr.len() - 128 - 4;
             hdr[128..132].copy_from_slice(&1u32.to_be_bytes());
             hdr[132..136].copy_from_slice(&sig.to_be_bytes());
             hdr[136..140].copy_from_slice(&144u32.to_be_bytes());
@@ -4189,8 +4189,8 @@ fn numeric_array_tags() {
 fn lut_read_validation() {
     unsafe {
         // malformed mft2 (Lut16) tags — bad channel counts, counts
-        let mut t = vec![0u8; 64];
-        let mut hdr = |in_ch: u8, out_ch: u8, grid: u8| {
+        let _t = [0u8; 64];
+        let hdr = |in_ch: u8, out_ch: u8, grid: u8| {
             // type sig + reserved + in_ch out_ch grid + matrix
             let mut v = Vec::with_capacity(60);
             v.extend_from_slice(&0x6d667432u32.to_be_bytes()); // 'mft2'
@@ -4247,14 +4247,14 @@ fn save_target_variants() {
         // ToFile
         let path = std::env::temp_dir().join("st-save.icc");
         let ps = format!("{}\0", path.display());
-        let r1 = c::cmsSaveProfileToFile(p, ps.as_ptr() as *const i8);
+        let r1 = c::cmsSaveProfileToFile(p, ps.as_ptr() as *const std::ffi::c_char);
         // ToIOhandler — memory handler, write mode
         let mut mem = vec![0u8; 1 << 20];
         let io = c::cmsOpenIOhandlerFromMem(
             std::ptr::null_mut(),
             mem.as_mut_ptr() as *mut _,
             mem.len() as u32,
-            b"w\0".as_ptr(),
+            c"w".as_ptr(),
         );
         let r2 = if !io.is_null() {
             c::cmsSaveProfileToIOhandler(p, io)
@@ -4299,29 +4299,29 @@ fn profile_info_variants() {
         let p = c::cmsCreate_sRGBProfile();
         // info ids 0-9 -> desc/cprt/dmnd/dmdd/lmod/tech/etc
         for info in 0u32..10 {
-            let mut ab = [0i8; 128];
+            let mut ab = [0 as std::ffi::c_char; 128];
             let mut wb = [0i32; 64];
             let a = c::cmsGetProfileInfoASCII(
                 p,
                 info,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 ab.as_mut_ptr() as *mut _,
                 128,
             );
             let u = c::cmsGetProfileInfoUTF8(
                 p,
                 info,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 ab.as_mut_ptr() as *mut _,
                 128,
             );
             let w = c::cmsGetProfileInfo(
                 p,
                 info,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 wb.as_mut_ptr() as *mut _,
                 64,
             );
@@ -4338,14 +4338,14 @@ fn profile_info_variants() {
 #[test]
 fn remaining_tag_handlers() {
     unsafe {
-        let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
-        let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
+        let _g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
+        let _mat = [0.4f64, 0.3, 0.3, 0.2, 0.6, 0.2, 0.1, 0.1, 0.8];
+        let _ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         // named-color list + dict
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         let d = c::cmsDictAlloc(std::ptr::null_mut());
         let w = |s: &str| s.chars().map(|c| c as i32).chain([0]).collect::<Vec<i32>>();
         c::cmsDictAddEntry(
@@ -4358,9 +4358,9 @@ fn remaining_tag_handlers() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"x\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"x".as_ptr(),
         );
         for (sig, payload, name) in [
             (0x6d657461u32, d as *const _, "dict"),
@@ -4568,9 +4568,9 @@ fn text_sig_handlers() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"copyright\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"copyright".as_ptr(),
         );
         for (sig, name) in [
             (0x63707274u32, "cprt"),
@@ -4699,9 +4699,9 @@ fn desc_format_variants() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"description\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"description".as_ptr(),
         );
         for ver in [2.1f64, 4.4] {
             let prof = c::cmsCreate_sRGBProfile();
@@ -4875,7 +4875,8 @@ fn rare_type_handlers() {
             i: [0.95, 1.0, 1.09],
             s: 1,
         };
-        for (sig, payload, name) in [(0x6d656173u32, &m as *const _ as *const _, "meas")] {
+        {
+            let (sig, payload, name) = (0x6d656173u32, &m as *const _ as *const _, "meas");
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, sig, payload);
             let mut buf = vec![0u8; 1 << 20];
@@ -4968,7 +4969,7 @@ fn mlu_text_sig_variants() {
                 m,
                 l.as_ptr() as *const _,
                 c_.as_ptr() as *const _,
-                t.as_ptr(),
+                t.as_ptr().cast(),
             );
         }
         for sig in [
@@ -5014,7 +5015,8 @@ fn struct_array_tags() {
     unsafe {
         // chad — 9x S15Fixed16 (adaptation matrix)
         let chad: [u32; 9] = [0x00010000; 9];
-        for (sig, payload, n, name) in [(0x63686164u32, chad.as_ptr() as *const _, 9, "chad")] {
+        {
+            let (sig, payload, _n, name) = (0x63686164u32, chad.as_ptr() as *const _, 9, "chad");
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, sig, payload);
             let mut buf = vec![0u8; 1 << 20];
@@ -5151,7 +5153,8 @@ fn ucrbg_resp_scrn_tags() {
             k: 0.5,
             l: 0.3,
         };
-        for (sig, payload, name) in [(0x75637262u32, &u as *const _ as *const _, "ucrbg")] {
+        {
+            let (sig, payload, name) = (0x75637262u32, &u as *const _ as *const _, "ucrbg");
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, sig, payload);
             let mut buf = vec![0u8; 1 << 20];
@@ -5208,7 +5211,8 @@ fn scrn_resp_named_tags() {
                 ch: 0,
             }; 16],
         };
-        for (sig, payload, name) in [(0x7363726eu32, &s as *const _ as *const _, "scrn")] {
+        {
+            let (sig, payload, name) = (0x7363726eu32, &s as *const _ as *const _, "scrn");
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, sig, payload);
             let mut buf = vec![0u8; 1 << 20];
@@ -5243,7 +5247,8 @@ fn resp_gamma_tags() {
     unsafe {
         // response16 — {nMeasurements, nValue, values}
         let resp: [u16; 6] = [0, 256, 1024, 4096, 16384, 65535];
-        for (sig, payload, name) in [(0x72657370u32, resp.as_ptr() as *const _, "resp")] {
+        {
+            let (sig, payload, name) = (0x72657370u32, resp.as_ptr() as *const _, "resp");
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, sig, payload);
             let mut buf = vec![0u8; 1 << 20];
@@ -5278,15 +5283,15 @@ fn resp_gamma_tags() {
 fn per_sig_dispatch() {
     unsafe {
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"x\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"x".as_ptr(),
         );
         for (sig, payload, name) in [
             (0x6e636c32u32, ncl as *const _, "ncl2"),
@@ -5334,7 +5339,8 @@ fn multi_numeric_arrays() {
             0x00010000, 0x00001000, 0x00000100, 0x00002000, 0x00008000, 0x00000400, 0x00000800,
             0x00000200, 0x0001C000,
         ];
-        for (sig, payload, name) in [(0x63686164u32, chad.as_ptr() as *const _, "chad")] {
+        {
+            let (sig, payload, name) = (0x63686164u32, chad.as_ptr() as *const _, "chad");
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, sig, payload);
             let mut buf = vec![0u8; 1 << 20];
@@ -5373,7 +5379,7 @@ fn mlu_text_sigs() {
                 m,
                 l.as_ptr() as *const _,
                 c_.as_ptr() as *const _,
-                t.as_ptr(),
+                t.as_ptr().cast(),
             );
         }
         for sig in [
@@ -5539,12 +5545,12 @@ fn named_color_sig_dispatch() {
             std::ptr::null_mut(),
             2,
             3,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
-        c::cmsAppendNamedColor(ncl, b"c2\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c2".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         for (cls, sig, name) in [
             (0x6e6d636cu32, 0x6e636c32, "nmcl-ncl2"),
             (0x6d6e7472, 0x6e636c32, "mntr-ncl2"),
@@ -5590,7 +5596,7 @@ fn text_type_sigs() {
                 m,
                 l.as_ptr() as *const _,
                 c_.as_ptr() as *const _,
-                t.as_ptr(),
+                t.as_ptr().cast(),
             );
         }
         for sig in [
@@ -5687,9 +5693,9 @@ fn per_sig_type_dispatch() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"x\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"x".as_ptr(),
         );
         let d = c::cmsDictAlloc(std::ptr::null_mut());
         c::cmsDictAddEntry(
@@ -5762,7 +5768,7 @@ fn remaining_text_sigs() {
                 m,
                 l.as_ptr() as *const _,
                 c_.as_ptr() as *const _,
-                t.as_ptr(),
+                t.as_ptr().cast(),
             );
         }
         for sig in [
@@ -5818,7 +5824,7 @@ fn all_text_sigs() {
                 m,
                 l.as_ptr() as *const _,
                 c_.as_ptr() as *const _,
-                t.as_ptr(),
+                t.as_ptr().cast(),
             );
         }
         for sig in [
@@ -5888,9 +5894,9 @@ fn multi_entry_sig_dispatch() {
             );
         }
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -5952,14 +5958,14 @@ fn remaining_sig_dispatch() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"x\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"x".as_ptr(),
         );
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         for (sig, payload, name) in [
             (0x6d657461u32, d as *const _, "dict-meta"),
             (0x64657363, m as *const _, "mlu-desc"),
@@ -6009,7 +6015,7 @@ fn multi_entry_variants() {
                 m,
                 l.as_ptr() as *const _,
                 c_.as_ptr() as *const _,
-                t.as_ptr(),
+                t.as_ptr().cast(),
             );
         }
         let d = c::cmsDictAlloc(std::ptr::null_mut());
@@ -6078,9 +6084,9 @@ fn multi_entry_sig_variants() {
             );
         }
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -6141,9 +6147,9 @@ fn multi_entry_sigs() {
             std::ptr::null_mut(),
         );
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         let ftab: Vec<f32> = (0..8 * 3).map(|i| i as f32 / 24.0).collect();
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -6205,14 +6211,14 @@ fn per_sig_dispatch2() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"x\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"x".as_ptr(),
         );
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 3, c"p".as_ptr(), c"s".as_ptr());
         let lab16 = [0xF000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"c1\0".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
+        c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         for (sig, payload, name) in [
             (0x6d657461u32, d as *const _, "dict-meta"),
             (0x64657363, m as *const _, "mlu-desc"),
@@ -6359,9 +6365,9 @@ fn ucrbg_tag() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"ucrbg\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"ucrbg".as_ptr(),
         );
         let mut u = UcrBg {
             ucr: g,
@@ -6433,10 +6439,10 @@ fn chrm_clrt_tags() {
             },
         };
         let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, b"\0".as_ptr(), b"\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"".as_ptr(), c"".as_ptr());
         let pcs = [0x8000u16; 3];
-        c::cmsAppendNamedColor(ncl, b"Cyan\0".as_ptr(), pcs.as_ptr(), std::ptr::null());
-        c::cmsAppendNamedColor(ncl, b"Magenta\0".as_ptr(), pcs.as_ptr(), std::ptr::null());
+        c::cmsAppendNamedColor(ncl, c"Cyan".as_ptr(), pcs.as_ptr(), std::ptr::null());
+        c::cmsAppendNamedColor(ncl, c"Magenta".as_ptr(), pcs.as_ptr(), std::ptr::null());
         for (sig, payload, name) in [
             (0x6368726Du32, &mut tr as *mut _ as *const _, "chrm"),
             (0x636C7274, ncl as *const _, "clrt"),
@@ -6575,9 +6581,9 @@ fn crdi_psid_tags() {
         ] {
             c::cmsMLUsetUTF8(
                 m,
-                b"PS\0".as_ptr() as *const _,
+                c"PS".as_ptr() as *const _,
                 cnt.as_ptr() as *const _,
-                txt.as_ptr(),
+                txt.as_ptr().cast(),
             );
         }
         let prof = c::cmsCreate_sRGBProfile();
@@ -6672,9 +6678,9 @@ fn text_data_tags() {
         let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetUTF8(
             m,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
-            b"mfr desc\0".as_ptr(),
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
+            c"mfr desc".as_ptr(),
         );
         let prof2 = c::cmsCreate_sRGBProfile();
         c::cmsSetProfileVersion(prof2, 2.1);
@@ -6944,9 +6950,9 @@ fn pseq_psid_full() {
             let m = c::cmsMLUalloc(std::ptr::null_mut(), 1);
             c::cmsMLUsetUTF8(
                 m,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
-                t.as_ptr(),
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
+                t.as_ptr().cast(),
             );
             m
         };
@@ -7843,7 +7849,7 @@ fn mpe_blob_dump() {
 fn mab_blob_dump() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let curves = vec![g; 3];
+        let curves = [g; 3];
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
             p,
@@ -7925,7 +7931,7 @@ fn mab_element_offset_arms() {
         clut.extend_from_slice(&[0; 3]);
         for i in 0..24u32 {
             clut.extend_from_slice(
-                &(i * 2730)
+                (i * 2730)
                     .to_be_bytes()
                     .iter()
                     .skip(2)
@@ -8049,7 +8055,7 @@ fn io0_edge_internals() {
             std::ptr::null_mut(),
             buf.as_ptr() as *mut _,
             n,
-            b"r\0".as_ptr(),
+            c"r".as_ptr(),
         );
         let rp = if !io.is_null() {
             c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io)
@@ -8068,9 +8074,9 @@ fn io0_edge_internals() {
             std::ptr::null_mut(),
             buf.as_mut_ptr() as *mut _,
             buf.len() as u32,
-            b"w\0".as_ptr(),
+            c"w".as_ptr(),
         );
-        let mut n2 = 0u32;
+        let n2 = 0u32;
         let s2 = c::cmsSaveProfileToIOhandler(rp, io2);
         let _ = n2;
         eprintln!("save-ioh={s2}");
@@ -8110,24 +8116,24 @@ fn profile_info_internals2() {
             let n = c::cmsGetProfileInfoUTF8(
                 srgb,
                 id,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 buf.as_mut_ptr() as *mut _,
                 512,
             );
             let n2 = c::cmsGetProfileInfo(
                 srgb,
                 id,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
                 buf.as_mut_ptr() as *mut _,
                 512,
             );
             let n3 = c::cmsGetProfileInfoASCII(
                 srgb,
                 id,
-                b"en\0".as_ptr() as *const i8,
-                b"US\0".as_ptr() as *const i8,
+                c"en".as_ptr() as *const std::ffi::c_char,
+                c"US".as_ptr() as *const std::ffi::c_char,
                 buf.as_mut_ptr() as *mut _,
                 512,
             );
@@ -8153,8 +8159,8 @@ fn profile_info_internals2() {
                 let _ = c::cmsGetProfileInfoASCII(
                     p,
                     id,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     512,
                 );
@@ -8392,7 +8398,7 @@ fn io0_tag_iteration() {
             let n = c::cmsGetTagCount(p);
             eprintln!("{name} tags={n}");
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i as u32);
+                let sig = c::cmsGetTagSignature(p, i);
                 let ist = c::cmsIsTag(p, sig);
                 let _ = (sig, ist);
             }
@@ -8424,7 +8430,7 @@ fn io0_tag_iteration() {
             }
             let n = c::cmsGetTagCount(p);
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i as u32);
+                let sig = c::cmsGetTagSignature(p, i);
                 let _ = sig;
             }
             eprintln!("{f} tags={n}");
@@ -8603,7 +8609,7 @@ fn mhc2_read_arms() {
 #[test]
 fn ucrbg_read_arms() {
     unsafe {
-        let mk = |ucr: &[u16], bg: &[u16], txt: &str| -> Vec<u8> {
+        let mk = |_ucr: &[u16], _bg: &[u16], _txt: &str| -> Vec<u8> {
             let mut t = Vec::new();
             t.extend_from_slice(&0x75637242u32.to_be_bytes()); // 'ucrbg'... check sig
             t
@@ -8763,7 +8769,7 @@ fn tag_dup_internals() {
             // object
             let n = c::cmsGetTagCount(p);
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i as u32);
+                let sig = c::cmsGetTagSignature(p, i);
                 let t1 = c::cmsReadTag(p, sig);
                 let t2 = c::cmsReadTag(p, sig);
                 let _ = (t1, t2);
@@ -8780,7 +8786,7 @@ fn tag_dup_internals() {
         ] {
             let n = c::cmsGetTagCount(p);
             for i in 0..n.max(0) as u32 {
-                let sig = c::cmsGetTagSignature(p, i as u32);
+                let sig = c::cmsGetTagSignature(p, i);
                 let t1 = c::cmsReadTag(p, sig);
                 let t2 = c::cmsReadTag(p, sig);
                 let _ = (t1, t2);
@@ -8798,7 +8804,7 @@ fn mpe_dup_internals() {
     unsafe {
         // build an mpet pipeline: curve-set + matrix + clut
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let curves = vec![g; 3];
+        let _curves = [g; 3];
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         let off = [0.0f64; 3];
@@ -8807,7 +8813,7 @@ fn mpe_dup_internals() {
             1,
             c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3, mat.as_ptr(), off.as_ptr()),
         );
-        let mut grid = vec![0u16; 8 * 3];
+        let mut grid = [0u16; 8 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = (i * 2730) as u16;
         }
@@ -8823,11 +8829,11 @@ fn mpe_dup_internals() {
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsSetProfileVersion(prof, 4.4);
         // desc MLU for the placeholder path is already in sRGB
-        let mut ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+        let ml = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         let m0 = c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             [0x74u32, 0x65, 0x73, 0x74, 0].as_ptr() as *const _,
         );
         let w1 = c::cmsWriteTag(prof, 0x64657363, ml as *const _);
@@ -8837,11 +8843,11 @@ fn mpe_dup_internals() {
         eprintln!("mlu={m0} desc={w1} wtpt={w2} d2b0={w}");
         // isolate: save an sRGB profile with NO added tags
         let prof2 = c::cmsCreate_sRGBProfile();
-        let fs2 = c::cmsSaveProfileToFile(prof2, b"/tmp/plain_srgb.icc\0".as_ptr() as *const i8);
+        let fs2 = c::cmsSaveProfileToFile(prof2, c"/tmp/plain_srgb.icc".as_ptr() as *const std::ffi::c_char);
         eprintln!("plain-srgb file save={fs2}");
         c::cmsCloseProfile(prof2);
         // save to a FILE first to see the real error path
-        let fs = c::cmsSaveProfileToFile(prof, b"/tmp/mpet_test.icc\0".as_ptr() as *const i8);
+        let fs = c::cmsSaveProfileToFile(prof, c"/tmp/mpet_test.icc".as_ptr() as *const std::ffi::c_char);
         eprintln!("file save={fs}");
         let mut buf = vec![0u8; 1 << 20];
         let mut n = buf.len() as u32;
@@ -8925,11 +8931,11 @@ fn decide_type_arms() {
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
         c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wk.as_mut_ptr() as *const _,
         );
-        for (prof, ver, name) in [(prof2, 2.1, "v2"), (prof4, 4.4, "v4")] {
+        for (prof, _ver, name) in [(prof2, 2.1, "v2"), (prof4, 4.4, "v4")] {
             let w = c::cmsWriteTag(prof, 0x64657363, ml as *const _);
             let mut buf = vec![0u8; 1 << 20];
             let mut n = buf.len() as u32;
@@ -8943,7 +8949,7 @@ fn decide_type_arms() {
         // curves: 1-seg para type 0-5 -> para on v4; multi-seg /
         // inverted / type>5 -> curv on v4 too
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut seg = [
+        let seg = [
             c::CurveSegment {
                 x0: 0.0,
                 x1: 0.5,
@@ -8962,7 +8968,7 @@ fn decide_type_arms() {
             },
         ];
         let multiseg = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(), 2, seg.as_ptr());
-        let mut seg2 = [c::CurveSegment {
+        let seg2 = [c::CurveSegment {
             x0: 0.0,
             x1: 1.0,
             r#type: -1,
@@ -8995,7 +9001,7 @@ fn decide_type_arms() {
             1,
             c::cmsStageAllocMatrix(std::ptr::null_mut(), 3, 3, mat.as_ptr(), off.as_ptr()),
         );
-        let mut grid = vec![0u16; 8 * 3];
+        let mut grid = [0u16; 8 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = (i * 2730) as u16;
         }
@@ -9254,7 +9260,7 @@ fn tag_free_dup_arms() {
 #[test]
 fn mpe_cvst_write() {
     unsafe {
-        let mut seg = [c::CurveSegment {
+        let seg = [c::CurveSegment {
             x0: 0.0,
             x1: 1.0,
             r#type: 6,
@@ -9292,7 +9298,7 @@ fn mpe_cvst_write() {
             1,
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, curves2.as_ptr() as *mut _),
         );
-        let mut grid = vec![0u16; 8 * 3];
+        let mut grid = [0u16; 8 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = (i * 2730) as u16;
         }
@@ -9346,8 +9352,8 @@ fn multi_item_tag_write_arms() {
             std::ptr::null_mut(),
             3,
             3,
-            b"pre\0".as_ptr(),
-            b"post\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"post".as_ptr(),
         );
         for i in 0..3u32 {
             let mut name = [0u8; 256];
@@ -9747,7 +9753,7 @@ fn iohandler_edge_arms() {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             0,
-            b"w\0".as_ptr() as *const _,
+            c"w".as_ptr() as *const _,
         );
         eprintln!("memio={}", !io.is_null());
         if !io.is_null() {
@@ -9758,8 +9764,8 @@ fn iohandler_edge_arms() {
         // file IOhandler write path
         let fio = c::cmsOpenIOhandlerFromFile(
             std::ptr::null_mut(),
-            b"/dev/null\0".as_ptr() as *const _,
-            b"w\0".as_ptr() as *const _,
+            c"/dev/null".as_ptr() as *const _,
+            c"w".as_ptr() as *const _,
         );
         if !fio.is_null() {
             let s3 = c::cmsSaveProfileToIOhandler(prof, fio);
@@ -9980,7 +9986,7 @@ fn mpet_save_ararms() {
             (0x43324130, "c2a0"),
             (0x43324230, "c2b0"),
         ] {
-            for (stages, sname) in [("cv", "cv"), ("mat", "mat"), ("cv-mat", "cv-mat")] {
+            for (_stages, sname) in [("cv", "cv"), ("mat", "mat"), ("cv-mat", "cv-mat")] {
                 let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
                 if sname != "mat" {
                     c::cmsPipelineInsertStage(
@@ -10336,8 +10342,8 @@ fn save_tags_deep() {
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
         c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wk.as_mut_ptr() as *const _,
         );
         // same MLU to several text sigs
@@ -10518,7 +10524,7 @@ fn lut16_write_channels() {
         }
         // different per-channel curves hit the per-channel
         // serialization loops inside WriteSetOfCurves/WriteCLUT
-        for (c1, c2, c3, name) in [
+        for (c1, _c2, c3, name) in [
             ([g22, g22, g22], [g22, g22, g22], [g22, g22, g22], "same"),
             ([g22, g18, g26], [g26, g22, g18], [g18, g26, g22], "diff"),
             ([g10, g22, g10], [g22, g10, g22], [g10, g22, g10], "mixed"),
@@ -10629,7 +10635,7 @@ fn lut_write_tables() {
         let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         // different curve entry counts per channel
         let mut tab256 = vec![0u16; 256];
-        let mut tab16 = vec![0u16; 16];
+        let mut tab16 = [0u16; 16];
         let mut tab1024 = vec![0u16; 1024];
         for i in 0..256 {
             tab256[i] = (i * 255) as u16;
@@ -10647,7 +10653,7 @@ fn lut_write_tables() {
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 17) * 3855) as u16;
         }
-        for (c1, c2, c3, name) in [
+        for (c1, _c2, c3, name) in [
             (
                 [t256, t256, t256],
                 [t256, t256, t256],
@@ -10745,7 +10751,7 @@ fn lut_read_deep2() {
             (17, "grid17"),
             (33, "grid33"),
         ] {
-            for (stages, sname) in [
+            for (_stages, sname) in [
                 ("cv-clut-cv", "cv-clut-cv"),
                 ("cv-mat-clut-cv", "cv-mat-clut-cv"),
             ] {
@@ -10886,7 +10892,7 @@ fn lut16_write_deep() {
         let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 3.1);
         let mat = [1.0f64, 0.5, 0.0, 0.0, 0.9, 0.0, 0.1, 0.0, 0.8];
         // per-channel table sizes inside WriteSetOfCurves
-        let mut t64 = vec![0u16; 64];
+        let mut t64 = [0u16; 64];
         let mut t256 = vec![0u16; 256];
         let mut t1024 = vec![0u16; 1024];
         for i in 0..64 {
@@ -10905,7 +10911,7 @@ fn lut16_write_deep() {
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 17) * 3855) as u16;
         }
-        for (c1, c2, c3, name) in [
+        for (c1, _c2, c3, name) in [
             (
                 [c64, c64, c64],
                 [c64, c64, c64],
@@ -11254,18 +11260,18 @@ fn dict_meta_arms() {
         let mut wn = [0x64u32, 0x69, 0x73, 0x70, 0];
         c::cmsMLUsetWide(
             dn,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wn.as_mut_ptr() as *const _,
         );
-        let name = format!("dispkey\0");
+        let name = "dispkey\0".to_string();
         let mut wn2 = name
             .as_bytes()
             .iter()
             .map(|&b| b as i32)
             .collect::<Vec<i32>>();
         wn2.push(0);
-        let val = format!("dispval\0");
+        let val = "dispval\0".to_string();
         let mut wv2 = val
             .as_bytes()
             .iter()
@@ -11491,8 +11497,8 @@ fn save_tags_arms3() {
             let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
             c::cmsMLUsetWide(
                 ml,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
                 wk.as_mut_ptr() as *const _,
             );
             c::cmsWriteTag(prof, 0x64657363, ml as *const _);
@@ -11645,7 +11651,7 @@ fn lut_read_arms5() {
                 if !rp.is_null() {
                     let nt = c::cmsGetTagCount(rp);
                     for i in 0..nt as u32 {
-                        let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
+                        let sig = c::cmsGetTagSignature(rp as *const _, i);
                         let t = c::cmsReadTag(rp, sig);
                         if !t.is_null() {
                             let _t2 = c::cmsReadTag(rp, sig);
@@ -11691,8 +11697,8 @@ fn save_tags_arms4() {
         let mut wk = [0x74u32, 0x65, 0x73, 0x74, 0];
         c::cmsMLUsetWide(
             ml,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             wk.as_mut_ptr() as *const _,
         );
         for sig in [
@@ -11722,7 +11728,7 @@ fn save_tags_arms4() {
             if !rp.is_null() {
                 let nt = c::cmsGetTagCount(rp);
                 for i in 0..nt as u32 {
-                    let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
+                    let sig = c::cmsGetTagSignature(rp as *const _, i);
                     let _t = c::cmsReadTag(rp, sig);
                 }
                 let mut buf2 = vec![0u8; 1 << 22];
@@ -12219,7 +12225,7 @@ fn lut16_write_arms8() {
                         ),
                         "clut" => {
                             let np = 17u32;
-                            let total = (np.pow(ni as u32) * no) as usize;
+                            let total = (np.pow(ni) * no) as usize;
                             let mut grid = vec![0u16; total];
                             for (i, v) in grid.iter_mut().enumerate() {
                                 *v = ((i % 17) * 3855) as u16;
@@ -12561,7 +12567,7 @@ fn lut16_write_arms13() {
         let g3 = c::cmsBuildGamma(std::ptr::null_mut(), 3.1);
         let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         // per-channel different curve types + entry counts
-        let mut t64 = vec![0u16; 64];
+        let mut t64 = [0u16; 64];
         let mut t256 = vec![0u16; 256];
         for i in 0..64 {
             t64[i] = (i * 1023) as u16;
@@ -12571,7 +12577,7 @@ fn lut16_write_arms13() {
         }
         let c64 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 64, t64.as_ptr());
         let c256 = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 256, t256.as_ptr());
-        for (c1, c2, c3, name) in [
+        for (c1, _c2, c3, name) in [
             ([c64, c64, c64], [c64, c64, c64], [c64, c64, c64], "all64"),
             (
                 [c256, c256, c256],
@@ -12764,7 +12770,7 @@ fn save_tags_arms6() {
             if !rp.is_null() {
                 let nt = c::cmsGetTagCount(rp);
                 for i in 0..nt as u32 {
-                    let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
+                    let sig = c::cmsGetTagSignature(rp as *const _, i);
                     let _t = c::cmsReadTag(rp, sig);
                 }
                 c::cmsCloseProfile(rp);
@@ -13191,7 +13197,7 @@ unsafe extern "C" fn gated_write(
     io: *mut std::ffi::c_void,
     size: u32,
     buf: *const std::ffi::c_void,
-) -> i32 {
+) -> i32 { unsafe {
     use std::sync::atomic::Ordering::Relaxed;
     let n = WRITE_CALLS.fetch_add(1, Relaxed);
     if n >= WRITE_LIMIT.load(Relaxed) {
@@ -13199,27 +13205,27 @@ unsafe extern "C" fn gated_write(
     }
     let real: WriteFn = std::mem::transmute(REAL_WRITE.load(Relaxed));
     real(io, size, buf)
-}
+}}
 
-unsafe fn save_with_write_limit(prof: *mut std::ffi::c_void, buf: &mut [u8], limit: u32) -> i32 {
+unsafe fn save_with_write_limit(prof: *mut std::ffi::c_void, buf: &mut [u8], limit: u32) -> i32 { unsafe {
     use std::sync::atomic::Ordering::Relaxed;
     let io = c::cmsOpenIOhandlerFromMem(
         std::ptr::null_mut(),
         buf.as_mut_ptr(),
         buf.len() as u32,
-        b"w\0".as_ptr(),
+        c"w".as_ptr(),
     );
     assert!(!io.is_null());
     WRITE_CALLS.store(0, Relaxed);
     WRITE_LIMIT.store(limit, Relaxed);
     let real = *(io as *const usize).add(312 / 8);
     REAL_WRITE.store(real, Relaxed);
-    *(io as *mut usize).add(312 / 8) = gated_write as usize;
+    *(io as *mut usize).add(312 / 8) = gated_write as *const () as usize;
     let r = c::cmsSaveProfileToIOhandler(prof, io);
     *(io as *mut usize).add(312 / 8) = real;
     c::cmsCloseIOhandler(io);
     r
-}
+}}
 
 #[test]
 fn write_fail_arms() {
@@ -13443,7 +13449,7 @@ fn write_fail_arms2() {
         let w_scrn = c::cmsWriteTag(prof, 0x7363726e, &scrn as *const _ as *const _);
         // ucbg — UcrBg {ToneCurve*, ToneCurve*, MLU*}
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"ucbg\0".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"ucbg".as_ptr());
         #[repr(C)]
         struct Ucbg {
             u: *mut std::ffi::c_void,
@@ -13486,8 +13492,8 @@ fn write_fail_arms2() {
             std::ptr::null_mut(),
             2,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         let w_ncl = if !ncl.is_null() {
             let mut nm = [0u16; 32];
@@ -13557,7 +13563,7 @@ fn write_fail_arms3() {
         let seg = c::cmsBuildSegmentedToneCurve(std::ptr::null_mut(), 2, segs.as_ptr());
         let prof = c::cmsCreate_sRGBProfile();
         c::cmsSetProfileVersion(prof, 4.4);
-        let mut grid = vec![0u16; 3 * 3 * 3 * 3];
+        let mut grid = [0u16; 3 * 3 * 3 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 9) * 7281) as u16;
         }
@@ -13656,7 +13662,7 @@ unsafe extern "C" fn gated_read(
     buf: *mut std::ffi::c_void,
     size: u32,
     count: u32,
-) -> u32 {
+) -> u32 { unsafe {
     use std::sync::atomic::Ordering::Relaxed;
     let n = READ_CALLS.fetch_add(1, Relaxed);
     if n >= READ_LIMIT.load(Relaxed) {
@@ -13664,15 +13670,15 @@ unsafe extern "C" fn gated_read(
     }
     let real: ReadFn = std::mem::transmute(REAL_READ.load(Relaxed));
     real(io, buf, size, count)
-}
+}}
 
-unsafe fn open_gated(data: &[u8], limit: u32) -> (*mut std::ffi::c_void, *mut std::ffi::c_void) {
+unsafe fn open_gated(data: &[u8], limit: u32) -> (*mut std::ffi::c_void, *mut std::ffi::c_void) { unsafe {
     use std::sync::atomic::Ordering::Relaxed;
     let io = c::cmsOpenIOhandlerFromMem(
         std::ptr::null_mut(),
         data.as_ptr() as *mut u8,
         data.len() as u32,
-        b"r\0".as_ptr(),
+        c"r".as_ptr(),
     );
     if io.is_null() {
         return (io, std::ptr::null_mut());
@@ -13681,10 +13687,10 @@ unsafe fn open_gated(data: &[u8], limit: u32) -> (*mut std::ffi::c_void, *mut st
     READ_LIMIT.store(limit, Relaxed);
     let real = *(io as *const usize).add(280 / 8);
     REAL_READ.store(real, Relaxed);
-    *(io as *mut usize).add(280 / 8) = gated_read as usize;
+    *(io as *mut usize).add(280 / 8) = gated_read as *const () as usize;
     let prof = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io);
     (io, prof)
-}
+}}
 
 #[test]
 fn read_fail_arms() {
@@ -13835,8 +13841,8 @@ fn read_fail_arms() {
             std::ptr::null_mut(),
             2,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         if !ncl.is_null() {
             let mut nm = [0u16; 32];
@@ -13872,14 +13878,14 @@ fn read_fail_arms() {
             fn fork() -> i32;
             fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
             fn _exit(c: i32) -> !;
-            fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+            fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
         }
         // flush llvm-cov counters before _exit — %p.profraw keeps
         // each fork's data separate; absent in uninstrumented builds
         let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
             let f = dlsym(
                 std::ptr::null_mut(),
-                b"__llvm_profile_write_file\0".as_ptr() as *const i8,
+                c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
             );
             if f.is_null() {
                 None
@@ -13901,7 +13907,7 @@ fn read_fail_arms() {
                 if !rp.is_null() {
                     let nt = c::cmsGetTagCount(rp);
                     for i in 0..nt as u32 {
-                        let sig = c::cmsGetTagSignature(rp as *const _, i as u32);
+                        let sig = c::cmsGetTagSignature(rp as *const _, i);
                         let _t = c::cmsReadTag(rp, sig);
                     }
                     flush_cov!();
@@ -14031,7 +14037,7 @@ fn seg_cvst_arms() {
                 "all4",
             ),
         ];
-        let mut grid = vec![0u16; 3 * 3 * 3 * 3];
+        let mut grid = [0u16; 3 * 3 * 3 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 9) * 7281) as u16;
         }
@@ -14751,7 +14757,7 @@ fn lut8_write_arms2() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.6);
         let g3: *const *mut c::ToneCurve = [g, g, g].as_ptr() as *const *mut c::ToneCurve;
-        let mut grid2 = vec![0u16; 2 * 2 * 2 * 3];
+        let mut grid2 = [0u16; 2 * 2 * 2 * 3];
         let mut grid4 = vec![0u16; 2u32.pow(4) as usize * 4];
         for (i, v) in grid2.iter_mut().enumerate() {
             *v = (i * 111) as u16;
@@ -14890,12 +14896,12 @@ fn lut8_write_arms2() {
                     fn fork() -> i32;
                     fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
                     fn _exit(code: i32) -> !;
-                    fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+                    fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
                 }
                 let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
                     let f = dlsym(
                         std::ptr::null_mut(),
-                        b"__llvm_profile_write_file ".as_ptr() as *const i8,
+                        b"__llvm_profile_write_file ".as_ptr() as *const std::ffi::c_char,
                     );
                     if f.is_null() {
                         None
@@ -15136,7 +15142,7 @@ fn dict_ncl2_write_arms() {
                 continue;
             }
             let mlu1 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-            c::cmsMLUsetASCII(mlu1, b"en\0".as_ptr(), b"US\0".as_ptr(), b"disp\0".as_ptr());
+            c::cmsMLUsetASCII(mlu1, c"en".as_ptr(), c"US".as_ptr(), c"disp".as_ptr());
             for i in 0..entries {
                 let name_s = format!("k{i}\0");
                 let val_s = format!("v{i}\0");
@@ -15182,8 +15188,8 @@ fn dict_ncl2_write_arms() {
                 std::ptr::null_mut(),
                 ncol,
                 4,
-                b"pre\0".as_ptr(),
-                b"suf\0".as_ptr(),
+                c"pre".as_ptr(),
+                c"suf".as_ptr(),
             );
             if nl.is_null() {
                 continue;
@@ -15192,7 +15198,7 @@ fn dict_ncl2_write_arms() {
             let dev = [0x1000u16, 0x2000, 0x3000, 0x4000];
             for i in 0..ncol {
                 let nm = format!("color{i}\0");
-                c::cmsAppendNamedColor(nl, nm.as_ptr() as *const u8, pcs.as_ptr(), dev.as_ptr());
+                c::cmsAppendNamedColor(nl, (nm.as_ptr() as *const u8).cast(), pcs.as_ptr(), dev.as_ptr());
             }
             let prof = c::cmsCreate_sRGBProfile();
             c::cmsSetProfileVersion(prof, 4.4);
@@ -15231,18 +15237,18 @@ fn clut_sample_arms() {
         input: *const u16,
         out: *mut u16,
         _data: *mut std::ffi::c_void,
-    ) -> i32 {
+    ) -> i32 { unsafe {
         for i in 0..3 {
             *out.add(i) = (*input.add(i) as u32 * 32769 / 65535) as u16;
         }
         1
-    }
-    unsafe extern "C" fn sf(input: *const f32, out: *mut f32, _data: *mut std::ffi::c_void) -> i32 {
+    }}
+    unsafe extern "C" fn sf(input: *const f32, out: *mut f32, _data: *mut std::ffi::c_void) -> i32 { unsafe {
         for i in 0..3 {
             *out.add(i) = *input.add(i) * 0.9;
         }
         1
-    }
+    }}
     unsafe {
         for pts in [2u32, 3, 17] {
             let n = (pts * pts * pts * 3) as usize;
@@ -15284,7 +15290,7 @@ fn ps_lut_arms() {
             }
             for intent in [0u32, 1, 3] {
                 for flags in [0u32, 1, 0x0040] {
-                    let mut n = buf.len() as u32;
+                    let n = buf.len() as u32;
                     let r = c::cmsGetPostScriptCSA(
                         std::ptr::null_mut(),
                         p,
@@ -15293,7 +15299,7 @@ fn ps_lut_arms() {
                         buf.as_mut_ptr() as *mut _,
                         n,
                     );
-                    let mut n2 = buf.len() as u32;
+                    let n2 = buf.len() as u32;
                     let r2 = c::cmsGetPostScriptCRD(
                         std::ptr::null_mut(),
                         p,
@@ -15559,7 +15565,7 @@ fn lut8_read_arms2() {
         }
         for _ in 0..256usize {
             for c in 0..ich {
-                t.push(c.wrapping_mul(40) as u8);
+                t.push(c.wrapping_mul(40));
             }
         }
         // uipow(och, pts, ich) — saturating count of CLUT bytes
@@ -15575,7 +15581,7 @@ fn lut8_read_arms2() {
         }
         for _ in 0..256usize {
             for c in 0..och {
-                t.push(c.wrapping_mul(60) as u8);
+                t.push(c.wrapping_mul(60));
             }
         }
         t
@@ -15651,8 +15657,8 @@ fn namedcolor_arms() {
             std::ptr::null_mut(),
             2,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         assert!(!nl.is_null());
         let pcs = [0x1000u16, 0x2000, 0x3000];
@@ -15660,15 +15666,15 @@ fn namedcolor_arms() {
         for i in 0..40 {
             let nm = format!("c{i}\0");
             let r =
-                c::cmsAppendNamedColor(nl, nm.as_ptr() as *const u8, pcs.as_ptr(), dev.as_ptr());
+                c::cmsAppendNamedColor(nl, (nm.as_ptr() as *const u8).cast(), pcs.as_ptr(), dev.as_ptr());
             if i < 3 || i == 39 {
                 eprintln!("append {i}={r}");
             }
         }
-        let n = c::cmsNamedColorCount(nl);
+        let _n = c::cmsNamedColorCount(nl);
         // index lookups: hit / miss / prefix-match
         for name in ["c0\0", "c5\0", "c39\0", "zzz\0", "c\0", "PRE_c0\0"] {
-            let i = c::cmsNamedColorIndex(nl, name.as_ptr() as *const u8);
+            let i = c::cmsNamedColorIndex(nl, (name.as_ptr() as *const u8).cast());
             eprintln!("index {name:?}={i}");
         }
         // NamedColorInfo per-entry
@@ -15883,8 +15889,8 @@ fn mlu_ncl2_scr_read_arms() {
         t.extend_from_slice(&be32(n));
         for i in 0..n {
             let sh = shapes.get(i as usize).copied().unwrap_or(0);
-            t.extend_from_slice(&((30.0f64 + i as f64).to_bits() as u64).to_be_bytes());
-            t.extend_from_slice(&((45.0f64).to_bits() as u64).to_be_bytes());
+            t.extend_from_slice(&(30.0f64 + i as f64).to_bits().to_be_bytes());
+            t.extend_from_slice(&(45.0f64).to_bits().to_be_bytes());
             t.extend_from_slice(&be32(sh));
         }
         t
@@ -15929,11 +15935,11 @@ fn mlu_ncl2_scr_read_arms() {
             let m = c::cmsMLUalloc(std::ptr::null_mut(), 2);
             c::cmsMLUsetASCII(
                 m,
-                b"en\0".as_ptr(),
-                b"US\0".as_ptr(),
-                b"sample desc\0".as_ptr(),
+                c"en".as_ptr(),
+                c"US".as_ptr(),
+                c"sample desc".as_ptr(),
             );
-            c::cmsMLUsetASCII(m, b"de\0".as_ptr(), b"DE\0".as_ptr(), b"deutsch\0".as_ptr());
+            c::cmsMLUsetASCII(m, c"de".as_ptr(), c"DE".as_ptr(), c"deutsch".as_ptr());
             let prof = c::cmsCreate_sRGBProfile();
             c::cmsSetProfileVersion(prof, 4.4);
             let w = c::cmsWriteTag(prof, 0x64657363, m as *const _);
@@ -16207,9 +16213,9 @@ fn ucrbg_write_arms() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr(),
-            b"US\0".as_ptr(),
-            b"ucrbg desc\0".as_ptr(),
+            c"en".as_ptr(),
+            c"US".as_ptr(),
+            c"ucrbg desc".as_ptr(),
         );
         // cmsUcrBg { ToneCurve *Ucr, *Bg; cmsMLU *Desc; }
         let ucrbg = [
@@ -16291,9 +16297,9 @@ fn pseq_desc_tac_arms() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr(),
-            b"US\0".as_ptr(),
-            b"v2 description\0".as_ptr(),
+            c"en".as_ptr(),
+            c"US".as_ptr(),
+            c"v2 description".as_ptr(),
         );
         let w = c::cmsWriteTag(srgb, 0x64657363, mlu as *const _);
         let mut buf = vec![0u8; 1 << 20];
@@ -16362,7 +16368,7 @@ fn ps_input_io_arms() {
         c::cmsSetProfileVersion(inpc, 4.4);
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-        let mut grid = vec![0u16; 27 * 3];
+        let mut grid = [0u16; 27 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 23) * 2848) as u16;
         }
@@ -16403,24 +16409,24 @@ fn ps_input_io_arms() {
         }
         // file-IO error arms — nonexistent/dir/empty file
         let f1 = c::cmsOpenProfileFromFile(
-            b"/nonexistent/x.icc\0".as_ptr() as *const i8,
-            b"r\0".as_ptr() as *const u8,
+            c"/nonexistent/x.icc".as_ptr() as *const std::ffi::c_char,
+            (c"r".as_ptr() as *const u8).cast(),
         );
         let f2 = c::cmsOpenProfileFromFile(
-            b"/tmp\0".as_ptr() as *const i8,
-            b"r\0".as_ptr() as *const u8,
+            c"/tmp".as_ptr() as *const std::ffi::c_char,
+            (c"r".as_ptr() as *const u8).cast(),
         );
         let mut empty = std::env::temp_dir();
         empty.push("lcms_empty.icc");
         std::fs::write(&empty, b"").ok();
         let es = empty.to_string_lossy().into_owned() + "\0";
-        let f3 = c::cmsOpenProfileFromFile(es.as_ptr() as *const i8, b"r\0".as_ptr() as *const u8);
+        let f3 = c::cmsOpenProfileFromFile(es.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
         // 16-byte truncated header
-        std::fs::write(&empty, &[0u8; 16]).ok();
-        let f4 = c::cmsOpenProfileFromFile(es.as_ptr() as *const i8, b"r\0".as_ptr() as *const u8);
+        std::fs::write(&empty, [0u8; 16]).ok();
+        let f4 = c::cmsOpenProfileFromFile(es.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
         // garbage header
-        std::fs::write(&empty, &[0x41u8; 132]).ok();
-        let f5 = c::cmsOpenProfileFromFile(es.as_ptr() as *const i8, b"r\0".as_ptr() as *const u8);
+        std::fs::write(&empty, [0x41u8; 132]).ok();
+        let f5 = c::cmsOpenProfileFromFile(es.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
         eprintln!(
             "file miss={} dir={} empty={} trunc={} \
             garb={}",
@@ -16767,8 +16773,8 @@ fn lutab_read_arms() {
                 mab(
                     3,
                     3,
-                    &[lin.clone()],
-                    &[g2.clone()],
+                    std::slice::from_ref(&lin),
+                    std::slice::from_ref(&g2),
                     None,
                     None,
                     &[0i32; 9],
@@ -16977,9 +16983,9 @@ fn savetags_arms() {
             let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
             c::cmsMLUsetASCII(
                 mlu,
-                b"en\0".as_ptr(),
-                b"US\0".as_ptr(),
-                b"shared\0".as_ptr(),
+                c"en".as_ptr(),
+                c"US".as_ptr(),
+                c"shared".as_ptr(),
             );
             c::cmsWriteTag(prof, 0x64657363, mlu as *const _);
             c::cmsWriteTag(prof, 0x63707274, mlu as *const _);
@@ -17027,7 +17033,7 @@ fn lutba_write_arms() {
         let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
         let tc = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 5, tv.as_ptr());
         let dims = [3u32; 3];
-        let mut grid = vec![0u16; 27 * 3];
+        let mut grid = [0u16; 27 * 3];
         for (i, v) in grid.iter_mut().enumerate() {
             *v = ((i % 23) * 2848) as u16;
         }
@@ -17155,7 +17161,7 @@ fn intent_gamut_arms() {
         // proofing transform — gamut-check pipeline paths
         if !cmyk.is_null() {
             let r8 = (4u32 << 16) | (3 << 3) | 1;
-            let k8 = (6u32 << 16) | (4 << 3) | 1;
+            let _k8 = (6u32 << 16) | (4 << 3) | 1;
             for flags in [
                 0u32,
                 0x4000, /* SOFT-proof */
@@ -17320,12 +17326,12 @@ fn misc_tag_ctx_arms() {
         // MLU wide-char
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 2);
         let wv = [0x0068i32, 0x0069, 0x4E2D, 0];
-        c::cmsMLUsetWide(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), wv.as_ptr());
+        c::cmsMLUsetWide(mlu, c"en".as_ptr(), c"US".as_ptr(), wv.as_ptr());
         let mut ob = [0i32; 16];
         let got = c::cmsMLUgetWide(
             mlu,
-            b"en\0".as_ptr(),
-            b"US\0".as_ptr(),
+            c"en".as_ptr(),
+            c"US".as_ptr(),
             ob.as_mut_ptr(),
             (ob.len() * 4) as u32,
         );
@@ -17335,7 +17341,7 @@ fn misc_tag_ctx_arms() {
         // pipeline unlink
         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         let dims = [3u32; 3];
-        let grid = vec![0x4000u16; 81];
+        let grid = [0x4000u16; 81];
         c::cmsPipelineInsertStage(
             p,
             0,
@@ -17433,8 +17439,8 @@ fn cam02_utf8_gray_arms() {
             std::ptr::null_mut(),
             4,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         for name in [
             "pantone\u{00e9}\u{4e2d}".as_bytes(),
@@ -17444,7 +17450,7 @@ fn cam02_utf8_gray_arms() {
         ] {
             let r = c::cmsAppendNamedColor(
                 nl,
-                name.as_ptr(),
+                name.as_ptr().cast(),
                 &[0x1000u16, 0x2000, 0x3000] as *const u16 as *const _,
                 std::ptr::null(),
             );
@@ -17651,7 +17657,7 @@ fn cicp_crdi_mpecurve_arms() {
             (b"en\0", b"US\0", b"#2 b\0"),
             (b"en\0", b"US\0", b"#3 k\0"),
         ] {
-            c::cmsMLUsetASCII(mlu, lang.as_ptr(), key.as_ptr(), val.as_ptr());
+            c::cmsMLUsetASCII(mlu, lang.as_ptr().cast(), key.as_ptr().cast(), val.as_ptr().cast());
         }
         let prof = c::cmsCreate_sRGBProfile();
         let w = c::cmsWriteTag(prof, 0x63726469, mlu as *const _);
@@ -17721,7 +17727,8 @@ fn cicp_crdi_mpecurve_arms() {
             t.extend_from_slice(&be32(0x70617266)); // 'parf'
             t.extend_from_slice(&be32(0));
             t.extend_from_slice(&be16(0));
-            for v in [2.2f64] {
+            {
+                let v = 2.2f64;
                 t.extend_from_slice(&((v * 65536.0) as i32).to_be_bytes());
             }
             t
@@ -17955,27 +17962,27 @@ fn clr_curve_text_arms() {
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 4);
         c::cmsMLUsetASCII(
             mlu,
-            b"en\0".as_ptr(),
-            b"US\0".as_ptr(),
-            b"english\0".as_ptr(),
+            c"en".as_ptr(),
+            c"US".as_ptr(),
+            c"english".as_ptr(),
         );
         c::cmsMLUsetASCII(
             mlu,
-            b"de\0".as_ptr(),
-            b"DE\0".as_ptr(),
-            b"deutsch\0".as_ptr(),
+            c"de".as_ptr(),
+            c"DE".as_ptr(),
+            c"deutsch".as_ptr(),
         );
         c::cmsMLUsetASCII(
             mlu,
-            b"fr\0".as_ptr(),
-            b"FR\0".as_ptr(),
-            b"francais\0".as_ptr(),
+            c"fr".as_ptr(),
+            c"FR".as_ptr(),
+            c"francais".as_ptr(),
         );
         c::cmsMLUsetASCII(
             mlu,
-            b"ja\0".as_ptr(),
-            b"JP\0".as_ptr(),
-            b"nihongo\0".as_ptr(),
+            c"ja".as_ptr(),
+            c"JP".as_ptr(),
+            c"nihongo".as_ptr(),
         );
         for sig in [0x64657363u32, 0x63707274, 0x646D6E64, 0x646D6464] {
             let prof = c::cmsCreate_sRGBProfile();
@@ -18029,7 +18036,7 @@ fn float_output_arms() {
             // float mpet pipeline — forces the float tag path
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let dims = [2u32; 3];
-            let grid = vec![0.5f32; 8 * 3];
+            let grid = [0.5f32; 8 * 3];
             c::cmsPipelineInsertStage(
                 p,
                 0,
@@ -18055,7 +18062,8 @@ fn float_output_arms() {
                 0x58595A20 => x8,
                 _ => r8,
             };
-            for (outp, ofmt) in [(srgb, r8)] {
+            {
+                let (outp, ofmt) = (srgb, r8);
                 // profile as OUTPUT — drives the b2a output path
                 let t = c::cmsCreateTransform(outp, ofmt, prof, fmt, 0, 0);
                 eprintln!("{name} w={w} t={}", !t.is_null());
@@ -18103,7 +18111,7 @@ fn api_misc_arms() {
         eprintln!("reveval={r} {out:?}");
         // CLUT float stage
         let dims = [2u32; 3];
-        let grid = vec![0.5f32; 24];
+        let grid = [0.5f32; 24];
         let cf = c::cmsStageAllocCLutFloatGranular(
             std::ptr::null_mut(),
             dims.as_ptr(),
@@ -18164,12 +18172,12 @@ fn ctx_dup_plugin_arms() {
         fn fork() -> i32;
         fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
         fn _exit(code: i32) -> !;
-        fn dlsym(h: *mut std::ffi::c_void, n: *const i8) -> *mut std::ffi::c_void;
+        fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
     }
     let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
         let f = dlsym(
             std::ptr::null_mut(),
-            b"__llvm_profile_write_file\0".as_ptr() as *const i8,
+            c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
         );
         if f.is_null() {
             None
@@ -18200,7 +18208,7 @@ fn ctx_dup_plugin_arms() {
             *(b as *mut usize).add(5) = 0; // next
             *(b as *mut usize).add(6) = interp as *const () as usize; // factory
             let ctx = c::cmsCreateContext(pl.as_mut_ptr() as *mut _, std::ptr::null_mut());
-            let r1 = 1;
+            let _r1 = 1;
             // dup the context — exercises the Dup* lists
             let d1 = c::cmsDupContext(ctx, std::ptr::null_mut());
             let mut ud = 0x99u32;
@@ -18337,7 +18345,7 @@ fn writematrix_matshaper_arms() {
 #[test]
 fn stream_io_arms() {
     unsafe extern "C" {
-        fn fopen(p: *const i8, m: *const i8) -> *mut std::ffi::c_void;
+        fn fopen(p: *const std::ffi::c_char, m: *const std::ffi::c_char) -> *mut std::ffi::c_void;
         fn fclose(f: *mut std::ffi::c_void) -> i32;
     }
     unsafe {
@@ -18346,21 +18354,21 @@ fn stream_io_arms() {
         let f = dir.join("lcms_stream_test.icc");
         let srgb = c::cmsCreate_sRGBProfile();
         let path = f.to_string_lossy().into_owned() + "\0";
-        let s = c::cmsSaveProfileToFile(srgb, path.as_ptr() as *const i8);
+        let s = c::cmsSaveProfileToFile(srgb, path.as_ptr() as *const std::ffi::c_char);
         eprintln!("save-file={s}");
         // open via stream (FILE*) — profile close consumes fh
-        let fh = fopen(path.as_ptr() as *const i8, b"rb\0".as_ptr() as *const i8);
+        let fh = fopen(path.as_ptr() as *const std::ffi::c_char, c"rb".as_ptr() as *const std::ffi::c_char);
         let p = if !fh.is_null() {
-            c::cmsOpenProfileFromStream(fh as *mut _, b"r\0".as_ptr() as *const i8)
+            c::cmsOpenProfileFromStream(fh as *mut _, c"r".as_ptr() as *const std::ffi::c_char)
         } else {
             std::ptr::null_mut()
         };
-        let fh2 = fopen(path.as_ptr() as *const i8, b"rb\0".as_ptr() as *const i8);
+        let fh2 = fopen(path.as_ptr() as *const std::ffi::c_char, c"rb".as_ptr() as *const std::ffi::c_char);
         let p2 = if !fh2.is_null() {
             c::cmsOpenProfileFromStreamTHR(
                 std::ptr::null_mut(),
                 fh2 as *mut _,
-                b"r\0".as_ptr() as *const i8,
+                c"r".as_ptr() as *const std::ffi::c_char,
             )
         } else {
             std::ptr::null_mut()
@@ -18378,11 +18386,11 @@ fn stream_io_arms() {
         }
         // stream on a garbage file
         let fh = fopen(
-            b"/etc/hostname\0".as_ptr() as *const i8,
-            b"rb\0".as_ptr() as *const i8,
+            c"/etc/hostname".as_ptr() as *const std::ffi::c_char,
+            c"rb".as_ptr() as *const std::ffi::c_char,
         );
         if !fh.is_null() {
-            let p = c::cmsOpenProfileFromStream(fh as *mut _, b"r\0".as_ptr() as *const i8);
+            let p = c::cmsOpenProfileFromStream(fh as *mut _, c"r".as_ptr() as *const std::ffi::c_char);
             eprintln!("garbage-stream={}", !p.is_null());
             if !p.is_null() {
                 c::cmsCloseProfile(p);
@@ -18394,7 +18402,7 @@ fn stream_io_arms() {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             0,
-            b"w\0".as_ptr(),
+            c"w".as_ptr(),
         );
         let s2 = c::cmsSaveProfileToIOhandler(srgb, ioh);
         eprintln!("save-ioh={s2}");
@@ -18457,24 +18465,24 @@ fn header_getset_arms() {
                 let n = c::cmsGetProfileInfo(
                     p,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
                 );
                 let n2 = c::cmsGetProfileInfoASCII(
                     p,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
                 );
                 let n3 = c::cmsGetProfileInfoUTF8(
                     p,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
                 );
@@ -18591,7 +18599,7 @@ fn lut_dispatch_arms() {
         // build profiles with different LUT tag types
         let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
         let tc = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 5, tv.as_ptr());
-        for (ver, use_mab, name) in [
+        for (ver, _use_mab, name) in [
             (2.1f64, false, "v2-mft2"),
             (4.4, false, "v4-mft2"),
             (4.4, true, "v4-mab"),
@@ -18612,7 +18620,7 @@ fn lut_dispatch_arms() {
                 ),
             );
             let dims = [3u32; 3];
-            let mut grid = vec![0u16; 27 * 3];
+            let mut grid = [0u16; 27 * 3];
             for (i, v) in grid.iter_mut().enumerate() {
                 *v = ((i % 23) * 2848) as u16;
             }
@@ -18675,14 +18683,14 @@ fn stage_slice_arms() {
             std::ptr::null_mut(),
             4,
             4,
-            b"pre\0".as_ptr(),
-            b"suf\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"suf".as_ptr(),
         );
         for i in 0..8 {
             let name = format!("n{i}\0");
             c::cmsAppendNamedColor(
                 nl,
-                name.as_ptr(),
+                name.as_ptr().cast(),
                 &[0x1000u16, 0x2000, 0x3000, 0x4000] as *const u16 as *const _,
                 &[0x5000u16, 0x6000, 0x7000, 0x8000] as *const u16 as *const _,
             );
@@ -18835,7 +18843,7 @@ fn ps_res_arms() {
                     std::ptr::null_mut(),
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
-                    b"w\0".as_ptr(),
+                    c"w".as_ptr(),
                 );
                 let r = c::cmsGetPostScriptColorResource(std::ptr::null_mut(), ty, p, 0, 0, io);
                 eprintln!("{name} res{ty}={r}");
@@ -19103,7 +19111,7 @@ fn extra_chan_floatin_arms() {
             c::cmsSetProfileVersion(prof, 4.4);
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let dims = [2u32; 3];
-            let grid = vec![0.5f32; 24];
+            let grid = [0.5f32; 24];
             c::cmsPipelineInsertStage(
                 p,
                 0,
@@ -19154,15 +19162,15 @@ fn mlu_pipe_dup_arms() {
     unsafe {
         // MLU dup + UTF8 getter
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 4);
-        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"hello\0".as_ptr());
-        c::cmsMLUsetASCII(mlu, b"de\0".as_ptr(), b"DE\0".as_ptr(), b"hallo\0".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"hello".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"de".as_ptr(), c"DE".as_ptr(), c"hallo".as_ptr());
         let d = c::cmsMLUdup(mlu);
         let mut u8buf = [0u8; 256];
         for lang in [b"en\0" as &[u8], b"US\0", b"de\0", b"DE\0", b"xx\0"] {
             let n = c::cmsMLUgetUTF8(
                 d,
-                lang.as_ptr(),
-                lang.as_ptr(),
+                lang.as_ptr().cast(),
+                lang.as_ptr().cast(),
                 u8buf.as_mut_ptr() as *mut _,
                 u8buf.len() as u32,
             );
@@ -19179,7 +19187,7 @@ fn mlu_pipe_dup_arms() {
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
         );
         let dims = [3u32; 3];
-        let grid = vec![0x4000u16; 81];
+        let grid = [0x4000u16; 81];
         c::cmsPipelineInsertStage(
             p,
             1,
@@ -19411,12 +19419,12 @@ fn stage_placeholder_arms() {
         let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
         let tc = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 5, tv.as_ptr());
         let nl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, c"p".as_ptr(), c"s".as_ptr());
         for i in 0..4 {
             let nm = format!("n{i}\0");
             let pcs = [0x1000u16; 4];
             let col = [0x2000u16; 4];
-            c::cmsAppendNamedColor(nl, nm.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         let mut stages: Vec<*mut std::ffi::c_void> = Vec::new();
         // identity
@@ -19446,7 +19454,7 @@ fn stage_placeholder_arms() {
         ));
         // clut variants
         let dims = [3u32; 3];
-        let grid16 = vec![0x4000u16; 81];
+        let grid16 = [0x4000u16; 81];
         stages.push(c::cmsStageAllocCLut16bitGranular(
             std::ptr::null_mut(),
             dims.as_ptr(),
@@ -19462,7 +19470,7 @@ fn stage_placeholder_arms() {
             3,
             gridf.as_ptr(),
         ));
-        let gridf2 = vec![0.5f32; 24];
+        let gridf2 = [0.5f32; 24];
         stages.push(c::cmsStageAllocCLutFloat(
             std::ptr::null_mut(),
             2,
@@ -19523,15 +19531,15 @@ fn misc_small_file_arms() {
     unsafe {
         // named-color list — grow/copy/index edge cases
         let nl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, c"p".as_ptr(), c"s".as_ptr());
         for i in 0..16 {
             let nm = format!("color{i}\0");
             let pcs = [0x1000u16; 4];
             let col = [0x2000u16; 4];
-            c::cmsAppendNamedColor(nl, nm.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         let nl2 = c::cmsDupNamedColorList(nl);
-        let n = c::cmsNamedColorCount(nl2);
+        let _n = c::cmsNamedColorCount(nl2);
         for i in [0u32, 4, 15, 99] {
             let mut nm = [0u8; 256];
             let mut pcs = [0u16; 4];
@@ -19539,7 +19547,7 @@ fn misc_small_file_arms() {
             let r = c::cmsNamedColorInfo(
                 nl2,
                 i,
-                nm.as_mut_ptr(),
+                nm.as_mut_ptr().cast(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 pcs.as_mut_ptr(),
@@ -19554,7 +19562,7 @@ fn misc_small_file_arms() {
             b"\0",
             b"COLOR0\0",
         ] {
-            let idx = c::cmsNamedColorIndex(nl2, name.as_ptr());
+            let idx = c::cmsNamedColorIndex(nl2, name.as_ptr().cast());
             eprintln!("idx {name:?}={idx}");
         }
         c::cmsFreeNamedColorList(nl2);
@@ -19567,8 +19575,8 @@ fn misc_small_file_arms() {
         for lang in [b"en\0" as &[u8], b"US\0", b"zz\0"] {
             let r = c::cmsMLUgetUTF8(
                 m3,
-                lang.as_ptr(),
-                lang.as_ptr(),
+                lang.as_ptr().cast(),
+                lang.as_ptr().cast(),
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as u32,
             );
@@ -19624,7 +19632,7 @@ fn error_handler_arms() {
                 if text.is_null() {
                     None
                 } else {
-                    Some(std::ffi::CStr::from_ptr(text as *const i8))
+                    Some(std::ffi::CStr::from_ptr(text as *const std::ffi::c_char))
                 }
             });
         }
@@ -19659,7 +19667,7 @@ fn error_handler_arms() {
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 1, [g].as_ptr() as *mut _),
         );
         let dims1 = [4u32];
-        let grid1 = vec![0x4000u16; 4];
+        let grid1 = [0x4000u16; 4];
         c::cmsPipelineInsertStage(
             p,
             1,
@@ -19735,7 +19743,7 @@ fn io_internal_arms() {
         // FileIO — write to tmpfs file + reopen
         let tmpp = std::env::var("HOME").unwrap() + "/tmp/lcms_io_test.icc";
         std::fs::create_dir_all(std::env::var("HOME").unwrap() + "/tmp").ok();
-        let wf = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const i8, b"wb\0".as_ptr());
+        let wf = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"wb".as_ptr());
         eprintln!("wf={}", !wf.is_null());
         if !wf.is_null() {
             c::cmsCloseProfile(wf);
@@ -19745,7 +19753,7 @@ fn io_internal_arms() {
         let mut fn_ = fbuf.len() as u32;
         let s2 = c::cmsSaveProfileToMem(srgb, fbuf.as_mut_ptr() as *mut _, &mut fn_);
         std::fs::write(&tmpp, &fbuf[..fn_ as usize]).ok();
-        let rf = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const i8, b"rb\0".as_ptr());
+        let rf = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"rb".as_ptr());
         eprintln!("s2={s2} rf={}", !rf.is_null());
         if !rf.is_null() {
             c::cmsCloseProfile(rf);
@@ -19753,10 +19761,10 @@ fn io_internal_arms() {
         std::fs::remove_file(&tmpp).ok();
         // bad path + bad mode
         let bad = c::cmsOpenProfileFromFile(
-            b"/nonexistent/path/x.icc\0".as_ptr() as *const i8,
-            b"rb\0".as_ptr(),
+            c"/nonexistent/path/x.icc".as_ptr() as *const std::ffi::c_char,
+            c"rb".as_ptr(),
         );
-        let bad2 = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const i8, b"xx\0".as_ptr());
+        let bad2 = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"xx".as_ptr());
         eprintln!("badpath={} badmode={}", !bad.is_null(), !bad2.is_null());
         c::cmsCloseProfile(srgb);
     }
@@ -19906,7 +19914,7 @@ fn cmstypes_residual_arms() {
         let mut buf = vec![0u8; 1 << 20];
         // write+read each atomic tag type via placeholder
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"desc\0".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"desc".as_ptr());
         // cmsScreening layout: Frequency[16]f64 +
         //   ScreenAngle[16]f64 + SpotShape[16]u32
         let mut scr = vec![0u8; 16 * 8 + 16 * 8 + 16 * 4];
@@ -19914,7 +19922,7 @@ fn cmstypes_residual_arms() {
             let f = (10.0f64).to_be_bytes();
             scr[i * 8..i * 8 + 8].copy_from_slice(&f);
         }
-        let meas = c::CieXyz {
+        let _meas = c::CieXyz {
             X: 0.9642,
             Y: 1.0,
             Z: 0.8249,
@@ -19967,12 +19975,12 @@ fn cmstypes_residual_arms() {
             c::cmsSetColorSpace(prof, 0x52474220);
             c::cmsSetPCS(prof, 0x58595A20);
             let w = match write_fn {
-                0 => c::cmsWriteTag(prof, sig, b"test text\0".as_ptr() as *const _),
+                0 => c::cmsWriteTag(prof, sig, c"test text".as_ptr() as *const _),
                 1 | 9 | 10 => c::cmsWriteTag(prof, sig, mlu as *const _),
-                13 | 14 | 15 | 16 => {
+                13..=16 => {
                     // cmsICCData { flag, len, data[1] }
                     // host-endian struct fields + spare
-                    let mut d = vec![0u8; 8 + 32];
+                    let mut d = [0u8; 8 + 32];
                     d[0..4].copy_from_slice(&0u32.to_ne_bytes());
                     d[4..8].copy_from_slice(&16u32.to_ne_bytes());
                     c::cmsWriteTag(prof, sig, d.as_ptr() as *const _)
@@ -19983,8 +19991,8 @@ fn cmstypes_residual_arms() {
                 }
                 4 => c::cmsWriteTag(prof, sig, chad_mat.as_ptr() as *const _),
                 5 => c::cmsWriteTag(prof, sig, &clro as *const c::CiexyYTriple as *const _),
-                17 => c::cmsWriteTag(prof, sig, b"grda text\0".as_ptr() as *const _),
-                _ => c::cmsWriteTag(prof, sig, b"test\0".as_ptr() as *const _),
+                17 => c::cmsWriteTag(prof, sig, c"grda text".as_ptr() as *const _),
+                _ => c::cmsWriteTag(prof, sig, c"test".as_ptr() as *const _),
             };
             let mut n = buf.len() as u32;
             let s = c::cmsSaveProfileToMem(prof, buf.as_mut_ptr() as *mut _, &mut n);
@@ -20041,7 +20049,7 @@ fn lut_builder_residual_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // named-color + abstract + devicelink + colorspace
         //   profile classes
         for (cls, cs, pcs, name) in [
@@ -20065,7 +20073,7 @@ fn lut_builder_residual_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -20188,7 +20196,7 @@ fn misc_residual2_arms() {
         // cmssamp — GBD + TAC + desaturate residuals
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         let gbd = c::cmsGBDAlloc(std::ptr::null_mut());
         for i in 0..64 {
             let l_ = c::CieLab {
@@ -20352,11 +20360,11 @@ fn plugin_ps_io_arms() {
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as u32,
             );
-            let mut io = c::cmsOpenIOhandlerFromMem(
+            let io = c::cmsOpenIOhandlerFromMem(
                 std::ptr::null_mut(),
                 buf.as_mut_ptr() as *mut _,
                 buf.len() as u32,
-                b"w\0".as_ptr(),
+                c"w".as_ptr(),
             );
             let col = c::cmsGetPostScriptColorResource(
                 std::ptr::null_mut(),
@@ -20442,7 +20450,7 @@ fn io_residual3_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [0.5f64, 0.1, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.5];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match stage_fn {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -20724,12 +20732,12 @@ fn alpha_named_md5_arms() {
         }
         // named-color on large lists + dup + index bounds
         let nl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 4, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 1, 4, c"p".as_ptr(), c"s".as_ptr());
         for i in 0..64 {
             let nm = format!("n{:03}\0", i);
             let pcs = [(i * 4) as u16; 4];
             let col = [(i * 8) as u16; 4];
-            c::cmsAppendNamedColor(nl, nm.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         let nl2 = c::cmsDupNamedColorList(nl);
         for i in [0u32, 32, 63, 64, 99] {
@@ -20739,7 +20747,7 @@ fn alpha_named_md5_arms() {
             let r = c::cmsNamedColorInfo(
                 nl2,
                 i,
-                nm.as_mut_ptr(),
+                nm.as_mut_ptr().cast(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
                 pcs.as_mut_ptr(),
@@ -20764,7 +20772,7 @@ fn cmstypes_io_residual_arms() {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         // unusual tag payloads — typed structs per sig
         let mlu2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetASCII(mlu2, b"en\0".as_ptr(), b"US\0".as_ptr(), b"d\0".as_ptr());
+        c::cmsMLUsetASCII(mlu2, c"en".as_ptr(), c"US".as_ptr(), c"d".as_ptr());
         let xyzv = c::CieXyz {
             X: 0.9642,
             Y: 1.0,
@@ -20909,7 +20917,7 @@ fn io_internal4_arms() {
         // profile-open internals — corrupt headers
         let mut buf = vec![0u8; 1 << 20];
         let mut n = buf.len() as u32;
-        let s = c::cmsSaveProfileToMem(srgb, buf.as_mut_ptr() as *mut _, &mut n);
+        let _s = c::cmsSaveProfileToMem(srgb, buf.as_mut_ptr() as *mut _, &mut n);
         let hdr_corrupts = [
             (0usize, "size"),
             (4, "cmm"),
@@ -21010,8 +21018,8 @@ fn io_internal5_arms() {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _r8 = (4u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // profile-info internals — all getters on all
         //   profile classes
         for (cls, cs, pcs, name) in [
@@ -21065,7 +21073,7 @@ fn io_internal5_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [0.9f64, 0.05, 0.0, 0.0, 0.9, 0.05, 0.0, 0.0, 0.9];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match stages {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -21305,7 +21313,7 @@ fn internal_final2_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // extended transform internals — multiprofile with
         //   BPC/adaptation/gamut flags
         let mut profs = [srgb, lab];
@@ -21421,12 +21429,12 @@ fn internal_final2_arms() {
         c::cmsCloseProfile(prof);
         // named-color list on profile
         let nl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, b"p\0".as_ptr(), b"s\0".as_ptr());
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, c"p".as_ptr(), c"s".as_ptr());
         for i in 0..4 {
             let nm = format!("n{i}\0");
             let pcs = [0x1000u16; 4];
             let col = [0x2000u16; 4];
-            c::cmsAppendNamedColor(nl, nm.as_ptr(), pcs.as_ptr(), col.as_ptr());
+            c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
         }
         let prof2 = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof2, 0x6E6D636C);
@@ -21468,7 +21476,7 @@ fn internal_final3_arms() {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let r8 = (4u32 << 16) | (3 << 3) | 1;
+        let _r8 = (4u32 << 16) | (3 << 3) | 1;
         let l8 = (10u32 << 16) | (3 << 3) | 1;
         // all intent x format combos on srgb->lab
         for intent in 0..8u32 {
@@ -21506,16 +21514,16 @@ fn internal_final3_arms() {
                 let n = c::cmsGetProfileInfo(
                     prof,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
                 );
                 let n2 = c::cmsGetProfileInfoASCII(
                     prof,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
                 );
@@ -21639,8 +21647,8 @@ fn internal_final4_arms() {
                 let r = c::cmsGetProfileInfo(
                     rp,
                     info,
-                    b"en\0".as_ptr() as *const i8,
-                    b"US\0".as_ptr() as *const i8,
+                    c"en".as_ptr() as *const std::ffi::c_char,
+                    c"US".as_ptr() as *const std::ffi::c_char,
                     ibuf.as_mut_ptr() as *mut _,
                     ibuf.len() as u32,
                 );
@@ -21664,7 +21672,7 @@ fn internal_final5_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // all 4 profile-class x all-intent transforms
         for (cls, cs, pcs, name) in [
             (0x6D6E7472u32, 0x52474220, 0x58595A20, "mntr"),
@@ -21685,7 +21693,7 @@ fn internal_final5_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -21734,7 +21742,7 @@ fn internal_final5_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let mk = |ty: u32| -> *mut std::ffi::c_void {
                 match ty {
                     0 => c::cmsStageAllocMatrix(
@@ -22050,7 +22058,7 @@ fn tagtable_arms() {
         }
         // grow tag table — write many sigs
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"x\0".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
         for i in 0..32u32 {
             let sig = 0x74657374 + (i * 0x01000000);
             let w = c::cmsWriteTag(prof, sig, mlu as *const _);
@@ -22117,7 +22125,7 @@ fn fileio_err_arms() {
             }
             let cs = std::ffi::CString::new(path.to_str().unwrap_or("/dev/null"))
                 .unwrap_or_else(|_| std::ffi::CString::new("/dev/null").unwrap());
-            let p = c::cmsOpenProfileFromFile(cs.as_ptr(), mode.as_ptr() as *const u8);
+            let p = c::cmsOpenProfileFromFile(cs.as_ptr(), (mode.as_ptr() as *const u8).cast());
             eprintln!("{name}={}", !p.is_null());
             if !p.is_null() {
                 c::cmsCloseProfile(p);
@@ -22221,7 +22229,7 @@ fn internal_final7_arms() {
             let prof5 = c::cmsCreateXYZProfileTHR(std::ptr::null_mut());
             let prof6 = c::cmsCreate_sRGBProfileTHR(std::ptr::null_mut());
             let prof7 = c::cmsCreateNULLProfileTHR(std::ptr::null_mut());
-            for (p, nm) in [
+            for (p, _nm) in [
                 (prof, "rgb"),
                 (prof2, "gray"),
                 (prof3, "lab4"),
@@ -22428,7 +22436,7 @@ fn internal_final8_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -22595,7 +22603,7 @@ fn internal_final10_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile with proofing profile slots
         let mut profs = [srgb, lab, srgb];
         for intent in 0..8u32 {
@@ -22695,7 +22703,7 @@ fn internal_final11_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // profile-class x format matrix
         for (cls, cs, pcs, name) in [
             (0x6D6E7472u32, 0x52474220, 0x58595A20, "mntr-rgb"),
@@ -22719,7 +22727,7 @@ fn internal_final11_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -22815,7 +22823,7 @@ fn internal_final12_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile with proofing-profile slots in all
         //   positions
         let mut profs = [srgb, lab, srgb, lab, srgb];
@@ -22887,19 +22895,19 @@ fn internal_final12_arms() {
         }
         // profile-info on profile classes + locales
         for (loc_l, loc_c, name) in [
-            (b"en\0".as_ptr(), b"US\0".as_ptr(), "en-US"),
-            (b"de\0".as_ptr(), b"DE\0".as_ptr(), "de-DE"),
-            (b"fr\0".as_ptr(), b"FR\0".as_ptr(), "fr-FR"),
-            (b"ja\0".as_ptr(), b"JP\0".as_ptr(), "ja-JP"),
-            (b"xx\0".as_ptr(), b"XX\0".as_ptr(), "xx-XX"),
+            (c"en".as_ptr(), c"US".as_ptr(), "en-US"),
+            (c"de".as_ptr(), c"DE".as_ptr(), "de-DE"),
+            (c"fr".as_ptr(), c"FR".as_ptr(), "fr-FR"),
+            (c"ja".as_ptr(), c"JP".as_ptr(), "ja-JP"),
+            (c"xx".as_ptr(), c"XX".as_ptr(), "xx-XX"),
         ] {
             let mut buf = [0u8; 512];
             for info in 0..10u32 {
                 let r = c::cmsGetProfileInfo(
                     srgb,
                     info,
-                    loc_l as *const i8,
-                    loc_c as *const i8,
+                    loc_l as *const std::ffi::c_char,
+                    loc_c as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
                 );
@@ -22924,7 +22932,7 @@ fn internal_final13_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile with all profile-class combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
         for (profs_, name) in [
@@ -22987,7 +22995,7 @@ fn internal_final13_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23040,7 +23048,7 @@ fn internal_final14_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // all profile-version x class x intent transforms
         for ver in [2.0f64, 2.1, 2.4, 3.0, 4.0, 4.3, 4.4, 5.0] {
             let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
@@ -23055,7 +23063,7 @@ fn internal_final14_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23108,7 +23116,7 @@ fn internal_final14_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23160,7 +23168,7 @@ fn internal_final15_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all-intent x all-profile combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
         for (profs_, name) in [
@@ -23221,7 +23229,7 @@ fn internal_final15_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23274,7 +23282,7 @@ fn internal_final16_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile with proofing slots on every intent
         let mut profs = [srgb, lab, srgb];
         for intent in 0..16u32 {
@@ -23340,7 +23348,7 @@ fn internal_final16_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23476,7 +23484,7 @@ fn internal_final17_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23529,7 +23537,7 @@ fn internal_final18_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-triple + intent + flag
         //   combinations
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -23584,7 +23592,7 @@ fn internal_final18_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23649,7 +23657,7 @@ fn internal_final19_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transform on profiles with unusual profile-info
         //   tags (desc/mnfr/mdl/cprt/mluc vs desc)
         for (sig, use_mluc, name) in [
@@ -23669,9 +23677,9 @@ fn internal_final19_arms() {
             c::cmsSetProfileVersion(prof, 4.4);
             if use_mluc {
                 let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 3);
-                c::cmsMLUsetASCII(mlu, b"en\0".as_ptr(), b"US\0".as_ptr(), b"e\0".as_ptr());
-                c::cmsMLUsetASCII(mlu, b"de\0".as_ptr(), b"DE\0".as_ptr(), b"d\0".as_ptr());
-                c::cmsMLUsetASCII(mlu, b"ja\0".as_ptr(), b"JP\0".as_ptr(), b"j\0".as_ptr());
+                c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"e".as_ptr());
+                c::cmsMLUsetASCII(mlu, c"de".as_ptr(), c"DE".as_ptr(), c"d".as_ptr());
+                c::cmsMLUsetASCII(mlu, c"ja".as_ptr(), c"JP".as_ptr(), c"j".as_ptr());
                 c::cmsWriteTag(prof, sig, mlu as *const _);
                 c::cmsMLUfree(mlu);
             } else {
@@ -23736,7 +23744,7 @@ fn internal_final19_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -23904,7 +23912,7 @@ fn internal_final21_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile with proofing-profile on all profile-
         //   class combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -23983,7 +23991,7 @@ fn internal_final21_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -24036,7 +24044,7 @@ fn internal_final22_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with unusual tag payloads —
         //   every common tag sig written with a stage
         for (st_idx, name) in [(0u32, "mat"), (1, "cv"), (2, "idn"), (3, "clut")] {
@@ -24048,7 +24056,7 @@ fn internal_final22_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match st_idx {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -24171,7 +24179,7 @@ fn internal_final23_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (ptype, name) in [
@@ -24191,7 +24199,7 @@ fn internal_final23_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match ptype {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -24383,7 +24391,7 @@ fn internal_final24_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -24404,7 +24412,7 @@ fn internal_final24_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match st {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -24602,7 +24610,7 @@ fn internal_final25_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -24674,7 +24682,7 @@ fn internal_final26_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all profile-version x
         //   tag-type combos
         for ver in [2.0f64, 2.4, 4.0, 4.3, 4.4] {
@@ -24686,7 +24694,7 @@ fn internal_final26_arms() {
                 c::cmsSetProfileVersion(prof, ver);
                 let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
                 let dims = [3u32; 3];
-                let grid = vec![0x4000u16; 81];
+                let grid = [0x4000u16; 81];
                 match st {
                     0 => {
                         c::cmsPipelineInsertStage(
@@ -24779,7 +24787,7 @@ fn internal_final27_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -24836,7 +24844,7 @@ fn internal_final27_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match st {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -25015,7 +25023,7 @@ fn internal_final28_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -25133,7 +25141,7 @@ fn internal_final29_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -25187,7 +25195,7 @@ fn internal_final29_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             match st {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -25365,7 +25373,7 @@ fn internal_final30_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -25414,8 +25422,8 @@ fn internal_final30_arms() {
             c::cmsSetPCS(prof, 0x58595A20);
             c::cmsSetProfileVersion(prof, 4.4);
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
-            let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let _dims = [3u32; 3];
+            let _grid = [0x4000u16; 81];
             let n_stages = match st {
                 0 => 0,
                 1 => 1,
@@ -25425,7 +25433,7 @@ fn internal_final30_arms() {
             for i in 0..n_stages {
                 c::cmsPipelineInsertStage(
                     p,
-                    i as i32,
+                    i,
                     c::cmsStageAllocToneCurves(
                         std::ptr::null_mut(),
                         3,
@@ -25477,7 +25485,7 @@ fn internal_final31_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -25583,7 +25591,7 @@ fn internal_final32_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -25636,7 +25644,7 @@ fn internal_final32_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let stages: Vec<u32> = match st {
                 0 => vec![0, 1, 2],
                 1 => vec![2, 1, 0],
@@ -25730,7 +25738,7 @@ fn internal_final33_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -25781,7 +25789,7 @@ fn internal_final33_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let stages: Vec<u32> = match st {
                 0 => vec![0, 1, 0, 2],
                 1 => vec![2, 1, 0, 1],
@@ -25873,7 +25881,7 @@ fn internal_final34_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -25920,7 +25928,7 @@ fn internal_final34_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let stages: Vec<u32> = match st {
                 0 => vec![0, 1, 0, 1, 2],
                 1 => vec![2, 0, 1, 2, 0],
@@ -26011,7 +26019,7 @@ fn internal_final35_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -26060,7 +26068,7 @@ fn internal_final35_arms() {
             c::cmsSetProfileVersion(prof, 4.4);
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             for i in 0..6 {
                 if (i + st) % 2 == 0 {
                     c::cmsPipelineInsertStage(
@@ -26130,7 +26138,7 @@ fn internal_final36_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -26222,7 +26230,7 @@ fn internal_final37_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -26272,7 +26280,7 @@ fn internal_final37_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             for i in 0..7 {
                 match (i + st) % 3 {
                     0 => {
@@ -26358,7 +26366,7 @@ fn internal_final38_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -26438,7 +26446,7 @@ fn internal_final39_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -26534,7 +26542,7 @@ fn internal_final40_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -26559,7 +26567,7 @@ fn internal_final40_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let stages: Vec<u32> = match st {
                 0 => vec![0],
                 1 => vec![1],
@@ -26665,7 +26673,7 @@ fn internal_final41_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -26681,7 +26689,7 @@ fn internal_final41_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             for i in 0..8 {
                 match (i + st) % 3 {
                     0 => {
@@ -26800,7 +26808,7 @@ fn internal_final42_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -26900,7 +26908,7 @@ fn internal_final43_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -26930,7 +26938,7 @@ fn internal_final43_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let stages: Vec<u32> = match st {
                 0 => vec![0],
                 1 => vec![1],
@@ -27041,7 +27049,7 @@ fn internal_final44_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -27120,7 +27128,7 @@ fn internal_final45_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -27136,7 +27144,7 @@ fn internal_final45_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             for i in 0..9 {
                 match (i + st) % 3 {
                     0 => {
@@ -27221,7 +27229,7 @@ fn internal_final46_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -27302,7 +27310,7 @@ fn internal_final47_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -27318,7 +27326,7 @@ fn internal_final47_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             for i in 0..10 {
                 match (i + st) % 3 {
                     0 => {
@@ -27403,7 +27411,7 @@ fn internal_final48_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -27420,7 +27428,7 @@ fn internal_final48_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let stages: Vec<u32> = match st {
                 0 => vec![0, 1, 2, 3],
                 1 => vec![2, 1, 0, 3],
@@ -27518,7 +27526,7 @@ fn internal_final49_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (n_, name) in [
@@ -27604,7 +27612,7 @@ fn internal_final50_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -27661,7 +27669,7 @@ fn internal_final51_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // multiprofile on all profile-class + intent + flag
         //   combos
         let gray = c::cmsCreateGrayProfile(std::ptr::null_mut(), g);
@@ -27712,7 +27720,7 @@ fn internal_final51_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             let stages: Vec<u32> = match st {
                 0 => vec![0, 1, 2, 3, 2],
                 1 => vec![2, 3, 0, 1, 2],
@@ -27810,7 +27818,7 @@ fn internal_final52_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // transforms on profiles with all tag-payload type
         //   combinations
         for (st, name) in [
@@ -27826,7 +27834,7 @@ fn internal_final52_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             for i in 0..11 {
                 match (i + st) % 3 {
                     0 => {
@@ -27936,7 +27944,7 @@ fn internal_final53_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let trcs = [g, g, g];
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 0,
@@ -28100,7 +28108,7 @@ fn internal_final55_arms() {
             c::cmsWriteTag(prof, 0x41324230, p as *const _);
             c::cmsWriteTag(prof, 0x42324130, p as *const _);
             let mut codes = [0u32; 16];
-            let mut descs: [*const i8; 16] = [std::ptr::null(); 16];
+            let mut descs: [*const std::ffi::c_char; 16] = [std::ptr::null(); 16];
             let n = c::cmsGetSupportedIntents(16, codes.as_mut_ptr(), descs.as_mut_ptr() as *mut _);
             let mut out = String::new();
             for i in 0..n.min(16) {
@@ -28117,12 +28125,12 @@ fn internal_final55_arms() {
         }
         // on srgb (has real tags)
         let mut codes = [0u32; 16];
-        let mut descs: [*const i8; 16] = [std::ptr::null(); 16];
+        let mut descs: [*const std::ffi::c_char; 16] = [std::ptr::null(); 16];
         let n = c::cmsGetSupportedIntents(16, codes.as_mut_ptr(), descs.as_mut_ptr() as *mut _);
         // THR variant on a context
         let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         let mut codes2 = [0u32; 16];
-        let mut descs2: [*mut i8; 16] = [std::ptr::null_mut(); 16];
+        let mut descs2: [*mut std::ffi::c_char; 16] = [std::ptr::null_mut(); 16];
         let n2 = c::cmsGetSupportedIntentsTHR(ctx, 16, codes2.as_mut_ptr(), descs2.as_mut_ptr());
         eprintln!("ctx n2={n2}");
         c::cmsDeleteContext(ctx);
@@ -28161,7 +28169,7 @@ fn internal_final56_arms() {
                 let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
                 let trcs = [g, g, g];
                 let dims = [3u32; 3];
-                let grid = vec![0x4000u16; 81];
+                let grid = [0x4000u16; 81];
                 match pipe {
                     0 => {
                         c::cmsPipelineInsertStage(
@@ -28327,8 +28335,8 @@ fn internal_final57_arms() {
             let n = c::cmsGetProfileInfo(
                 srgb,
                 info,
-                b"en\0".as_ptr() as *const _,
-                b"US\0".as_ptr() as *const _,
+                c"en".as_ptr() as *const _,
+                c"US".as_ptr() as *const _,
                 buf.as_mut_ptr() as *mut _,
                 64,
             );
@@ -28381,7 +28389,7 @@ fn internal_final58_arms() {
         for path in ["/home/lilith/tmp/io58-a.icc", "/home/lilith/tmp/io58-b.icc"] {
             let p2 = format!("{path}\0");
             let rp =
-                c::cmsOpenProfileFromFile(p2.as_ptr() as *const _, b"r\0".as_ptr() as *const _);
+                c::cmsOpenProfileFromFile(p2.as_ptr() as *const _, c"r".as_ptr() as *const _);
             if !rp.is_null() {
                 let t = c::cmsReadTag(rp, 0x72545243);
                 let cnt = c::cmsGetTagCount(rp);
@@ -28405,7 +28413,7 @@ fn internal_final58_arms() {
             std::ptr::null_mut(),
             buf.as_mut_ptr() as *mut _,
             buf.len() as u32,
-            b"w\0".as_ptr() as *const _,
+            c"w".as_ptr() as *const _,
         );
         if !io.is_null() {
             let s = c::cmsSaveProfileToIOhandler(prof, io);
@@ -28542,7 +28550,7 @@ fn internal_final60_arms() {
                     let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
                     let trcs = [g, g, g];
                     let dims = [3u32; 3];
-                    let grid = vec![0x4000u16; 81];
+                    let grid = [0x4000u16; 81];
                     let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
                     let mk = |s_: u32| -> *mut std::ffi::c_void {
                         match s_ {
@@ -28792,13 +28800,13 @@ fn internal_final62_arms() {
             _fin: *mut u32,
             _fout: *mut u32,
             flags: *mut u32,
-        ) -> i32 {
+        ) -> i32 { unsafe {
             // force flags mutation + inspect pipeline —
             //   returns FALSE → falls through to next
-            *flags = *flags | 0x200;
+            *flags |= 0x200;
             eprintln!("  myopt lut={}", !(*lut).is_null());
             0
-        }
+        }}
         unsafe extern "C" fn my_opt2(
             _lut: *mut *mut std::ffi::c_void,
             _intent: u32,
@@ -28851,7 +28859,7 @@ fn internal_final62_arms() {
                 let p = c::cmsPipelineAlloc(ctx, 3, 3);
                 let trcs = [g, g, g];
                 let dims = [3u32; 3];
-                let grid = vec![0x4000u16; 81];
+                let grid = [0x4000u16; 81];
                 match st {
                     0 => {
                         c::cmsPipelineInsertStage(
@@ -28951,7 +28959,7 @@ fn internal_final63_arms() {
                     let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
                     let trcs = [g, g, g];
                     let dims = [3u32; 3];
-                    let grid = vec![0x4000u16; 81];
+                    let grid = [0x4000u16; 81];
                     let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
                     match st {
                         0 => {
@@ -29114,7 +29122,7 @@ fn internal_final64_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             let trcs = [g, g, g];
             let dims = [3u32; 3];
-            let grid16 = vec![0x4000u16; 81];
+            let grid16 = [0x4000u16; 81];
             let gridf = vec![0.5f32; 81];
             let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
             let mk = |s_: u32| -> *mut std::ffi::c_void {
@@ -29163,7 +29171,7 @@ fn internal_final64_arms() {
             eprintln!("{sname} dup={}", !dp.is_null());
             // dup each stage individually
             let n_stages = c::cmsPipelineStageCount(p);
-            for i in 0..n_stages {
+            for _i in 0..n_stages {
                 let st2 = c::cmsPipelineGetPtrToFirstStage(p);
                 let _ = st2;
             }
@@ -29342,7 +29350,7 @@ fn internal_final66_arms() {
             let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 4, 4);
             let trcs = [g, g, g, g];
             let dims = [2u32; 4];
-            let grid = vec![0x4000u16; 16 * 4];
+            let grid = [0x4000u16; 16 * 4];
             match st {
                 0 => {
                     c::cmsPipelineInsertStage(
@@ -29438,12 +29446,12 @@ fn internal_final66_arms() {
         unsafe extern "C" fn my_link(
             ctx: *mut std::ffi::c_void,
             n: u32,
-            intents: *mut u32,
-            profs: *mut *mut std::ffi::c_void,
-            bpc: *mut i32,
-            adapt: *mut f64,
+            _intents: *mut u32,
+            _profs: *mut *mut std::ffi::c_void,
+            _bpc: *mut i32,
+            _adapt: *mut f64,
             flags: u32,
-        ) -> *mut std::ffi::c_void {
+        ) -> *mut std::ffi::c_void { unsafe {
             eprintln!("  mylink n={n} flags={flags}");
             // build a simple cv pipeline as the result
             let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
@@ -29455,7 +29463,7 @@ fn internal_final66_arms() {
                 c::cmsStageAllocToneCurves(ctx, 4, trcs.as_ptr() as *mut _),
             );
             p
-        }
+        }}
         for (which, name) in [(0u32, "single"), (2, "two")] {
             let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
             let mut plugs = vec![];
@@ -29551,7 +29559,7 @@ fn internal_final67_arms() {
             eprintln!("{name} io={}", !io.is_null());
             if !io.is_null() {
                 // probe a read to hit FileSeek/Read paths
-                let mut b2 = [0u8; 64];
+                let b2 = [0u8; 64];
                 let rd = c::cmsCloseIOhandler(io);
                 let _ = rd;
                 let _ = b2;
@@ -29775,8 +29783,8 @@ fn internal_final69_arms() {
                             }
                             c::cmsMLUsetWide(
                                 m,
-                                b"en\0".as_ptr() as *const _,
-                                b"US\0".as_ptr() as *const _,
+                                c"en".as_ptr() as *const _,
+                                c"US".as_ptr() as *const _,
                                 w_.as_ptr(),
                             );
                             m
@@ -29799,7 +29807,7 @@ fn internal_final69_arms() {
                     } else {
                         std::ptr::null_mut()
                     };
-                    let r = if !rp.is_null() {
+                    let _r = if !rp.is_null() {
                         let t = c::cmsReadTag(rp, sig);
                         let ok = !t.is_null();
                         // transform → compile seq
@@ -29850,7 +29858,7 @@ fn internal_final70_arms() {
             let n1 =
                 c::cmsGetSupportedIntents(nmax, codes.as_mut_ptr() as *mut _, std::ptr::null_mut());
             // Codes+Descriptions
-            let mut descs: Vec<*const i8> = vec![std::ptr::null(); nmax.max(1) as usize];
+            let mut descs: Vec<*const std::ffi::c_char> = vec![std::ptr::null(); nmax.max(1) as usize];
             let n2 = c::cmsGetSupportedIntents(
                 nmax,
                 codes.as_mut_ptr() as *mut _,
@@ -29923,7 +29931,7 @@ fn internal_final70_arms() {
                 c::cmsPluginTHR(ctx2, p_ as *const _ as *mut _);
             }
             let mut codes = vec![0u32; 64];
-            let mut descs: Vec<*const i8> = vec![std::ptr::null(); 64];
+            let mut descs: Vec<*const std::ffi::c_char> = vec![std::ptr::null(); 64];
             let n = c::cmsGetSupportedIntentsTHR(
                 ctx2,
                 64,
@@ -30014,13 +30022,13 @@ fn internal_final71_arms() {
             let mut buf = vec![0u8; 1 << 20];
             let mut n = buf.len() as u32;
             let s = c::cmsSaveProfileToMem(srgb, buf.as_mut_ptr() as *mut _, &mut n);
-            let io = c::cmsOpenIOhandlerFromMem(ctx, buf.as_ptr() as *mut _, n, b"r\0".as_ptr());
+            let io = c::cmsOpenIOhandlerFromMem(ctx, buf.as_ptr() as *mut _, n, c"r".as_ptr());
             let prof = c::cmsOpenProfileFromIOhandlerTHR(ctx, io);
             eprintln!("  s={s} prof={}", !prof.is_null());
             if !prof.is_null() {
                 // re-save through IOhandler → WriteHeader
                 let io2 =
-                    c::cmsOpenIOhandlerFromMem(ctx, buf.as_mut_ptr() as *mut _, n, b"w\0".as_ptr());
+                    c::cmsOpenIOhandlerFromMem(ctx, buf.as_mut_ptr() as *mut _, n, c"w".as_ptr());
                 let s2 = c::cmsSaveProfileToIOhandler(prof, io2);
                 eprintln!("  save2={s2}");
                 c::cmsCloseProfile(prof);
@@ -30068,13 +30076,13 @@ fn internal_final72_arms() {
                     std::ptr::null_mut(),
                     3,
                     3,
-                    b"p\0".as_ptr(),
-                    b"s\0".as_ptr(),
+                    c"p".as_ptr(),
+                    c"s".as_ptr(),
                 );
                 if !cl.is_null() {
                     let pcs2 = [0x1000u16; 16];
                     let col = [0x2000u16; 16];
-                    c::cmsAppendNamedColor(cl, b"c0\0".as_ptr(), pcs2.as_ptr(), col.as_ptr());
+                    c::cmsAppendNamedColor(cl, c"c0".as_ptr(), pcs2.as_ptr(), col.as_ptr());
                     c::cmsWriteTag(p1, 0x636C726F, cl as *const _);
                     c::cmsFreeNamedColorList(cl);
                 }
@@ -30290,7 +30298,7 @@ fn internal_final74_arms() {
                 }
                 c::cmsWriteTag(prof, 0x41324230, p as *const _);
                 c::cmsWriteTag(prof, 0x42324130, p as *const _);
-                let fin = (0u32 << 16) | (nch << 3) | 2;
+                let fin = (nch << 3) | 2;
                 let t = c::cmsCreateTransform(prof, fin, prof, fin, 0, fl);
                 eprintln!("{nch}ch {fname} t={}", !t.is_null());
                 if !t.is_null() {
@@ -30340,7 +30348,7 @@ fn internal_final74_arms() {
             );
             c::cmsWriteTag(prof, 0x41324230, p as *const _);
             c::cmsWriteTag(prof, 0x42324130, p as *const _);
-            let fin = (0u32 << 16) | (nch << 3) | 1;
+            let fin = (nch << 3) | 1;
             let t = c::cmsCreateTransform(prof, fin, prof, fin, 0, 0);
             eprintln!("u8 {nch}ch t={}", !t.is_null());
             if !t.is_null() {
@@ -30400,7 +30408,7 @@ fn internal_final75_arms() {
             let w = c::cmsWriteTag(prof, sig, p as *const _);
             // link as INPUT → _cmsReadDevicelinkLUT
             for int_ in [0u32, 1, 2, 3] {
-                let fin = (0u32 << 16) | (3 << 3) | 1;
+                let fin = (3 << 3) | 1;
                 let t = c::cmsCreateTransform(prof, fin, srgb, fin, int_, 0);
                 eprintln!("{name} int{int_} w={w} t={}", !t.is_null());
                 if !t.is_null() {
@@ -30442,7 +30450,7 @@ fn internal_final75_arms() {
             c::cmsWriteTag(prof, fsig, p as *const _);
             c::cmsWriteTag(prof, dir, p as *const _);
             for int_ in [0u32, 1] {
-                let fin = (0u32 << 16) | (3 << 3) | 1;
+                let fin = (3 << 3) | 1;
                 let t = c::cmsCreateTransform(prof, fin, srgb, fin, int_, 0);
                 eprintln!("xyz {name} int{int_} t={}", !t.is_null());
                 if !t.is_null() {
@@ -30498,8 +30506,8 @@ fn internal_final76_arms() {
                         let w = [ch as i32, 0];
                         c::cmsMLUsetWide(
                             mlu,
-                            b"en\0".as_ptr() as *const _,
-                            b"US\0".as_ptr() as *const _,
+                            c"en".as_ptr() as *const _,
+                            c"US".as_ptr() as *const _,
                             w.as_ptr(),
                         );
                         *((d as usize + off) as *mut usize) = mlu as usize;
@@ -30567,7 +30575,7 @@ fn internal_final77_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, trcs.as_ptr() as *mut _),
             );
             let dims = [3u32; 15];
-            let grid = vec![0x4000u16; 27 * 3];
+            let grid = [0x4000u16; 27 * 3];
             c::cmsPipelineInsertStage(
                 p,
                 1,
@@ -30587,7 +30595,7 @@ fn internal_final77_arms() {
             c::cmsWriteTag(prof, 0x41324230, p as *const _);
             c::cmsWriteTag(prof, 0x42324130, p as *const _);
             for fl in [0u32, 0x0100] {
-                let fin = (0u32 << 16) | (3 << 3) | 1;
+                let fin = (3 << 3) | 1;
                 let t = c::cmsCreateTransform(prof, fin, prof, fin, 0, fl);
                 eprintln!("{pname} fl={fl:#x} t={}", !t.is_null());
                 if !t.is_null() {
@@ -30655,8 +30663,8 @@ fn internal_final78_arms() {
         // nonexistent file read-mode
         let io = c::cmsOpenIOhandlerFromFile(
             std::ptr::null_mut(),
-            b"/nonexistent_dir_x/f\0".as_ptr() as *const _,
-            b"r\0".as_ptr() as *const _,
+            c"/nonexistent_dir_x/f".as_ptr() as *const _,
+            c"r".as_ptr() as *const _,
         );
         eprintln!("noent io={}", !io.is_null());
         if !io.is_null() {
@@ -30672,7 +30680,7 @@ fn internal_final78_arms() {
             let io = c::cmsOpenIOhandlerFromFile(
                 std::ptr::null_mut(),
                 path.as_ptr() as *const _,
-                b"r\0".as_ptr() as *const _,
+                c"r".as_ptr() as *const _,
             );
             eprintln!(
                 "{:?} io={}",
@@ -30718,8 +30726,8 @@ fn internal_final78_arms() {
         let w = [0x41i32, 0];
         c::cmsMLUsetWide(
             mlu,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             w.as_ptr(),
         );
         let w1 = c::cmsWriteTag(prof2, 0x64657363, mlu as *const _);
@@ -30727,8 +30735,8 @@ fn internal_final78_arms() {
         let w2v = [0x42i32, 0];
         c::cmsMLUsetWide(
             mlu2,
-            b"en\0".as_ptr() as *const _,
-            b"US\0".as_ptr() as *const _,
+            c"en".as_ptr() as *const _,
+            c"US".as_ptr() as *const _,
             w2v.as_ptr(),
         );
         let w2 = c::cmsWriteTag(prof2, 0x64657363, mlu2 as *const _);
@@ -30774,19 +30782,19 @@ fn internal_final79_arms() {
         unsafe extern "C" fn my_alloc(
             _ctx: *mut std::ffi::c_void,
             n: u32,
-        ) -> *mut std::ffi::c_void {
+        ) -> *mut std::ffi::c_void { unsafe {
             malloc(n as usize)
-        }
-        unsafe extern "C" fn my_free(_ctx: *mut std::ffi::c_void, p: *mut std::ffi::c_void) {
+        }}
+        unsafe extern "C" fn my_free(_ctx: *mut std::ffi::c_void, p: *mut std::ffi::c_void) { unsafe {
             free(p)
-        }
+        }}
         unsafe extern "C" fn my_realloc(
             _ctx: *mut std::ffi::c_void,
             p: *mut std::ffi::c_void,
             n: u32,
-        ) -> *mut std::ffi::c_void {
+        ) -> *mut std::ffi::c_void { unsafe {
             realloc(p, n as usize)
-        }
+        }}
         // bogus-type plugin → cmsPluginTHR default branch
         let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         let mut bp = PluginBase {
@@ -30979,8 +30987,8 @@ fn internal_final80_arms() {
         );
         c::cmsWriteTag(link, 0x41324230, p2 as *const _);
         // chains ending in the CMYK devicelink
-        let fin = (0u32 << 16) | (3 << 3) | 1;
-        let f4 = (0u32 << 16) | (4 << 3) | 1;
+        let fin = (3 << 3) | 1;
+        let f4 = (4 << 3) | 1;
         for (int_, iname) in [(13u32, "kplane"), (14, "konly"), (15, "kpre"), (0, "std")] {
             // 3-profile chain: srgb → cmyk → cmyk-link
             let mut profs = [srgb, cmyk, link];
@@ -31035,7 +31043,7 @@ fn internal_final81_arms() {
             c::cmsSetProfileVersion(p, 4.4);
             // 2-profile and 3-profile chains through it
             let mut profs = [srgb, p];
-            let fin = (0u32 << 16) | (3 << 3) | 2;
+            let fin = (3 << 3) | 2;
             let t = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 2, fin, fin, 0, 0);
             eprintln!("{pname} 2chain t={}", !t.is_null());
             if !t.is_null() {
@@ -31057,7 +31065,7 @@ fn internal_final81_arms() {
         );
         if !gray.is_null() {
             let mut profs = [gray, srgb];
-            let fin = (0u32 << 16) | (3 << 3) | 2;
+            let fin = (3 << 3) | 2;
             for int_ in [0u32, 1, 2, 3, 13, 14, 15] {
                 let t = c::cmsCreateMultiprofileTransform(profs.as_mut_ptr(), 2, fin, fin, int_, 0);
                 eprintln!("gray int{int_} t={}", !t.is_null());
@@ -31152,7 +31160,7 @@ fn internal_final83_arms() {
             std::ptr::null_mut(),
             prof_bytes.as_ptr() as *mut _,
             n,
-            b"r\0".as_ptr() as *const _,
+            c"r".as_ptr() as *const _,
         );
         eprintln!("io={}", !io.is_null());
         if !io.is_null() {
@@ -31183,7 +31191,7 @@ fn internal_final83_arms() {
             std::ptr::null_mut(),
             wbuf.as_mut_ptr() as *mut _,
             wbuf.len() as u32,
-            b"w\0".as_ptr() as *const _,
+            c"w".as_ptr() as *const _,
         );
         eprintln!("wio={}", !wio.is_null());
         if !wio.is_null() {
@@ -31279,7 +31287,7 @@ fn internal_io_num_arms() {
             std::ptr::null_mut(),
             wbuf.as_mut_ptr() as *mut _,
             wbuf.len() as u32,
-            b"w\0".as_ptr(),
+            c"w".as_ptr(),
         );
         eprintln!("io-w={}", !io.is_null());
         if !io.is_null() {
@@ -31302,7 +31310,7 @@ fn internal_io_num_arms() {
             std::ptr::null_mut(),
             wbuf.as_mut_ptr() as *mut _,
             wbuf.len() as u32,
-            b"r\0".as_ptr(),
+            c"r".as_ptr(),
         );
         if !io2.is_null() {
             let mut u8v = 0u8;
@@ -31347,7 +31355,7 @@ fn internal_io_num_arms() {
             let iof = c::cmsOpenIOhandlerFromFile(
                 std::ptr::null_mut(),
                 path.as_ptr(),
-                cm.as_ptr() as *const u8,
+                (cm.as_ptr() as *const u8).cast(),
             );
             eprintln!("file mode {mode} io={}", !iof.is_null());
             if !iof.is_null() {
@@ -31366,7 +31374,7 @@ fn internal_io_num_arms() {
 fn internal_io_stream_arms() {
     unsafe {
         unsafe extern "C" {
-            fn fopen(name: *const i8, mode: *const i8) -> *mut std::ffi::c_void;
+            fn fopen(name: *const std::ffi::c_char, mode: *const std::ffi::c_char) -> *mut std::ffi::c_void;
             fn fclose(f: *mut std::ffi::c_void) -> i32;
             fn fwrite(
                 p: *const std::ffi::c_void,
@@ -31400,7 +31408,7 @@ fn internal_io_stream_arms() {
             std::ptr::null_mut(),
             rbuf.as_mut_ptr() as *mut _,
             rbuf.len() as u32,
-            b"w\0".as_ptr(),
+            c"w".as_ptr(),
         );
         if !io2.is_null() {
             let ok = c::cmsSaveProfileToIOhandler(srgb, io2);
@@ -31411,7 +31419,7 @@ fn internal_io_stream_arms() {
             std::ptr::null_mut(),
             rbuf.as_mut_ptr() as *mut _,
             rbuf.len() as u32,
-            b"r\0".as_ptr(),
+            c"r".as_ptr(),
         );
         if !io3.is_null() {
             let pr = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io3);
@@ -31623,7 +31631,7 @@ fn internal_texttag_arms() {
         let srgb = c::cmsCreate_sRGBProfile();
         // text-bearing tags on srgb: desc/cprt/
         //   dmnd/dmdd/lumi/targ/vued
-        let mut buf = [0i8; 256];
+        let mut buf = [0 as std::ffi::c_char; 256];
         for (info, name) in [
             (0u32, "desc"),
             (1, "mfr"),
@@ -31647,8 +31655,8 @@ fn internal_texttag_arms() {
                 let n = c::cmsGetProfileInfo(
                     srgb,
                     info,
-                    lang.as_ptr() as *const i8,
-                    ctry.as_ptr() as *const i8,
+                    lang.as_ptr() as *const std::ffi::c_char,
+                    ctry.as_ptr() as *const std::ffi::c_char,
                     buf.as_mut_ptr() as *mut _,
                     buf.len() as u32,
                 );
@@ -31885,7 +31893,7 @@ fn savetags_arms2() {
         let open = |n: &str| {
             let p = format!("{}/../../{}", env!("CARGO_MANIFEST_DIR"), n);
             let cs = std::ffi::CString::new(p).unwrap();
-            c::cmsOpenProfileFromFile(cs.as_ptr(), b"r\0".as_ptr() as *const _)
+            c::cmsOpenProfileFromFile(cs.as_ptr(), c"r".as_ptr() as *const _)
         };
         for nm in [
             "sRGBlcms2.icc",

@@ -6,7 +6,7 @@ use lcms_cref as c;
 use std::ffi::c_void;
 use std::sync::atomic::Ordering;
 
-extern "C" fn c_log(_ctx: *mut c_void, _code: i32, _text: *const i8) {}
+extern "C" fn c_log(_ctx: *mut c_void, _code: i32, _text: *const std::ffi::c_char) {}
 
 fn r_log(_ctx: &Context, _code: i32, _text: &str) {}
 
@@ -61,7 +61,7 @@ fn plugin_remaining_arms() {
         payload: [*mut std::ffi::c_void; 8],
     }
     unsafe {
-        let mut mk = |ty: u32, magic: u32, ver: u32| Plugin {
+        let mk = |ty: u32, magic: u32, ver: u32| Plugin {
             base: Base {
                 magic,
                 ver,
@@ -372,7 +372,7 @@ fn err_filelen_arms() {
         }
         // error handler capture at each error code
         static mut SEEN: [u32; 16] = [0; 16];
-        unsafe extern "C" fn errh(_ctx: *mut std::ffi::c_void, code: u32, _msg: *const i8) {
+        unsafe extern "C" fn errh(_ctx: *mut std::ffi::c_void, code: u32, _msg: *const std::ffi::c_char) {
             unsafe {
                 if (code as usize) < 16 {
                     SEEN[code as usize] += 1;

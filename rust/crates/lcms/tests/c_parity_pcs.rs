@@ -229,7 +229,7 @@ fn cam02_adaptation() {
                 surround: vc.surround,
                 D_value: vc.d_value,
             };
-            let mut rm = lcms::cam02::CieCam02::new(None, &rvc);
+            let rm = lcms::cam02::CieCam02::new(None, &rvc);
             for i in 0..32 {
                 let xyz = CieXyz {
                     X: 0.1 + (i % 8) as f64 * 0.1,
@@ -393,7 +393,7 @@ fn pcs_delta_e_xyz() {
             eprintln!("{name}={c_v:.4}");
         }
         let c2000 = c::cmsCIE2000DeltaE(&cla, &clb, 1.0, 1.0, 1.0);
-        let r2000 = p::cie2000_delta_e(&la, &lb, 1.0, 1.0, 1.0);
+        let _r2000 = p::cie2000_delta_e(&la, &lb, 1.0, 1.0, 1.0);
         eprintln!("c2k={c2000:.4}");
         // XYZ encoded
         let fx = t::CieXyz {
@@ -438,7 +438,7 @@ fn whitepoint_internals() {
             eprintln!("t{t} r={r} x={:.3} y={:.3}", wp.x, wp.y);
         }
         // AdaptToIlluminant — XYZ from D65 to D50
-        let mut src = c::CieXyz {
+        let src = c::CieXyz {
             X: 0.96,
             Y: 1.0,
             Z: 0.82,

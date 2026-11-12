@@ -4,18 +4,17 @@
 
 use lcms::cgats;
 use lcms_cref as c;
-use std::ffi::c_void;
 
-fn cs8(s: &str) -> *const i8 {
+fn cs8(s: &str) -> *const std::ffi::c_char {
     thread_local! {
-        static BUF: std::cell::RefCell<Vec<u8>> = std::cell::RefCell::new(Vec::new());
+        static BUF: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
     }
     BUF.with(|b| {
         let mut b = b.borrow_mut();
         b.clear();
         b.extend_from_slice(s.as_bytes());
         b.push(0);
-        b.as_ptr() as *const i8
+        b.as_ptr() as *const std::ffi::c_char
     })
 }
 
@@ -74,7 +73,7 @@ fn it8_property_matrix() {
             assert_eq!(cstr, rstr, "get prop {prop}");
         }
         // enum properties — count parity
-        let mut cslot: *mut *mut i8 = std::ptr::null_mut();
+        let mut cslot: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let cn = c::cmsIT8EnumProperties(ch, &mut cslot);
         let rn = rh.enum_properties().len() as u32;
         assert_eq!(cn, rn, "enum properties count");
@@ -106,7 +105,7 @@ fn it8_data_matrix() {
             );
         }
         // enum data format — count parity
-        let mut cslot: *mut *mut i8 = std::ptr::null_mut();
+        let mut cslot: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let cn = c::cmsIT8EnumDataFormat(ch, &mut cslot);
         let rn = rh.enum_data_format().len() as i32;
         assert_eq!(cn, rn, "enum data format count");

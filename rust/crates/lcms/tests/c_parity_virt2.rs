@@ -499,7 +499,7 @@ fn oklab_header_intent() {
 /// impls using the named RELATIVE constant, not a literal.
 #[test]
 fn oklab_transform_relative() {
-    const INFMT: u32 = (0 << 16) | (3 << 3) | 1; // PT_ANY 3ch u8
+    const INFMT: u32 = (3 << 3) | 1; // PT_ANY 3ch u8
     const OUTFMT: u32 = (9 << 16) | (3 << 3) | 2; // PT_XYZ 3ch u16
     let inp = [64u8, 128, 192, 0, 255, 32];
     let n_px = 2u32;
@@ -553,7 +553,7 @@ fn misc_virt_builders() {
                 &format!("bchsw{nl}"),
                 c_save(p),
                 r_save(
-                    &mut *virt::create_bchsw_abstract_profile(None, nl, b, cn, h, sa, ts, td)
+                    &mut virt::create_bchsw_abstract_profile(None, nl, b, cn, h, sa, ts, td)
                         .unwrap(),
                 ),
             );
@@ -565,7 +565,7 @@ fn misc_virt_builders() {
         cmp(
             "nullprof",
             c_save(p),
-            r_save(&mut *virt::create_null_profile(None).unwrap()),
+            r_save(&mut virt::create_null_profile(None).unwrap()),
         );
         c::cmsCloseProfile(p);
         // OkLab profile
@@ -574,7 +574,7 @@ fn misc_virt_builders() {
         cmp(
             "oklab",
             c_save(p),
-            r_save(&mut *virt::create_oklab_profile(None).unwrap()),
+            r_save(&mut virt::create_oklab_profile(None).unwrap()),
         );
         c::cmsCloseProfile(p);
         // ink-limiting devicelink — CMYK + RGB + Gray color spaces
@@ -592,7 +592,7 @@ fn misc_virt_builders() {
                 cmp(
                     &format!("inklim{cs:#x}"),
                     c_save(p),
-                    r_save(&mut *virt::create_ink_limiting_device_link(None, cs, lim).unwrap()),
+                    r_save(&mut virt::create_ink_limiting_device_link(None, cs, lim).unwrap()),
                 );
                 c::cmsCloseProfile(p);
             }
@@ -659,7 +659,7 @@ fn proofing_transform_paths() {
 fn gamut_preview_lut_readers() {
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut cc = [g; 3];
+        let cc = [g; 3];
         // build a pipeline for the gamt tag
         let gp = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(
@@ -704,10 +704,8 @@ fn linearization_devicelink() {
             eprintln!("{name} dl={}", !dl.is_null());
             if !dl.is_null() {
                 // transform through the devicelink (link IS the xform)
-                let f = ((cs & 0xff) as u32) | (((ch) << 3) | 1);
-                let fmt = ((cs == 0x434D594B) as u32 * 6
-                    | (cs == 0x52474220) as u32 * 4
-                    | (cs == 0x47524159) as u32 * 3)
+                let _f = (cs & 0xff) | (((ch) << 3) | 1);
+                let fmt = (((cs == 0x434D594B) as u32 * 6) | ((cs == 0x52474220) as u32 * 4) | ((cs == 0x47524159) as u32 * 3))
                     << 16
                     | (ch << 3)
                     | 1;
@@ -1076,8 +1074,8 @@ fn named_devicelink() {
             std::ptr::null_mut(),
             4,
             3,
-            b"pre\0".as_ptr(),
-            b"post\0".as_ptr(),
+            c"pre".as_ptr(),
+            c"post".as_ptr(),
         );
         for i in 0..4u32 {
             let mut name = [0u8; 256];
@@ -1117,7 +1115,7 @@ fn virt_opt_residual_arms() {
         let lab = c::cmsCreateLab4Profile(std::ptr::null_mut());
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let r8 = (4u32 << 16) | (3 << 3) | 1;
-        let l8 = (10u32 << 16) | (3 << 3) | 1;
+        let _l8 = (10u32 << 16) | (3 << 3) | 1;
         // profile-creation on unusual args
         for (r, name) in [
             (0.0f64, "zero"),
@@ -1177,7 +1175,7 @@ fn virt_opt_residual_arms() {
                 c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, [g, g, g].as_ptr() as *mut _),
             );
             let dims = [3u32; 3];
-            let grid = vec![0x4000u16; 81];
+            let grid = [0x4000u16; 81];
             c::cmsPipelineInsertStage(
                 p,
                 1,

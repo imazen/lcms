@@ -202,7 +202,7 @@ fn realworld_profile_corpus() {
             };
             let csig = p1.color_space;
             profs_seen += 1;
-            let (pt, chans, bytes) = match csig {
+            let (pt, chans, _bytes) = match csig {
                 x if x == cs::SigRgbData => (4u32, 3usize, 3usize),
                 x if x == cs::SigCmykData => (6, 4, 4),
                 x if x == cs::SigLabData => (10, 3, 3),
@@ -217,7 +217,7 @@ fn realworld_profile_corpus() {
                 // C side
                 let (co, ok) = unsafe {
                     let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
-                    let p = c::cmsOpenProfileFromFile(cpath.as_ptr(), "r\0".as_ptr());
+                    let p = c::cmsOpenProfileFromFile(cpath.as_ptr(), "r\0".as_ptr().cast());
                     if p.is_null() {
                         (Vec::new(), false)
                     } else {
