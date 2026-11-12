@@ -482,12 +482,6 @@ pub(crate) fn tbl_get16(t: &[u16], i: usize) -> i32 {
     t.get(i).copied().unwrap_or(0) as i32
 }
 
-/// Same for float tables.
-#[inline]
-fn tbl_getf(t: &[f32], i: usize) -> f32 {
-    t.get(i).copied().unwrap_or(0.0)
-}
-
 /// `LinearInterp` — inline fixed-point interpolation.
 #[inline]
 pub(crate) fn linear_interp(a: i32, l: i32, h: i32) -> u16 {
@@ -1481,9 +1475,7 @@ pub(crate) fn tetra3_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     let mut out = [0f32; 4];
     let res = ((c0 + c1 * rxv) + c2 * ryv) + c3 * rzv;
     let ra = res.to_array();
-    for oc in 0..n_outputs.min(4) {
-        out[oc] = ra[oc];
-    }
+    out[..n_outputs.min(4)].copy_from_slice(&ra[..n_outputs.min(4)]);
     out
 }
 
@@ -1554,9 +1546,7 @@ pub(crate) fn eval4_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     let res = (v1v - v0v) * restv + v0v;
     let ra = res.to_array();
     let mut out = [0f32; 4];
-    for oc in 0..n_outputs.min(4) {
-        out[oc] = ra[oc];
-    }
+    out[..n_outputs.min(4)].copy_from_slice(&ra[..n_outputs.min(4)]);
     out
 }
 
@@ -1674,7 +1664,6 @@ pub(crate) fn eval4_i32x4<T: magetypes::simd::backends::I32x4Backend>(
             let start = ($base + x0i + y0i + z0i) as usize;
             let cell = &lut_table[start..];
             let last = cell.len() - 1;
-            let mo = max_off as usize;
 
             macro_rules! arm {
                 ($o1:expr, $o2:expr, $o3:expr, |$t1:ident, $t2:ident, $t3:ident, $c0:ident| $chain:expr) => {{
@@ -1907,9 +1896,7 @@ pub(crate) fn eval1_f32x4<T: magetypes::simd::backends::F32x4Backend>(
         let start = (p.domain[0] * p.opta[0]) as usize;
         let last = lut_table.len() - 1;
         let lanes = corner_f32x4(lut_table, start.min(last), last);
-        for oc in 0..n.min(4) {
-            out[oc] = lanes[oc];
-        }
+        out[..n.min(4)].copy_from_slice(&lanes[..n.min(4)]);
         return out;
     }
     let val2 = val2 * p.domain[0] as f32;
@@ -1930,9 +1917,7 @@ pub(crate) fn eval1_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     );
     let res = (d1 - d0) * magetypes::simd::generic::f32x4::<T>::splat_t(token, rest) + d0;
     let ra = res.to_array();
-    for oc in 0..n_outputs.min(4) {
-        out[oc] = ra[oc];
-    }
+    out[..n_outputs.min(4)].copy_from_slice(&ra[..n_outputs.min(4)]);
     out
 }
 
@@ -2098,9 +2083,7 @@ pub(crate) fn trilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     let dxy1 = lerp(V::<T>::splat_t(token, fy), dx01, dx11);
     let res = lerp(V::<T>::splat_t(token, fz), dxy0, dxy1).to_array();
     let mut out = [0f32; 4];
-    for oc in 0..n_outputs.min(4) {
-        out[oc] = res[oc];
-    }
+    out[..n_outputs.min(4)].copy_from_slice(&res[..n_outputs.min(4)]);
     out
 }
 
@@ -2157,9 +2140,7 @@ pub(crate) fn bilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     let dx1 = lerp(V::<T>::splat_t(token, fx), d01, d11);
     let res = lerp(V::<T>::splat_t(token, fy), dx0, dx1).to_array();
     let mut out = [0f32; 4];
-    for oc in 0..n_outputs.min(4) {
-        out[oc] = res[oc];
-    }
+    out[..n_outputs.min(4)].copy_from_slice(&res[..n_outputs.min(4)]);
     out
 }
 

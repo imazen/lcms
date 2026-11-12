@@ -358,12 +358,6 @@ pub enum ColorimetricIntentImageState {
     Contrast,
     Simulation,
 }
-impl ColorimetricIntentImageState {
-    fn to_u32(self) -> u32 {
-        self as u32
-    }
-}
-fn _colorim_unused() {}
 
 impl CIEXYZ {
     /// `CIEXYZ::d50()` — the D50 white point.
@@ -602,6 +596,9 @@ impl MLU {
     }
 }
 /// Methods on `MLURef` (= `named::Mlu`) carrying the lcms2-crate names.
+/// `mlu_get_utf8` / `mlu_get_ascii`: `None` asks for the size.
+type MluGetFn = fn(&crate::named::Mlu, &[u8], &[u8], Option<u32>) -> (u32, Vec<u8>);
+
 impl crate::named::Mlu {
     /// `set_text(utf8, locale)` — UTF-8 string.
     pub fn set_text(&mut self, text: &str, locale: Locale) -> bool {
@@ -611,29 +608,30 @@ impl crate::named::Mlu {
     pub fn set_text_ascii(&mut self, text: &str, locale: Locale) -> bool {
         crate::named::mlu_set_ascii(self, &locale.l3(), &locale.c3(), text.as_bytes())
     }
-    /// `text(locale)` — UTF-8 string for the locale.
-    pub fn text(&self, locale: Locale) -> Result<String, ()> {
-        let (n, mut buf) = crate::named::mlu_get_utf8(self, &locale.l3(), &locale.c3(), Some(256));
-        if n == 0 {
-            return Err(());
-        }
-        buf.truncate(n as usize);
-        while buf.last() == Some(&0) {
-            buf.pop();
-        }
-        String::from_utf8(buf).map_err(|_| ())
+    /// `text(locale)` — the UTF-8 entry for the locale. Like the lcms2
+    /// crate: [`Error::MissingData`] when there is none,
+    /// [`Error::InvalidString`] when it does not decode.
+    pub fn text(&self, locale: Locale) -> LCMSResult<String> {
+        Self::fetch(self, locale, crate::named::mlu_get_utf8)
     }
-    /// `text_ascii(locale)` — ASCII string for the locale.
-    pub fn text_ascii(&self, locale: Locale) -> Result<String, ()> {
-        let (n, mut buf) = crate::named::mlu_get_ascii(self, &locale.l3(), &locale.c3(), Some(256));
-        if n == 0 {
-            return Err(());
+    /// `text_ascii(locale)` — the 7-bit ASCII entry for the locale; errors
+    /// as [`text`](Self::text).
+    pub fn text_ascii(&self, locale: Locale) -> LCMSResult<String> {
+        Self::fetch(self, locale, crate::named::mlu_get_ascii)
+    }
+    /// Size query, then a read of exactly that many bytes (no length cap).
+    fn fetch(&self, locale: Locale, get: MluGetFn) -> LCMSResult<String> {
+        let (lang, cntry) = (locale.l3(), locale.c3());
+        let (len, _) = get(self, &lang, &cntry, None);
+        if len == 0 {
+            return Err(Error::MissingData);
         }
+        let (n, mut buf) = get(self, &lang, &cntry, Some(len));
         buf.truncate(n as usize);
         while buf.last() == Some(&0) {
             buf.pop();
         }
-        String::from_utf8(buf).map_err(|_| ())
+        String::from_utf8(buf).map_err(|_| Error::InvalidString)
     }
     /// `translations_count`
     pub fn translations_count(&self) -> u32 {
@@ -1114,9 +1112,11 @@ impl Profile<GlobalContext> {
     /// C's `cmsCreateProfilePlaceholder` defaults `color_space` to
     /// `cmsSig1colorData` ('1CLR'), `pcs` to `cmsSigXYZData`.
     pub fn new_placeholder() -> Self {
-        let mut icc = crate::profile::IccProfile::default();
-        icc.color_space = crate::signatures::colorspace::Sig1colorData;
-        icc.pcs = crate::signatures::colorspace::SigXYZData;
+        let icc = crate::profile::IccProfile {
+            color_space: crate::signatures::colorspace::Sig1colorData,
+            pcs: crate::signatures::colorspace::SigXYZData,
+            ..Default::default()
+        };
         Profile {
             icc: Box::new(icc),
             _ctx: PhantomData,
@@ -1245,9 +1245,11 @@ impl<C> Profile<C> {
             Tag::CIEXYZ(x) => TagObject::Xyz(*x),
             Tag::MLU(m) => TagObject::Mlu(m.clone()),
             Tag::ToneCurve(c) => TagObject::Curve(c.clone()),
-            Tag::VcgtCurves(v) => {
-                TagObject::Vcgt(VcgtData::Curves([v[0].clone(), v[1].clone(), v[2].clone()]))
-            }
+            Tag::VcgtCurves(v) => TagObject::Vcgt(VcgtData::Curves(Box::new([
+                v[0].clone(),
+                v[1].clone(),
+                v[2].clone(),
+            ]))),
             Tag::CIExyYTRIPLE(c) => TagObject::Chromaticity(*c),
             Tag::ICCData(d) => TagObject::Data(d.clone()),
             Tag::NamedColorList(l) => TagObject::NamedColor(l.clone()),
@@ -1433,10 +1435,18 @@ pub fn white_point_from_temp(temp_k: f64) -> Option<CIExyY> {
     crate::wtpnt::white_point_from_temp(temp_k)
 }
 /// `lcms2::xyY2XYZ` — `cmsxyY2XYZ`.
+#[allow(
+    non_snake_case,
+    reason = "the lcms2 crate's name, for drop-in compatibility"
+)]
 pub fn xyY2XYZ(xyy: &CIExyY) -> CIEXYZ {
     crate::pcs::xyy2xyz(xyy)
 }
 /// `lcms2::XYZ2xyY` — `cmsXYZ2xyY`.
+#[allow(
+    non_snake_case,
+    reason = "the lcms2 crate's name, for drop-in compatibility"
+)]
 pub fn XYZ2xyY(xyz: &CIEXYZ) -> CIExyY {
     crate::pcs::xyz2xyy(xyz)
 }

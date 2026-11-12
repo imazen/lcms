@@ -50,8 +50,7 @@ fn parameterized_builders() {
                 Y: 1.0,
             },
         };
-        let rp =
-            virt::create_rgb_profile(None, Some(&d50), Some(&rec709), Some([&rg, &rg, &rg]));
+        let rp = virt::create_rgb_profile(None, Some(&d50), Some(&rec709), Some([&rg, &rg, &rg]));
         assert_eq!(ch.is_null(), rp.is_none(), "rgb param build");
         // gray profile
         let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 2.0);
@@ -133,9 +132,8 @@ fn bchsw_transform() {
         let lab_fmt: u32 = (10 << 16) | (3 << 3) | 2; // TYPE_Lab_16
         let ct = c::cmsCreateTransform(ch, lab_fmt, ch, lab_fmt, 0, 0);
         assert!(!ct.is_null(), "bchsw xform");
-        let rp =
-            virt::create_bchsw_abstract_profile(None, 33, 10.0, 10.0, 0.0, 10.0, 5000, 6500)
-                .unwrap();
+        let rp = virt::create_bchsw_abstract_profile(None, 33, 10.0, 10.0, 0.0, 10.0, 5000, 6500)
+            .unwrap();
         let mut profs = vec![rp.clone(), rp.clone()];
         let mut bpc = [false; 2];
         let intents = [0u32; 2];
@@ -144,8 +142,7 @@ fn bchsw_transform() {
             None, &mut profs, &mut bpc, &intents, &adapt, None, 0, lab_fmt, lab_fmt, 0,
         );
         assert_eq!(ct.is_null(), rt.is_none(), "bchsw rust xform");
-        if rt.is_some() {
-            let mut rt = rt.unwrap();
+        if let Some(mut rt) = rt {
             let inp = [0x4000u16, 0x8000, 0x2000];
             let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
             let mut co = [0u16; 3];

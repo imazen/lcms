@@ -102,10 +102,7 @@ fn create_roundtrip_xform(icc: &mut IccProfile, intent: u32) -> Option<crate::xf
     // tags the caller had read before (e.g. a frozen profile).
     let prof1 = Box::new(icc.clone());
     let prof2 = Box::new(icc.clone());
-    let mut profs: Vec<Box<IccProfile>> = Vec::new();
-    profs.push(hlab);
-    profs.push(prof1);
-    profs.push(prof2);
+    let mut profs: Vec<Box<IccProfile>> = vec![hlab, prof1, prof2];
     profs.push(hlab2);
     let mut bpc = [false; 4];
     let intents = [
@@ -165,14 +162,7 @@ fn black_point_using_perceptual_black(icc: &mut IccProfile) -> Option<CieXyz> {
 fn black_point_as_darker_colorant(icc: &mut IccProfile, intent: u32) -> Option<CieXyz> {
     let fmt = formatter_for_colorspace(icc, 2, false);
     let space = icc.color_space;
-    let Some((_, black, n_ch)) = crate::pcs::end_points_by_space(space) else {
-        return Some(CieXyz {
-            X: 0.0,
-            Y: 0.0,
-            Z: 0.0,
-        })
-        .filter(|_| false);
-    };
+    let (_, black, n_ch) = crate::pcs::end_points_by_space(space)?;
     if n_ch != crate::pack::t_channels(fmt) {
         return None;
     }

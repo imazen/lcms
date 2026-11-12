@@ -29,7 +29,7 @@ pub mod tagtype {
     pub const SigMeasurementType: Signature = 0x6D656173; // 'meas'
     pub const SigMultiLocalizedUnicodeType: Signature = 0x6D6C7563; // 'mluc'
     pub const SigMultiProcessElementType: Signature = 0x6D706574; // 'mpet'
-    pub const SigNamedColorType: Signature = 0x6E636f6C; // 'ncol' -- DEPRECATED!
+    pub const SigNamedColorType: Signature = 0x6E636F6C; // 'ncol' -- DEPRECATED!
     pub const SigNamedColor2Type: Signature = 0x6E636C32; // 'ncl2'
     pub const SigParametricCurveType: Signature = 0x70617261; // 'para'
     pub const SigProfileSequenceDescType: Signature = 0x70736571; // 'pseq'
@@ -91,11 +91,11 @@ pub mod tag {
     pub const SigGreenColorantTag: Signature = 0x6758595A; // 'gXYZ'
     pub const SigGreenMatrixColumnTag: Signature = 0x6758595A; // 'gXYZ'
     pub const SigGreenTRCTag: Signature = 0x67545243; // 'gTRC'
-    pub const SigLuminanceTag: Signature = 0x6C756d69; // 'lumi'
+    pub const SigLuminanceTag: Signature = 0x6C756D69; // 'lumi'
     pub const SigMeasurementTag: Signature = 0x6D656173; // 'meas'
     pub const SigMediaBlackPointTag: Signature = 0x626B7074; // 'bkpt'
     pub const SigMediaWhitePointTag: Signature = 0x77747074; // 'wtpt'
-    pub const SigNamedColorTag: Signature = 0x6E636f6C; // 'ncol' // Deprecated by the ICC
+    pub const SigNamedColorTag: Signature = 0x6E636F6C; // 'ncol' // Deprecated by the ICC
     pub const SigNamedColor2Tag: Signature = 0x6E636C32; // 'ncl2'
     pub const SigOutputResponseTag: Signature = 0x72657370; // 'resp'
     pub const SigPerceptualRenderingIntentGamutTag: Signature = 0x72696730; // 'rig0'

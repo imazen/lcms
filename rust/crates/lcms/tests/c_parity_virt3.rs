@@ -25,9 +25,11 @@ fn r_save(p: &mut lcms::profile::IccProfile) -> Vec<u8> {
     profile::save_profile_to_mem(p).unwrap_or_default()
 }
 
-fn mask_created(b: &mut Vec<u8>) {
+fn mask_created(b: &mut [u8]) {
     for i in 0..12 {
-        b.get_mut(CREATED_OFF + i).map(|x| *x = 0);
+        if let Some(x) = b.get_mut(CREATED_OFF + i) {
+            *x = 0;
+        }
     }
 }
 

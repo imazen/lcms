@@ -19,7 +19,7 @@ pub type U16Fixed16 = u32;
 #[cfg(feature = "little-cms-api")]
 pub use crate::context::Context;
 
-/// cmsFloat64Number and cmsFloat32Number stay `f64`/`f32` in signatures.
+// cmsFloat64Number and cmsFloat32Number stay `f64`/`f32` in signatures.
 
 // --- small POD structs, C field order preserved ---
 
@@ -276,6 +276,10 @@ pub struct ViewingConditions {
 /// bit-exact tests whenever a NaN flows into `pow` (e.g. CIECAM02's
 /// `pow(J/100, 0.5)` where J=-NaN). `pow(x, 0)` returns 1.0 for any x
 /// including NaN, per IEEE/C. For non-NaN inputs this is identical to `powf`.
+#[allow(
+    dead_code,
+    reason = "the full libm surface lcms2 calls, kept complete so a newly ported call site uses the glibc-exact wrapper instead of std"
+)]
 pub(crate) trait CpowExt {
     fn cpow(self, exp: Self) -> Self;
     /// `log`/`ln` with glibc domain-error NaN sign (negative → `-NaN`).

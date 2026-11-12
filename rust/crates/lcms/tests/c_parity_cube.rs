@@ -11,8 +11,9 @@ fn cube_devicelink() {
     // cmsCreateDeviceLinkFromCubeFile rejects it ("Extra symbols
     // found"); Rust must reject identically (parity, was accept-all
     // before the binary-search/unknown-symbol fix).
-    let ch =
-        unsafe { c::cmsCreateDeviceLinkFromCubeFile(c"/tmp/test.cube".as_ptr() as *const std::ffi::c_char) };
+    let ch = unsafe {
+        c::cmsCreateDeviceLinkFromCubeFile(c"/tmp/test.cube".as_ptr() as *const std::ffi::c_char)
+    };
     let rp = It8::create_device_link_from_cube_file(None, "/tmp/test.cube");
     assert_eq!(
         ch.is_null(),

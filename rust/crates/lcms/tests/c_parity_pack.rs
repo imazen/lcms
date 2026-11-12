@@ -949,7 +949,7 @@ fn named_unusual_formats() {
         let ho = c::cmsCreate_sRGBProfile();
         // named-color index + more unusual pixel types
         for (name, fmt) in [
-            ("named-idx", (1 << 3) | 2u32),       // TYPE_NAMED_COLOR_INDEX
+            ("named-idx", (1 << 3) | 2u32),     // TYPE_NAMED_COLOR_INDEX
             ("rgb-4b", ((4 << 16) | (3 << 3))), // 0-byte packed
             ("rgb-1ch", (4 << 16) | (1 << 3) | 2),
             ("rgb-2ch", (4 << 16) | (2 << 3) | 2),
@@ -1347,7 +1347,7 @@ fn named_color_format() {
             c"S".as_ptr() as _,
         );
         if !list.is_null() {
-            let _ = c::cmsWriteTag(h, 0x6E636C32, list as *mut std::ffi::c_void);
+            let _ = c::cmsWriteTag(h, 0x6E636C32, list);
         }
         // the named-index format — 1-channel u16 index
         let named_fmt: u32 = (1 << 3) | 2;
@@ -1371,10 +1371,7 @@ fn double_modifier_matrix() {
         let hi = c::cmsCreate_sRGBProfile();
         let ho = c::cmsCreate_sRGBProfile();
         for (name, fmt) in [
-            (
-                "d-planar",
-                ((1 << 22) | (4 << 16) | (1 << 12) | (3 << 3)),
-            ),
+            ("d-planar", ((1 << 22) | (4 << 16) | (1 << 12) | (3 << 3))),
             ("d-doswap", ((1 << 22) | (4 << 16) | (1 << 10) | (3 << 3))),
             ("d-swapf", ((1 << 22) | (4 << 16) | (1 << 14) | (3 << 3))),
             ("d-flavor", ((1 << 22) | (4 << 16) | (1 << 13) | (3 << 3))),
@@ -1511,10 +1508,7 @@ fn four_channel_modifier_matrix() {
             ("4ch-x2", (2 << 7) | (4 << 3) | 1),
             ("4ch-x3", (3 << 7) | (4 << 3) | 1),
             ("4ch-x4", (4 << 7) | (4 << 3) | 1),
-            (
-                "4ch-premul",
-                (1 << 23) | (1 << 7) | (4 << 3) | 1,
-            ),
+            ("4ch-premul", (1 << 23) | (1 << 7) | (4 << 3) | 1),
         ] {
             let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
@@ -1669,10 +1663,7 @@ fn multichannel_modifier_matrix2() {
             ("6ch-x2", (2 << 7) | (6 << 3) | 1),
             ("6ch-x3", (3 << 7) | (6 << 3) | 1),
             ("6ch-x4", (4 << 7) | (6 << 3) | 1),
-            (
-                "6ch-premul",
-                (1 << 23) | (1 << 7) | (6 << 3) | 1,
-            ),
+            ("6ch-premul", (1 << 23) | (1 << 7) | (6 << 3) | 1),
             ("6ch-dbl", ((1 << 22) | (6 << 3))),
             ("6ch-hlf", (1 << 22) | (6 << 3) | 2),
         ] {
@@ -1752,24 +1743,12 @@ fn float_byte_order_devicelink() {
             curves.as_mut_ptr(),
         );
         for (name, fmt) in [
-            (
-                "4f-bgr",
-                (1 << 22) | (1 << 10) | (4 << 3) | 4u32,
-            ),
-            (
-                "4f-abgr",
-                (1 << 22) | (1 << 14) | (1 << 10) | (4 << 3) | 4,
-            ),
+            ("4f-bgr", (1 << 22) | (1 << 10) | (4 << 3) | 4u32),
+            ("4f-abgr", (1 << 22) | (1 << 14) | (1 << 10) | (4 << 3) | 4),
             ("4f-argb", (1 << 22) | (1 << 14) | (4 << 3) | 4),
-            (
-                "4f-bgra",
-                (1 << 22) | (1 << 10) | (1 << 7) | (4 << 3) | 4,
-            ),
+            ("4f-bgra", (1 << 22) | (1 << 10) | (1 << 7) | (4 << 3) | 4),
             ("4f-rgba", (1 << 22) | (1 << 7) | (4 << 3) | 4),
-            (
-                "4f-planar",
-                (1 << 22) | (1 << 12) | (4 << 3) | 4,
-            ),
+            ("4f-planar", (1 << 22) | (1 << 12) | (4 << 3) | 4),
         ] {
             let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
@@ -1795,10 +1774,7 @@ fn u16_byte_order_devicelink() {
         );
         for (name, fmt) in [
             ("4u16-bgr", (1 << 10) | (4 << 3) | 2u32),
-            (
-                "4u16-abgr",
-                (1 << 14) | (1 << 10) | (4 << 3) | 2,
-            ),
+            ("4u16-abgr", (1 << 14) | (1 << 10) | (4 << 3) | 2),
             ("4u16-argb", (1 << 14) | (4 << 3) | 2),
             ("4u16-bgra", (1 << 10) | (1 << 7) | (4 << 3) | 2),
             ("4u16-rgba", (1 << 7) | (4 << 3) | 2),
@@ -1827,24 +1803,12 @@ fn half_byte_order_devicelink() {
             curves.as_mut_ptr(),
         );
         for (name, fmt) in [
-            (
-                "4h-bgr",
-                (1 << 22) | (1 << 10) | (4 << 3) | 2u32,
-            ),
-            (
-                "4h-abgr",
-                (1 << 22) | (1 << 14) | (1 << 10) | (4 << 3) | 2,
-            ),
+            ("4h-bgr", (1 << 22) | (1 << 10) | (4 << 3) | 2u32),
+            ("4h-abgr", (1 << 22) | (1 << 14) | (1 << 10) | (4 << 3) | 2),
             ("4h-argb", (1 << 22) | (1 << 14) | (4 << 3) | 2),
-            (
-                "4h-bgra",
-                (1 << 22) | (1 << 10) | (1 << 7) | (4 << 3) | 2,
-            ),
+            ("4h-bgra", (1 << 22) | (1 << 10) | (1 << 7) | (4 << 3) | 2),
             ("4h-rgba", (1 << 22) | (1 << 7) | (4 << 3) | 2),
-            (
-                "4h-doswap",
-                (1 << 22) | (1 << 10) | (4 << 3) | 2,
-            ),
+            ("4h-doswap", (1 << 22) | (1 << 10) | (4 << 3) | 2),
         ] {
             let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
@@ -1869,24 +1833,12 @@ fn double_byte_order_devicelink() {
             curves.as_mut_ptr(),
         );
         for (name, fmt) in [
-            (
-                "4d-bgr",
-                ((1 << 22) | (1 << 10) | (4 << 3)),
-            ),
-            (
-                "4d-abgr",
-                ((1 << 22) | (1 << 14) | (1 << 10) | (4 << 3)),
-            ),
+            ("4d-bgr", ((1 << 22) | (1 << 10) | (4 << 3))),
+            ("4d-abgr", ((1 << 22) | (1 << 14) | (1 << 10) | (4 << 3))),
             ("4d-argb", ((1 << 22) | (1 << 14) | (4 << 3))),
-            (
-                "4d-bgra",
-                ((1 << 22) | (1 << 10) | (1 << 7) | (4 << 3)),
-            ),
+            ("4d-bgra", ((1 << 22) | (1 << 10) | (1 << 7) | (4 << 3))),
             ("4d-rgba", ((1 << 22) | (1 << 7) | (4 << 3))),
-            (
-                "4d-doswap",
-                ((1 << 22) | (1 << 10) | (4 << 3)),
-            ),
+            ("4d-doswap", ((1 << 22) | (1 << 10) | (4 << 3))),
         ] {
             let ct = c::cmsCreateTransform(dl, fmt, dl, fmt, 0, 0);
             eprintln!("{name} t={}", !ct.is_null());
@@ -1942,21 +1894,10 @@ fn change_buffers_devicelink() {
             0x434D594B,
             curves.as_mut_ptr(),
         );
-        let ct = c::cmsCreateTransform(
-            dl,
-            (4 << 3) | 1,
-            dl,
-            (4 << 3) | 2,
-            0,
-            0,
-        );
+        let ct = c::cmsCreateTransform(dl, (4 << 3) | 1, dl, (4 << 3) | 2, 0, 0);
         eprintln!("t={}", !ct.is_null());
         if !ct.is_null() {
-            let ok = c::cmsChangeBuffersFormat(
-                ct,
-                (1 << 22) | (4 << 3) | 4,
-                (1 << 22) | (4 << 3),
-            );
+            let ok = c::cmsChangeBuffersFormat(ct, (1 << 22) | (4 << 3) | 4, (1 << 22) | (4 << 3));
             eprintln!("change={ok}");
             c::cmsDeleteTransform(ct);
         }
@@ -2008,14 +1949,7 @@ fn line_stride_devicelink() {
             0x434D594B,
             curves.as_mut_ptr(),
         );
-        let ct = c::cmsCreateTransform(
-            dl,
-            (4 << 3) | 1,
-            dl,
-            (4 << 3) | 1,
-            0,
-            0,
-        );
+        let ct = c::cmsCreateTransform(dl, (4 << 3) | 1, dl, (4 << 3) | 1, 0, 0);
         eprintln!("t={}", !ct.is_null());
         if !ct.is_null() {
             // line-stride eval — 2 lines x 2 pixels x 4ch
@@ -6305,9 +6239,9 @@ fn opt_arms() {
         let gray = open("gray3lcms2.icc");
         let lab4 = open("labv4lcms2.icc");
         let f = |pt: u32, ch: u32, b: u32| -> u32 { (pt << 16) | (ch << 3) | b };
-        let FC = 0x0002u32; // FORCE_CLUT
-        let NOW = 0x0004u32; // NOWHITEONWHITEFIXUP
-        let NOO = 0x0100u32; // NOOPTIMIZE
+        const FC: u32 = 0x0002; // FORCE_CLUT
+        const NOW: u32 = 0x0004; // NOWHITEONWHITEFIXUP
+        const NOO: u32 = 0x0100; // NOOPTIMIZE
         let sweep = |nm: &str, i: *mut c_void, fi: u32, o: *mut c_void, fo: u32| {
             if i.is_null() || o.is_null() {
                 eprintln!("{nm}: null");
@@ -6554,7 +6488,7 @@ fn cnvrt_arms() {
         let xyz = open("xyzlcms2.icc");
         let null = open("nullcms2.icc");
         let f16 = |pt: u32, ch: u32| -> u32 { (pt << 16) | (ch << 3) | 2 };
-        let BPC = 0x2000u32;
+        const BPC: u32 = 0x2000;
         // absolute intent (3) on all pairs — CHAD/white arms
         for (nm, i, fi, o, fo) in [
             ("srgb", srgb, f16(4, 3), cmyk, f16(6, 4)),
@@ -6663,7 +6597,7 @@ fn alpha_arms() {
         let srgb = open("sRGBlcms2.icc");
         let cmyk = open("lcms2cmyk.icc");
         let gray = open("gray3lcms2.icc");
-        let CA = 0x04000000u32; // COPY_ALPHA
+        const CA: u32 = 0x04000000; // COPY_ALPHA
         let f = |pt: u32, ch: u32, ex: u32, b: u32, pl: u32| -> u32 {
             (pt << 16) | (ex << 7) | (ch << 3) | (pl << 12) | b
         };
@@ -7204,13 +7138,8 @@ fn ncl2dl_arms() {
         c::cmsSetColorSpace(np, 0x31434C52);
         c::cmsSetPCS(np, 0x4C616220);
         c::cmsSetProfileVersion(np, 4.4);
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            4,
-            3,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 3, c"pre".as_ptr(), c"suf".as_ptr());
         for i in 0..4u32 {
             let nm = format!("col{i}\0");
             let mut root = [0u8; 32];

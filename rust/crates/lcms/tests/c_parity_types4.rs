@@ -21,17 +21,6 @@ struct CUcrBg {
     mlu: *mut c_void,
 }
 
-/// cmsDateTimeNumber — 6 u32 fields
-#[repr(C)]
-struct CDateTimeNumber {
-    year: u32,
-    month: u32,
-    day: u32,
-    hours: u32,
-    minutes: u32,
-    seconds: u32,
-}
-
 /// Writes `txt` to tag `sig` in the shape C dereferences. Text tags hold a
 /// `cmsMLU*`, so they get a real MLU: handing C the bare string makes it read
 /// the bytes as an MLU struct, chase garbage pointers and SIGSEGV on save
@@ -59,12 +48,16 @@ unsafe fn write_text_like(prof: *mut c_void, sig: u32, txt: &[u8]) -> i32 {
     }
 }
 
-fn resave_mask(b: &mut Vec<u8>) {
+fn resave_mask(b: &mut [u8]) {
     for i in 0..12 {
-        b.get_mut(24 + i).map(|x| *x = 0);
+        if let Some(x) = b.get_mut(24 + i) {
+            *x = 0;
+        }
     }
     for i in 0..16 {
-        b.get_mut(84 + i).map(|x| *x = 0);
+        if let Some(x) = b.get_mut(84 + i) {
+            *x = 0;
+        }
     }
 }
 
@@ -201,6 +194,7 @@ fn exotic_writes() {
 
         // Chromaticity (chrm) — cmsCIExyYTRIPLE
         #[repr(C)]
+        #[allow(non_snake_case)] // cmsCIExyY's field names
         struct CXyy {
             x: f64,
             y: f64,
@@ -371,8 +365,8 @@ fn exotic_writes() {
             std::ptr::null_mut(),
             0,
             4,
-            b"CMYK ".as_ptr().cast(),
-            b" prim ".as_ptr().cast(),
+            c"CMYK".as_ptr().cast(),
+            c" prim".as_ptr().cast(),
         );
         let mut rncl = named::alloc_named_color_list(None, 0, 4, b"CMYK", b" prim").unwrap();
         for i in 0..4 {
@@ -380,7 +374,12 @@ fn exotic_writes() {
             let mut pcs = [0u16; 16];
             pcs[i as usize] = 65535;
             assert_eq!(
-                c::cmsAppendNamedColor(cncl, name.as_ptr().cast(), pcs.as_ptr(), [0u16; 16].as_ptr()) != 0,
+                c::cmsAppendNamedColor(
+                    cncl,
+                    name.as_ptr().cast(),
+                    pcs.as_ptr(),
+                    [0u16; 16].as_ptr()
+                ) != 0,
                 named::append_named_color(
                     &mut rncl,
                     Some(name.trim_end_matches(' ').as_bytes()),
@@ -444,20 +443,16 @@ fn exotic_writes2() {
         c::cmsMLUfree(ctarg);
 
         // ncl2 — namedColor2 type (same payload as clrt)
-        let cn = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            0,
-            3,
-            c"RGB".as_ptr(),
-            c"".as_ptr(),
-        );
+        let cn =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 0, 3, c"RGB".as_ptr(), c"".as_ptr());
         let mut rn = named::alloc_named_color_list(None, 0, 3, b"RGB", b"").unwrap();
         for i in 0..3 {
             let name = format!("n{i}\0");
             let mut pcs = [0u16; 3];
             pcs[i as usize] = 65535;
             assert_eq!(
-                c::cmsAppendNamedColor(cn, name.as_ptr().cast(), pcs.as_ptr(), [0u16; 16].as_ptr()) != 0,
+                c::cmsAppendNamedColor(cn, name.as_ptr().cast(), pcs.as_ptr(), [0u16; 16].as_ptr())
+                    != 0,
                 named::append_named_color(
                     &mut rn,
                     Some(name.trim_end_matches('\0').as_bytes()),
@@ -677,7 +672,7 @@ fn ucrbg_write() {
 /// ps2-CRD/CSA/RDI data-type tags — the Type_Data handler.
 #[test]
 fn data_type_writes() {
-    unsafe {
+    {
         #[repr(C)]
         struct CData {
             len: u32,
@@ -1250,7 +1245,12 @@ fn type_write2_arms() {
                         _ => b"XX",
                     };
                     let s = format!("t{i}\0");
-                    c::cmsMLUsetASCII(mlu, lng.as_ptr().cast(), cnt.as_ptr().cast(), s.as_ptr().cast());
+                    c::cmsMLUsetASCII(
+                        mlu,
+                        lng.as_ptr().cast(),
+                        cnt.as_ptr().cast(),
+                        s.as_ptr().cast(),
+                    );
                 }
                 let w = c::cmsWriteTag(prof, sig, mlu as *const _);
                 let mut buf = vec![0u8; 1 << 20];
@@ -1357,7 +1357,12 @@ fn type_read2_arms() {
                         _ => b"XX",
                     };
                     let s = format!("t{i}\0");
-                    c::cmsMLUsetASCII(mlu, lng.as_ptr().cast(), cnt.as_ptr().cast(), s.as_ptr().cast());
+                    c::cmsMLUsetASCII(
+                        mlu,
+                        lng.as_ptr().cast(),
+                        cnt.as_ptr().cast(),
+                        s.as_ptr().cast(),
+                    );
                 }
                 let w = c::cmsWriteTag(prof, sig, mlu as *const _);
                 let mut buf = vec![0u8; 1 << 20];
@@ -1513,12 +1518,7 @@ fn type_write3_arms() {
                 for i in 0..n_ {
                     let nm = format!("n{i}\0");
                     pcs[0] = i as u16;
-                    c::cmsAppendNamedColor(
-                        nl,
-                        (nm.as_ptr() as *const u8).cast(),
-                        pcs.as_ptr(),
-                        col.as_ptr(),
-                    );
+                    c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
                 }
                 let w = c::cmsWriteTag(prof, sig, nl as *const _);
                 let mut buf = vec![0u8; 1 << 22];
@@ -1655,12 +1655,7 @@ fn type_read3_arms() {
                 for i in 0..n_ {
                     let nm = format!("n{i}\0");
                     pcs[0] = i as u16;
-                    c::cmsAppendNamedColor(
-                        nl,
-                        (nm.as_ptr() as *const u8).cast(),
-                        pcs.as_ptr(),
-                        col.as_ptr(),
-                    );
+                    c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
                 }
                 let w = c::cmsWriteTag(prof, sig, nl as *const _);
                 let mut buf = vec![0u8; 1 << 22];
@@ -2092,7 +2087,7 @@ fn type_write5_arms() {
                 }
                 let mut vc = VC { b: [0u8; 64] };
                 let xyz = [0.5f64, 0.5, 0.5];
-                unsafe {
+                {
                     std::ptr::copy_nonoverlapping(xyz.as_ptr(), vc.b.as_mut_ptr() as *mut f64, 3);
                     std::ptr::copy_nonoverlapping(
                         xyz.as_ptr(),
@@ -2215,7 +2210,7 @@ fn type_read5_arms() {
                 }
                 let mut vc = VC { b: [0u8; 64] };
                 let xyz = [0.5f64, 0.5, 0.5];
-                unsafe {
+                {
                     std::ptr::copy_nonoverlapping(xyz.as_ptr(), vc.b.as_mut_ptr() as *mut f64, 3);
                     std::ptr::copy_nonoverlapping(
                         xyz.as_ptr(),
@@ -2358,7 +2353,7 @@ fn type_write6_arms() {
             for (n_, name) in [(0u32, "0"), (1, "1"), (4, "4")] {
                 let pseq = c::cmsAllocProfileSequenceDescription(std::ptr::null_mut(), n_);
                 if !pseq.is_null() {
-                    let seq = unsafe { *((pseq as *const usize).add(2)) as *mut u8 };
+                    let seq = { *((pseq as *const usize).add(2)) as *mut u8 };
                     for i in 0..n_ as usize {
                         // unique MLUs per desc — the pseq
                         //   free frees each pointer
@@ -2366,20 +2361,10 @@ fn type_write6_arms() {
                         let mlu2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                         let mlu3 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                         c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"t".as_ptr());
-                        c::cmsMLUsetASCII(
-                            mlu2,
-                            c"en".as_ptr(),
-                            c"US".as_ptr(),
-                            c"u".as_ptr(),
-                        );
-                        c::cmsMLUsetASCII(
-                            mlu3,
-                            c"en".as_ptr(),
-                            c"US".as_ptr(),
-                            c"v".as_ptr(),
-                        );
-                        let d = unsafe { seq.add(i * 64) };
-                        unsafe {
+                        c::cmsMLUsetASCII(mlu2, c"en".as_ptr(), c"US".as_ptr(), c"u".as_ptr());
+                        c::cmsMLUsetASCII(mlu3, c"en".as_ptr(), c"US".as_ptr(), c"v".as_ptr());
+                        let d = { seq.add(i * 64) };
+                        {
                             *(d as *mut u32) = i as u32;
                             *(d.add(4) as *mut u32) = i as u32;
                             *(d.add(8) as *mut u64) = i as u64;
@@ -2458,26 +2443,16 @@ fn type_read6_arms() {
             for (n_, name) in [(0u32, "0"), (1, "1"), (4, "4")] {
                 let pseq = c::cmsAllocProfileSequenceDescription(std::ptr::null_mut(), n_);
                 if !pseq.is_null() {
-                    let seq = unsafe { *((pseq as *const usize).add(2)) as *mut u8 };
+                    let seq = { *((pseq as *const usize).add(2)) as *mut u8 };
                     for i in 0..n_ as usize {
                         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                         let mlu2 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                         let mlu3 = c::cmsMLUalloc(std::ptr::null_mut(), 1);
                         c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"t".as_ptr());
-                        c::cmsMLUsetASCII(
-                            mlu2,
-                            c"en".as_ptr(),
-                            c"US".as_ptr(),
-                            c"u".as_ptr(),
-                        );
-                        c::cmsMLUsetASCII(
-                            mlu3,
-                            c"en".as_ptr(),
-                            c"US".as_ptr(),
-                            c"v".as_ptr(),
-                        );
-                        let d = unsafe { seq.add(i * 64) };
-                        unsafe {
+                        c::cmsMLUsetASCII(mlu2, c"en".as_ptr(), c"US".as_ptr(), c"u".as_ptr());
+                        c::cmsMLUsetASCII(mlu3, c"en".as_ptr(), c"US".as_ptr(), c"v".as_ptr());
+                        let d = { seq.add(i * 64) };
+                        {
                             *(d as *mut u32) = i as u32;
                             *(d.add(4) as *mut u32) = i as u32;
                             *(d.add(8) as *mut u64) = i as u64;
@@ -2535,10 +2510,10 @@ fn type_write7_arms() {
             for (_n_, name) in [(1u32, "1"), (3, "3"), (6, "6"), (16, "16")] {
                 // cmsCIExyYTRIPLE* = 3 * {x,y,Y}
                 let mut xyys = [c::CiexyY {
-                        x: 0.3,
-                        y: 0.3,
-                        Y: 0.5
-                    }; 3];
+                    x: 0.3,
+                    y: 0.3,
+                    Y: 0.5,
+                }; 3];
                 for i in 0..3 {
                     xyys[i].x = 0.1 + i as f64 * 0.2;
                     xyys[i].y = 0.1 + i as f64 * 0.1;
@@ -2572,12 +2547,7 @@ fn type_write7_arms() {
                 for i in 0..n_ {
                     let nm = format!("c{i}\0");
                     pcs[0] = i as u16;
-                    c::cmsAppendNamedColor(
-                        nl,
-                        (nm.as_ptr() as *const u8).cast(),
-                        pcs.as_ptr(),
-                        col.as_ptr(),
-                    );
+                    c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
                 }
                 let w = c::cmsWriteTag(prof, sig, nl as *const _);
                 let mut buf = vec![0u8; 1 << 22];
@@ -2656,10 +2626,10 @@ fn type_read7_arms() {
             c::cmsSetProfileVersion(prof, 4.4);
             for name in ["1", "3", "6", "16"] {
                 let mut xyys = [c::CiexyY {
-                        x: 0.3,
-                        y: 0.3,
-                        Y: 0.5
-                    }; 3];
+                    x: 0.3,
+                    y: 0.3,
+                    Y: 0.5,
+                }; 3];
                 for i in 0..3 {
                     xyys[i].x = 0.1 + i as f64 * 0.2;
                     xyys[i].y = 0.1 + i as f64 * 0.1;
@@ -2706,12 +2676,7 @@ fn type_read7_arms() {
                 for i in 0..n_ {
                     let nm = format!("c{i}\0");
                     pcs[0] = i as u16;
-                    c::cmsAppendNamedColor(
-                        nl,
-                        (nm.as_ptr() as *const u8).cast(),
-                        pcs.as_ptr(),
-                        col.as_ptr(),
-                    );
+                    c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
                 }
                 let w = c::cmsWriteTag(prof, sig, nl as *const _);
                 let mut buf = vec![0u8; 1 << 22];
@@ -2840,7 +2805,7 @@ fn type_write8_arms() {
                 }
                 let mut ms = MS { b: [0u8; 56] };
                 let xyz = [0.5f64, 0.5, 0.5];
-                unsafe {
+                {
                     *(ms.b.as_mut_ptr() as *mut u32) = v;
                     std::ptr::copy_nonoverlapping(
                         xyz.as_ptr(),
@@ -2900,7 +2865,7 @@ fn type_write8_arms() {
                 let mut sc = SC {
                     b: [0u8; 8 + 16 * 24],
                 };
-                unsafe {
+                {
                     *(sc.b.as_mut_ptr() as *mut u32) = n_;
                     *(sc.b.as_mut_ptr().add(4) as *mut u32) = 4;
                     for i in 0..16 {
@@ -2938,7 +2903,7 @@ fn type_write8_arms() {
                 rs.b[1] = b'e';
                 rs.b[2] = b's';
                 rs.b[3] = b't';
-                unsafe {
+                {
                     *(rs.b.as_mut_ptr().add(4) as *mut u32) = n_;
                 }
                 let w = c::cmsWriteTag(prof, sig, rs.b.as_ptr() as *const _);
@@ -2981,7 +2946,7 @@ fn type_read8_arms() {
                 }
                 let mut ms = MS { b: [0u8; 56] };
                 let xyz = [0.5f64, 0.5, 0.5];
-                unsafe {
+                {
                     *(ms.b.as_mut_ptr() as *mut u32) = v;
                     std::ptr::copy_nonoverlapping(
                         xyz.as_ptr(),
@@ -3028,7 +2993,7 @@ fn type_read8_arms() {
                 let mut sc = SC {
                     b: [0u8; 8 + 16 * 24],
                 };
-                unsafe {
+                {
                     *(sc.b.as_mut_ptr() as *mut u32) = n_;
                     *(sc.b.as_mut_ptr().add(4) as *mut u32) = 4;
                     for i in 0..16 {
@@ -3365,7 +3330,12 @@ fn type_write11_arms() {
                             _ => b"XX",
                         };
                         let s = format!("t{i}\0");
-                        c::cmsMLUsetASCII(mlu, lng.as_ptr().cast(), cnt.as_ptr().cast(), s.as_ptr().cast());
+                        c::cmsMLUsetASCII(
+                            mlu,
+                            lng.as_ptr().cast(),
+                            cnt.as_ptr().cast(),
+                            s.as_ptr().cast(),
+                        );
                     }
                     let w = c::cmsWriteTag(prof, sig, mlu as *const _);
                     let mut buf = vec![0u8; 1 << 22];
@@ -3457,7 +3427,12 @@ fn type_read10_arms() {
                             _ => b"XX",
                         };
                         let s = format!("t{i}\0");
-                        c::cmsMLUsetASCII(mlu, lng.as_ptr().cast(), cnt.as_ptr().cast(), s.as_ptr().cast());
+                        c::cmsMLUsetASCII(
+                            mlu,
+                            lng.as_ptr().cast(),
+                            cnt.as_ptr().cast(),
+                            s.as_ptr().cast(),
+                        );
                     }
                     let w = c::cmsWriteTag(prof, sig, mlu as *const _);
                     let mut buf = vec![0u8; 1 << 22];
@@ -5053,12 +5028,7 @@ fn type_write20_arms() {
                     for i in 0..n_ {
                         let nm = format!("n{i}\0");
                         pcs[0] = i as u16;
-                        c::cmsAppendNamedColor(
-                            nl,
-                            (nm.as_ptr() as *const u8).cast(),
-                            pcs.as_ptr(),
-                            col.as_ptr(),
-                        );
+                        c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
                     }
                     let w = c::cmsWriteTag(prof, sig, nl as *const _);
                     let mut buf = vec![0u8; 1 << 22];
@@ -5144,12 +5114,7 @@ fn type_read18_arms() {
                     for i in 0..n_ {
                         let nm = format!("n{i}\0");
                         pcs[0] = i as u16;
-                        c::cmsAppendNamedColor(
-                            nl,
-                            (nm.as_ptr() as *const u8).cast(),
-                            pcs.as_ptr(),
-                            col.as_ptr(),
-                        );
+                        c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), col.as_ptr());
                     }
                     let w = c::cmsWriteTag(prof, sig, nl as *const _);
                     let mut buf = vec![0u8; 1 << 22];
@@ -8073,15 +8038,11 @@ fn type_read33_arms() {
                 blob.push(i as u8);
             }
             // 3 x 256 u8 input tables + clut + out tables
-            for _ in 0..3 * 256 {
-                blob.push(0);
-            }
+            blob.extend(std::iter::repeat_n(0, 3 * 256));
             for i in 0..ntab.min(4096) {
                 blob.push(i as u8);
             }
-            for _ in 0..3 * 256 {
-                blob.push(255);
-            }
+            blob.extend(std::iter::repeat_n(255, 3 * 256));
             let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(prof, 0x6D6E7472);
             c::cmsSetColorSpace(prof, 0x52474220);
@@ -8349,9 +8310,7 @@ fn type_read34_arms() {
             }
             blob.extend_from_slice(&be16(0x0002));
             blob.push(0);
-            for _ in 0..67 {
-                blob.push(0);
-            }
+            blob.extend(std::iter::repeat_n(0, 67));
             let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
             c::cmsSetDeviceClass(prof, 0x6D6E7472);
             c::cmsSetColorSpace(prof, 0x52474220);
@@ -8414,9 +8373,7 @@ fn type_read35_arms() {
             }
             blob.extend_from_slice(&be16(0x0002));
             blob.push(0);
-            for _ in 0..67 {
-                blob.push(0);
-            }
+            blob.extend(std::iter::repeat_n(0, 67));
             // write desc as the LAST tag — append a bogus
             //   high-sig tag first so desc sits at EOF
             let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
@@ -8463,9 +8420,7 @@ fn type_read35_arms() {
         }
         blob.extend_from_slice(&be16(0x0002));
         blob.push(0);
-        for _ in 0..67 {
-            blob.push(0);
-        }
+        blob.extend(std::iter::repeat_n(0, 67));
         let prof = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         c::cmsSetDeviceClass(prof, 0x6D6E7472);
         c::cmsSetColorSpace(prof, 0x52474220);
@@ -8624,33 +8579,37 @@ fn type_write39_arms() {
             _ptr: *mut *mut std::ffi::c_void,
             _n: *mut u32,
             _size: u32,
-        ) -> i32 { unsafe {
-            READ_CALLED += 1;
-            let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-            let w = [0x64i32, 0];
-            c::cmsMLUsetWide(
-                mlu,
-                c"en".as_ptr() as *const _,
-                c"US".as_ptr() as *const _,
-                w.as_ptr(),
-            );
-            let _ = READ_CALLED;
-            let _ = WRITE_CALLED;
-            *_ptr = mlu as *mut _;
-            *_n = 1;
-            let _ = io;
-            1
-        }}
+        ) -> i32 {
+            unsafe {
+                READ_CALLED += 1;
+                let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
+                let w = [0x64i32, 0];
+                c::cmsMLUsetWide(
+                    mlu,
+                    c"en".as_ptr() as *const _,
+                    c"US".as_ptr() as *const _,
+                    w.as_ptr(),
+                );
+                let _ = READ_CALLED;
+                let _ = WRITE_CALLED;
+                *_ptr = mlu as *mut _;
+                *_n = 1;
+                let _ = io;
+                1
+            }
+        }
         unsafe extern "C" fn my_write(
             _self: *mut std::ffi::c_void,
             io: *mut std::ffi::c_void,
             _ptr: *const std::ffi::c_void,
             _n: u32,
-        ) -> i32 { unsafe {
-            WRITE_CALLED += 1;
-            let _ = io;
-            1
-        }}
+        ) -> i32 {
+            unsafe {
+                WRITE_CALLED += 1;
+                let _ = io;
+                1
+            }
+        }
         unsafe extern "C" fn my_dup(
             _self: *mut std::ffi::c_void,
             ptr: *const std::ffi::c_void,
@@ -8936,9 +8895,7 @@ fn type_read39_arms() {
             }
             b.extend_from_slice(&be16(0x0002));
             b.push(0);
-            for _ in 0..67 {
-                b.push(0);
-            }
+            b.extend(std::iter::repeat_n(0, 67));
             cases.push((0x64657363, 0x6D6E7472, "desc", b));
         }
         // mluc: sig+res + nRecs + recSize + recs
@@ -9170,7 +9127,11 @@ fn type_read40_arms() {
 #[test]
 fn type_read41_arms() {
     unsafe {
-        unsafe extern "C" fn onerr(_ctx: *mut std::ffi::c_void, code: u32, msg: *const std::ffi::c_char) {
+        unsafe extern "C" fn onerr(
+            _ctx: *mut std::ffi::c_void,
+            code: u32,
+            msg: *const std::ffi::c_char,
+        ) {
             let s = unsafe { std::ffi::CStr::from_ptr(msg).to_string_lossy() };
             eprintln!("  cerr {code}: {s}");
         }
@@ -14115,14 +14076,14 @@ fn type_read73_arms() {
             };
             let mut offs = [0u32; 5];
             let mut pos = 48u32;
-            if (shape == 0 || shape >= 1 && shape != 4 && shape != 5)
-                && (shape <= 3 || shape >= 6) {
-                    // B curves at offset 48
-                    offs[0] = pos;
-                    for _ in 0..3 {
-                        pos += curv_block().len() as u32;
-                    }
+            if (shape == 0 || shape >= 1 && shape != 4 && shape != 5) && (shape <= 3 || shape >= 6)
+            {
+                // B curves at offset 48
+                offs[0] = pos;
+                for _ in 0..3 {
+                    pos += curv_block().len() as u32;
                 }
+            }
             if (2..=3).contains(&shape) || shape == 7 {
                 offs[1] = pos;
                 pos += mat_block().len() as u32;
@@ -22449,13 +22410,11 @@ fn type_read139_arms() {
                 }
                 let _ = (lang, ctry);
             }
-            let mut i = 0usize;
-            for (lang, ctry, s) in recs {
+            for (i, (lang, ctry, s)) in recs.iter().enumerate() {
                 b.extend_from_slice(lang.as_slice());
                 b.extend_from_slice(ctry.as_slice());
                 b.extend_from_slice(&(s.len() as u32 * 2).to_be_bytes());
                 b.extend_from_slice(&offs[i].to_be_bytes());
-                i += 1;
             }
             b.extend_from_slice(&pool);
             b
@@ -23230,8 +23189,7 @@ fn hdr_plugin_arms() {
         let ok2 = c::cmsPluginTHR(ctx2, &mut plug2 as *mut _ as *mut c_void);
         eprintln!("null-hooks register={ok2}");
         if !ctx2.is_null() {
-            let p2 =
-                c::cmsOpenProfileFromFileTHR(ctx2, cpath.as_ptr(), c"r".as_ptr() as *const _);
+            let p2 = c::cmsOpenProfileFromFileTHR(ctx2, cpath.as_ptr(), c"r".as_ptr() as *const _);
             if !p2.is_null() {
                 let mut buf = [0u8; 1 << 17];
                 let mut nn = buf.len() as u32;
@@ -23574,15 +23532,17 @@ unsafe extern "C" fn fail_realloc(_ctx: *mut c_void, p: *mut c_void, size: u32) 
     }
     unsafe { realloc(p, size as usize) }
 }
-unsafe extern "C" fn fail_malloczero(_ctx: *mut c_void, size: u32) -> *mut c_void { unsafe {
-    let p = fail_malloc(_ctx, size);
-    if !p.is_null() {
-        unsafe {
-            std::ptr::write_bytes(p as *mut u8, 0, size as usize);
+unsafe extern "C" fn fail_malloczero(_ctx: *mut c_void, size: u32) -> *mut c_void {
+    unsafe {
+        let p = fail_malloc(_ctx, size);
+        if !p.is_null() {
+            {
+                std::ptr::write_bytes(p as *mut u8, 0, size as usize);
+            }
         }
+        p
     }
-    p
-}}
+}
 unsafe extern "C" fn fail_calloc(_ctx: *mut c_void, num: u32, size: u32) -> *mut c_void {
     let n = ALLOC_N.fetch_add(1, Ordering::Relaxed);
     if n >= ALLOC_FAIL_AT.load(Ordering::Relaxed) {
@@ -23590,15 +23550,17 @@ unsafe extern "C" fn fail_calloc(_ctx: *mut c_void, num: u32, size: u32) -> *mut
     }
     unsafe { calloc(num as usize, size as usize) }
 }
-unsafe extern "C" fn fail_dup(_ctx: *mut c_void, org: *const c_void, size: u32) -> *mut c_void { unsafe {
-    let p = fail_malloc(_ctx, size);
-    if !p.is_null() && !org.is_null() {
-        unsafe {
-            memcpy(p, org, size as usize);
+unsafe extern "C" fn fail_dup(_ctx: *mut c_void, org: *const c_void, size: u32) -> *mut c_void {
+    unsafe {
+        let p = fail_malloc(_ctx, size);
+        if !p.is_null() && !org.is_null() {
+            {
+                memcpy(p, org, size as usize);
+            }
         }
+        p
     }
-    p
-}}
+}
 
 #[repr(C)]
 struct MemPlugin {
@@ -23932,19 +23894,18 @@ fn alloc_fail_arms2() {
                         let h =
                             c::cmsIT8LoadFromMem(ctx, it8.as_ptr() as *const _, it8.len() as u32);
                         if !h.is_null() {
-                            c::cmsIT8SetPropertyDbl(h, c"X".as_ptr() as *const std::ffi::c_char, 1.0);
+                            c::cmsIT8SetPropertyDbl(
+                                h,
+                                c"X".as_ptr() as *const std::ffi::c_char,
+                                1.0,
+                            );
                             c::cmsIT8Free(h);
                         }
                     }
                     // named color list ops
                     6 => {
-                        let l = c::cmsAllocNamedColorList(
-                            ctx,
-                            4,
-                            3,
-                            c"pre".as_ptr(),
-                            c"suf".as_ptr(),
-                        );
+                        let l =
+                            c::cmsAllocNamedColorList(ctx, 4, 3, c"pre".as_ptr(), c"suf".as_ptr());
                         if !l.is_null() {
                             for i in 0..4u32 {
                                 let nm = format!("c{i}\0");
@@ -24099,11 +24060,19 @@ fn it8_arms() {
             );
             eprintln!("enum-multi={n2}");
             // data format arms — need a data table first
-            c::cmsIT8SetPropertyDbl(h3, c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char, 2.0);
+            c::cmsIT8SetPropertyDbl(
+                h3,
+                c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char,
+                2.0,
+            );
             c::cmsIT8SetDataFormat(h3, 0, c"SAMPLE_ID".as_ptr() as *const std::ffi::c_char);
             c::cmsIT8SetDataFormat(h3, 1, c"LAB_L".as_ptr() as *const std::ffi::c_char);
 
-            c::cmsIT8SetPropertyDbl(h3, c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char, 2.0);
+            c::cmsIT8SetPropertyDbl(
+                h3,
+                c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char,
+                2.0,
+            );
             for (p, s, v) in [
                 ("a\0", "SAMPLE_ID\0", "a\0"),
                 ("a\0", "LAB_L\0", "50.5\0"),
@@ -24196,16 +24165,12 @@ fn named_arms() {
         });
         let mut ok = 0u32;
         for (l, ctry) in &langs {
-            ok += c::cmsMLUsetASCII(mlu, l.as_ptr().cast(), ctry.as_ptr().cast(), c"x".as_ptr()) as u32;
+            ok += c::cmsMLUsetASCII(mlu, l.as_ptr().cast(), ctry.as_ptr().cast(), c"x".as_ptr())
+                as u32;
         }
         eprintln!("mlu 40-lang ok={ok}");
         // duplicate lang+country -> SearchMLUEntry found arm
-        let dup = c::cmsMLUsetASCII(
-            mlu,
-            c"en".as_ptr(),
-            c"US".as_ptr(),
-            c"replacement".as_ptr(),
-        );
+        let dup = c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"replacement".as_ptr());
         eprintln!("dup-lang={dup}");
         // long string -> GrowMLUpool
         let big = vec![b'A'; 6000];
@@ -24468,12 +24433,13 @@ fn tonecurve_arms() {
             let tab: Vec<u16> = (0..n).map(f).collect();
             c::cmsBuildTabulatedToneCurve16(ctx, n as u32, tab.as_ptr())
         };
-        let mut curves: Vec<(*mut c::ToneCurve, &str)> = vec![];
-        // gamma curves
-        curves.push((c::cmsBuildGamma(ctx, 2.2), "g2.2"));
-        curves.push((c::cmsBuildGamma(ctx, 1.0), "g1.0"));
-        curves.push((c::cmsBuildGamma(ctx, 0.5), "g0.5"));
-        curves.push((c::cmsBuildGamma(ctx, 4.0), "g4.0"));
+        let mut curves: Vec<(*mut c::ToneCurve, &str)> = vec![
+            // gamma curves
+            (c::cmsBuildGamma(ctx, 2.2), "g2.2"),
+            (c::cmsBuildGamma(ctx, 1.0), "g1.0"),
+            (c::cmsBuildGamma(ctx, 0.5), "g0.5"),
+            (c::cmsBuildGamma(ctx, 4.0), "g4.0"),
+        ];
         // parametric types 0-8
         for ty in 0i32..=8 {
             let params = match ty {
@@ -24802,17 +24768,19 @@ fn plugin_arms() {
             _b: *const i32,
             _a: *const f64,
             _f: u32,
-        ) -> *mut c_void { unsafe {
-            // return an identity 3ch pipeline
-            let lut = c::cmsPipelineAlloc(ctx, 3, 3);
-            if !lut.is_null() {
-                let id = c::cmsStageAllocIdentity(ctx, 3);
-                if !id.is_null() {
-                    c::cmsPipelineInsertStage(lut, 1, id);
+        ) -> *mut c_void {
+            unsafe {
+                // return an identity 3ch pipeline
+                let lut = c::cmsPipelineAlloc(ctx, 3, 3);
+                if !lut.is_null() {
+                    let id = c::cmsStageAllocIdentity(ctx, 3);
+                    if !id.is_null() {
+                        c::cmsPipelineInsertStage(lut, 1, id);
+                    }
                 }
+                lut
             }
-            lut
-        }}
+        }
         #[repr(C)]
         struct IntentPlugin {
             base: PluginBase,
@@ -24833,13 +24801,15 @@ fn plugin_arms() {
         };
         ip.desc[..8].copy_from_slice(b"cust-int");
         // custom parametric curve type 100 (y = x^p0 + p1)
-        unsafe extern "C" fn eval100(ty: i32, params: *const f64, r: f64) -> f64 { unsafe {
-            if ty == 100 {
-                r.powf(*params) + *params.add(1)
-            } else {
-                r
+        unsafe extern "C" fn eval100(ty: i32, params: *const f64, r: f64) -> f64 {
+            unsafe {
+                if ty == 100 {
+                    r.powf(*params) + *params.add(1)
+                } else {
+                    r
+                }
             }
-        }}
+        }
         #[repr(C)]
         struct CurvePlugin {
             base: PluginBase,
@@ -25412,7 +25382,7 @@ fn virt_builders_arms() {
                 c::cmsCreateLinearizationDeviceLinkTHR(
                     std::ptr::null_mut(),
                     0x52474220,
-                    g3.as_ptr() as *const *mut c::ToneCurve,
+                    g3.as_ptr(),
                 )
             }),
             ("lindl4", {
@@ -25420,7 +25390,7 @@ fn virt_builders_arms() {
                 c::cmsCreateLinearizationDeviceLinkTHR(
                     std::ptr::null_mut(),
                     0x434D594B,
-                    [g, g, g, g].as_ptr() as *const *mut c::ToneCurve,
+                    [g, g, g, g].as_ptr(),
                 )
             }),
             ("inkdl", {
@@ -25625,8 +25595,11 @@ fn write_fail_arms() {
         // in every tag writer
         let df = c::cmsSaveProfileToFile(p, c"/dev/full".as_ptr() as *const std::ffi::c_char);
         eprintln!("devfull-save={df}");
-        let io =
-            c::cmsOpenIOhandlerFromFile(ctx, c"/dev/full".as_ptr() as *const std::ffi::c_char, c"w".as_ptr());
+        let io = c::cmsOpenIOhandlerFromFile(
+            ctx,
+            c"/dev/full".as_ptr() as *const std::ffi::c_char,
+            c"w".as_ptr(),
+        );
         if !io.is_null() {
             let sv = c::cmsSaveProfileToIOhandler(p, io);
             eprintln!("devfull-ioh={sv}");
@@ -25907,27 +25880,21 @@ fn vcgt_arms() {
         b.extend_from_slice(&3u16.to_be_bytes());
         b.extend_from_slice(&4u16.to_be_bytes());
         b.extend_from_slice(&1u16.to_be_bytes());
-        for _ in 0..12 {
-            b.push(0x80);
-        }
+        b.extend(std::iter::repeat_n(0x80, 12));
         eprintln!("vcgt tab1b: {}", mk(&b, v));
         // nChannels != 3 reject
         let mut b = 0u32.to_be_bytes().to_vec();
         b.extend_from_slice(&1u16.to_be_bytes());
         b.extend_from_slice(&4u16.to_be_bytes());
         b.extend_from_slice(&2u16.to_be_bytes());
-        for _ in 0..8 {
-            b.push(0);
-        }
+        b.extend(std::iter::repeat_n(0, 8));
         eprintln!("vcgt ch1: {}", mk(&b, v));
         // nBytes 3 reject
         let mut b = 0u32.to_be_bytes().to_vec();
         b.extend_from_slice(&3u16.to_be_bytes());
         b.extend_from_slice(&4u16.to_be_bytes());
         b.extend_from_slice(&3u16.to_be_bytes());
-        for _ in 0..36 {
-            b.push(0);
-        }
+        b.extend(std::iter::repeat_n(0, 36));
         eprintln!("vcgt nb3: {}", mk(&b, v));
         // Adobe quirk: 256 elems + 1B + total size 1576
         let mut b = 0u32.to_be_bytes().to_vec();
@@ -26045,9 +26012,7 @@ fn misc_tag_read_arms() {
                 b.extend_from_slice(&(i as u16 * 0x100).to_be_bytes());
             }
             b.extend_from_slice(desc);
-            for _ in 0..pad {
-                b.push(0);
-            }
+            b.extend(std::iter::repeat_n(0, pad));
             b
         };
         eprintln!(
@@ -26395,13 +26360,8 @@ fn utf16_edge_arms() {
                 let t = c::cmsReadTag(pr, 0x64657363);
                 if !t.is_null() {
                     let mut ob = [0i32; 64];
-                    let n = c::cmsMLUgetWide(
-                        t,
-                        c"en".as_ptr(),
-                        c"US".as_ptr(),
-                        ob.as_mut_ptr(),
-                        64,
-                    );
+                    let n =
+                        c::cmsMLUgetWide(t, c"en".as_ptr(), c"US".as_ptr(), ob.as_mut_ptr(), 64);
                     rc = n as i32;
                 }
                 c::cmsCloseProfile(pr);
@@ -27425,12 +27385,7 @@ fn dict_write_arms() {
         let mlu_en = |s: &str| -> *mut std::ffi::c_void {
             let m = c::cmsMLUalloc(ctx, 1);
             let cs = format!("{}\0", s);
-            c::cmsMLUsetUTF8(
-                m,
-                c"en".as_ptr(),
-                c"US".as_ptr(),
-                cs.as_ptr() as *const _,
-            );
+            c::cmsMLUsetUTF8(m, c"en".as_ptr(), c"US".as_ptr(), cs.as_ptr() as *const _);
             m
         };
         for (dn, dv, nm) in [
@@ -27595,9 +27550,7 @@ fn lutab_offset_arms() {
                 let mut el = b"clut".to_vec();
                 el.extend_from_slice(&[0; 4]);
                 // grid: 16 dims of u8 (4) + prec u8 + 3 res
-                for _ in 0..16 {
-                    el.push(4);
-                }
+                el.extend(std::iter::repeat_n(4, 16));
                 el.push(2); // precision 16
                 el.extend_from_slice(&[0; 3]);
                 for _ in 0..(4u32.pow(3) * 3) {
@@ -27631,7 +27584,6 @@ fn lutab_offset_arms() {
                     }
                     el.extend_from_slice(&cu);
                 }
-                next += el.len() as u32;
                 elems.extend_from_slice(&el);
             }
             // header
@@ -27783,7 +27735,8 @@ fn segcurve_arms() {
             }
         };
         // parf type-0 (4 params)
-        let parf = |ty: u16| -> Box<dyn Fn(&mut Vec<u8>)> {
+        type BodyFn = Box<dyn Fn(&mut Vec<u8>)>;
+        let parf = |ty: u16| -> BodyFn {
             Box::new(move |body| {
                 body.extend_from_slice(b"curf");
                 body.extend_from_slice(&[0; 4]);
@@ -27982,21 +27935,11 @@ fn pseq_multi_arms() {
                     d.technology = 0x54454348 + i as u32;
                     let m = c::cmsMLUalloc(ctx, 1);
                     let s = format!("mfg{i}\0");
-                    c::cmsMLUsetUTF8(
-                        m,
-                        c"en".as_ptr(),
-                        c"US".as_ptr(),
-                        s.as_ptr() as *const _,
-                    );
+                    c::cmsMLUsetUTF8(m, c"en".as_ptr(), c"US".as_ptr(), s.as_ptr() as *const _);
                     d.mfg = m;
                     let m2 = c::cmsMLUalloc(ctx, 1);
                     let s2 = format!("mdl{i}\0");
-                    c::cmsMLUsetUTF8(
-                        m2,
-                        c"en".as_ptr(),
-                        c"US".as_ptr(),
-                        s2.as_ptr() as *const _,
-                    );
+                    c::cmsMLUsetUTF8(m2, c"en".as_ptr(), c"US".as_ptr(), s2.as_ptr() as *const _);
                     d.model = m2;
                     let m3 = c::cmsMLUalloc(ctx, 1);
                     c::cmsMLUsetUTF8(
@@ -28245,9 +28188,10 @@ fn vcgt_edge_arms() {
             v.extend_from_slice(&ch.to_be_bytes());
             v.extend_from_slice(&el.to_be_bytes());
             v.extend_from_slice(&nb.to_be_bytes());
-            for _ in 0..(ch as usize * el as usize * nb as usize) {
-                v.push(0x80);
-            }
+            v.extend(std::iter::repeat_n(
+                0x80,
+                ch as usize * el as usize * nb as usize,
+            ));
             v
         };
         // formula body: 7 doubles (gamma etc per spec

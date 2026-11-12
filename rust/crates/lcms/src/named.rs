@@ -621,11 +621,12 @@ pub fn named_color_count(list: &NamedColorList) -> u32 {
     list.n_colors
 }
 
+/// One `cmsNamedColorInfo` result: name, prefix, suffix (NUL-padded C
+/// buffers), PCS value, device colorant.
+pub type NamedColorInfo = ([u8; CMS_MAX_PATH], [u8; 33], [u8; 33], [u16; 3], [u16; 16]);
+
 /// `cmsNamedColorInfo`
-pub fn named_color_info(
-    list: &NamedColorList,
-    n_color: u32,
-) -> Option<([u8; CMS_MAX_PATH], [u8; 33], [u8; 33], [u16; 3], [u16; 16])> {
+pub fn named_color_info(list: &NamedColorList, n_color: u32) -> Option<NamedColorInfo> {
     if n_color >= list.n_colors {
         return None;
     }

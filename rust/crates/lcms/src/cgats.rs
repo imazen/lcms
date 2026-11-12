@@ -1393,7 +1393,7 @@ impl It8 {
     /// `HeaderSection` — keyword/property lines
     fn header_section(&mut self) -> bool {
         let mut buffer = String::new();
-        let mut var_name = String::new();
+        let mut var_name;
         while self.sy != Symbol::Eof
             && self.sy != Symbol::SynError
             && self.sy != Symbol::BeginDataFormat

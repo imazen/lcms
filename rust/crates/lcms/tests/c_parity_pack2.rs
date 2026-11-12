@@ -88,8 +88,7 @@ fn format_eval_matrix() {
                 None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
             );
             assert_eq!(ct.is_null(), rt.is_none(), "{name} create");
-            if !ct.is_null() && rt.is_some() {
-                let mut rt = rt.unwrap();
+            if let Some(mut rt) = rt {
                 // C gets the native u16 slice; Rust gets the byte
                 // buffer (native-endian u16s for u16 formats)
                 let inb: Vec<u8> = if in_fmt & 7 == 2 {
@@ -146,8 +145,7 @@ fn extra_doswap_corrected() {
                 None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, lab16, 0,
             );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
-            if !ct.is_null() && rt.is_some() {
-                let mut rt = rt.unwrap();
+            if let Some(mut rt) = rt {
                 let nchan = if in_fmt == rgba16 { 4 } else { 3 };
                 let inb: Vec<u8> = inp[..nchan].iter().flat_map(|v| v.to_ne_bytes()).collect();
                 let mut co = [0u16; 3];
@@ -197,8 +195,7 @@ fn mch_formats() {
                 None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, lab16, 0,
             );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
-            if !ct.is_null() && rt.is_some() {
-                let mut rt = rt.unwrap();
+            if let Some(mut rt) = rt {
                 let mut inp = vec![0x4000u16; nch];
                 inp[0] = 0x8000;
                 let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_ne_bytes()).collect();
@@ -273,8 +270,7 @@ fn anyspace_format() {
             None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
         );
         assert_eq!(ct.is_null(), rt.is_none(), "anyspace create");
-        if !ct.is_null() && rt.is_some() {
-            let mut rt = rt.unwrap();
+        if let Some(mut rt) = rt {
             let inp = [0x1234u16, 0x5678, 0x9abc];
             let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_ne_bytes()).collect();
             let mut co = [0u16; 3];

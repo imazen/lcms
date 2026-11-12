@@ -98,7 +98,8 @@ fn blackpoint_quadratic() {
         let dir = env!("CARGO_MANIFEST_DIR");
         for name in ["lcms2cmyk.icc", "graylcms2.icc"] {
             let path = format!("{dir}/../../{name}\0");
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
+            let h =
+                c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
             assert!(!h.is_null());
             let mut rp =
                 lcms::profile::open_profile_from_file(None, &format!("{dir}/../../{name}"), "r")

@@ -212,13 +212,8 @@ fn output_lut_lab_normalization() {
 fn devicelink_lut_dispatch() {
     unsafe {
         // named-color class + ncl2 tag -> the named-color arm
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            2,
-            4,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"pre".as_ptr(), c"suf".as_ptr());
         for (name, pcs) in [
             ("S1\0", [0x9000u16, 0x5500, 0x5500]),
             ("S2\0", [0x3000, 0x2000, 0x9000]),
@@ -284,13 +279,8 @@ fn matrix_shaper_directions() {
 #[test]
 fn named_color_input_lut() {
     unsafe {
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            2,
-            4,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"pre".as_ptr(), c"suf".as_ptr());
         for (name, pcs) in [
             ("S1\0", [0x9000u16, 0x5500, 0x5500]),
             ("S2\0", [0x3000, 0x2000, 0x9000]),

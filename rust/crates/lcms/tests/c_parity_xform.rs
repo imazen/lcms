@@ -4,10 +4,6 @@
 use lcms_cref as c;
 
 const TYPE_RGB_8: u32 = 4 << 16 | 3 << 3 | 1;
-const TYPE_BGR_8: u32 = 4 << 16 | 3 << 3 | 1 | 1 << 10;
-const TYPE_RGBA_8: u32 = 4 << 16 | 1 << 7 | 3 << 3 | 1;
-const TYPE_RGB_16: u32 = 4 << 16 | 3 << 3 | 2;
-const TYPE_CMYK_8: u32 = 6 << 16 | 4 << 3 | 1;
 const INTENT_PERCEPTUAL: u32 = 0;
 
 #[test]

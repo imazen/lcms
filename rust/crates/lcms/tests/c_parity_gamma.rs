@@ -701,13 +701,13 @@ fn tonecurve_alloc_arms() {
             ml,
             c"en".as_ptr() as *const _,
             c"US".as_ptr() as *const _,
-            "mixed \u{1f600} \u{00e4}\u{4e2d} text\0".as_ptr().cast(),
+            c"mixed \u{1f600} \u{00e4}\u{4e2d} text".as_ptr().cast(),
         );
         c::cmsMLUsetUTF8(
             ml,
             c"ja".as_ptr() as *const _,
             c"JP".as_ptr() as *const _,
-            "\u{30c6}\u{30b9}\u{30c8}\0".as_ptr().cast(),
+            c"\u{30c6}\u{30b9}\u{30c8}".as_ptr().cast(),
         );
         let mut out = [0u8; 256];
         let n = c::cmsMLUgetUTF8(
@@ -1247,7 +1247,10 @@ fn seg_validation_arms() {
         if f.is_null() {
             None
         } else {
-            Some(std::mem::transmute(f))
+            Some(std::mem::transmute::<
+                *mut std::ffi::c_void,
+                unsafe extern "C" fn() -> i32,
+            >(f))
         }
     };
     let pid = unsafe { fork() };
@@ -1289,7 +1292,10 @@ fn dup_curves_plugin_arms() {
         if f.is_null() {
             None
         } else {
-            Some(std::mem::transmute(f))
+            Some(std::mem::transmute::<
+                *mut std::ffi::c_void,
+                unsafe extern "C" fn() -> i32,
+            >(f))
         }
     };
     let pid = unsafe { fork() };
@@ -1577,8 +1583,8 @@ fn smooth_curve_arms() {
 
 /// cmsgamma residual — SmoothToneCurve pole-degenerate
 ///   + too-many-items branches, parametric-curves
-///   plugin register + ctx-dup (DupPluginCurvesList),
-///   plugin curve-type lookup (GetParametricCurveByType).
+///     plugin register + ctx-dup (DupPluginCurvesList),
+///     plugin curve-type lookup (GetParametricCurveByType).
 #[test]
 fn gamma_smooth_plugin_arms() {
     unsafe {

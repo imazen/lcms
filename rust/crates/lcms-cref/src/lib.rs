@@ -401,9 +401,24 @@ unsafe extern "C" {
     pub fn cmsMLUalloc(context_id: Context, n_items: U32) -> Handle;
     pub fn cmsMLUfree(mlu: Handle);
     pub fn cmsMLUdup(mlu: Handle) -> Handle;
-    pub fn cmsMLUsetASCII(mlu: Handle, lang: *const c_char, cntry: *const c_char, ascii: *const c_char) -> i32;
-    pub fn cmsMLUsetUTF8(mlu: Handle, lang: *const c_char, cntry: *const c_char, utf8: *const c_char) -> i32;
-    pub fn cmsMLUsetWide(mlu: Handle, lang: *const c_char, cntry: *const c_char, wide: *const i32) -> i32;
+    pub fn cmsMLUsetASCII(
+        mlu: Handle,
+        lang: *const c_char,
+        cntry: *const c_char,
+        ascii: *const c_char,
+    ) -> i32;
+    pub fn cmsMLUsetUTF8(
+        mlu: Handle,
+        lang: *const c_char,
+        cntry: *const c_char,
+        utf8: *const c_char,
+    ) -> i32;
+    pub fn cmsMLUsetWide(
+        mlu: Handle,
+        lang: *const c_char,
+        cntry: *const c_char,
+        wide: *const i32,
+    ) -> i32;
     pub fn cmsMLUgetASCII(
         mlu: Handle,
         lang: *const c_char,
@@ -433,7 +448,12 @@ unsafe extern "C" {
         obt_cntry: *mut c_char,
     ) -> i32;
     pub fn cmsMLUtranslationsCount(mlu: Handle) -> U32;
-    pub fn cmsMLUtranslationsCodes(mlu: Handle, idx: U32, lang: *mut c_char, cntry: *mut c_char) -> i32;
+    pub fn cmsMLUtranslationsCodes(
+        mlu: Handle,
+        idx: U32,
+        lang: *mut c_char,
+        cntry: *mut c_char,
+    ) -> i32;
     pub fn cmsAllocNamedColorList(
         context_id: Context,
         n: U32,
@@ -707,7 +727,11 @@ unsafe extern "C" {
     pub fn cmsIT8SaveToMem(h: *mut c_void, mem: *mut c_void, bytes_needed: *mut u32) -> i32;
     pub fn cmsIT8GetSheetType(h: *mut c_void) -> *const c_char;
     pub fn cmsIT8GetProperty(h: *mut c_void, key: *const c_char) -> *const c_char;
-    pub fn cmsIT8GetData(h: *mut c_void, patch: *const c_char, sample: *const c_char) -> *const c_char;
+    pub fn cmsIT8GetData(
+        h: *mut c_void,
+        patch: *const c_char,
+        sample: *const c_char,
+    ) -> *const c_char;
     pub fn cmsIT8Free(h: *mut c_void);
     pub fn cmsIT8SetSheetType(h: *mut c_void, ty: *const c_char) -> i32;
     pub fn cmsIT8SetComment(h: *mut c_void, comment: *const c_char) -> i32;
@@ -720,7 +744,8 @@ unsafe extern "C" {
         subkey: *const c_char,
         val: *const c_char,
     ) -> i32;
-    pub fn cmsIT8SetPropertyUncooked(h: *mut c_void, key: *const c_char, val: *const c_char) -> i32;
+    pub fn cmsIT8SetPropertyUncooked(h: *mut c_void, key: *const c_char, val: *const c_char)
+    -> i32;
     pub fn cmsIT8GetPropertyDbl(h: *mut c_void, prop: *const c_char) -> f64;
     pub fn cmsIT8EnumProperties(h: *mut c_void, names: *mut *mut *mut c_char) -> u32;
     pub fn cmsIT8EnumPropertyMulti(
@@ -740,7 +765,12 @@ unsafe extern "C" {
         sample: *const c_char,
         val: *const c_char,
     ) -> i32;
-    pub fn cmsIT8SetDataDbl(h: *mut c_void, patch: *const c_char, sample: *const c_char, val: f64) -> i32;
+    pub fn cmsIT8SetDataDbl(
+        h: *mut c_void,
+        patch: *const c_char,
+        sample: *const c_char,
+        val: f64,
+    ) -> i32;
     pub fn cmsIT8FindDataFormat(h: *mut c_void, sample: *const c_char) -> i32;
     pub fn cmsIT8SetDataFormat(h: *mut c_void, n: i32, sample: *const c_char) -> i32;
     pub fn cmsIT8EnumDataFormat(h: *mut c_void, names: *mut *mut *mut c_char) -> i32;
@@ -755,7 +785,11 @@ unsafe extern "C" {
     pub fn cmsIT8SetIndexColumn(h: *mut c_void, sample: *const c_char) -> i32;
     pub fn cmsIT8DefineDblFormat(h: *mut c_void, formatter: *const c_char);
     pub fn cmsIT8SetTable(h: *mut c_void, n_table: u32) -> i32;
-    pub fn cmsIT8GetPropertyMulti(h: *mut c_void, key: *const c_char, subkey: *const c_char) -> *const c_char;
+    pub fn cmsIT8GetPropertyMulti(
+        h: *mut c_void,
+        key: *const c_char,
+        subkey: *const c_char,
+    ) -> *const c_char;
     // --- context + error handling ---
     pub fn cmsCreateContext(plugins: *mut c_void, user_data: *mut c_void) -> *mut c_void;
     pub fn cmsDeleteContext(ctx: *mut c_void);
@@ -785,7 +819,11 @@ unsafe extern "C" {
     pub fn cmsDesaturateLab(lab: *mut c_void, amax: f64, amin: f64, bmax: f64, bmin: f64) -> i32;
     // --- profile info (cmsio1) ---
     pub fn cmsIsIntentSupported(prof: *mut c_void, intent: u32, direction: u32) -> i32;
-    pub fn cmsGetSupportedIntents(n_max: u32, codes: *mut u32, descriptions: *mut *mut c_char) -> u32;
+    pub fn cmsGetSupportedIntents(
+        n_max: u32,
+        codes: *mut u32,
+        descriptions: *mut *mut c_char,
+    ) -> u32;
     pub fn _cmsReadInputLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     pub fn _cmsReadOutputLUT(prof: *mut c_void, intent: u32) -> *mut c_void;
     pub fn _cmsReadDevicelinkLUT(prof: *mut c_void, intent: u32) -> *mut c_void;

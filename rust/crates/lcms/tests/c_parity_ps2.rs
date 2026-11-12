@@ -501,8 +501,7 @@ fn gray_csa_named_crd() {
         c::cmsSetDeviceClass(np, 0x6e6d636c); // 'nmcl'
         c::cmsSetColorSpace(np, 0x6e636c32); // 'ncl2'
         c::cmsSetPCS(np, 0x4C616220); // 'Lab '
-        let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"".as_ptr(), c"".as_ptr());
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"".as_ptr(), c"".as_ptr());
         let pcs = [0x8000u16, 0x8000, 0x8000];
         let col = [0xFFFFu16, 0, 0, 0];
         c::cmsAppendNamedColor(ncl, c"Color1".as_ptr(), pcs.as_ptr(), col.as_ptr());
@@ -545,13 +544,8 @@ fn gray_csa_named_crd() {
 #[test]
 fn named_color_crd() {
     unsafe {
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            2,
-            3,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"pre".as_ptr(), c"suf".as_ptr());
         let lab = [0xF000u16, 0x8000, 0x8000];
         c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab.as_ptr(), lab.as_ptr());
         c::cmsAppendNamedColor(ncl, c"c2".as_ptr(), lab.as_ptr(), lab.as_ptr());
@@ -890,18 +884,8 @@ fn ps2_named_intent_arms() {
         );
         let pcs = [0x1000u16, 0x2000, 0x3000];
         let dev = [0x4000u16, 0x5000, 0x6000];
-        c::cmsAppendNamedColor(
-            nl,
-            c"red".as_ptr() as *const _,
-            pcs.as_ptr(),
-            dev.as_ptr(),
-        );
-        c::cmsAppendNamedColor(
-            nl,
-            c"blue".as_ptr() as *const _,
-            pcs.as_ptr(),
-            dev.as_ptr(),
-        );
+        c::cmsAppendNamedColor(nl, c"red".as_ptr() as *const _, pcs.as_ptr(), dev.as_ptr());
+        c::cmsAppendNamedColor(nl, c"blue".as_ptr() as *const _, pcs.as_ptr(), dev.as_ptr());
         c::cmsWriteTag(ncp, 0x6E636C32, nl as *const _);
         // matrix-shaper profile for WriteInputMatrixShaper
         #[repr(C)]
@@ -1052,13 +1036,17 @@ fn ps2_tail_arms() {
             }
         }
         // error-handler set + fire via a bad read
-        unsafe extern "C" fn myerr(_ctx: *mut std::ffi::c_void, code: u32, _msg: *const std::ffi::c_char) {
+        unsafe extern "C" fn myerr(
+            _ctx: *mut std::ffi::c_void,
+            code: u32,
+            _msg: *const std::ffi::c_char,
+        ) {
             eprintln!("  myerr {code}");
         }
         let fp: unsafe extern "C" fn(*mut std::ffi::c_void, u32, *const std::ffi::c_char) = myerr;
         c::cmsSetLogErrorHandlerTHR(std::ptr::null_mut(), fp as *mut _);
         // trigger an error so the handler fires
-        let bad = c::cmsOpenProfileFromMem(b"\x00".as_ptr() as *const _, 1);
+        let bad = c::cmsOpenProfileFromMem(c"".as_ptr() as *const _, 1);
         eprintln!("bad-open={}", !bad.is_null());
         if !bad.is_null() {
             c::cmsCloseProfile(bad);

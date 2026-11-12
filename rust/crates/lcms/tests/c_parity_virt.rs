@@ -217,7 +217,7 @@ fn realworld_profile_corpus() {
                 // C side
                 let (co, ok) = unsafe {
                     let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
-                    let p = c::cmsOpenProfileFromFile(cpath.as_ptr(), "r\0".as_ptr().cast());
+                    let p = c::cmsOpenProfileFromFile(cpath.as_ptr(), c"r".as_ptr().cast());
                     if p.is_null() {
                         (Vec::new(), false)
                     } else {

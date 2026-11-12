@@ -33,23 +33,6 @@ pub enum OptData {
     Identity,
 }
 
-/// `_cmsOptimizationCollection` — one strategy callback
-type OptimizeFn = fn(
-    &mut Pipeline,
-    u32,      // intent
-    &mut u32, // input format
-    &mut u32, // output format
-    &mut u32, // dwFlags
-) -> bool;
-
-/// `DefaultOptimization` — C order
-const DEFAULT_OPTIMIZATIONS: &[&str] = &[
-    "join_curves",
-    "matrix_shaper",
-    "computing_linearization",
-    "resampling",
-];
-
 /// `_cmsOptimizePipeline` — exact C flow: FORCE_CLUT→resample, empty→identity,
 /// named-color→bail, PreOptimize, NOOPTIMIZE, then strategy chain in order.
 pub fn optimize_pipeline(
@@ -312,37 +295,6 @@ pub(crate) fn fast_eval_curves16(input: &[u16], output: &mut [u16], data: &OptDa
     }
     true
 }
-/// `eval_opt16` — dispatch an `OptData` to its concrete eval16
-pub(crate) fn eval_opt16(input: &[u16], output: &mut [u16], d: &OptData) {
-    match d {
-        OptData::Curves16(c) => {
-            // The 8-bit matrix-shaper opt bakes 256-pt curves — dispatch by
-            // table length, not the enum variant (C chooses the eval fn at
-            // build time).
-            if c.curves.first().map(|t| t.len() == 256).unwrap_or(false) {
-                fast_eval_curves8(input, output, d);
-            } else {
-                fast_eval_curves16(input, output, d);
-            }
-        }
-        OptData::MatShaper(_) => {
-            mat_shaper_eval16(input, output, d);
-        }
-        OptData::Prelin16(_) => {
-            prelin_eval16(input, output, d);
-        }
-        OptData::Prelin8(_) => {
-            prelin_eval8(input, output, d);
-        }
-        OptData::ClutOnly(_) => {
-            clut_eval16(input, output, d);
-        }
-        OptData::Identity => {
-            fast_identity16(input, output, d);
-        }
-    }
-}
-
 /// `FastIdentity16` — copy
 pub(crate) fn fast_identity16(input: &[u16], output: &mut [u16], _d: &OptData) -> bool {
     let n = input.len().min(output.len());

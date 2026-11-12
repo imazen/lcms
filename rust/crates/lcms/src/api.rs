@@ -1502,7 +1502,7 @@ impl Profile {
                 }
                 TagObject::Mhc2(m)
             }
-            TagData::VcgtCurves(c) => TagObject::Vcgt(VcgtData::Curves(c)),
+            TagData::VcgtCurves(c) => TagObject::Vcgt(VcgtData::Curves(Box::new(c))),
             TagData::VcgtTable {
                 channels,
                 elems,

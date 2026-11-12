@@ -510,7 +510,10 @@ fn stream_io_variants() {
             // cmsOpenProfileFromStream takes FILE* — get one via
             // libc fopen
             unsafe extern "C" {
-                fn fopen(path: *const std::ffi::c_char, mode: *const std::ffi::c_char) -> *mut c_void;
+                fn fopen(
+                    path: *const std::ffi::c_char,
+                    mode: *const std::ffi::c_char,
+                ) -> *mut c_void;
                 fn fclose(f: *mut c_void) -> i32;
             }
             let f = fopen(_cpath.as_ptr(), c"rb".as_ptr() as *const _);
@@ -719,11 +722,8 @@ fn iohandler_stream_variants() {
             c::cmsCloseProfile(h);
             // stream THR variant
             let f2 = fopen(cpath.as_ptr(), c"rb".as_ptr() as *const _);
-            let h2 = c::cmsOpenProfileFromStreamTHR(
-                std::ptr::null_mut(),
-                f2,
-                c"r".as_ptr() as *const _,
-            );
+            let h2 =
+                c::cmsOpenProfileFromStreamTHR(std::ptr::null_mut(), f2, c"r".as_ptr() as *const _);
             assert!(!h2.is_null(), "streamTHR open");
             c::cmsCloseProfile(h2);
         }

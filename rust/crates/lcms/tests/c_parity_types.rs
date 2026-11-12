@@ -284,12 +284,20 @@ fn exotic_tag_types() {
         let mut r_out = lcms::profile::save_profile_to_mem(&mut rp).unwrap_or_default();
         // mask created (offset 24) + profile ID (offset 84..100)
         for i in 0..12 {
-            c_out.get_mut(24 + i).map(|b| *b = 0);
-            r_out.get_mut(24 + i).map(|b| *b = 0);
+            if let Some(b) = c_out.get_mut(24 + i) {
+                *b = 0;
+            }
+            if let Some(b) = r_out.get_mut(24 + i) {
+                *b = 0;
+            }
         }
         for i in 0..16 {
-            c_out.get_mut(84 + i).map(|b| *b = 0);
-            r_out.get_mut(84 + i).map(|b| *b = 0);
+            if let Some(b) = c_out.get_mut(84 + i) {
+                *b = 0;
+            }
+            if let Some(b) = r_out.get_mut(84 + i) {
+                *b = 0;
+            }
         }
         c_out.resize(r_out.len().max(c_out.len()), 0);
         r_out.resize(c_out.len(), 0);

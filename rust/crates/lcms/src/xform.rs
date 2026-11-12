@@ -689,8 +689,8 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     use crate::pack as pk;
     type U16F = crate::pack::Unpack16Fn;
     type P16F = crate::pack::Pack16Fn;
-    /// chunky `ch`ch+ex1, no swap/reverse/endian/premul/planar — the shape
-    /// the generic Any*/Chunky* formatters decode per pixel.
+    // chunky `ch`ch+ex1, no swap/reverse/endian/premul/planar — the shape
+    // the generic Any*/Chunky* formatters decode per pixel.
     let is_ch_ex1 = |fmt: u32, ch: u32, bytes: u32| {
         pk::t_channels(fmt) == ch
             && pk::t_extra(fmt) == 1
@@ -950,15 +950,6 @@ fn set_white_point(src: Option<&CieXyz>) -> CieXyz {
             w
         }
     }
-}
-
-/// `UnrollNothing` — format 0 input
-fn unroll_nothing(_i: &PackInfo, _w: &mut [u16], _a: &[u8], _s: u32) -> usize {
-    0
-}
-/// `PackNothing` — format 0 output
-fn pack_nothing(_i: &PackInfo, _w: &[u16], _o: &mut [u8], _s: u32) -> usize {
-    0
 }
 
 /// `_cmsHandleExtraChannels` — delegates to alpha.rs's converter-matrix impl
@@ -1826,11 +1817,10 @@ impl TransformPlan {
                                 }
                                 _ => None,
                             };
-                            if (1..=4).contains(&n_out)
-                                && crate::pack::t_channels(of) == n_out as u32
-                                && interp1d.is_some()
-                            {
-                                let eval1d = interp1d.unwrap();
+                            if let Some(eval1d) = interp1d.filter(|_| {
+                                (1..=4).contains(&n_out)
+                                    && crate::pack::t_channels(of) == n_out as u32
+                            }) {
                                 let p = &c.params16;
                                 let pplo = ppl as usize * n_out;
                                 let mut i_off = 0usize;
@@ -1890,12 +1880,11 @@ impl TransformPlan {
                             }
                             _ => None,
                         };
-                        if plain16
-                            && (1..=4).contains(&n_out)
-                            && crate::pack::t_channels(of) == n_out as u32
-                            && interp1d.is_some()
-                        {
-                            let eval1d = interp1d.unwrap();
+                        if let Some(eval1d) = interp1d.filter(|_| {
+                            plain16
+                                && (1..=4).contains(&n_out)
+                                && crate::pack::t_channels(of) == n_out as u32
+                        }) {
                             let p = &c.params16;
                             let obpp = n_out * 2;
                             let ppl2 = ppl as usize * 2;
@@ -2555,60 +2544,6 @@ impl TransformPlan {
                             run16!(ip::trilinear_interp16)
                         } else {
                             run16!(f)
-                        }
-                    }
-                    // Fused [ToneCurves, Matrix, ToneCurves] eval for
-                    // matshaper pipelines — C walks the stage chain per
-                    // pixel; we fold all 3 stages into one inlined eval.
-                    if !matches!(l.opt_data.as_ref(), Some(crate::opt::OptData::ClutOnly(_))) {
-                        let mut s = l.elements.as_deref();
-                        let mut parts = (None, None, None);
-                        for slot in 0..3 {
-                            let Some(st) = s else { break };
-                            match &st.data {
-                                crate::lut::StageData::ToneCurves(v) if slot != 1 => {
-                                    if slot == 0 {
-                                        parts.0 = Some(v)
-                                    } else {
-                                        parts.2 = Some(v)
-                                    }
-                                }
-                                crate::lut::StageData::Matrix { double, offset } if slot == 1 => {
-                                    parts.1 = Some((double, offset))
-                                }
-                                _ => break,
-                            }
-                            s = st.next.as_deref();
-                        }
-                        if s.is_none() {
-                            if let (Some(ci), Some((m, off)), Some(co)) = parts {
-                                if ci.len() == 3 && m.len() == 9 && co.len() == 3 {
-                                    return xform_f32_run(
-                                        unroll,
-                                        pack,
-                                        &info,
-                                        input,
-                                        output,
-                                        ppl,
-                                        lines,
-                                        stride,
-                                        |i: &[f32], o: &mut [f32]| {
-                                            let a0 = ci[0].eval_float(i[0]);
-                                            let a1 = ci[1].eval_float(i[1]);
-                                            let a2 = ci[2].eval_float(i[2]);
-                                            for r in 0..3 {
-                                                let mut t = a0 as f64 * m[r * 3]
-                                                    + a1 as f64 * m[r * 3 + 1]
-                                                    + a2 as f64 * m[r * 3 + 2];
-                                                if let Some(of) = off {
-                                                    t += of[r];
-                                                }
-                                                o[r] = co[r].eval_float(t as f32);
-                                            }
-                                        },
-                                    );
-                                }
-                            }
                         }
                     }
                 }

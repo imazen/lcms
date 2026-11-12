@@ -705,7 +705,9 @@ fn linearization_devicelink() {
             if !dl.is_null() {
                 // transform through the devicelink (link IS the xform)
                 let _f = (cs & 0xff) | (((ch) << 3) | 1);
-                let fmt = (((cs == 0x434D594B) as u32 * 6) | ((cs == 0x52474220) as u32 * 4) | ((cs == 0x47524159) as u32 * 3))
+                let fmt = (((cs == 0x434D594B) as u32 * 6)
+                    | ((cs == 0x52474220) as u32 * 4)
+                    | ((cs == 0x47524159) as u32 * 3))
                     << 16
                     | (ch << 3)
                     | 1;

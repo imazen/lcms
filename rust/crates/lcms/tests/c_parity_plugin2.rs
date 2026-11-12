@@ -53,7 +53,10 @@ fn plugin_validation_arms() {
         if f.is_null() {
             None
         } else {
-            Some(std::mem::transmute(f))
+            Some(std::mem::transmute::<
+                *mut std::ffi::c_void,
+                unsafe extern "C" fn() -> i32,
+            >(f))
         }
     };
     let pid = unsafe { fork() };

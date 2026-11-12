@@ -344,9 +344,7 @@ fn evaluate_matrix_v3(
     }
     if let Some(off) = offset {
         let mut a = [0f64; 4];
-        for i in 0..n_out {
-            a[i] = off[i];
-        }
+        a[..n_out].copy_from_slice(&off[..n_out]);
         acc += V::from_array_t(token, a);
     }
     let r = acc.to_array();
@@ -757,9 +755,7 @@ pub fn stage_sample_clut16bit(mpe: &mut Stage, sampler: &mut Sampler16, dw_flags
         if dw_flags & SAMPLER_INSPECT == 0 {
             if let Some(a) = clut.tab16.as_mut() {
                 let tab = std::sync::Arc::make_mut(a);
-                for t in 0..n_outputs {
-                    tab[index + t] = out[t];
-                }
+                tab[index..index + n_outputs].copy_from_slice(&out[..n_outputs]);
             }
         }
 
@@ -820,9 +816,7 @@ pub fn stage_sample_clut_float(mpe: &mut Stage, sampler: &mut SamplerFloat, dw_f
         if dw_flags & SAMPLER_INSPECT == 0 {
             if let Some(a) = clut.tab_float.as_mut() {
                 let tab = std::sync::Arc::make_mut(a);
-                for t in 0..n_outputs {
-                    tab[index + t] = out[t];
-                }
+                tab[index..index + n_outputs].copy_from_slice(&out[..n_outputs]);
             }
         }
 
@@ -1404,9 +1398,7 @@ impl Pipeline {
                 break;
             }
             last_error = error;
-            for j in 0..self.input_channels as usize {
-                result[j] = x[j];
-            }
+            result[..self.input_channels as usize].copy_from_slice(&x[..self.input_channels as usize]);
             if error <= 0.0 {
                 break;
             }

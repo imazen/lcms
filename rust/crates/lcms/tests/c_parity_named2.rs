@@ -23,7 +23,13 @@ fn cs8(s: &str) -> *const u8 {
 fn named_color_edge_cases() {
     unsafe {
         // empty list — count=0, index miss, info on empty
-        let cl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 0, 3, cs8("RGB ").cast(), cs8("RGB ").cast());
+        let cl = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(),
+            0,
+            3,
+            cs8("RGB ").cast(),
+            cs8("RGB ").cast(),
+        );
         let rl = named::alloc_named_color_list(None, 0, 3, b"RGB ", b"RGB ");
         assert_eq!(cl.is_null(), rl.is_none(), "empty alloc");
         if let Some(rl) = rl {
@@ -56,7 +62,13 @@ fn named_color_edge_cases() {
             c::cmsFreeNamedColorList(cl);
         }
         // large list — 1000 entries, boundary index lookups
-        let cl2 = c::cmsAllocNamedColorList(std::ptr::null_mut(), 0, 3, cs8("RGB ").cast(), cs8("RGB ").cast());
+        let cl2 = c::cmsAllocNamedColorList(
+            std::ptr::null_mut(),
+            0,
+            3,
+            cs8("RGB ").cast(),
+            cs8("RGB ").cast(),
+        );
         let mut rl2 = named::alloc_named_color_list(None, 0, 3, b"RGB ", b"RGB ").unwrap();
         for i in 0..1000 {
             let name = format!("c{i:04}");
@@ -66,7 +78,8 @@ fn named_color_edge_cases() {
             pcs[2] = ((i * 13) % 65536) as u16;
             let pcs3 = [pcs[0], pcs[1], pcs[2]];
             assert_eq!(
-                c::cmsAppendNamedColor(cl2, cs8(&name).cast(), pcs3.as_ptr(), [0u16; 16].as_ptr()) != 0,
+                c::cmsAppendNamedColor(cl2, cs8(&name).cast(), pcs3.as_ptr(), [0u16; 16].as_ptr())
+                    != 0,
                 named::append_named_color(
                     &mut rl2,
                     Some(name.as_bytes()),
@@ -108,7 +121,7 @@ fn named_color_edge_cases() {
             let rinfo = named::named_color_info(&rl2, i);
             assert_eq!(cinfo != 0, rinfo.is_some(), "info {i}");
             if cinfo != 0 {
-                let cs = unsafe { std::ffi::CStr::from_ptr(cn.as_ptr() as *const std::ffi::c_char) };
+                let cs = { std::ffi::CStr::from_ptr(cn.as_ptr() as *const std::ffi::c_char) };
                 let (rn, _rp, _rs, rpcs, _rc) = rinfo.unwrap();
                 let rend = rn.iter().position(|&b| b == 0).unwrap_or(rn.len());
                 assert_eq!(cs.to_bytes().to_vec(), rn[..rend].to_vec(), "info name {i}");

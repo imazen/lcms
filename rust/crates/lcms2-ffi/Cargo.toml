@@ -11,3 +11,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 lcms = { path = "../lcms", features = ["little-cms-api"] }
+
+[lints]
+workspace = true

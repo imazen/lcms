@@ -58,6 +58,17 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
   get ported as real checks.
 - **Generate tables, never hand-transcribe.** `half_tables.rs` and
   `signatures.rs` come from `tools/gen_*.py`. Regenerate on rebase.
+- **fmt and clippy stay clean.** `just fmt` then `just clippy` (all four
+  feature configs). Lints that would break the 1:1 map with C
+  (`needless_range_loop`, `too_many_arguments`, `if_same_then_else`,
+  `manual_clamp`, `neg_cmp_op_on_partial_ord`) are allowed once, with the
+  reason, in `[workspace.lints]`; fix everything else in code. Don't swap a
+  C literal for a `std` constant clippy suggests (`cmscam02.c`'s
+  `3.141592654` is `cam02::C_PI`, not `PI`).
+- **C `char` is `c_char` in FFI, never `i8` or `u8`.** It is `u8` on aarch64.
+  Oracle bindings in `lcms-cref` and the `extern "C"` exports in `lcms2-ffi`
+  use `c_char`; tests pass `c"..".as_ptr()` and `.cast()` byte buffers.
+  `just check-aarch64` catches a mismatch on an x86 box.
 
 ## Numeric traps (each cost a bug)
 

@@ -262,8 +262,7 @@ fn line_stride_transform() {
             None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
         );
         assert_eq!(ct.is_null(), rt.is_none());
-        if !ct.is_null() && rt.is_some() {
-            let mut rt = rt.unwrap();
+        if let Some(mut rt) = rt {
             // 2 rows × 4 pixels — strided input/output
             let inp: Vec<u16> = (0..24).map(|i| i as u16 * 1000).collect();
             let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_ne_bytes()).collect();

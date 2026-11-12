@@ -54,7 +54,11 @@ unsafe fn cstr(path: *const c_char) -> Option<String> {
     if path.is_null() {
         return None;
     }
-    Some(unsafe { CStr::from_ptr(path) }.to_string_lossy().into_owned())
+    Some(
+        unsafe { CStr::from_ptr(path) }
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +66,10 @@ unsafe fn cstr(path: *const c_char) -> Option<String> {
 // ---------------------------------------------------------------------------
 /// `cmsOpenProfileFromFile` — `fopen`-style mode string, only "r"/"w" honored.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsOpenProfileFromFile(path: *const c_char, mode: *const c_char) -> Handle {
+pub unsafe extern "C" fn cmsOpenProfileFromFile(
+    path: *const c_char,
+    mode: *const c_char,
+) -> Handle {
     let Some(p) = (unsafe { cstr(path) }) else {
         return ptr::null_mut();
     };
@@ -135,7 +142,11 @@ pub unsafe extern "C" fn cmsSaveProfileToFile(h: Handle, path: *const c_char) ->
 /// NULL buf → sizing pass only (one WriteHeader/plugin call); real buf →
 /// one call = pass-1 sizing + pass-2 write (two plugin calls).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsSaveProfileToMem(h: Handle, buf: *mut c_void, size: *mut c_uint) -> c_int {
+pub unsafe extern "C" fn cmsSaveProfileToMem(
+    h: Handle,
+    buf: *mut c_void,
+    size: *mut c_uint,
+) -> c_int {
     let Some(p) = prof_ref(h) else {
         return 0;
     };
@@ -376,7 +387,11 @@ pub unsafe extern "C" fn cmsBuildParametricToneCurve(
 }
 /// `cmsBuildTabulatedToneCurve16`
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsBuildTabulatedToneCurve16(ctx: Handle, n: c_int, tab: *const u16) -> Handle {
+pub unsafe extern "C" fn cmsBuildTabulatedToneCurve16(
+    ctx: Handle,
+    n: c_int,
+    tab: *const u16,
+) -> Handle {
     if tab.is_null() || n <= 0 {
         return ptr::null_mut();
     }
@@ -1119,9 +1134,9 @@ pub unsafe extern "C" fn cmsWriteTag(h: Handle, sig: c_uint, data: *const c_void
             else {
                 return 0;
             };
-            Some(TagObject::Vcgt(lcms::tagtypes::VcgtData::Curves([
-                a, b, cc,
-            ])))
+            Some(TagObject::Vcgt(lcms::tagtypes::VcgtData::Curves(Box::new(
+                [a, b, cc],
+            ))))
         }
         s if s == t::SigMetaTag => cdict_to_dict(data as Handle).map(TagObject::Dictionary),
         s if s == t::SigcicpTag => Some(TagObject::VideoSignal(cvideo_to_vs(unsafe {
@@ -1357,7 +1372,12 @@ pub unsafe extern "C" fn cmsDeleteTransform(h: Handle) {
 }
 /// `cmsDoTransform` — contiguous n pixels
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsDoTransform(h: Handle, input: *const c_void, output: *mut c_void, n: c_uint) {
+pub unsafe extern "C" fn cmsDoTransform(
+    h: Handle,
+    input: *const c_void,
+    output: *mut c_void,
+    n: c_uint,
+) {
     let Some(t) = xform_ref(h) else {
         return;
     };
@@ -1981,7 +2001,12 @@ pub unsafe extern "C" fn cmsSmoothToneCurve(curve: Handle, lambda: f64) -> c_int
 
 /// `cmsJoinToneCurve`
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsJoinToneCurve(ctx: Handle, c1: Handle, c2: Handle, n: c_uint) -> Handle {
+pub unsafe extern "C" fn cmsJoinToneCurve(
+    ctx: Handle,
+    c1: Handle,
+    c2: Handle,
+    n: c_uint,
+) -> Handle {
     let (Some(a), Some(b)) = (curve_rust(c1), curve_rust(c2)) else {
         return ptr::null_mut();
     };
@@ -2081,7 +2106,12 @@ pub unsafe extern "C" fn cmsCIE94DeltaE(lab1: *const CmsLab, lab2: *const CmsLab
 
 /// `cmsCMCdeltaE`
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsCMCdeltaE(lab1: *const CmsLab, lab2: *const CmsLab, l: f64, c: f64) -> f64 {
+pub unsafe extern "C" fn cmsCMCdeltaE(
+    lab1: *const CmsLab,
+    lab2: *const CmsLab,
+    l: f64,
+    c: f64,
+) -> f64 {
     if lab1.is_null() || lab2.is_null() {
         return 0.0;
     }
@@ -2198,7 +2228,11 @@ pub unsafe extern "C" fn cmsCreate_OkLabProfile() -> Handle {
 }
 /// `cmsChangeBuffersFormat` — reformats a transform's in/out formats
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsChangeBuffersFormat(h: Handle, in_fmt: c_uint, out_fmt: c_uint) -> c_int {
+pub unsafe extern "C" fn cmsChangeBuffersFormat(
+    h: Handle,
+    in_fmt: c_uint,
+    out_fmt: c_uint,
+) -> c_int {
     ensure_foreign_hooks();
     match xform_ref(h) {
         Some(t) => t.change_buffers_format(in_fmt, out_fmt) as c_int,
@@ -2413,14 +2447,6 @@ fn ncl_ref<'a>(h: Handle) -> Option<&'a mut named::NamedColorList> {
         return None;
     }
     Some(unsafe { &mut *(h as *mut named::NamedColorList) })
-}
-fn seqdesc_ref<'a>(_h: Handle) -> Option<&'a mut named::ProfileSeqDesc> {
-    // `cmsSEQ` is C-layout (see `CSeq`) — never cast a handle to `ProfileSeqDesc`.
-    unreachable!("seqdesc_ref: cmsSEQ is C-layout, use cseq_to_rust")
-}
-fn ucrbg_ref<'a>(_h: Handle) -> Option<&'a mut lcms::tagtypes::UcrBg> {
-    // `cmsUcrBg` is C-layout (see `CUcrBg`) — never cast a handle to `UcrBg`.
-    unreachable!("ucrbg_ref: cmsUcrBg is C-layout, use CUcrBg")
 }
 /// `cmsFreeNamedColorList`
 #[unsafe(no_mangle)]
@@ -3023,7 +3049,12 @@ pub unsafe extern "C" fn cmsLinkTag(h: Handle, sig: c_uint, dest: c_uint) -> c_i
 }
 /// `cmsReadRawTag` — reads raw bytes into `buf` (returns bytes needed)
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsReadRawTag(h: Handle, sig: c_uint, buf: *mut u8, size: c_uint) -> c_uint {
+pub unsafe extern "C" fn cmsReadRawTag(
+    h: Handle,
+    sig: c_uint,
+    buf: *mut u8,
+    size: c_uint,
+) -> c_uint {
     let Some(p) = prof_ref(h) else {
         return 0;
     };
@@ -3038,7 +3069,12 @@ pub unsafe extern "C" fn cmsReadRawTag(h: Handle, sig: c_uint, buf: *mut u8, siz
 }
 /// `cmsWriteRawTag`
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsWriteRawTag(h: Handle, sig: c_uint, buf: *const u8, size: c_uint) -> c_int {
+pub unsafe extern "C" fn cmsWriteRawTag(
+    h: Handle,
+    sig: c_uint,
+    buf: *const u8,
+    size: c_uint,
+) -> c_int {
     let Some(p) = prof_ref(h) else {
         return 0;
     };
@@ -3238,7 +3274,10 @@ pub unsafe extern "C" fn cmsXYZ2xyY(out: *mut lcms::types::CiexyY, xyz: *const C
 }
 /// `cmsWhitePointFromTemp` — Planckian white from K
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsWhitePointFromTemp(out: *mut lcms::types::CiexyY, temp_k: f64) -> c_int {
+pub unsafe extern "C" fn cmsWhitePointFromTemp(
+    out: *mut lcms::types::CiexyY,
+    temp_k: f64,
+) -> c_int {
     let Some(w) = lcms::wtpnt::white_point_from_temp(temp_k) else {
         return 0;
     };
@@ -3249,7 +3288,10 @@ pub unsafe extern "C" fn cmsWhitePointFromTemp(out: *mut lcms::types::CiexyY, te
 }
 /// `cmsTempFromWhitePoint` — K back from xyY
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsTempFromWhitePoint(out: *mut f64, wp: *const lcms::types::CiexyY) -> c_int {
+pub unsafe extern "C" fn cmsTempFromWhitePoint(
+    out: *mut f64,
+    wp: *const lcms::types::CiexyY,
+) -> c_int {
     if wp.is_null() {
         return 0;
     }
@@ -3472,16 +3514,18 @@ pub unsafe extern "C" fn cmsCreateProofingTransformTHR(
     proof_intent: c_uint,
     flags: c_uint,
 ) -> Handle {
-    unsafe { cmsCreateProofingTransform(
-        input,
-        in_fmt,
-        output,
-        out_fmt,
-        proof,
-        intent,
-        proof_intent,
-        flags,
-    ) }
+    unsafe {
+        cmsCreateProofingTransform(
+            input,
+            in_fmt,
+            output,
+            out_fmt,
+            proof,
+            intent,
+            proof_intent,
+            flags,
+        )
+    }
 }
 /// `cmsSetDeviceClass`
 #[unsafe(no_mangle)]
@@ -3739,16 +3783,18 @@ pub unsafe extern "C" fn cmsCreateBCHSWabstractProfile(
     temp_src: c_uint,
     temp_dest: c_uint,
 ) -> Handle {
-    unsafe { cmsCreateBCHSWabstractProfileTHR(
-        ptr::null_mut(),
-        n_lut_points,
-        bright,
-        contrast,
-        hue,
-        saturation,
-        temp_src,
-        temp_dest,
-    ) }
+    unsafe {
+        cmsCreateBCHSWabstractProfileTHR(
+            ptr::null_mut(),
+            n_lut_points,
+            bright,
+            contrast,
+            hue,
+            saturation,
+            temp_src,
+            temp_dest,
+        )
+    }
 }
 /// `cmsDetectRGBProfileGamma`
 #[unsafe(no_mangle)]
@@ -4046,7 +4092,9 @@ fn stage_box(ptr: usize) -> Option<Box<lcms::lut::Stage>> {
     if ptr == 0 {
         return None;
     }
-    Some(Box::new(unsafe { *Box::from_raw(ptr as *mut lcms::lut::Stage) }))
+    Some(Box::new(unsafe {
+        *Box::from_raw(ptr as *mut lcms::lut::Stage)
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -4950,7 +4998,12 @@ unsafe extern "C" fn fmt_float_pack(
 /// The trampolines decode the type from the transform's format fields, so a
 /// single fn ptr per (direction, precision) suffices.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn _cmsGetFormatter(ctx: Handle, ty: c_uint, dir: c_int, flags: c_uint) -> usize {
+pub unsafe extern "C" fn _cmsGetFormatter(
+    ctx: Handle,
+    ty: c_uint,
+    dir: c_int,
+    flags: c_uint,
+) -> usize {
     // C consults ctx-registered `cmsFormattersFactory` plugins first — first
     // factory to return a non-NULL `cmsFormatter` wins (`_cmsGetFormatter`).
     if let Some(cctx) = unsafe { cctx(ctx) } {
@@ -4985,7 +5038,7 @@ pub unsafe extern "C" fn _cmsOptimizePipeline(
     if lut_ptr.is_null() {
         return 0;
     }
-    unsafe { cmsOptimizePipeline(unsafe { *lut_ptr }, intent, in_fmt, out_fmt, flags) }
+    unsafe { cmsOptimizePipeline(*lut_ptr, intent, in_fmt, out_fmt, flags) }
 }
 /// `_cmsPipelineSetOptimizationParameters` — plugin eval override (stub: 0)
 #[unsafe(no_mangle)]
@@ -5100,7 +5153,11 @@ pub unsafe extern "C" fn cmsPipelineInsertStage(lut: Handle, loc: c_int, stage: 
 }
 /// `cmsPipelineUnlinkStage` — writes the unlinked stage handle to `stage`
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsPipelineUnlinkStage(lut: Handle, loc: c_int, stage: *mut Handle) -> c_int {
+pub unsafe extern "C" fn cmsPipelineUnlinkStage(
+    lut: Handle,
+    loc: c_int,
+    stage: *mut Handle,
+) -> c_int {
     let Some(p) = pipe_ref(lut) else {
         return 0;
     };
@@ -5394,13 +5451,15 @@ pub unsafe extern "C" fn cmsDictDup(dict: Handle) -> Handle {
     let mut e = d.head;
     while !e.is_null() {
         let entry = unsafe { &*e };
-        unsafe { cmsDictAddEntry(
-            new,
-            entry.name,
-            entry.value,
-            entry.display_name,
-            entry.display_value,
-        ) };
+        unsafe {
+            cmsDictAddEntry(
+                new,
+                entry.name,
+                entry.value,
+                entry.display_name,
+                entry.display_value,
+            )
+        };
         e = entry.next;
     }
     new
@@ -5438,7 +5497,11 @@ pub unsafe extern "C" fn cmsIT8Free(h: Handle) {
     }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsIT8LoadFromMem(_ctx: Handle, data: *const c_void, size: c_uint) -> Handle {
+pub unsafe extern "C" fn cmsIT8LoadFromMem(
+    _ctx: Handle,
+    data: *const c_void,
+    size: c_uint,
+) -> Handle {
     if data.is_null() || size == 0 {
         return ptr::null_mut();
     }
@@ -5473,7 +5536,11 @@ pub unsafe extern "C" fn cmsIT8SetSheetType(h: Handle, ty: *const c_char) -> c_i
     it.set_sheet_type(&t) as c_int
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsIT8SetPropertyStr(h: Handle, key: *const c_char, val: *const c_char) -> c_int {
+pub unsafe extern "C" fn cmsIT8SetPropertyStr(
+    h: Handle,
+    key: *const c_char,
+    val: *const c_char,
+) -> c_int {
     let Some(it) = it8_ref(h) else {
         return 0;
     };
@@ -5547,14 +5614,23 @@ pub unsafe extern "C" fn cmsIT8SetDataRowCol(
     it.set_data_row_col(row as usize, col as usize, &v) as c_int
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsIT8SetDataRowColDbl(h: Handle, row: c_int, col: c_int, val: f64) -> c_int {
+pub unsafe extern "C" fn cmsIT8SetDataRowColDbl(
+    h: Handle,
+    row: c_int,
+    col: c_int,
+    val: f64,
+) -> c_int {
     let Some(it) = it8_ref(h) else {
         return 0;
     };
     it.set_data_row_col_dbl(row as usize, col as usize, val) as c_int
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cmsIT8GetDataDbl(h: Handle, patch: *const c_char, sample: *const c_char) -> f64 {
+pub unsafe extern "C" fn cmsIT8GetDataDbl(
+    h: Handle,
+    patch: *const c_char,
+    sample: *const c_char,
+) -> f64 {
     let Some(it) = it8_ref(h) else {
         return 0.0;
     };
@@ -5587,7 +5663,6 @@ pub unsafe extern "C" fn cmsGDBCompute(g: Handle, flags: c_uint) -> c_int {
 }
 
 // _cmsStageAlloc* internals
-fn noop_eval(_input: &[f32], _output: &mut [f32], _stage: &lcms::lut::Stage) {}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn _cmsStageAllocIdentity(_ctx: Handle, n: c_uint) -> Handle {
     unsafe { cmsStageAllocIdentity(_ctx, n) }
@@ -5647,7 +5722,11 @@ type FreeUserDataC = unsafe extern "C" fn(Handle, *mut c_void);
 /// `_cmsSetProfileUserData` — frees any previous user data via its stored
 /// `FreeUsrData` before installing the new pair.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn _cmsSetProfileUserData(h: Handle, data: *mut c_void, free_fn: *const c_void) {
+pub unsafe extern "C" fn _cmsSetProfileUserData(
+    h: Handle,
+    data: *mut c_void,
+    free_fn: *const c_void,
+) {
     if let Some(p) = prof_ref(h) {
         if p.user_data != 0 && p.free_user_data_fn != 0 {
             let f: FreeUserDataC = unsafe { std::mem::transmute(p.free_user_data_fn) };

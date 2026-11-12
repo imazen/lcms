@@ -244,9 +244,7 @@ pub fn read_input_lut(icc: &mut IccProfile, intent: u32) -> Option<Pipeline> {
         };
         let ctx = icc.ctx.as_ref();
         let mut lut = pipeline_alloc(ctx, 0, 0)?;
-        let Some(st) = crate::named::stage_alloc_named_color(&ncl, true) else {
-            return None;
-        };
+        let st = crate::named::stage_alloc_named_color(&ncl, true)?;
         if !lut.insert_stage(StageLoc::AtBegin, st) {
             return None;
         }
@@ -515,9 +513,7 @@ pub fn read_devicelink_lut(icc: &mut IccProfile, intent: u32) -> Option<Pipeline
         };
         let ctx = icc.ctx.as_ref();
         let mut lut = pipeline_alloc(ctx, 0, 0)?;
-        let Some(st) = crate::named::stage_alloc_named_color(&ncl, false) else {
-            return None;
-        };
+        let st = crate::named::stage_alloc_named_color(&ncl, false)?;
         if !lut.insert_stage(StageLoc::AtBegin, st) {
             return None;
         }

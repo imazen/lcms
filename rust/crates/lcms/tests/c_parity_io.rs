@@ -52,12 +52,8 @@ fn read_write_primitives_roundtrip() {
         // C side: NULL handler for write-size accounting then a mem buffer
         let mut cbuf = vec![0u8; 1024];
         let (c_written, c_read_ok) = unsafe {
-            let io = c::cmsOpenIOhandlerFromMem(
-                ptr::null_mut(),
-                cbuf.as_mut_ptr(),
-                1024,
-                c"w".as_ptr(),
-            );
+            let io =
+                c::cmsOpenIOhandlerFromMem(ptr::null_mut(), cbuf.as_mut_ptr(), 1024, c"w".as_ptr());
             assert!(!io.is_null());
             assert_eq!(c::_cmsWriteUInt8Number(io, v8), 1);
             assert_eq!(c::_cmsWriteUInt16Number(io, v16), 1);
@@ -80,12 +76,8 @@ fn read_write_primitives_roundtrip() {
             assert_eq!(c::_cmsWriteAlignment(io), 1);
             c::cmsCloseIOhandler(io);
 
-            let io = c::cmsOpenIOhandlerFromMem(
-                ptr::null_mut(),
-                cbuf.as_mut_ptr(),
-                1024,
-                c"r".as_ptr(),
-            );
+            let io =
+                c::cmsOpenIOhandlerFromMem(ptr::null_mut(), cbuf.as_mut_ptr(), 1024, c"r".as_ptr());
             let (mut a8, mut a16, mut a32, mut a64, mut af, mut afx) =
                 (0u8, 0u16, 0u32, 0u64, 0f32, 0f64);
             let mut axyz = c::CieXyz::default();

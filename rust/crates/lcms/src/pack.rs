@@ -63,7 +63,7 @@ fn to_fixed_domain(v: u16) -> u32 {
     let a = v as u32;
     a + (a + 0x7fff) / 0xffff
 }
-/// `REVERSE_FLAVOR_16/8/Float`
+// `REVERSE_FLAVOR_16/8/Float`
 
 pub struct PackInfo {
     pub input_format: u32,
@@ -293,9 +293,6 @@ pub fn unroll_planar_bytes(
 fn rd16(b: &[u8], o: usize) -> u16 {
     u16::from_le_bytes(b[o..o + 2].try_into().unwrap())
 }
-fn rd16be(b: &[u8], o: usize) -> u16 {
-    u16::from_be_bytes(b[o..o + 2].try_into().unwrap())
-}
 fn rd32f(b: &[u8], o: usize) -> f32 {
     f32::from_le_bytes(b[o..o + 4].try_into().unwrap())
 }
@@ -320,9 +317,6 @@ fn fom_lab_v4_to_v2(x: u16) -> u16 {
 }
 fn qs16(v: f64) -> u16 {
     crate::fixed::quick_saturate_word(v)
-}
-fn qs8(v: f32) -> u8 {
-    crate::fixed::quick_saturate_byte(v as f64)
 }
 
 macro_rules! unroll8 {
@@ -361,8 +355,8 @@ macro_rules! unroll8 {
 
 unroll8!(unroll4_bytes, [0, 1, 2, 3], 0);
 unroll8!(unroll4_bytes_reverse, [0, 1, 2, 3], 0, rev);
-/// `UnrollChunkyBytes` specialized to chunky 3ch+ex1 (TYPE_RGBA_8 & kin —
-/// C's table falls through to the generic for this shape).
+// `UnrollChunkyBytes` specialized to chunky 3ch+ex1 (TYPE_RGBA_8 & kin —
+// C's table falls through to the generic for this shape).
 unroll8!(unroll3_bytes_skip1, [0, 1, 2], 1);
 unroll8!(unroll4_bytes_swap_first, [3, 0, 1, 2], 0);
 unroll8!(unroll4_bytes_swap, [3, 2, 1, 0], 0);
@@ -578,8 +572,8 @@ pub fn unroll_any_words_premul(
         if swap_endian {
             v = (v as u16).swap_bytes() as u32;
         }
-        if alpha_factor > 0 {
-            v = (v << 16) / alpha_factor;
+        if let Some(q) = (v << 16).checked_div(alpha_factor) {
+            v = q;
             if v > 0xffff {
                 v = 0xffff;
             }
@@ -646,8 +640,8 @@ pub fn unroll_planar_words_premul(
         if swap_endian {
             v = (v as u16).swap_bytes() as u32;
         }
-        if alpha_factor > 0 {
-            v = (v << 16) / alpha_factor;
+        if let Some(q) = (v << 16).checked_div(alpha_factor) {
+            v = q;
             if v > 0xffff {
                 v = 0xffff;
             }
@@ -673,24 +667,11 @@ macro_rules! unrollw {
             o + $adv
         }
     };
-    ($name:ident, [$($idx:expr),+], $adv:expr, be) => {
-        pub fn $name(_i: &PackInfo, w: &mut [u16; crate::xform::MAX_CHANNELS], a: &[u8], _s: u32) -> usize {
-            const N: usize = 0usize $(+ {let _ = $idx; 2})+ + $adv;
-            let a = &a[..N];
-            let mut o = 0;
-            $(
-                if $idx == 255 { o += 2; } else {
-                    w[$idx] = rd16be(a, o); o += 2;
-                }
-            )+
-            o + $adv
-        }
-    };
 }
 
 unrollw!(unroll4_words, [0, 1, 2, 3], 0);
-/// `UnrollAnyWords` specialized to chunky 3ch+ex1 (TYPE_RGBA_16 & kin —
-/// C's table has no plain `ch3|by2|ex1` entry, so the generic runs).
+// `UnrollAnyWords` specialized to chunky 3ch+ex1 (TYPE_RGBA_16 & kin —
+// C's table has no plain `ch3|by2|ex1` entry, so the generic runs).
 unrollw!(unroll3_words_skip1, [0, 1, 2], 2);
 // `Unroll4WordsReverse` — REVERSE_FLAVOR_16 on each channel
 pub fn unroll4_words_reverse(
@@ -1489,27 +1470,6 @@ pub fn pack_planar_words(
 // Specialized chunky packers
 // ---------------------------------------------------------------------------
 
-macro_rules! pack8 {
-    ($name:ident, [$($op:tt)*]) => {
-        pub fn $name(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
-            let mut o = 0usize;
-            $($op)*
-            o
-        }
-    };
-}
-macro_rules! wr8 {
-    (out[$o:ident] = f16to8(w[$idx:expr]); $o2:expr) => {};
-}
-macro_rules! packw {
-    ($name:ident, [$($op:tt)*]) => {
-        pub fn $name(_i: &PackInfo, w: &[u16; crate::xform::MAX_CHANNELS], out: &mut [u8], _s: u32) -> usize {
-            let mut o = 0usize;
-            $($op)*
-            o
-        }
-    };
-}
 // specialized chunky packers (Pack* family)
 pub fn pack6_bytes(
     _i: &PackInfo,

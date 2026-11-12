@@ -55,8 +55,7 @@ fn lcms_built_profile_transforms() {
                 None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
             );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
-            if !ct.is_null() && rt.is_some() {
-                let mut rt = rt.unwrap();
+            if let Some(mut rt) = rt {
                 let inp = vec![0x4000u16; nch as usize];
                 let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_ne_bytes()).collect();
                 let mut co = [0u16; 3];
@@ -82,32 +81,33 @@ fn lcms_built_profile_transforms() {
 #[test]
 fn remaining_builders() {
     unsafe {
-        let mut builders: Vec<(&str, *mut std::ffi::c_void)> = Vec::new();
-        builders.push(("srgb", c::cmsCreate_sRGBProfile()));
-        builders.push(("xyz", c::cmsCreateXYZProfile()));
-        builders.push(("null", c::cmsCreateNULLProfile()));
-        builders.push(("lab2", c::cmsCreateLab2Profile(std::ptr::null_mut())));
-        builders.push(("lab4", c::cmsCreateLab4Profile(std::ptr::null_mut())));
-        builders.push((
-            "gray",
-            c::cmsCreateGrayProfile(
-                c::cmsD50_xyY() as *const std::ffi::c_void,
-                c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+        let mut builders: Vec<(&str, *mut std::ffi::c_void)> = vec![
+            ("srgb", c::cmsCreate_sRGBProfile()),
+            ("xyz", c::cmsCreateXYZProfile()),
+            ("null", c::cmsCreateNULLProfile()),
+            ("lab2", c::cmsCreateLab2Profile(std::ptr::null_mut())),
+            ("lab4", c::cmsCreateLab4Profile(std::ptr::null_mut())),
+            (
+                "gray",
+                c::cmsCreateGrayProfile(
+                    c::cmsD50_xyY() as *const std::ffi::c_void,
+                    c::cmsBuildGamma(std::ptr::null_mut(), 2.2),
+                ),
             ),
-        ));
-        builders.push((
-            "bchsw",
-            c::cmsCreateBCHSWabstractProfileTHR(
-                std::ptr::null_mut(),
-                17,
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-                std::ptr::null(),
-                std::ptr::null(),
+            (
+                "bchsw",
+                c::cmsCreateBCHSWabstractProfileTHR(
+                    std::ptr::null_mut(),
+                    17,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    std::ptr::null(),
+                    std::ptr::null(),
+                ),
             ),
-        ));
+        ];
         // a linearization devicelink
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let curves: [*mut std::ffi::c_void; 3] = [
@@ -202,6 +202,7 @@ fn rgb_builder_variants() {
             ),
         ] {
             #[repr(C)]
+            #[allow(non_snake_case)] // cmsCIExyY's field names
             struct CxyY {
                 x: f64,
                 y: f64,
@@ -395,7 +396,7 @@ fn placeholder_full() {
         ] {
             let payload = match kind {
                 1 => &xyz as *const _ as *mut std::ffi::c_void,
-                2 => mlu as *mut std::ffi::c_void,
+                2 => mlu,
                 _ => g as *mut std::ffi::c_void,
             };
             let _ = c::cmsWriteTag(h, sig, payload);

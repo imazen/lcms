@@ -4,7 +4,7 @@ fn main() {
     unsafe {
         let cs = std::ffi::CString::new(PATH).unwrap();
         let acc = std::ffi::CString::new("r").unwrap();
-        let p = c::cmsOpenProfileFromFile(cs.as_ptr(), (acc.as_ptr() as *const u8).cast());
+        let p = c::cmsOpenProfileFromFile(cs.as_ptr(), acc.as_ptr().cast());
         assert!(!p.is_null());
         // rTRC sig = 'rTRC' = 0x72545243
         let trc = c::cmsReadTag(p, 0x72545243);

@@ -66,7 +66,7 @@ fn read_all_tags_both_sides() {
             let c_ok = !c_obj.is_null();
             let r_ok = profile::cms_read_tag(&mut icc, c_sig).is_some();
             let sig_str = c_sig.to_be_bytes();
-            let sig_str = unsafe { CStr::from_bytes_until_nul(&sig_str) }
+            let sig_str = { CStr::from_bytes_until_nul(&sig_str) }
                 .ok()
                 .map(|s| s.to_str().unwrap_or("?").to_string())
                 .unwrap_or_default();

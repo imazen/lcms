@@ -97,7 +97,7 @@ pub fn create_rgb_profile(
         return None;
     }
 
-    if white_point.is_some() {
+    if let Some(white_point) = white_point {
         if !cms_write_tag(
             &mut icc,
             tags::SigMediaWhitePointTag,
@@ -105,7 +105,7 @@ pub fn create_rgb_profile(
         ) {
             return None;
         }
-        let wpx = crate::pcs::xyy2xyz(white_point.unwrap());
+        let wpx = crate::pcs::xyy2xyz(white_point);
         let mut chad = Mat3::default();
         if !adaptation_matrix(&mut chad, None, &wpx, &d50_xyz()) {
             return None;

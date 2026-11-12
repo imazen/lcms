@@ -31,11 +31,12 @@ fn c_open(data: &[u8]) -> *mut c_void {
 }
 
 fn variants(seed: &[u8]) -> Vec<(&'static str, Vec<u8>)> {
-    let mut v: Vec<(&'static str, Vec<u8>)> = Vec::new();
-    v.push(("empty", vec![]));
-    v.push(("tiny", seed[..16].to_vec()));
-    v.push(("half-header", seed[..64].to_vec()));
-    v.push(("header-only", seed[..128].to_vec()));
+    let mut v: Vec<(&'static str, Vec<u8>)> = vec![
+        ("empty", vec![]),
+        ("tiny", seed[..16].to_vec()),
+        ("half-header", seed[..64].to_vec()),
+        ("header-only", seed[..128].to_vec()),
+    ];
     // bad magic
     let mut m = seed.to_vec();
     m[36] = b'Z';
@@ -268,8 +269,7 @@ fn save_and_iohandler_roundtrip() {
         c::cmsCloseIOhandler(io_w);
         c::cmsCloseProfile(p3);
 
-        let io_r =
-            c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), cs_c.as_ptr(), c"r".as_ptr());
+        let io_r = c::cmsOpenIOhandlerFromFile(std::ptr::null_mut(), cs_c.as_ptr(), c"r".as_ptr());
         assert!(!io_r.is_null(), "IOhandlerFromFile r");
         let p4 = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io_r);
         assert!(!p4.is_null(), "open via IOhandlerFromFile");

@@ -225,7 +225,6 @@ fn dense_gbd() {
         let cgbd = c::cmsGBDAlloc(std::ptr::null_mut());
         let mut rgbd = lcms::gbd::Gbd::alloc(None);
         // add Lab points on a denser sphere
-        let mut n = 0u32;
         for l in (10..=90).step_by(10) {
             for a in (-80..=80).step_by(16) {
                 for b in (-80..=80).step_by(16) {
@@ -246,7 +245,6 @@ fn dense_gbd() {
                         a: a as f64,
                         b: b as f64,
                     });
-                    n += 1;
                 }
             }
         }

@@ -61,16 +61,18 @@ fn gbd_containment() {
 static LAST_C: Mutex<Option<(u32, String)>> = Mutex::new(None);
 static CTX_LOCK: Mutex<()> = Mutex::new(());
 
-unsafe extern "C" fn c_handler(_ctx: *mut c_void, code: u32, text: *const std::ffi::c_char) { unsafe {
-    let t = if text.is_null() {
-        String::new()
-    } else {
-        std::ffi::CStr::from_ptr(text)
-            .to_string_lossy()
-            .into_owned()
-    };
-    *LAST_C.lock().unwrap() = Some((code, t));
-}}
+unsafe extern "C" fn c_handler(_ctx: *mut c_void, code: u32, text: *const std::ffi::c_char) {
+    unsafe {
+        let t = if text.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(text)
+                .to_string_lossy()
+                .into_owned()
+        };
+        *LAST_C.lock().unwrap() = Some((code, t));
+    }
+}
 
 #[test]
 fn error_handler_fires() {

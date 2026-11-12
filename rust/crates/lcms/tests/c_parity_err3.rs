@@ -44,7 +44,12 @@ fn log_error_handler() {
         // global error-handler slot
         c::cmsSetLogErrorHandler(std::ptr::null_mut()); // NULL handler
         // set a real handler
-        unsafe extern "C" fn handler(_ctx: *mut c_void, _code: u32, _text: *const std::ffi::c_char) {}
+        unsafe extern "C" fn handler(
+            _ctx: *mut c_void,
+            _code: u32,
+            _text: *const std::ffi::c_char,
+        ) {
+        }
         c::cmsSetLogErrorHandler(handler as *mut c_void);
         c::cmsSetLogErrorHandler(std::ptr::null_mut()); // restore
         // THR variant on a dup'd context

@@ -267,7 +267,7 @@ fn err_ctx_lifecycle_arms() {
 
 /// cmsplugin residual — IOhandler plugin registration
 ///   + _cmsIOPrintf internals via plugin-registered
-///   memory IO used for profile open.
+///     memory IO used for profile open.
 #[test]
 fn err_io_plugin_arms() {
     unsafe {
@@ -372,7 +372,11 @@ fn err_filelen_arms() {
         }
         // error handler capture at each error code
         static mut SEEN: [u32; 16] = [0; 16];
-        unsafe extern "C" fn errh(_ctx: *mut std::ffi::c_void, code: u32, _msg: *const std::ffi::c_char) {
+        unsafe extern "C" fn errh(
+            _ctx: *mut std::ffi::c_void,
+            code: u32,
+            _msg: *const std::ffi::c_char,
+        ) {
             unsafe {
                 if (code as usize) < 16 {
                     SEEN[code as usize] += 1;
@@ -390,7 +394,7 @@ fn err_filelen_arms() {
         if !it8.is_null() {
             c::cmsIT8Free(it8);
         }
-        eprintln!("errs={:?}", unsafe { &SEEN[..8] });
+        eprintln!("errs={:?}", { &SEEN[..8] });
         c::cmsSetLogErrorHandlerTHR(std::ptr::null_mut(), std::ptr::null_mut());
     }
 }

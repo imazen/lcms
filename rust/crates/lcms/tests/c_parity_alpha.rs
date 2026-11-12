@@ -232,15 +232,6 @@ fn decode_f64(s: &[u8], w: Aw) -> f64 {
     }
 }
 
-fn first_diff(a: &[u8], b: &[u8]) -> String {
-    for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
-        if x != y {
-            return format!("byte {i}: C={x:#04x} RUST={y:#04x}");
-        }
-    }
-    format!("length {} vs {}", a.len(), b.len())
-}
-
 /// Compare a full RGBA transform output. Alpha lanes are ALWAYS byte-exact
 /// — that's this gate's contract. Color lanes are byte-exact too, except
 /// the integer->float quadrant: the C oracle's float-eval CLUT produces
@@ -439,7 +430,7 @@ fn alpha_format_variants() {
             ("rgba-al", (4 << 16) | (4 << 3) | 2),             // RGBA
             ("argb-al", (4 << 16) | (4 << 3) | 2 | (1 << 10)), // swapfirst
             ("rgba-pm", (4 << 16) | (4 << 3) | 2 | (1 << 14)), // premul
-            ("rgba-pkd", ((4 << 16) | (4 << 3))),            // packed
+            ("rgba-pkd", ((4 << 16) | (4 << 3))),              // packed
             ("rgba-8", (4 << 16) | (4 << 3) | 1),              // 8-bit
             ("rgba-fl", (4 << 16) | (4 << 3) | 6),             // float
         ] {
@@ -647,10 +638,7 @@ fn alpha_se_planar_arms() {
                 "dbl-se-ex1",
             ),
             // half (bytes=0) + extra1
-            (
-                ((1u32 << 22) | (4 << 16) | (1 << 7) | (3 << 3)),
-                "hlf-ex1",
-            ),
+            (((1u32 << 22) | (4 << 16) | (1 << 7) | (3 << 3)), "hlf-ex1"),
             // planar u16 + extra1
             (
                 (4u32 << 16) | (1 << 12) | (1 << 7) | (3 << 3) | 2,

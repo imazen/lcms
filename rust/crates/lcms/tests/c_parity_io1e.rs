@@ -386,7 +386,7 @@ fn more_writable_pipeline_sigs() {
             0x70726531,
             0x70726532,
         ] {
-            let ok = c::cmsWriteTag(h, sig, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, pl);
             eprintln!("{sig:#x} write={ok}");
         }
         // dmnd/dmdd — mluc desc sigs
@@ -398,7 +398,7 @@ fn more_writable_pipeline_sigs() {
             (c"desc".as_ptr() as *const u8).cast(),
         );
         for sig in [0x646D6E64u32, 0x646D6464] {
-            let ok = c::cmsWriteTag(h, sig, mlu as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, mlu);
             eprintln!("{sig:#x} write={ok}");
         }
         // resave crashes — a CLUT-only pipeline isn't a valid
@@ -655,13 +655,13 @@ fn remaining_sig_writes() {
             pcs.as_ptr(),
             dev.as_ptr(),
         );
-        let ok1 = c::cmsWriteTag(h, 0x636C7274, ncl as *mut std::ffi::c_void); // 'clrt'
-        let ok2 = c::cmsWriteTag(h, 0x636C6F74, ncl as *mut std::ffi::c_void); // 'clot'
+        let ok1 = c::cmsWriteTag(h, 0x636C7274, ncl); // 'clrt'
+        let ok2 = c::cmsWriteTag(h, 0x636C6F74, ncl); // 'clot'
         // targ — charTarget takes a text string
         let targ = b"IT8.7/2\0";
         let ok3 = c::cmsWriteTag(h, 0x74617267, targ.as_ptr() as *const std::ffi::c_void);
         // ndin — ncl2-type display data
-        let ok4 = c::cmsWriteTag(h, 0x6E64696E, ncl as *mut std::ffi::c_void); // 'ndin'
+        let ok4 = c::cmsWriteTag(h, 0x6E64696E, ncl); // 'ndin'
         // resp — response curve set
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
         let ok5 = c::cmsWriteTag(h, 0x72657370, g as *mut std::ffi::c_void); // 'resp'
@@ -734,7 +734,7 @@ fn big_tag_table() {
             let payload = match kind {
                 1 => &xyz as *const _ as *mut std::ffi::c_void,
                 2 => &sigv as *const _ as *mut std::ffi::c_void,
-                3 => mlu as *mut std::ffi::c_void,
+                3 => mlu,
                 _ => g as *mut std::ffi::c_void,
             };
             let _ = c::cmsWriteTag(h, sig, payload);
@@ -788,8 +788,8 @@ fn full_table_serialize() {
         ] {
             let payload = match kind {
                 1 => &xyz as *const _ as *mut std::ffi::c_void,
-                2 => mlu as *mut std::ffi::c_void,
-                3 => mlu as *mut std::ffi::c_void,
+                2 => mlu,
+                3 => mlu,
                 _ => g as *mut std::ffi::c_void,
             };
             let _ = c::cmsWriteTag(h, sig, payload);
@@ -1019,9 +1019,9 @@ fn final_sig_writes() {
             (c"US".as_ptr() as *const u8).cast(),
             (c"id".as_ptr() as *const u8).cast(),
         );
-        let o4 = c::cmsWriteTag(h, 0x636C6964, mlu as *mut std::ffi::c_void); // 'clid'
-        let o5 = c::cmsWriteTag(h, 0x63696964, mlu as *mut std::ffi::c_void); // 'ciid'
-        let o6 = c::cmsWriteTag(h, 0x63656964, mlu as *mut std::ffi::c_void); // 'ceid'
+        let o4 = c::cmsWriteTag(h, 0x636C6964, mlu); // 'clid'
+        let o5 = c::cmsWriteTag(h, 0x63696964, mlu); // 'ciid'
+        let o6 = c::cmsWriteTag(h, 0x63656964, mlu); // 'ceid'
         // ndin — ncl2-type named display data
         let ncl = c::cmsAllocNamedColorList(
             std::ptr::null_mut(),
@@ -1038,7 +1038,7 @@ fn final_sig_writes() {
             pcs.as_ptr(),
             dev.as_ptr(),
         );
-        let o7 = c::cmsWriteTag(h, 0x6E64696E, ncl as *mut std::ffi::c_void); // 'ndin'
+        let o7 = c::cmsWriteTag(h, 0x6E64696E, ncl); // 'ndin'
         eprintln!(
             "vued={o1} vuet={o2} calt={o3} clid={o4} \
             ciid={o5} ceid={o6} ndin={o7}"
@@ -1099,7 +1099,7 @@ fn proofing_lut_types() {
         c::cmsPipelineInsertStage(pl, 0xFFFF, bcurves);
         // write to the proofing-LUT sigs
         for sig in [0x70726530u32, 0x70726531, 0x70726532, 0x67616D74] {
-            let ok = c::cmsWriteTag(h, sig, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, pl);
             eprintln!("{sig:#x} write={ok}");
         }
         // NOTE: resave removed — the mAB writer NULL-derefs on
@@ -1196,7 +1196,7 @@ fn lut_stored_type_writes() {
             0x44324230,
             0x42424430,
         ] {
-            let ok = c::cmsWriteTag(h, sig, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, pl);
             eprintln!("{sig:#x} write={ok}");
         }
         c::cmsCloseProfile(h);
@@ -1217,7 +1217,7 @@ fn overwrite_type_change() {
             (c"US".as_ptr() as *const u8).cast(),
             (c"mluc-form".as_ptr() as *const u8).cast(),
         );
-        let o1 = c::cmsWriteTag(h, 0x64657363, mlu as *mut std::ffi::c_void);
+        let o1 = c::cmsWriteTag(h, 0x64657363, mlu);
         // 'desc' accepts desc-type too — a TextDesc payload
         // would need a different structure; try overwriting
         // 'rTRC' with a different curve
@@ -1370,7 +1370,7 @@ fn targ_it8_handle() {
         eprintln!("it8 null={}", it8.is_null());
         let h = c::cmsCreate_sRGBProfile();
         c::cmsSetDeviceClass(h, 0x70727472); // 'prtr'
-        let ok = c::cmsWriteTag(h, 0x74617267, it8 as *mut std::ffi::c_void);
+        let ok = c::cmsWriteTag(h, 0x74617267, it8);
         eprintln!("targ write={ok}");
         let mut cn = 0u32;
         c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
@@ -1429,7 +1429,7 @@ fn last_writeable_sigs() {
         for (sig, kind, name) in sigs {
             let payload = match kind {
                 1 => &xyz as *const _ as *mut std::ffi::c_void,
-                2 => mlu as *mut std::ffi::c_void,
+                2 => mlu,
                 3 => &sigv as *const _ as *mut std::ffi::c_void,
                 _ => &dt as *const _ as *mut std::ffi::c_void,
             };
@@ -1691,7 +1691,7 @@ fn write_side_dispatch() {
         // dispatch NULL-derefs on a non-dict payload (oracle
         // UB). Only the dict write is valid; mlu/xyz/gamma/sig
         // crash on the dict-typed dispatch.
-        let ok = c::cmsWriteTag(h, 0x6D657461, dict as *mut std::ffi::c_void);
+        let ok = c::cmsWriteTag(h, 0x6D657461, dict);
         eprintln!("dict write={ok}");
         c::cmsCloseProfile(h);
         c::cmsMLUfree(mlu);
@@ -1890,7 +1890,7 @@ fn corpus_stored_writes() {
                 let payload = if kind == 1 {
                     &xyz as *const _ as *mut std::ffi::c_void
                 } else {
-                    mlu as *mut std::ffi::c_void
+                    mlu
                 };
                 let _ = c::cmsWriteTag(h, sig, payload);
             }
@@ -1998,7 +1998,7 @@ fn canonical_mab_resave() {
             c::cmsStageAllocToneCurves(std::ptr::null_mut(), 3, curves.as_ptr()),
         );
         // write to A2B0 — the canonical mAB write
-        let ok = c::cmsWriteTag(h, 0x41324230, pl as *mut std::ffi::c_void);
+        let ok = c::cmsWriteTag(h, 0x41324230, pl);
         eprintln!("mAB write={ok}");
         // NOTE: resave crashes — the mAB writer needs the
         // exact mAB slot structure, not a generic pipeline
@@ -2051,7 +2051,7 @@ fn mpet_machinery() {
             0x7044324D,
             0x4D324370,
         ] {
-            let ok = c::cmsWriteTag(h, sig, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, pl);
             eprintln!("{sig:#x} write={ok}");
         }
         c::cmsCloseProfile(h);
@@ -2091,7 +2091,7 @@ fn mpe_each_element() {
         ] {
             let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
             c::cmsPipelineInsertStage(pl, 1, st);
-            let ok = c::cmsWriteTag(h, 0x41324230, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, 0x41324230, pl);
             eprintln!("{name} write={ok}");
             c::cmsPipelineFree(pl);
         }
@@ -2108,7 +2108,7 @@ fn mpe_abstract_elements() {
         // identity stage — the bACS/eACS element path
         let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
         c::cmsPipelineInsertStage(pl, 1, c::cmsStageAllocIdentity(std::ptr::null_mut(), 3));
-        let ok = c::cmsWriteTag(h, 0x41324230, pl as *mut std::ffi::c_void);
+        let ok = c::cmsWriteTag(h, 0x41324230, pl);
         eprintln!("identity write={ok}");
         c::cmsPipelineFree(pl);
         c::cmsCloseProfile(h);
@@ -2131,7 +2131,7 @@ fn mpe_named_element() {
             let pl = c::cmsPipelineAlloc(std::ptr::null_mut(), 1, 3);
             let st = c::_cmsStageAllocNamedColor(list as *mut _, 0);
             c::cmsPipelineInsertStage(pl, 1, st);
-            let ok = c::cmsWriteTag(h, 0x41324230, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, 0x41324230, pl);
             eprintln!("named write={ok}");
             c::cmsPipelineFree(pl);
         }
@@ -2202,7 +2202,7 @@ fn gamt_pre_targ_writes() {
             (0x70726532u32, "pre2"),
             (0x74617267u32, "targ"),
         ] {
-            let ok = c::cmsWriteTag(h, sig, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, pl);
             eprintln!("{name} write={ok}");
         }
         c::cmsPipelineFree(pl);
@@ -2232,7 +2232,7 @@ fn lut_sig_resave() {
             (0x70726531u32, "pre1"),
             (0x70726532u32, "pre2"),
         ] {
-            let ok = c::cmsWriteTag(h, sig, pl as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, pl);
             let mut cn = 0u32;
             c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
             let mut cbuf = vec![0u8; cn as usize];
@@ -2257,13 +2257,13 @@ fn object_sig_writes() {
         let h = c::cmsCreate_sRGBProfile();
         // a dict payload on 'meta'
         let dict = c::cmsDictAlloc(std::ptr::null_mut());
-        let ok1 = c::cmsWriteTag(h, 0x6D657461, dict as *mut std::ffi::c_void); // 'meta'
+        let ok1 = c::cmsWriteTag(h, 0x6D657461, dict); // 'meta'
         eprintln!("meta write={ok1}");
         // a seq payload on 'pseq'/'psid'
         let seq = c::cmsAllocProfileSequenceDescription(std::ptr::null_mut(), 2);
         if !seq.is_null() {
             for sig in [0x70736571u32, 0x70736964] {
-                let ok = c::cmsWriteTag(h, sig, seq as *mut std::ffi::c_void);
+                let ok = c::cmsWriteTag(h, sig, seq);
                 eprintln!("{sig:#x} write={ok}");
             }
         }
@@ -2329,12 +2329,12 @@ fn object_sig_resave() {
         // crashes on read (oracle UB)
         c::cmsDictAddEntry(
             dict,
-            b"key1 ".as_ptr() as _,
-            b"val1 ".as_ptr() as _,
+            c"key1".as_ptr() as _,
+            c"val1".as_ptr() as _,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
-        let _ = c::cmsWriteTag(h, 0x6D657461, dict as *mut std::ffi::c_void);
+        let _ = c::cmsWriteTag(h, 0x6D657461, dict);
         // resave + read — the serialization internals
         let mut cn = 0u32;
         c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
@@ -2420,7 +2420,7 @@ fn mlu_text_resave() {
             (0x646D6E64u32, "dmnd"),
             (0x76756564u32, "vued"),
         ] {
-            let _ = c::cmsWriteTag(h, sig, mlu as *mut std::ffi::c_void);
+            let _ = c::cmsWriteTag(h, sig, mlu);
         }
         // resave + read — the MLU serialization internals
         let mut cn = 0u32;
@@ -2474,9 +2474,9 @@ fn remaining_object_sigs() {
                 "rig0",
                 &sigv as *const _ as *mut std::ffi::c_void,
             ),
-            (0x73637264u32, "scrd", mlu as *mut std::ffi::c_void),
-            (0x76756564u32, "vued", mlu as *mut std::ffi::c_void),
-            (0x76756574u32, "vuet", mlu as *mut std::ffi::c_void),
+            (0x73637264u32, "scrd", mlu),
+            (0x76756564u32, "vued", mlu),
+            (0x76756574u32, "vuet", mlu),
         ] {
             let ok = c::cmsWriteTag(h, sig, payload);
             eprintln!("{name} write={ok}");
@@ -2503,8 +2503,8 @@ fn remaining_object_resave() {
         let _ = c::cmsWriteTag(h, 0x74656368, &sigv as *const _ as *mut std::ffi::c_void);
         let _ = c::cmsWriteTag(h, 0x63696973, &sigv as *const _ as *mut std::ffi::c_void);
         let _ = c::cmsWriteTag(h, 0x72696730, &sigv as *const _ as *mut std::ffi::c_void);
-        let _ = c::cmsWriteTag(h, 0x73637264, mlu as *mut std::ffi::c_void);
-        let _ = c::cmsWriteTag(h, 0x76756564, mlu as *mut std::ffi::c_void);
+        let _ = c::cmsWriteTag(h, 0x73637264, mlu);
+        let _ = c::cmsWriteTag(h, 0x76756564, mlu);
         // resave + read — the object serialization internals
         let mut cn = 0u32;
         c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
@@ -2545,7 +2545,7 @@ fn named_sig_resave() {
             (0x636C7274u32, "clrt"),
             (0x6E64696Eu32, "ndin"),
         ] {
-            let ok = c::cmsWriteTag(h, sig, list as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, list);
             let mut cn = 0u32;
             c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
             let mut cbuf = vec![0u8; cn as usize];
@@ -2674,7 +2674,7 @@ fn lut_sig_resave2() {
             (0x70726531u32, "pre1"),
             (0x70726532u32, "pre2"),
         ] {
-            let _ = c::cmsWriteTag(h, sig, pl as *mut std::ffi::c_void);
+            let _ = c::cmsWriteTag(h, sig, pl);
             let mut cn = 0u32;
             c::cmsSaveProfileToMem(h, std::ptr::null_mut(), &mut cn);
             let mut cbuf = vec![0u8; cn as usize];
@@ -2770,11 +2770,11 @@ fn response_curve_sigs() {
             std::ptr::null_mut(),
             1,
             1,
-            b"P ".as_ptr() as _,
-            b"S ".as_ptr() as _,
+            c"P".as_ptr() as _,
+            c"S".as_ptr() as _,
         );
         for (sig, name) in [(0x72657370u32, "resp"), (0x72637332u32, "rcs2")] {
-            let ok = c::cmsWriteTag(h, sig, list as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, list);
             eprintln!("{name} write={ok}");
         }
         c::cmsCloseProfile(h);
@@ -2872,7 +2872,7 @@ fn mlu_desc_sigs() {
             (0x63696370u32, "cicp"),
             (0x73637264u32, "scrd"),
         ] {
-            let ok = c::cmsWriteTag(h, sig, mlu as *mut std::ffi::c_void);
+            let ok = c::cmsWriteTag(h, sig, mlu);
             eprintln!("{name} write={ok}");
         }
         c::cmsCloseProfile(h);
@@ -2975,7 +2975,7 @@ fn targ_it8_payload() {
     unsafe {
         let h = c::cmsCreate_sRGBProfile();
         let it8 = c::cmsIT8Alloc(std::ptr::null_mut());
-        let ok = c::cmsWriteTag(h, 0x74617267, it8 as *mut std::ffi::c_void);
+        let ok = c::cmsWriteTag(h, 0x74617267, it8);
         eprintln!("targ write={ok}");
         c::cmsCloseProfile(h);
     }

@@ -59,8 +59,10 @@ fn cms_atan2(y: f64, x: f64) -> f64 {
 /// `ToSpherical` — cartesian (L,a,b) → (r, alpha, theta) degrees
 fn to_spherical(v: &Vec3) -> Spherical {
     let (l, a, b) = (v.n[0], v.n[1], v.n[2]);
-    let mut sp = Spherical::default();
-    sp.r = (l * l + a * a + b * b).sqrt();
+    let mut sp = Spherical {
+        r: (l * l + a * a + b * b).sqrt(),
+        ..Default::default()
+    };
     if sp.r == 0.0 {
         return sp;
     }
@@ -117,6 +119,9 @@ fn point_of_line(l: &Line, t: f64) -> Vec3 {
 const MATRIX_DET_TOLERANCE: f64 = 1e-10;
 
 /// `ClosestLineToLine` — closest point on `line1` to `line2` (0 ≤ t ≤ 1)
+// cmssm.c keeps C's tN/tD updates although `tc` is commented out ("left
+// for future use"); the dead stores stay so the branches match C's.
+#[allow(unused_assignments)]
 fn closest_line_to_line(l1: &Line, l2: &Line) -> Vec3 {
     let w0 = Vec3 {
         n: [
@@ -307,10 +312,11 @@ impl Gbd {
             }
             n
         };
-        let mut sp = Spherical::default();
-        sp.alpha = (alpha as f64 + 0.5) * 360.0 / SECTORS as f64;
-        sp.theta = (theta as f64 + 0.5) * 180.0 / SECTORS as f64;
-        sp.r = 50.0;
+        let sp = Spherical {
+            alpha: (alpha as f64 + 0.5) * 360.0 / SECTORS as f64,
+            theta: (theta as f64 + 0.5) * 180.0 / SECTORS as f64,
+            r: 50.0,
+        };
         let lab = to_cartesian(&sp);
         let centre = Vec3 {
             n: [50.0, 0.0, 0.0],

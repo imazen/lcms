@@ -48,21 +48,23 @@ struct CIoUsed {
 
 /// Call C ReadPtr on `bytes` (the tag BODY, post-type-base), return the raw
 /// object pointer + nItems — caller must free via FreePtr or reuse via Write.
-unsafe fn c_read(sig: u32, bytes: &[u8]) -> (c::Handle, u32) { unsafe {
-    let mut buf = bytes.to_vec();
-    let io = c::cmsOpenIOhandlerFromMem(
-        ptr::null_mut(),
-        buf.as_mut_ptr(),
-        buf.len() as u32,
-        c"r".as_ptr(),
-    );
-    let h = c_handler(sig);
-    let mut n_items = 0u32;
-    let obj = ((*h).read_ptr)(h, io, &mut n_items, bytes.len() as u32);
-    c::cmsCloseIOhandler(io);
-    std::mem::forget(buf);
-    (obj, n_items)
-}}
+unsafe fn c_read(sig: u32, bytes: &[u8]) -> (c::Handle, u32) {
+    unsafe {
+        let mut buf = bytes.to_vec();
+        let io = c::cmsOpenIOhandlerFromMem(
+            ptr::null_mut(),
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            c"r".as_ptr(),
+        );
+        let h = c_handler(sig);
+        let mut n_items = 0u32;
+        let obj = ((*h).read_ptr)(h, io, &mut n_items, bytes.len() as u32);
+        c::cmsCloseIOhandler(io);
+        std::mem::forget(buf);
+        (obj, n_items)
+    }
+}
 
 /// Call Rust read on `bytes`, then Rust write — return output bytes + nItems.
 fn r_read_write(sig: u32, bytes: &[u8]) -> (Vec<u8>, u32) {
@@ -150,7 +152,7 @@ fn int_and_fixed_arrays() {
         let a8: Vec<u8> = (0..n).map(|_| rng() as u8).collect();
         let cb = c_write(
             lcms::signatures::tagtype::SigUInt8ArrayType,
-            a8.as_ptr() as *const u8,
+            a8.as_ptr(),
             n as u32,
         );
         let (rb, items) = r_read_write(lcms::signatures::tagtype::SigUInt8ArrayType, &cb);
@@ -208,9 +210,9 @@ fn text_and_desc_mlu() {
             let txt = std::ffi::CString::new(text).unwrap();
             c::cmsMLUsetASCII(
                 c_mlu,
-                b"\0\0".as_ptr().cast(),
-                b"\0\0".as_ptr().cast(),
-                (txt.as_ptr() as *const u8).cast(),
+                [0u8; 2].as_ptr().cast(),
+                [0u8; 2].as_ptr().cast(),
+                txt.as_ptr().cast(),
             );
             let mut r_mlu = mlu_alloc(None, 1).unwrap();
             assert!(mlu_set_ascii(&mut r_mlu, b"\0\0", b"\0\0", txt.as_bytes()));
@@ -593,11 +595,7 @@ fn s15(v: f64) -> u32 {
 #[test]
 fn lut8_lut16_roundtrip() {
     // LUT8 (mft1): 3ch in/out, clutpts=2, identity matrix, identity tables
-    let mut body = Vec::new();
-    body.push(3);
-    body.push(3);
-    body.push(2);
-    body.push(0);
+    let mut body = vec![3, 3, 2, 0];
     // identity matrix 9×s15f16
     for v in [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] {
         body.extend_from_slice(&s15(v).to_be_bytes());
@@ -615,11 +613,7 @@ fn lut8_lut16_roundtrip() {
     cross_roundtrip(lcms::signatures::tagtype::SigLut8Type, &body);
 
     // LUT16 (mft2): 2ch in, 3ch out, clutpts=2, 4-entry in tables, 2-entry out
-    let mut body = Vec::new();
-    body.push(2);
-    body.push(3);
-    body.push(2);
-    body.push(0);
+    let mut body = vec![2, 3, 2, 0];
     for v in [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] {
         body.extend_from_slice(&s15(v).to_be_bytes());
     }

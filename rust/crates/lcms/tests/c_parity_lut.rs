@@ -7,13 +7,15 @@ use lcms::lut;
 use lcms_cref as c;
 use std::ffi::c_void;
 
-unsafe extern "C" fn c_samp16(inp: *const u16, out: *mut u16, _cargo: *mut c_void) -> i32 { unsafe {
-    let (a, b, c_) = (*inp, *inp.add(1), *inp.add(2));
-    *out = a.wrapping_mul(37).wrapping_add(b);
-    *out.add(1) = b.wrapping_mul(19).wrapping_add(c_);
-    *out.add(2) = c_.wrapping_add(7);
-    1
-}}
+unsafe extern "C" fn c_samp16(inp: *const u16, out: *mut u16, _cargo: *mut c_void) -> i32 {
+    unsafe {
+        let (a, b, c_) = (*inp, *inp.add(1), *inp.add(2));
+        *out = a.wrapping_mul(37).wrapping_add(b);
+        *out.add(1) = b.wrapping_mul(19).wrapping_add(c_);
+        *out.add(2) = c_.wrapping_add(7);
+        1
+    }
+}
 
 fn r_samp16(inp: &[u16], out: &mut [u16]) -> i32 {
     out[0] = inp[0].wrapping_mul(37).wrapping_add(inp[1]);
@@ -285,12 +287,14 @@ fn clut_float_sampling() {
     unsafe {
         let ch = c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 5, 3, 3, std::ptr::null());
         let mut rs = lut::stage_alloc_clut_float(None, 5, 3, 3, None).unwrap();
-        unsafe extern "C" fn sf(inp: *const f32, out: *mut f32, _c: *mut c_void) -> i32 { unsafe {
-            *out = (*inp * 0.7 + 0.1).clamp(0.0, 1.0);
-            *out.add(1) = (*inp.add(1) * 0.5 + 0.2).clamp(0.0, 1.0);
-            *out.add(2) = (*inp.add(2) * 0.9).clamp(0.0, 1.0);
-            1
-        }}
+        unsafe extern "C" fn sf(inp: *const f32, out: *mut f32, _c: *mut c_void) -> i32 {
+            unsafe {
+                *out = (*inp * 0.7 + 0.1).clamp(0.0, 1.0);
+                *out.add(1) = (*inp.add(1) * 0.5 + 0.2).clamp(0.0, 1.0);
+                *out.add(2) = (*inp.add(2) * 0.9).clamp(0.0, 1.0);
+                1
+            }
+        }
         assert!(c::cmsStageSampleCLutFloat(ch, sf, std::ptr::null_mut(), 0) != 0);
         let mut rsf = |inp: &[f32], out: &mut [f32]| -> i32 {
             out[0] = (inp[0] * 0.7 + 0.1).clamp(0.0, 1.0);
@@ -377,8 +381,12 @@ fn mpe_element_writes() {
             c_out.truncate(size as usize);
             let mut r_out = lcms::profile::save_profile_to_mem(&mut rp).unwrap_or_default();
             for i in 0..12 {
-                c_out.get_mut(24 + i).map(|b| *b = 0);
-                r_out.get_mut(24 + i).map(|b| *b = 0);
+                if let Some(b) = c_out.get_mut(24 + i) {
+                    *b = 0;
+                }
+                if let Some(b) = r_out.get_mut(24 + i) {
+                    *b = 0;
+                }
             }
             c_out.resize(r_out.len().max(c_out.len()), 0);
             r_out.resize(c_out.len(), 0);
@@ -435,8 +443,12 @@ fn mpe_element_writes2() {
             c_out.truncate(size as usize);
             let mut r_out = lcms::profile::save_profile_to_mem(&mut rp).unwrap_or_default();
             for i in 0..12 {
-                c_out.get_mut(24 + i).map(|b| *b = 0);
-                r_out.get_mut(24 + i).map(|b| *b = 0);
+                if let Some(b) = c_out.get_mut(24 + i) {
+                    *b = 0;
+                }
+                if let Some(b) = r_out.get_mut(24 + i) {
+                    *b = 0;
+                }
             }
             c_out.resize(r_out.len().max(c_out.len()), 0);
             r_out.resize(c_out.len(), 0);
@@ -549,8 +561,12 @@ fn mpe_clut_elements() {
             c_out.truncate(size as usize);
             let mut r_out = lcms::profile::save_profile_to_mem(&mut rp).unwrap_or_default();
             for i in 0..12 {
-                c_out.get_mut(24 + i).map(|b| *b = 0);
-                r_out.get_mut(24 + i).map(|b| *b = 0);
+                if let Some(b) = c_out.get_mut(24 + i) {
+                    *b = 0;
+                }
+                if let Some(b) = r_out.get_mut(24 + i) {
+                    *b = 0;
+                }
             }
             c_out.resize(r_out.len().max(c_out.len()), 0);
             r_out.resize(c_out.len(), 0);
@@ -589,8 +605,12 @@ fn mpe_clut_elements() {
             c_out.truncate(size as usize);
             let mut r_out = lcms::profile::save_profile_to_mem(&mut rp2).unwrap_or_default();
             for i in 0..12 {
-                c_out.get_mut(24 + i).map(|b| *b = 0);
-                r_out.get_mut(24 + i).map(|b| *b = 0);
+                if let Some(b) = c_out.get_mut(24 + i) {
+                    *b = 0;
+                }
+                if let Some(b) = r_out.get_mut(24 + i) {
+                    *b = 0;
+                }
             }
             c_out.resize(r_out.len().max(c_out.len()), 0);
             r_out.resize(c_out.len(), 0);
@@ -1142,12 +1162,14 @@ fn stage_machinery() {
             inp: *const u16,
             out: *mut u16,
             _c: *mut std::ffi::c_void,
-        ) -> i32 { unsafe {
-            *out = *inp;
-            *out.add(1) = *inp.add(1);
-            *out.add(2) = *inp.add(2);
-            1
-        }}
+        ) -> i32 {
+            unsafe {
+                *out = *inp;
+                *out.add(1) = *inp.add(1);
+                *out.add(2) = *inp.add(2);
+                1
+            }
+        }
         c::cmsStageSampleCLut16bit(cl16, samp16, std::ptr::null_mut(), 0);
         // SampleCLutFloat — a float CLUT's eval
         let tabf = [0.5f32; 4 * 4 * 4 * 3];
@@ -1162,12 +1184,14 @@ fn stage_machinery() {
             inp: *const f32,
             out: *mut f32,
             _c: *mut std::ffi::c_void,
-        ) -> i32 { unsafe {
-            *out = *inp;
-            *out.add(1) = *inp.add(1);
-            *out.add(2) = *inp.add(2);
-            1
-        }}
+        ) -> i32 {
+            unsafe {
+                *out = *inp;
+                *out.add(1) = *inp.add(1);
+                *out.add(2) = *inp.add(2);
+                1
+            }
+        }
         c::cmsStageSampleCLutFloat(clf, sampf, std::ptr::null_mut(), 0);
         // AllocNamedColor — the named-color stage
         let ncl = c::cmsAllocNamedColorList(
@@ -2240,8 +2264,12 @@ fn mpe_structured_writes() {
                 c_out.truncate(size as usize);
                 let mut r_out = r_out.unwrap();
                 for i in 0..12 {
-                    c_out.get_mut(24 + i).map(|b| *b = 0);
-                    r_out.get_mut(24 + i).map(|b| *b = 0);
+                    if let Some(b) = c_out.get_mut(24 + i) {
+                        *b = 0;
+                    }
+                    if let Some(b) = r_out.get_mut(24 + i) {
+                        *b = 0;
+                    }
                 }
                 c_out.resize(r_out.len().max(c_out.len()), 0);
                 r_out.resize(c_out.len(), 0);
@@ -2311,7 +2339,10 @@ fn mpet_element_writes() {
                 c::cmsStageAllocCLutFloat(std::ptr::null_mut(), 2, 3, 3, ftab.as_ptr()),
             );
             let rc: Vec<_> = (0..3)
-                .map(|_| lcms::gamma::build_segmented_tone_curve(None, std::slice::from_ref(&rseg)).unwrap())
+                .map(|_| {
+                    lcms::gamma::build_segmented_tone_curve(None, std::slice::from_ref(&rseg))
+                        .unwrap()
+                })
                 .collect();
             let mut rpipe = lut::pipeline_alloc(None, 3, 3).unwrap();
             rpipe.insert_stage(
@@ -2342,8 +2373,12 @@ fn mpet_element_writes() {
                 c_out.truncate(n as usize);
                 let mut r_out = r_out.unwrap();
                 for i in 0..12 {
-                    c_out.get_mut(24 + i).map(|b| *b = 0);
-                    r_out.get_mut(24 + i).map(|b| *b = 0);
+                    if let Some(b) = c_out.get_mut(24 + i) {
+                        *b = 0;
+                    }
+                    if let Some(b) = r_out.get_mut(24 + i) {
+                        *b = 0;
+                    }
                 }
                 c_out.resize(r_out.len().max(c_out.len()), 0);
                 r_out.resize(c_out.len(), 0);
@@ -5266,9 +5301,11 @@ fn lut_interp_gbd_cam_md5_arms() {
             inp: *const u16,
             out: *mut u16,
             _p: *const std::ffi::c_void,
-        ) { unsafe {
-            *out = *inp;
-        }}
+        ) {
+            unsafe {
+                *out = *inp;
+            }
+        }
         unsafe extern "C" fn my_factory(_nin: u32, _nout: u32, _flags: u32) -> IFunc {
             IFunc {
                 l16: my_lerp16 as *const std::ffi::c_void,
@@ -5512,7 +5549,11 @@ fn lut_mat_ident_arms() {
 #[test]
 fn lut_nchan_eval_arms() {
     unsafe {
-        unsafe extern "C" fn onerr(_ctx: *mut std::ffi::c_void, code: u32, msg: *const std::ffi::c_char) {
+        unsafe extern "C" fn onerr(
+            _ctx: *mut std::ffi::c_void,
+            code: u32,
+            msg: *const std::ffi::c_char,
+        ) {
             let s = unsafe { std::ffi::CStr::from_ptr(msg).to_string_lossy() };
             eprintln!("  cerr {code}: {s}");
         }
@@ -5596,14 +5637,7 @@ fn lut_nchan_eval_arms() {
                 c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), fmt, tcs.as_ptr());
             eprintln!("{name} lin dl={}", !dl.is_null());
             if !dl.is_null() {
-                let t = c::cmsCreateTransform(
-                    dl,
-                    (nch << 3) | 2,
-                    dl,
-                    (nch << 3) | 2,
-                    0,
-                    0,
-                );
+                let t = c::cmsCreateTransform(dl, (nch << 3) | 2, dl, (nch << 3) | 2, 0, 0);
                 eprintln!("  lin t={}", !t.is_null());
                 if !t.is_null() {
                     let src = vec![0x4000u16; nch as usize];
@@ -5886,14 +5920,7 @@ fn lut_md5_named_tail_arms() {
         c::cmsSetProfileVersion(lp, 4.4);
         c::cmsWriteTag(lp, 0x41324230, pipe as *const _);
         let lab4p = c::cmsCreateLab4Profile(std::ptr::null_mut());
-        let t = c::cmsCreateTransform(
-            lp,
-            (4 << 3) | 2,
-            lab4p,
-            (10u32 << 16) | (3 << 3) | 2,
-            0,
-            0,
-        );
+        let t = c::cmsCreateTransform(lp, (4 << 3) | 2, lab4p, (10u32 << 16) | (3 << 3) | 2, 0, 0);
         eprintln!("  clut4 t={}", !t.is_null());
         if !t.is_null() {
             let src = [0x4000u16; 4];
@@ -5944,7 +5971,8 @@ fn lut_md5_named_tail_arms() {
                 dev2.as_mut_ptr(),
             );
             if ok != 0 {
-                let s = std::ffi::CStr::from_ptr(nm.as_ptr() as *const std::ffi::c_char).to_string_lossy();
+                let s = std::ffi::CStr::from_ptr(nm.as_ptr() as *const std::ffi::c_char)
+                    .to_string_lossy();
                 eprintln!("  nc[{i}] '{s}' pcs={:?} dev={:?}", &pcs2[..4], &dev2[..4]);
             }
         }
@@ -6153,7 +6181,7 @@ fn lut_sample_slice_arms() {
             mlu,
             c"fr".as_ptr() as *const _,
             c"FR".as_ptr() as *const _,
-            "Français\0".as_ptr() as *const _,
+            c"Français".as_ptr() as *const _,
         );
         let mut buf = [0u8; 128];
         for (lang, cty) in [
@@ -6170,7 +6198,8 @@ fn lut_sample_slice_arms() {
                 buf.as_mut_ptr().cast(),
                 buf.len() as u32,
             );
-            let s = std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char).to_string_lossy();
+            let s =
+                std::ffi::CStr::from_ptr(buf.as_ptr() as *const std::ffi::c_char).to_string_lossy();
             eprintln!("get {lang:?}/{cty:?}: {n} = {s}");
         }
         // UTF8 + Wide variants

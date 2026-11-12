@@ -4,7 +4,7 @@
 # Benches:    bench / bench-one / c-oracle
 # Coverage:   coverage / coverage-all / coverage-testbed
 # API docs:   api-doc / api-doc-check
-# Misc:       regen / fmt / check
+# Misc:       regen / fmt / clippy / check / check-aarch64
 
 ## Gates ---------------------------------------------------------------------
 
@@ -132,7 +132,20 @@ regen:
     python3 tools/gen_half_tables.py > crates/lcms/src/half_tables.rs
 
 fmt:
-    cargo fmt -p lcms -p lcms-cref
+    cargo fmt -p lcms -p lcms-cref -p lcms2-ffi
+    cargo fmt --manifest-path apidoc/Cargo.toml
+
+# Clippy in every feature config; must print no warnings.
+clippy:
+    cargo clippy --workspace --all-targets --features "little-cms-api lcms2-api"
+    cargo clippy --workspace --all-targets
+    cargo clippy -p lcms --all-targets --no-default-features --features math-libm
+    cargo clippy -p lcms --all-targets --no-default-features --features math-rust
+
+# Type-check every target for aarch64 (C char is u8 there).
+check-aarch64:
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar \
+        cargo check --target aarch64-unknown-linux-gnu --workspace --all-targets --features "little-cms-api lcms2-api"
 
 check:
     cargo check --workspace

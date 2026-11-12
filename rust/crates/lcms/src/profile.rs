@@ -492,9 +492,7 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
         }
         let base_type = icc.tag_type_sigs[n];
         if !avoid_check {
-            let Some(desc) = get_tag_descriptor(ctx, sig) else {
-                return None;
-            };
+            let desc = get_tag_descriptor(ctx, sig)?;
             if !is_type_supported(&desc, base_type) {
                 return None;
             }
@@ -541,9 +539,7 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
     }
     tag_size -= 8;
 
-    let Some(handler) = get_tag_type_handler(ctx, base_type) else {
-        return None;
-    };
+    let handler = get_tag_type_handler(ctx, base_type)?;
     icc.tag_type_sigs[n] = handler.signature;
     let mut local = handler;
     local.icc_version = icc.version;

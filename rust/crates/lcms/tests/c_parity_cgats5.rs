@@ -264,11 +264,8 @@ fn it8_multi_table() {
         let ok = c::cmsIT8SaveToMem(h, cb.as_mut_ptr() as *mut _, &mut cn);
         eprintln!("save mem ok={ok} n={cn}");
         // set/get on table 1
-        let ok1 = c::cmsIT8SetPropertyStr(
-            h,
-            c"PROP".as_ptr() as *const _,
-            c"val".as_ptr() as *const _,
-        );
+        let ok1 =
+            c::cmsIT8SetPropertyStr(h, c"PROP".as_ptr() as *const _, c"val".as_ptr() as *const _);
         let ok2 = c::cmsIT8SetTable(h, 1);
         let ok3 = c::cmsIT8SetPropertyStr(
             h,

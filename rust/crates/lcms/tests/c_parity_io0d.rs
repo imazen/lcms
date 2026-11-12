@@ -811,7 +811,7 @@ fn remaining_open_variants() {
             std::ptr::null_mut(),
             d.as_ptr() as *mut _,
             cn,
-            b"r ".as_ptr() as _,
+            c"r".as_ptr() as _,
         );
         let p = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), ioh);
         eprintln!("iohandler={}", !p.is_null());
@@ -826,7 +826,7 @@ fn remaining_open_variants() {
             c::cmsSaveProfileToIOhandler(h, f);
             let _ = f; // the handler closes on its own
         }
-        let h2 = c::cmsOpenProfileFromFile(path.as_ptr() as _, b"r ".as_ptr() as _);
+        let h2 = c::cmsOpenProfileFromFile(path.as_ptr() as _, c"r".as_ptr() as _);
         eprintln!("file={}", !h2.is_null());
         let _ = std::fs::remove_file("/tmp/ccov-open.icc");
         if !m1.is_null() {
@@ -3128,7 +3128,7 @@ fn iohandler_modes() {
             let io = c::cmsOpenIOhandlerFromFile(
                 std::ptr::null_mut(),
                 tp.as_ptr() as *const std::ffi::c_char,
-                (format!("{mode}\0").as_ptr() as *const u8).cast(),
+                format!("{mode}\0").as_ptr().cast(),
             );
             eprintln!("{name}: io={}", !io.is_null());
             if !io.is_null() {
@@ -3194,10 +3194,6 @@ fn tag_type_sweep() {
             y: f64,
             z: f64,
         }
-        #[repr(C)]
-        struct Sig {
-            sig: u32,
-        }
         let xyz = Xyz {
             x: 0.96,
             y: 1.0,
@@ -3205,7 +3201,12 @@ fn tag_type_sweep() {
         };
         let _sig4 = 0x73696720u32;
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetUTF8(mlu, b"en".as_ptr().cast(), b"US".as_ptr().cast(), c"demo text".as_ptr());
+        c::cmsMLUsetUTF8(
+            mlu,
+            b"en".as_ptr().cast(),
+            b"US".as_ptr().cast(),
+            c"demo text".as_ptr(),
+        );
         // (tag sig, payload ptr, name) — type-correct payloads
         let cases: &[(u32, *const std::ffi::c_void, &str)] = &[
             (0x77747074, &xyz as *const _ as *const _, "XYZ"),
@@ -3430,7 +3431,10 @@ fn file_open_offset_array() {
         let data = std::fs::read(dir.join("lcms2cmyk.icc")).unwrap();
         let tp = "/tmp/ccov_file_open.icc\0";
         std::fs::write(tp.trim_end_matches('\0'), &data).unwrap();
-        let p = c::cmsOpenProfileFromFile(tp.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
+        let p = c::cmsOpenProfileFromFile(
+            tp.as_ptr() as *const std::ffi::c_char,
+            (c"r".as_ptr() as *const u8).cast(),
+        );
         eprintln!("file-open={}", !p.is_null());
         if !p.is_null() {
             // header getters + tag enumeration -> ReadOffsetArray
@@ -5541,13 +5545,8 @@ fn dict_mpet_sig_dispatch() {
 #[test]
 fn named_color_sig_dispatch() {
     unsafe {
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            2,
-            3,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"pre".as_ptr(), c"suf".as_ptr());
         let lab16 = [0xF000u16; 3];
         c::cmsAppendNamedColor(ncl, c"c1".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
         c::cmsAppendNamedColor(ncl, c"c2".as_ptr(), lab16.as_ptr(), lab16.as_ptr());
@@ -6438,8 +6437,7 @@ fn chrm_clrt_tags() {
                 yy: 1.0,
             },
         };
-        let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"".as_ptr(), c"".as_ptr());
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"".as_ptr(), c"".as_ptr());
         let pcs = [0x8000u16; 3];
         c::cmsAppendNamedColor(ncl, c"Cyan".as_ptr(), pcs.as_ptr(), std::ptr::null());
         c::cmsAppendNamedColor(ncl, c"Magenta".as_ptr(), pcs.as_ptr(), std::ptr::null());
@@ -8324,11 +8322,11 @@ fn mft_reader_internals() {
             t.extend_from_slice(&[0; 4]); // inEnt=256 outEnt=256
             t.extend_from_slice(&[0; 2]);
             for _ in 0..3 {
-                t.extend(std::iter::repeat(0u8..=255).take(256).flatten());
+                t.extend(std::iter::repeat_n(0u8..=255, 256).flatten());
             }
             t.extend_from_slice(clut_vals);
             for _ in 0..3 {
-                t.extend(std::iter::repeat(0u8..=255).take(256).flatten());
+                t.extend(std::iter::repeat_n(0u8..=255, 256).flatten());
             }
             t
         };
@@ -8843,11 +8841,17 @@ fn mpe_dup_internals() {
         eprintln!("mlu={m0} desc={w1} wtpt={w2} d2b0={w}");
         // isolate: save an sRGB profile with NO added tags
         let prof2 = c::cmsCreate_sRGBProfile();
-        let fs2 = c::cmsSaveProfileToFile(prof2, c"/tmp/plain_srgb.icc".as_ptr() as *const std::ffi::c_char);
+        let fs2 = c::cmsSaveProfileToFile(
+            prof2,
+            c"/tmp/plain_srgb.icc".as_ptr() as *const std::ffi::c_char,
+        );
         eprintln!("plain-srgb file save={fs2}");
         c::cmsCloseProfile(prof2);
         // save to a FILE first to see the real error path
-        let fs = c::cmsSaveProfileToFile(prof, c"/tmp/mpet_test.icc".as_ptr() as *const std::ffi::c_char);
+        let fs = c::cmsSaveProfileToFile(
+            prof,
+            c"/tmp/mpet_test.icc".as_ptr() as *const std::ffi::c_char,
+        );
         eprintln!("file save={fs}");
         let mut buf = vec![0u8; 1 << 20];
         let mut n = buf.len() as u32;
@@ -12652,7 +12656,8 @@ fn lut16_write_arms14() {
         let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.8);
         let mat = [1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         // different CLUT data patterns + matrix variants
-        let fns: Vec<(fn(usize) -> u16, &str)> = vec![
+        type Pattern = (fn(usize) -> u16, &'static str);
+        let fns: Vec<Pattern> = vec![
             (|i| ((i % 17) * 3855) as u16, "gradient"),
             (|i| ((i % 256) * 257) as u16, "mod256"),
             (|i| ((i * 37) % 65536) as u16, "mod65536"),
@@ -13197,35 +13202,39 @@ unsafe extern "C" fn gated_write(
     io: *mut std::ffi::c_void,
     size: u32,
     buf: *const std::ffi::c_void,
-) -> i32 { unsafe {
-    use std::sync::atomic::Ordering::Relaxed;
-    let n = WRITE_CALLS.fetch_add(1, Relaxed);
-    if n >= WRITE_LIMIT.load(Relaxed) {
-        return 0;
+) -> i32 {
+    unsafe {
+        use std::sync::atomic::Ordering::Relaxed;
+        let n = WRITE_CALLS.fetch_add(1, Relaxed);
+        if n >= WRITE_LIMIT.load(Relaxed) {
+            return 0;
+        }
+        let real: WriteFn = std::mem::transmute(REAL_WRITE.load(Relaxed));
+        real(io, size, buf)
     }
-    let real: WriteFn = std::mem::transmute(REAL_WRITE.load(Relaxed));
-    real(io, size, buf)
-}}
+}
 
-unsafe fn save_with_write_limit(prof: *mut std::ffi::c_void, buf: &mut [u8], limit: u32) -> i32 { unsafe {
-    use std::sync::atomic::Ordering::Relaxed;
-    let io = c::cmsOpenIOhandlerFromMem(
-        std::ptr::null_mut(),
-        buf.as_mut_ptr(),
-        buf.len() as u32,
-        c"w".as_ptr(),
-    );
-    assert!(!io.is_null());
-    WRITE_CALLS.store(0, Relaxed);
-    WRITE_LIMIT.store(limit, Relaxed);
-    let real = *(io as *const usize).add(312 / 8);
-    REAL_WRITE.store(real, Relaxed);
-    *(io as *mut usize).add(312 / 8) = gated_write as *const () as usize;
-    let r = c::cmsSaveProfileToIOhandler(prof, io);
-    *(io as *mut usize).add(312 / 8) = real;
-    c::cmsCloseIOhandler(io);
-    r
-}}
+unsafe fn save_with_write_limit(prof: *mut std::ffi::c_void, buf: &mut [u8], limit: u32) -> i32 {
+    unsafe {
+        use std::sync::atomic::Ordering::Relaxed;
+        let io = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            buf.as_mut_ptr(),
+            buf.len() as u32,
+            c"w".as_ptr(),
+        );
+        assert!(!io.is_null());
+        WRITE_CALLS.store(0, Relaxed);
+        WRITE_LIMIT.store(limit, Relaxed);
+        let real = *(io as *const usize).add(312 / 8);
+        REAL_WRITE.store(real, Relaxed);
+        *(io as *mut usize).add(312 / 8) = gated_write as *const () as usize;
+        let r = c::cmsSaveProfileToIOhandler(prof, io);
+        *(io as *mut usize).add(312 / 8) = real;
+        c::cmsCloseIOhandler(io);
+        r
+    }
+}
 
 #[test]
 fn write_fail_arms() {
@@ -13488,13 +13497,8 @@ fn write_fail_arms2() {
         );
         let w_meta = c::cmsWriteTag(prof, 0x6d657461, dict as *const _);
         // ncl2 — named color list
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            2,
-            4,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"pre".as_ptr(), c"suf".as_ptr());
         let w_ncl = if !ncl.is_null() {
             let mut nm = [0u16; 32];
             nm[0] = b'C' as u16;
@@ -13662,35 +13666,39 @@ unsafe extern "C" fn gated_read(
     buf: *mut std::ffi::c_void,
     size: u32,
     count: u32,
-) -> u32 { unsafe {
-    use std::sync::atomic::Ordering::Relaxed;
-    let n = READ_CALLS.fetch_add(1, Relaxed);
-    if n >= READ_LIMIT.load(Relaxed) {
-        return 0;
+) -> u32 {
+    unsafe {
+        use std::sync::atomic::Ordering::Relaxed;
+        let n = READ_CALLS.fetch_add(1, Relaxed);
+        if n >= READ_LIMIT.load(Relaxed) {
+            return 0;
+        }
+        let real: ReadFn = std::mem::transmute(REAL_READ.load(Relaxed));
+        real(io, buf, size, count)
     }
-    let real: ReadFn = std::mem::transmute(REAL_READ.load(Relaxed));
-    real(io, buf, size, count)
-}}
+}
 
-unsafe fn open_gated(data: &[u8], limit: u32) -> (*mut std::ffi::c_void, *mut std::ffi::c_void) { unsafe {
-    use std::sync::atomic::Ordering::Relaxed;
-    let io = c::cmsOpenIOhandlerFromMem(
-        std::ptr::null_mut(),
-        data.as_ptr() as *mut u8,
-        data.len() as u32,
-        c"r".as_ptr(),
-    );
-    if io.is_null() {
-        return (io, std::ptr::null_mut());
+unsafe fn open_gated(data: &[u8], limit: u32) -> (*mut std::ffi::c_void, *mut std::ffi::c_void) {
+    unsafe {
+        use std::sync::atomic::Ordering::Relaxed;
+        let io = c::cmsOpenIOhandlerFromMem(
+            std::ptr::null_mut(),
+            data.as_ptr() as *mut u8,
+            data.len() as u32,
+            c"r".as_ptr(),
+        );
+        if io.is_null() {
+            return (io, std::ptr::null_mut());
+        }
+        READ_CALLS.store(0, Relaxed);
+        READ_LIMIT.store(limit, Relaxed);
+        let real = *(io as *const usize).add(280 / 8);
+        REAL_READ.store(real, Relaxed);
+        *(io as *mut usize).add(280 / 8) = gated_read as *const () as usize;
+        let prof = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io);
+        (io, prof)
     }
-    READ_CALLS.store(0, Relaxed);
-    READ_LIMIT.store(limit, Relaxed);
-    let real = *(io as *const usize).add(280 / 8);
-    REAL_READ.store(real, Relaxed);
-    *(io as *mut usize).add(280 / 8) = gated_read as *const () as usize;
-    let prof = c::cmsOpenProfileFromIOhandlerTHR(std::ptr::null_mut(), io);
-    (io, prof)
-}}
+}
 
 #[test]
 fn read_fail_arms() {
@@ -13837,13 +13845,8 @@ fn read_fail_arms() {
             dd: 1.0,
         };
         c::cmsWriteTag(prof, 0x76696577, &view as *const _ as *const _);
-        let ncl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            2,
-            4,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let ncl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"pre".as_ptr(), c"suf".as_ptr());
         if !ncl.is_null() {
             let mut nm = [0u16; 32];
             nm[0] = b'C' as u16;
@@ -13878,11 +13881,12 @@ fn read_fail_arms() {
             fn fork() -> i32;
             fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
             fn _exit(c: i32) -> !;
-            fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+            fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char)
+            -> *mut std::ffi::c_void;
         }
         // flush llvm-cov counters before _exit — %p.profraw keeps
         // each fork's data separate; absent in uninstrumented builds
-        let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+        let flush: Option<unsafe extern "C" fn() -> i32> = {
             let f = dlsym(
                 std::ptr::null_mut(),
                 c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
@@ -13890,7 +13894,10 @@ fn read_fail_arms() {
             if f.is_null() {
                 None
             } else {
-                Some(std::mem::transmute(f))
+                Some(std::mem::transmute::<
+                    *mut std::ffi::c_void,
+                    unsafe extern "C" fn() -> i32,
+                >(f))
             }
         };
         macro_rules! flush_cov {
@@ -14756,7 +14763,7 @@ fn lut8_write_arms2() {
     }
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 1.6);
-        let g3: *const *mut c::ToneCurve = [g, g, g].as_ptr() as *const *mut c::ToneCurve;
+        let g3: *const *mut c::ToneCurve = [g, g, g].as_ptr();
         let mut grid2 = [0u16; 2 * 2 * 2 * 3];
         let mut grid4 = vec![0u16; 2u32.pow(4) as usize * 4];
         for (i, v) in grid2.iter_mut().enumerate() {
@@ -14896,22 +14903,28 @@ fn lut8_write_arms2() {
                     fn fork() -> i32;
                     fn waitpid(p: i32, s: *mut i32, o: i32) -> i32;
                     fn _exit(code: i32) -> !;
-                    fn dlsym(h: *mut std::ffi::c_void, n: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+                    fn dlsym(
+                        h: *mut std::ffi::c_void,
+                        n: *const std::ffi::c_char,
+                    ) -> *mut std::ffi::c_void;
                 }
-                let flush: Option<unsafe extern "C" fn() -> i32> = unsafe {
+                let flush: Option<unsafe extern "C" fn() -> i32> = {
                     let f = dlsym(
                         std::ptr::null_mut(),
-                        b"__llvm_profile_write_file ".as_ptr() as *const std::ffi::c_char,
+                        c"__llvm_profile_write_file".as_ptr() as *const std::ffi::c_char,
                     );
                     if f.is_null() {
                         None
                     } else {
-                        Some(std::mem::transmute(f))
+                        Some(std::mem::transmute::<
+                            *mut std::ffi::c_void,
+                            unsafe extern "C" fn() -> i32,
+                        >(f))
                     }
                 };
                 let pid = fork();
                 if pid == 0 {
-                    unsafe {
+                    {
                         let prof = c::cmsCreate_sRGBProfile();
                         c::cmsSetProfileVersion(prof, 4.4);
                         let p = c::cmsPipelineAlloc(std::ptr::null_mut(), 3, 3);
@@ -14942,7 +14955,7 @@ fn lut8_write_arms2() {
                     }
                 }
                 let mut st = 0i32;
-                unsafe {
+                {
                     waitpid(pid, &mut st, 0);
                 }
                 let rc = if st & 0x7f == 0 {
@@ -15198,7 +15211,7 @@ fn dict_ncl2_write_arms() {
             let dev = [0x1000u16, 0x2000, 0x3000, 0x4000];
             for i in 0..ncol {
                 let nm = format!("color{i}\0");
-                c::cmsAppendNamedColor(nl, (nm.as_ptr() as *const u8).cast(), pcs.as_ptr(), dev.as_ptr());
+                c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), dev.as_ptr());
             }
             let prof = c::cmsCreate_sRGBProfile();
             c::cmsSetProfileVersion(prof, 4.4);
@@ -15237,18 +15250,22 @@ fn clut_sample_arms() {
         input: *const u16,
         out: *mut u16,
         _data: *mut std::ffi::c_void,
-    ) -> i32 { unsafe {
-        for i in 0..3 {
-            *out.add(i) = (*input.add(i) as u32 * 32769 / 65535) as u16;
+    ) -> i32 {
+        unsafe {
+            for i in 0..3 {
+                *out.add(i) = (*input.add(i) as u32 * 32769 / 65535) as u16;
+            }
+            1
         }
-        1
-    }}
-    unsafe extern "C" fn sf(input: *const f32, out: *mut f32, _data: *mut std::ffi::c_void) -> i32 { unsafe {
-        for i in 0..3 {
-            *out.add(i) = *input.add(i) * 0.9;
+    }
+    unsafe extern "C" fn sf(input: *const f32, out: *mut f32, _data: *mut std::ffi::c_void) -> i32 {
+        unsafe {
+            for i in 0..3 {
+                *out.add(i) = *input.add(i) * 0.9;
+            }
+            1
         }
-        1
-    }}
+    }
     unsafe {
         for pts in [2u32, 3, 17] {
             let n = (pts * pts * pts * 3) as usize;
@@ -15653,20 +15670,14 @@ fn lut8_read_arms2() {
 fn namedcolor_arms() {
     unsafe {
         // alloc small (n=2), append many -> NamedColorListGrow
-        let nl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            2,
-            4,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let nl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 4, c"pre".as_ptr(), c"suf".as_ptr());
         assert!(!nl.is_null());
         let pcs = [0x1000u16, 0x2000, 0x3000];
         let dev = [0x4000u16, 0x5000, 0x6000, 0x7000];
         for i in 0..40 {
             let nm = format!("c{i}\0");
-            let r =
-                c::cmsAppendNamedColor(nl, (nm.as_ptr() as *const u8).cast(), pcs.as_ptr(), dev.as_ptr());
+            let r = c::cmsAppendNamedColor(nl, nm.as_ptr().cast(), pcs.as_ptr(), dev.as_ptr());
             if i < 3 || i == 39 {
                 eprintln!("append {i}={r}");
             }
@@ -15674,7 +15685,7 @@ fn namedcolor_arms() {
         let _n = c::cmsNamedColorCount(nl);
         // index lookups: hit / miss / prefix-match
         for name in ["c0\0", "c5\0", "c39\0", "zzz\0", "c\0", "PRE_c0\0"] {
-            let i = c::cmsNamedColorIndex(nl, (name.as_ptr() as *const u8).cast());
+            let i = c::cmsNamedColorIndex(nl, name.as_ptr().cast());
             eprintln!("index {name:?}={i}");
         }
         // NamedColorInfo per-entry
@@ -15933,12 +15944,7 @@ fn mlu_ncl2_scr_read_arms() {
         // valid MLU via API — covers the mluc success path
         {
             let m = c::cmsMLUalloc(std::ptr::null_mut(), 2);
-            c::cmsMLUsetASCII(
-                m,
-                c"en".as_ptr(),
-                c"US".as_ptr(),
-                c"sample desc".as_ptr(),
-            );
+            c::cmsMLUsetASCII(m, c"en".as_ptr(), c"US".as_ptr(), c"sample desc".as_ptr());
             c::cmsMLUsetASCII(m, c"de".as_ptr(), c"DE".as_ptr(), c"deutsch".as_ptr());
             let prof = c::cmsCreate_sRGBProfile();
             c::cmsSetProfileVersion(prof, 4.4);
@@ -16211,12 +16217,7 @@ fn ucrbg_write_arms() {
             [0u16, 0x4000, 0xa000, 0xe000, 0xffff].as_ptr(),
         );
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-        c::cmsMLUsetASCII(
-            mlu,
-            c"en".as_ptr(),
-            c"US".as_ptr(),
-            c"ucrbg desc".as_ptr(),
-        );
+        c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"ucrbg desc".as_ptr());
         // cmsUcrBg { ToneCurve *Ucr, *Bg; cmsMLU *Desc; }
         let ucrbg = [
             ucr as *mut std::ffi::c_void,
@@ -16420,13 +16421,22 @@ fn ps_input_io_arms() {
         empty.push("lcms_empty.icc");
         std::fs::write(&empty, b"").ok();
         let es = empty.to_string_lossy().into_owned() + "\0";
-        let f3 = c::cmsOpenProfileFromFile(es.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
+        let f3 = c::cmsOpenProfileFromFile(
+            es.as_ptr() as *const std::ffi::c_char,
+            (c"r".as_ptr() as *const u8).cast(),
+        );
         // 16-byte truncated header
         std::fs::write(&empty, [0u8; 16]).ok();
-        let f4 = c::cmsOpenProfileFromFile(es.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
+        let f4 = c::cmsOpenProfileFromFile(
+            es.as_ptr() as *const std::ffi::c_char,
+            (c"r".as_ptr() as *const u8).cast(),
+        );
         // garbage header
         std::fs::write(&empty, [0x41u8; 132]).ok();
-        let f5 = c::cmsOpenProfileFromFile(es.as_ptr() as *const std::ffi::c_char, (c"r".as_ptr() as *const u8).cast());
+        let f5 = c::cmsOpenProfileFromFile(
+            es.as_ptr() as *const std::ffi::c_char,
+            (c"r".as_ptr() as *const u8).cast(),
+        );
         eprintln!(
             "file miss={} dir={} empty={} trunc={} \
             garb={}",
@@ -16981,12 +16991,7 @@ fn savetags_arms() {
                 g as *const _,
             );
             let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-            c::cmsMLUsetASCII(
-                mlu,
-                c"en".as_ptr(),
-                c"US".as_ptr(),
-                c"shared".as_ptr(),
-            );
+            c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"shared".as_ptr());
             c::cmsWriteTag(prof, 0x64657363, mlu as *const _);
             c::cmsWriteTag(prof, 0x63707274, mlu as *const _);
             c::cmsWriteTag(prof, 0x646D6E64, mlu as *const _);
@@ -17293,11 +17298,8 @@ fn misc_tag_ctx_arms() {
         let tv = [0u16, 0x4000, 0x8000, 0xc000, 0xffff];
         let tc = c::cmsBuildTabulatedToneCurve16(std::ptr::null_mut(), 5, tv.as_ptr());
         let arr = [tc];
-        let lp = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(),
-            0x47524159,
-            arr.as_ptr() as *const *mut _,
-        );
+        let lp =
+            c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), 0x47524159, arr.as_ptr());
         eprintln!("lindl gray={}", !lp.is_null());
         if !lp.is_null() {
             c::cmsCloseProfile(lp);
@@ -17435,13 +17437,8 @@ fn cam02_utf8_gray_arms() {
             }
         }
         // named-color UTF-8 decode — non-ascii names
-        let nl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            4,
-            4,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let nl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, c"pre".as_ptr(), c"suf".as_ptr());
         for name in [
             "pantone\u{00e9}\u{4e2d}".as_bytes(),
             "\u{00f1}\u{00fc}ml\u{00e4}ut".as_bytes(),
@@ -17657,7 +17654,12 @@ fn cicp_crdi_mpecurve_arms() {
             (b"en\0", b"US\0", b"#2 b\0"),
             (b"en\0", b"US\0", b"#3 k\0"),
         ] {
-            c::cmsMLUsetASCII(mlu, lang.as_ptr().cast(), key.as_ptr().cast(), val.as_ptr().cast());
+            c::cmsMLUsetASCII(
+                mlu,
+                lang.as_ptr().cast(),
+                key.as_ptr().cast(),
+                val.as_ptr().cast(),
+            );
         }
         let prof = c::cmsCreate_sRGBProfile();
         let w = c::cmsWriteTag(prof, 0x63726469, mlu as *const _);
@@ -17960,30 +17962,10 @@ fn clr_curve_text_arms() {
             c::cmsCloseProfile(prof);
         }
         let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 4);
-        c::cmsMLUsetASCII(
-            mlu,
-            c"en".as_ptr(),
-            c"US".as_ptr(),
-            c"english".as_ptr(),
-        );
-        c::cmsMLUsetASCII(
-            mlu,
-            c"de".as_ptr(),
-            c"DE".as_ptr(),
-            c"deutsch".as_ptr(),
-        );
-        c::cmsMLUsetASCII(
-            mlu,
-            c"fr".as_ptr(),
-            c"FR".as_ptr(),
-            c"francais".as_ptr(),
-        );
-        c::cmsMLUsetASCII(
-            mlu,
-            c"ja".as_ptr(),
-            c"JP".as_ptr(),
-            c"nihongo".as_ptr(),
-        );
+        c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"english".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"de".as_ptr(), c"DE".as_ptr(), c"deutsch".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"fr".as_ptr(), c"FR".as_ptr(), c"francais".as_ptr());
+        c::cmsMLUsetASCII(mlu, c"ja".as_ptr(), c"JP".as_ptr(), c"nihongo".as_ptr());
         for sig in [0x64657363u32, 0x63707274, 0x646D6E64, 0x646D6464] {
             let prof = c::cmsCreate_sRGBProfile();
             let w = c::cmsWriteTag(prof, sig, mlu as *const _);
@@ -18182,7 +18164,10 @@ fn ctx_dup_plugin_arms() {
         if f.is_null() {
             None
         } else {
-            Some(std::mem::transmute(f))
+            Some(std::mem::transmute::<
+                *mut std::ffi::c_void,
+                unsafe extern "C" fn() -> i32,
+            >(f))
         }
     };
     let pid = unsafe { fork() };
@@ -18357,13 +18342,19 @@ fn stream_io_arms() {
         let s = c::cmsSaveProfileToFile(srgb, path.as_ptr() as *const std::ffi::c_char);
         eprintln!("save-file={s}");
         // open via stream (FILE*) — profile close consumes fh
-        let fh = fopen(path.as_ptr() as *const std::ffi::c_char, c"rb".as_ptr() as *const std::ffi::c_char);
+        let fh = fopen(
+            path.as_ptr() as *const std::ffi::c_char,
+            c"rb".as_ptr() as *const std::ffi::c_char,
+        );
         let p = if !fh.is_null() {
             c::cmsOpenProfileFromStream(fh as *mut _, c"r".as_ptr() as *const std::ffi::c_char)
         } else {
             std::ptr::null_mut()
         };
-        let fh2 = fopen(path.as_ptr() as *const std::ffi::c_char, c"rb".as_ptr() as *const std::ffi::c_char);
+        let fh2 = fopen(
+            path.as_ptr() as *const std::ffi::c_char,
+            c"rb".as_ptr() as *const std::ffi::c_char,
+        );
         let p2 = if !fh2.is_null() {
             c::cmsOpenProfileFromStreamTHR(
                 std::ptr::null_mut(),
@@ -18390,7 +18381,8 @@ fn stream_io_arms() {
             c"rb".as_ptr() as *const std::ffi::c_char,
         );
         if !fh.is_null() {
-            let p = c::cmsOpenProfileFromStream(fh as *mut _, c"r".as_ptr() as *const std::ffi::c_char);
+            let p =
+                c::cmsOpenProfileFromStream(fh as *mut _, c"r".as_ptr() as *const std::ffi::c_char);
             eprintln!("garbage-stream={}", !p.is_null());
             if !p.is_null() {
                 c::cmsCloseProfile(p);
@@ -18679,13 +18671,8 @@ fn lut_dispatch_arms() {
 #[test]
 fn stage_slice_arms() {
     unsafe {
-        let nl = c::cmsAllocNamedColorList(
-            std::ptr::null_mut(),
-            4,
-            4,
-            c"pre".as_ptr(),
-            c"suf".as_ptr(),
-        );
+        let nl =
+            c::cmsAllocNamedColorList(std::ptr::null_mut(), 4, 4, c"pre".as_ptr(), c"suf".as_ptr());
         for i in 0..8 {
             let name = format!("n{i}\0");
             c::cmsAppendNamedColor(
@@ -19743,7 +19730,8 @@ fn io_internal_arms() {
         // FileIO — write to tmpfs file + reopen
         let tmpp = std::env::var("HOME").unwrap() + "/tmp/lcms_io_test.icc";
         std::fs::create_dir_all(std::env::var("HOME").unwrap() + "/tmp").ok();
-        let wf = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"wb".as_ptr());
+        let wf =
+            c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"wb".as_ptr());
         eprintln!("wf={}", !wf.is_null());
         if !wf.is_null() {
             c::cmsCloseProfile(wf);
@@ -19753,7 +19741,8 @@ fn io_internal_arms() {
         let mut fn_ = fbuf.len() as u32;
         let s2 = c::cmsSaveProfileToMem(srgb, fbuf.as_mut_ptr() as *mut _, &mut fn_);
         std::fs::write(&tmpp, &fbuf[..fn_ as usize]).ok();
-        let rf = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"rb".as_ptr());
+        let rf =
+            c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"rb".as_ptr());
         eprintln!("s2={s2} rf={}", !rf.is_null());
         if !rf.is_null() {
             c::cmsCloseProfile(rf);
@@ -19764,7 +19753,8 @@ fn io_internal_arms() {
             c"/nonexistent/path/x.icc".as_ptr() as *const std::ffi::c_char,
             c"rb".as_ptr(),
         );
-        let bad2 = c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"xx".as_ptr());
+        let bad2 =
+            c::cmsOpenProfileFromFile(tmpp.as_ptr() as *const std::ffi::c_char, c"xx".as_ptr());
         eprintln!("badpath={} badmode={}", !bad.is_null(), !bad2.is_null());
         c::cmsCloseProfile(srgb);
     }
@@ -21469,7 +21459,7 @@ fn internal_final2_arms() {
 
 /// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
 ///   + profile-info internals + tag internals + LUT-builder
-///   internals + context internals.
+///     internals + context internals.
 #[test]
 fn internal_final3_arms() {
     unsafe {
@@ -21664,7 +21654,7 @@ fn internal_final4_arms() {
 
 /// cmsio0/cmsio1/cmslut/cmsintrp residual — transform internals
 ///   + LUT-builder internals + tag internals + profile-info
-///   internals + context internals.
+///     internals + context internals.
 #[test]
 fn internal_final5_arms() {
     unsafe {
@@ -22125,7 +22115,7 @@ fn fileio_err_arms() {
             }
             let cs = std::ffi::CString::new(path.to_str().unwrap_or("/dev/null"))
                 .unwrap_or_else(|_| std::ffi::CString::new("/dev/null").unwrap());
-            let p = c::cmsOpenProfileFromFile(cs.as_ptr(), (mode.as_ptr() as *const u8).cast());
+            let p = c::cmsOpenProfileFromFile(cs.as_ptr(), mode.as_ptr().cast());
             eprintln!("{name}={}", !p.is_null());
             if !p.is_null() {
                 c::cmsCloseProfile(p);
@@ -28388,8 +28378,7 @@ fn internal_final58_arms() {
         // reopen the saved files + verify tag content
         for path in ["/home/lilith/tmp/io58-a.icc", "/home/lilith/tmp/io58-b.icc"] {
             let p2 = format!("{path}\0");
-            let rp =
-                c::cmsOpenProfileFromFile(p2.as_ptr() as *const _, c"r".as_ptr() as *const _);
+            let rp = c::cmsOpenProfileFromFile(p2.as_ptr() as *const _, c"r".as_ptr() as *const _);
             if !rp.is_null() {
                 let t = c::cmsReadTag(rp, 0x72545243);
                 let cnt = c::cmsGetTagCount(rp);
@@ -28513,7 +28502,7 @@ fn internal_final59_arms() {
 /// cmsopt residual — PatchLUT/OptimizeByResampling/
 ///   JoiningCurves/ComputingLinearization/MatrixShaper
 ///   + Prelin8/16 alloc internals via optimized
-///   transforms on cv/mat/clut pipeline shapes.
+///     transforms on cv/mat/clut pipeline shapes.
 #[test]
 fn internal_final60_arms() {
     unsafe {
@@ -28800,13 +28789,15 @@ fn internal_final62_arms() {
             _fin: *mut u32,
             _fout: *mut u32,
             flags: *mut u32,
-        ) -> i32 { unsafe {
-            // force flags mutation + inspect pipeline —
-            //   returns FALSE → falls through to next
-            *flags |= 0x200;
-            eprintln!("  myopt lut={}", !(*lut).is_null());
-            0
-        }}
+        ) -> i32 {
+            unsafe {
+                // force flags mutation + inspect pipeline —
+                //   returns FALSE → falls through to next
+                *flags |= 0x200;
+                eprintln!("  myopt lut={}", !(*lut).is_null());
+                0
+            }
+        }
         unsafe extern "C" fn my_opt2(
             _lut: *mut *mut std::ffi::c_void,
             _intent: u32,
@@ -29451,19 +29442,21 @@ fn internal_final66_arms() {
             _bpc: *mut i32,
             _adapt: *mut f64,
             flags: u32,
-        ) -> *mut std::ffi::c_void { unsafe {
-            eprintln!("  mylink n={n} flags={flags}");
-            // build a simple cv pipeline as the result
-            let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
-            let p = c::cmsPipelineAlloc(ctx, 4, 4);
-            let trcs = [g2, g2, g2, g2];
-            c::cmsPipelineInsertStage(
-                p,
-                0,
-                c::cmsStageAllocToneCurves(ctx, 4, trcs.as_ptr() as *mut _),
-            );
-            p
-        }}
+        ) -> *mut std::ffi::c_void {
+            unsafe {
+                eprintln!("  mylink n={n} flags={flags}");
+                // build a simple cv pipeline as the result
+                let g2 = c::cmsBuildGamma(std::ptr::null_mut(), 1.0);
+                let p = c::cmsPipelineAlloc(ctx, 4, 4);
+                let trcs = [g2, g2, g2, g2];
+                c::cmsPipelineInsertStage(
+                    p,
+                    0,
+                    c::cmsStageAllocToneCurves(ctx, 4, trcs.as_ptr() as *mut _),
+                );
+                p
+            }
+        }
         for (which, name) in [(0u32, "single"), (2, "two")] {
             let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
             let mut plugs = vec![];
@@ -29858,7 +29851,8 @@ fn internal_final70_arms() {
             let n1 =
                 c::cmsGetSupportedIntents(nmax, codes.as_mut_ptr() as *mut _, std::ptr::null_mut());
             // Codes+Descriptions
-            let mut descs: Vec<*const std::ffi::c_char> = vec![std::ptr::null(); nmax.max(1) as usize];
+            let mut descs: Vec<*const std::ffi::c_char> =
+                vec![std::ptr::null(); nmax.max(1) as usize];
             let n2 = c::cmsGetSupportedIntents(
                 nmax,
                 codes.as_mut_ptr() as *mut _,
@@ -30782,19 +30776,19 @@ fn internal_final79_arms() {
         unsafe extern "C" fn my_alloc(
             _ctx: *mut std::ffi::c_void,
             n: u32,
-        ) -> *mut std::ffi::c_void { unsafe {
-            malloc(n as usize)
-        }}
-        unsafe extern "C" fn my_free(_ctx: *mut std::ffi::c_void, p: *mut std::ffi::c_void) { unsafe {
-            free(p)
-        }}
+        ) -> *mut std::ffi::c_void {
+            unsafe { malloc(n as usize) }
+        }
+        unsafe extern "C" fn my_free(_ctx: *mut std::ffi::c_void, p: *mut std::ffi::c_void) {
+            unsafe { free(p) }
+        }
         unsafe extern "C" fn my_realloc(
             _ctx: *mut std::ffi::c_void,
             p: *mut std::ffi::c_void,
             n: u32,
-        ) -> *mut std::ffi::c_void { unsafe {
-            realloc(p, n as usize)
-        }}
+        ) -> *mut std::ffi::c_void {
+            unsafe { realloc(p, n as usize) }
+        }
         // bogus-type plugin → cmsPluginTHR default branch
         let ctx = c::cmsCreateContext(std::ptr::null_mut(), std::ptr::null_mut());
         let mut bp = PluginBase {
@@ -31355,7 +31349,7 @@ fn internal_io_num_arms() {
             let iof = c::cmsOpenIOhandlerFromFile(
                 std::ptr::null_mut(),
                 path.as_ptr(),
-                (cm.as_ptr() as *const u8).cast(),
+                cm.as_ptr().cast(),
             );
             eprintln!("file mode {mode} io={}", !iof.is_null());
             if !iof.is_null() {
@@ -31374,7 +31368,10 @@ fn internal_io_num_arms() {
 fn internal_io_stream_arms() {
     unsafe {
         unsafe extern "C" {
-            fn fopen(name: *const std::ffi::c_char, mode: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+            fn fopen(
+                name: *const std::ffi::c_char,
+                mode: *const std::ffi::c_char,
+            ) -> *mut std::ffi::c_void;
             fn fclose(f: *mut std::ffi::c_void) -> i32;
             fn fwrite(
                 p: *const std::ffi::c_void,
@@ -32036,13 +32033,13 @@ fn header_plugin_arms() {
         ))
         .unwrap();
         let srgb = c::cmsOpenProfileFromMem(raw.as_ptr() as *const _, raw.len() as u32);
-        eprintln!("open={} hits={}", !srgb.is_null(), unsafe { HITS });
+        eprintln!("open={} hits={}", !srgb.is_null(), { HITS });
         if !srgb.is_null() {
             let mut buf = [0u8; 1 << 18];
             let mut nn = buf.len() as u32;
             let sv =
                 c::cmsSaveProfileToMem(srgb, buf.as_mut_ptr() as *mut std::ffi::c_void, &mut nn);
-            eprintln!("save={sv} hits={}", unsafe { HITS });
+            eprintln!("save={sv} hits={}", { HITS });
             c::cmsCloseProfile(srgb);
         }
     }

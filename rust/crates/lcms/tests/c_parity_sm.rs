@@ -45,7 +45,7 @@ fn bits(x: f64) -> u64 {
 fn black_point_matrix() {
     for name in PROFILES {
         for intent in 0u32..4 {
-            let mut c_bp = lcms::types::CieXyz::default();
+            let c_bp;
             let c_ok = unsafe {
                 let p = c_open(name);
                 assert!(!p.is_null(), "C open {name}");
@@ -80,7 +80,7 @@ fn black_point_matrix() {
 fn destination_black_point_matrix() {
     for name in PROFILES {
         for intent in 0u32..4 {
-            let mut c_bp = lcms::types::CieXyz::default();
+            let c_bp;
             let c_ok = unsafe {
                 let p = c_open(name);
                 assert!(!p.is_null(), "C open {name}");

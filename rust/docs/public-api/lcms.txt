@@ -6,7 +6,7 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1025 lines (supported surface) | lcms.features.txt 1939 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 93 lines (93 hidden + 0 excluded-feature)
+# files: lcms.txt 1025 lines (supported surface) | lcms.features.txt 1942 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 93 lines (93 hidden + 0 excluded-feature)
 
 ## summary
 #

@@ -25,33 +25,35 @@ fn cstr(s: &str) -> *const std::ffi::c_char {
     Box::leak(format!("{s}\0").into_boxed_str()).as_ptr() as *const std::ffi::c_char
 }
 
-unsafe fn c_build() -> *mut std::ffi::c_void { unsafe {
-    let h = c::cmsIT8Alloc(std::ptr::null_mut());
-    assert!(!h.is_null(), "C it8 alloc");
-    assert!(c::cmsIT8SetSheetType(h, cstr("TESTDOC")) != 0);
-    assert!(c::cmsIT8SetComment(h, cstr("gate comment")) != 0);
-    assert!(c::cmsIT8SetPropertyStr(h, cstr("ORIGINATOR"), cstr("lcms-test")) != 0);
-    assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_SETS"), 4.0) != 0);
-    assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_FIELDS"), 4.0) != 0);
-    assert!(c::cmsIT8SetPropertyHex(h, cstr("HEXTHING"), 0xBEEF) != 0);
-    assert!(c::cmsIT8SetDataFormat(h, 0, cstr("SAMPLE_ID")) != 0);
-    assert!(c::cmsIT8SetDataFormat(h, 1, cstr("LAB_L")) != 0);
-    assert!(c::cmsIT8SetDataFormat(h, 2, cstr("LAB_A")) != 0);
-    assert!(c::cmsIT8SetDataFormat(h, 3, cstr("LAB_B")) != 0);
-    let patches = ["A1", "A2", "B1", "B2"];
-    for (i, p) in patches.iter().enumerate() {
-        assert!(c::cmsIT8SetData(h, cstr(p), cstr("SAMPLE_ID"), cstr(p)) != 0);
-        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64) != 0);
-        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_A"), 0.5 - i as f64) != 0);
-        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_B"), -2.0 + i as f64) != 0);
+unsafe fn c_build() -> *mut std::ffi::c_void {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        assert!(!h.is_null(), "C it8 alloc");
+        assert!(c::cmsIT8SetSheetType(h, cstr("TESTDOC")) != 0);
+        assert!(c::cmsIT8SetComment(h, cstr("gate comment")) != 0);
+        assert!(c::cmsIT8SetPropertyStr(h, cstr("ORIGINATOR"), cstr("lcms-test")) != 0);
+        assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_SETS"), 4.0) != 0);
+        assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_FIELDS"), 4.0) != 0);
+        assert!(c::cmsIT8SetPropertyHex(h, cstr("HEXTHING"), 0xBEEF) != 0);
+        assert!(c::cmsIT8SetDataFormat(h, 0, cstr("SAMPLE_ID")) != 0);
+        assert!(c::cmsIT8SetDataFormat(h, 1, cstr("LAB_L")) != 0);
+        assert!(c::cmsIT8SetDataFormat(h, 2, cstr("LAB_A")) != 0);
+        assert!(c::cmsIT8SetDataFormat(h, 3, cstr("LAB_B")) != 0);
+        let patches = ["A1", "A2", "B1", "B2"];
+        for (i, p) in patches.iter().enumerate() {
+            assert!(c::cmsIT8SetData(h, cstr(p), cstr("SAMPLE_ID"), cstr(p)) != 0);
+            assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64) != 0);
+            assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_A"), 0.5 - i as f64) != 0);
+            assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_B"), -2.0 + i as f64) != 0);
+        }
+        // row/col setters + multi-property + uncooked
+        assert!(c::cmsIT8SetDataRowCol(h, 0, 3, cstr("99.5")) != 0);
+        assert!(c::cmsIT8SetPropertyMulti(h, cstr("MULTI"), cstr("sub1"), cstr("v1")) != 0);
+        assert!(c::cmsIT8SetPropertyMulti(h, cstr("MULTI"), cstr("sub2"), cstr("v2")) != 0);
+        assert!(c::cmsIT8SetPropertyUncooked(h, cstr("RAW"), cstr("rawval")) != 0);
+        h
     }
-    // row/col setters + multi-property + uncooked
-    assert!(c::cmsIT8SetDataRowCol(h, 0, 3, cstr("99.5")) != 0);
-    assert!(c::cmsIT8SetPropertyMulti(h, cstr("MULTI"), cstr("sub1"), cstr("v1")) != 0);
-    assert!(c::cmsIT8SetPropertyMulti(h, cstr("MULTI"), cstr("sub2"), cstr("v2")) != 0);
-    assert!(c::cmsIT8SetPropertyUncooked(h, cstr("RAW"), cstr("rawval")) != 0);
-    h
-}}
+}
 
 fn r_build() -> Box<It8> {
     let mut it8 = It8::alloc(None);
@@ -87,33 +89,37 @@ fn writer_byte_exact() {
     assert_eq!(c_out, r_out, "IT8 writer output");
 }
 
-unsafe fn c_getstr(p: *const std::ffi::c_char) -> Option<String> { unsafe {
-    if p.is_null() {
-        return None;
+unsafe fn c_getstr(p: *const std::ffi::c_char) -> Option<String> {
+    unsafe {
+        if p.is_null() {
+            return None;
+        }
+        Some(std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned())
     }
-    Some(std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned())
-}}
+}
 
 /// Lean build for the getter matrix (multi/uncooked aren't getter-visible
 /// through the calls exercised below — covered by writer_byte_exact).
-unsafe fn c_build_lean() -> *mut std::ffi::c_void { unsafe {
-    let h = c::cmsIT8Alloc(std::ptr::null_mut());
-    assert!(c::cmsIT8SetSheetType(h, cstr("TESTDOC")) != 0);
-    assert!(c::cmsIT8SetPropertyStr(h, cstr("ORIGINATOR"), cstr("lcms-test")) != 0);
-    assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_SETS"), 4.0) != 0);
-    assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_FIELDS"), 4.0) != 0);
-    for (i, s) in ["SAMPLE_ID", "LAB_L", "LAB_A", "LAB_B"].iter().enumerate() {
-        assert!(c::cmsIT8SetDataFormat(h, i as i32, cstr(s)) != 0);
+unsafe fn c_build_lean() -> *mut std::ffi::c_void {
+    unsafe {
+        let h = c::cmsIT8Alloc(std::ptr::null_mut());
+        assert!(c::cmsIT8SetSheetType(h, cstr("TESTDOC")) != 0);
+        assert!(c::cmsIT8SetPropertyStr(h, cstr("ORIGINATOR"), cstr("lcms-test")) != 0);
+        assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_SETS"), 4.0) != 0);
+        assert!(c::cmsIT8SetPropertyDbl(h, cstr("NUMBER_OF_FIELDS"), 4.0) != 0);
+        for (i, s) in ["SAMPLE_ID", "LAB_L", "LAB_A", "LAB_B"].iter().enumerate() {
+            assert!(c::cmsIT8SetDataFormat(h, i as i32, cstr(s)) != 0);
+        }
+        for (i, p) in ["A1", "A2", "B1", "B2"].iter().enumerate() {
+            assert!(c::cmsIT8SetData(h, cstr(p), cstr("SAMPLE_ID"), cstr(p)) != 0);
+            assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64) != 0);
+            assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_A"), 0.5 - i as f64) != 0);
+            assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_B"), -2.0 + i as f64) != 0);
+        }
+        assert!(c::cmsIT8SetDataRowCol(h, 0, 3, cstr("99.5")) != 0);
+        h
     }
-    for (i, p) in ["A1", "A2", "B1", "B2"].iter().enumerate() {
-        assert!(c::cmsIT8SetData(h, cstr(p), cstr("SAMPLE_ID"), cstr(p)) != 0);
-        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_L"), 50.0 + i as f64) != 0);
-        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_A"), 0.5 - i as f64) != 0);
-        assert!(c::cmsIT8SetDataDbl(h, cstr(p), cstr("LAB_B"), -2.0 + i as f64) != 0);
-    }
-    assert!(c::cmsIT8SetDataRowCol(h, 0, 3, cstr("99.5")) != 0);
-    h
-}}
+}
 
 fn r_build_lean() -> Box<It8> {
     let mut it8 = It8::alloc(None);
@@ -656,8 +662,16 @@ fn it8_writer_internals() {
             c"CREATED".as_ptr() as *const std::ffi::c_char,
             c"2024".as_ptr() as *const std::ffi::c_char,
         );
-        c::cmsIT8SetPropertyDbl(h, c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char, 2.0);
-        c::cmsIT8SetPropertyDbl(h, c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char, 2.0);
+        c::cmsIT8SetPropertyDbl(
+            h,
+            c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char,
+            2.0,
+        );
+        c::cmsIT8SetPropertyDbl(
+            h,
+            c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char,
+            2.0,
+        );
         c::cmsIT8SetSheetType(h, c"CGATS.5".as_ptr() as *const std::ffi::c_char);
         c::cmsIT8SetDataFormat(h, 0, c"ID".as_ptr() as *const std::ffi::c_char);
         c::cmsIT8SetDataFormat(h, 1, c"VAL".as_ptr() as *const std::ffi::c_char);
@@ -1319,7 +1333,7 @@ fn it8_deep_arms3() {
             (b"IT8FILE\n\n\n  P1 \"a\"\n\n\n  NUMBER_OF_FIELDS 1\n\n  NUMBER_OF_SETS 1\n\nBEGIN_DATA_FORMAT\n\nA\n\nEND_DATA_FORMAT\n\nBEGIN_DATA\n\n1\n\nEND_DATA\n\n".to_vec(), "blank-lines"),
             // very long single line
             ({ let mut v = b"IT8FILE\nP1 \"".to_vec();
-                for _ in 0..500 { v.push(b'x'); }
+                v.extend(std::iter::repeat_n(b'x', 500));
                 v.extend_from_slice(b"\"\n");
                 v }, "long-line"),
             // table with only format, no data rows
@@ -1680,8 +1694,7 @@ fn it8_deep_arms9() {
             let ok2 = c::cmsIT8SetDataRowCol(p, -1, 0, c"bad".as_ptr() as *const _);
             eprintln!("setdata-neg={ok2}");
             // GetDataDbl on numeric cells
-            let d =
-                c::cmsIT8GetDataDbl(p, c"L".as_ptr() as *const _, c"1".as_ptr() as *const _);
+            let d = c::cmsIT8GetDataDbl(p, c"L".as_ptr() as *const _, c"1".as_ptr() as *const _);
             eprintln!("getdbldbl={d}");
             // property enum + get on all
             let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
@@ -1719,8 +1732,7 @@ fn it8_deep_arms9() {
                 c"".as_ptr() as *const _,
             );
             eprintln!("settab={ok}");
-            let d =
-                c::cmsIT8GetDataDbl(p2, c"A".as_ptr() as *const _, c"1".as_ptr() as *const _);
+            let d = c::cmsIT8GetDataDbl(p2, c"A".as_ptr() as *const _, c"1".as_ptr() as *const _);
             eprintln!("getdata={d}");
             c::cmsIT8Free(p2);
         }
@@ -1846,7 +1858,7 @@ fn it8_deep_arms12() {
             (b"IT8FILE\nP1 ORIGINATOR\nP2 DESCRIPTOR\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n".to_vec(), "kw-values2"),
             // very long property value
             ({ let mut v = b"IT8FILE\nP1 \"".to_vec();
-                for _ in 0..1000 { v.push(b'x'); }
+                v.extend(std::iter::repeat_n(b'x', 1000));
                 v.extend_from_slice(b"\"\nNUMBER_OF_FIELDS 1\nNUMBER_OF_SETS 1\nBEGIN_DATA_FORMAT\nA\nEND_DATA_FORMAT\nBEGIN_DATA\n1\nEND_DATA\n");
                 v }, "very-long"),
             // data rows with leading sign/whitespace
@@ -2355,9 +2367,9 @@ fn it8_header_pair_arms() {
                 // round-trip via SetPropertyMulti + save
                 c::cmsIT8SetPropertyMulti(
                     p,
-                    "WEIGHTING_FUNCTION\0".as_ptr() as *const std::ffi::c_char,
-                    "observer\0".as_ptr() as *const std::ffi::c_char,
-                    "2deg\0".as_ptr() as *const std::ffi::c_char,
+                    c"WEIGHTING_FUNCTION".as_ptr() as *const std::ffi::c_char,
+                    c"observer".as_ptr() as *const std::ffi::c_char,
+                    c"2deg".as_ptr() as *const std::ffi::c_char,
                 );
                 let mut buf = vec![0u8; 1 << 16];
                 let mut n = buf.len() as u32;
@@ -2912,7 +2924,9 @@ fn it8_setdata_arms() {
                 c"1".as_ptr() as *const std::ffi::c_char,
                 c"A".as_ptr() as *const std::ffi::c_char,
                 #[allow(clippy::approx_constant)] // IT8 fixture value, not π
-                { 3.14159 },
+                {
+                    3.14159
+                },
             );
             let dd = c::cmsIT8GetDataDbl(
                 p,
@@ -2949,9 +2963,17 @@ fn it8_api_arms() {
         let mut names: *mut *mut std::ffi::c_char = std::ptr::null_mut();
         let np = c::cmsIT8EnumProperties(p, &mut names);
         let mut names2: *mut *mut std::ffi::c_char = std::ptr::null_mut();
-        let np2 = c::cmsIT8EnumPropertyMulti(p, c"ORIGINATOR".as_ptr() as *const std::ffi::c_char, &mut names2);
+        let np2 = c::cmsIT8EnumPropertyMulti(
+            p,
+            c"ORIGINATOR".as_ptr() as *const std::ffi::c_char,
+            &mut names2,
+        );
         let mut names3: *mut *mut std::ffi::c_char = std::ptr::null_mut();
-        let np3 = c::cmsIT8EnumPropertyMulti(p, c"NOPROP".as_ptr() as *const std::ffi::c_char, &mut names3);
+        let np3 = c::cmsIT8EnumPropertyMulti(
+            p,
+            c"NOPROP".as_ptr() as *const std::ffi::c_char,
+            &mut names3,
+        );
         eprintln!("enumprop={np} multi={np2}/{np3}             n={names:?}/{names2:?}");
         // data format — set/get via SetDataFormat + Enum
         for (i, nm) in [
@@ -3105,8 +3127,16 @@ fn it8_write_arms() {
             c::cmsIT8SetDataFormat(p, 2, c"LAB_A".as_ptr() as *const std::ffi::c_char);
             c::cmsIT8SetDataFormat(p, 3, c"LAB_B".as_ptr() as *const std::ffi::c_char);
             let rows = (n + 1) * 4;
-            c::cmsIT8SetPropertyDbl(p, c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char, rows as f64);
-            c::cmsIT8SetPropertyDbl(p, c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char, 4.0);
+            c::cmsIT8SetPropertyDbl(
+                p,
+                c"NUMBER_OF_SETS".as_ptr() as *const std::ffi::c_char,
+                rows as f64,
+            );
+            c::cmsIT8SetPropertyDbl(
+                p,
+                c"NUMBER_OF_FIELDS".as_ptr() as *const std::ffi::c_char,
+                4.0,
+            );
             for i in 0..rows {
                 let nm = format!("n{i}\0");
                 c::cmsIT8SetDataRowCol(p, i, 0, nm.as_ptr() as *const std::ffi::c_char);
@@ -4215,8 +4245,8 @@ fn cgats_insym2_arms() {
                 // GetData probes reach the numeric paths
                 let n = c::cmsIT8GetDataDbl(
                     it8,
-                    "SAMPLE_ID\0".as_ptr() as *const _,
-                    "A\0".as_ptr() as *const _,
+                    c"SAMPLE_ID".as_ptr() as *const _,
+                    c"A".as_ptr() as *const _,
                 );
                 eprintln!("  dbl={n}");
                 c::cmsIT8Free(it8);
@@ -4273,30 +4303,30 @@ fn cgats_write_load_arms() {
         if it8.is_null() {
             return;
         }
-        c::cmsIT8SetSheetType(it8, "CGATS.17\0".as_ptr() as *const _);
+        c::cmsIT8SetSheetType(it8, c"CGATS.17".as_ptr() as *const _);
         c::cmsIT8SetPropertyStr(
             it8,
-            "ORIGINATOR\0".as_ptr() as *const _,
-            "lcms-test\0".as_ptr() as *const _,
+            c"ORIGINATOR".as_ptr() as *const _,
+            c"lcms-test".as_ptr() as *const _,
         );
         c::cmsIT8SetPropertyStr(
             it8,
-            "CREATED\0".as_ptr() as *const _,
-            "2026-11-08\0".as_ptr() as *const _,
+            c"CREATED".as_ptr() as *const _,
+            c"2026-11-08".as_ptr() as *const _,
         );
-        c::cmsIT8SetPropertyDbl(it8, "DENSITY\0".as_ptr() as *const _, 1.5);
-        c::cmsIT8SetPropertyDbl(it8, "WEIGHT\0".as_ptr() as *const _, 0.25);
-        c::cmsIT8SetComment(it8, "comment line one\0".as_ptr() as *const _);
-        c::cmsIT8SetComment(it8, "comment two\0".as_ptr() as *const _);
+        c::cmsIT8SetPropertyDbl(it8, c"DENSITY".as_ptr() as *const _, 1.5);
+        c::cmsIT8SetPropertyDbl(it8, c"WEIGHT".as_ptr() as *const _, 0.25);
+        c::cmsIT8SetComment(it8, c"comment line one".as_ptr() as *const _);
+        c::cmsIT8SetComment(it8, c"comment two".as_ptr() as *const _);
         // define a custom double format
-        c::cmsIT8DefineDblFormat(it8, "%.12g\0".as_ptr() as *const _);
+        c::cmsIT8DefineDblFormat(it8, c"%.12g".as_ptr() as *const _);
         // data format + sets
         let fmt: Vec<*const std::ffi::c_char> = [
-            "SAMPLE_ID\0".as_ptr() as *const _,
-            "RGB_R\0".as_ptr() as *const _,
-            "RGB_G\0".as_ptr() as *const _,
-            "RGB_B\0".as_ptr() as *const _,
-            "LAB_L\0".as_ptr() as *const _,
+            c"SAMPLE_ID".as_ptr() as *const _,
+            c"RGB_R".as_ptr() as *const _,
+            c"RGB_G".as_ptr() as *const _,
+            c"RGB_B".as_ptr() as *const _,
+            c"LAB_L".as_ptr() as *const _,
         ]
         .to_vec();
         for (i, f) in fmt.iter().enumerate() {
@@ -4333,8 +4363,8 @@ fn cgats_write_load_arms() {
         if !it8b.is_null() {
             let v = c::cmsIT8GetDataDbl(
                 it8b,
-                "P1\0".as_ptr() as *const _,
-                "RGB_R\0".as_ptr() as *const _,
+                c"P1".as_ptr() as *const _,
+                c"RGB_R".as_ptr() as *const _,
             );
             eprintln!("  reread RGB_R@P1={v}");
             let t = c::cmsIT8EnumDataFormat(it8b, std::ptr::null_mut());
@@ -4384,11 +4414,11 @@ fn cgats_getdata_arms() {
             let s = if v.is_null() {
                 "NULL".to_string()
             } else {
-                unsafe { std::ffi::CStr::from_ptr(v).to_string_lossy().into_owned() }
+                std::ffi::CStr::from_ptr(v).to_string_lossy().into_owned()
             };
             eprintln!("prop {key:?} = {s}");
         }
-        let dv = c::cmsIT8GetPropertyDbl(it8, "NUMBER_OF_SETS\0".as_ptr() as *const _);
+        let dv = c::cmsIT8GetPropertyDbl(it8, c"NUMBER_OF_SETS".as_ptr() as *const _);
         eprintln!("prop-dbl NS={dv}");
         // GetData patch/sample
         for (patch, sample) in [
@@ -4724,11 +4754,7 @@ fn it8_data_arms() {
         let ns = c::cmsIT8EnumDataFormat(h, std::ptr::null_mut());
         eprintln!("enum-df={ns}");
         // GetData returns a C string ptr
-        let g = c::cmsIT8GetData(
-            h,
-            c"F0".as_ptr() as *const _,
-            c"F1".as_ptr() as *const _,
-        );
+        let g = c::cmsIT8GetData(h, c"F0".as_ptr() as *const _, c"F1".as_ptr() as *const _);
         eprintln!("getdata={}", !g.is_null());
         // row/col accessors + dbl variants
         let rc = c::cmsIT8GetDataRowCol(h, 0, 1);

@@ -196,7 +196,7 @@ impl Drop for ForeignTag {
 /// vcgt payload — either 3 curves (formula/table) or a raw table
 #[derive(Clone)]
 pub enum VcgtData {
-    Curves([ToneCurve; 3]),
+    Curves(Box<[ToneCurve; 3]>),
     Table {
         channels: u16,
         elems: u16,
@@ -205,13 +205,18 @@ pub enum VcgtData {
     },
 }
 
+/// `cmsTagTypeHandler.ReadPtr` — read one tag payload (`n_items` out).
+pub type TagReadFn = fn(&TagTypeHandler, &mut IoHandler, &mut u32, u32) -> Option<TagObject>;
+/// `cmsTagTypeHandler.WritePtr` — write one tag payload.
+pub type TagWriteFn = fn(&TagTypeHandler, &mut IoHandler, &TagObject, u32) -> bool;
+
 /// `cmsTagTypeHandler` — read/write/dup function table. `FreePtr`/`DupPtr`
 /// are absorbed by `Clone`/`Drop` on `TagObject`.
 #[derive(Clone, Copy)]
 pub struct TagTypeHandler {
     pub signature: u32,
-    pub read: fn(&TagTypeHandler, &mut IoHandler, &mut u32, u32) -> Option<TagObject>,
-    pub write: fn(&TagTypeHandler, &mut IoHandler, &TagObject, u32) -> bool,
+    pub read: TagReadFn,
+    pub write: TagWriteFn,
     // `self` copies like LocalTypeHandler get these stamped in
     pub icc_version: u32,
     /// nonzero → a C-registered handler; the value is the FFI's C-ABI
@@ -2252,9 +2257,7 @@ fn type_lut8_read(
     }
     // Only operates if not identity
     if inch == 3 && !mat3_is_identity(&matrix) {
-        let Some(st) = stage_alloc_matrix(None, 3, 3, &matrix, None) else {
-            return None;
-        };
+        let st = stage_alloc_matrix(None, 3, 3, &matrix, None)?;
         if !lut.insert_stage(StageLoc::AtBegin, st) {
             return None;
         }
@@ -2272,11 +2275,8 @@ fn type_lut8_read(
             return None;
         }
         let t: Vec<u16> = temp.iter().map(|&b| from_8_to_16(b)).collect();
-        let Some(stage) =
-            stage_alloc_clut16bit(None, clutpts as u32, inch as u32, outch as u32, Some(&t))
-        else {
-            return None;
-        };
+        let stage =
+            stage_alloc_clut16bit(None, clutpts as u32, inch as u32, outch as u32, Some(&t))?;
         if !lut.insert_stage(StageLoc::AtEnd, stage) {
             return None;
         }
@@ -2432,9 +2432,7 @@ fn type_lut16_read(
         }
     }
     if inch == 3 && !mat3_is_identity(&matrix) {
-        let Some(st) = stage_alloc_matrix(None, 3, 3, &matrix, None) else {
-            return None;
-        };
+        let st = stage_alloc_matrix(None, 3, 3, &matrix, None)?;
         if !lut.insert_stage(StageLoc::AtEnd, st) {
             return None;
         }
@@ -2458,11 +2456,8 @@ fn type_lut16_read(
         if !io::read_u16_array(io, n_tab, Some(&mut t)) {
             return None;
         }
-        let Some(stage) =
-            stage_alloc_clut16bit(None, clutpts as u32, inch as u32, outch as u32, Some(&t))
-        else {
-            return None;
-        };
+        let stage =
+            stage_alloc_clut16bit(None, clutpts as u32, inch as u32, outch as u32, Some(&t))?;
         if !lut.insert_stage(StageLoc::AtEnd, stage) {
             return None;
         }
@@ -3562,8 +3557,8 @@ fn type_mpe_clut_write(_s: &TagTypeHandler, io: &mut IoHandler, p: &TagObject, _
 #[derive(Clone, Copy)]
 pub struct MpeElemHandler {
     pub signature: u32,
-    pub read: Option<fn(&TagTypeHandler, &mut IoHandler, &mut u32, u32) -> Option<TagObject>>,
-    pub write: Option<fn(&TagTypeHandler, &mut IoHandler, &TagObject, u32) -> bool>,
+    pub read: Option<TagReadFn>,
+    pub write: Option<TagWriteFn>,
     /// nonzero → a C-registered `cmsPluginMultiProcessElement` handler; the
     /// value is the FFI's C-ABI `cmsTagTypeHandler` box (`self` arg).
     pub foreign: usize,
@@ -3853,9 +3848,7 @@ fn type_vcgt_read(
                 nbytes = 2;
             }
             for c in curves.iter_mut() {
-                let Some(tc) = build_tabulated_tone_curve16(None, nelems as u32, None) else {
-                    return None;
-                };
+                let tc = build_tabulated_tone_curve16(None, nelems as u32, None)?;
                 let mut tc = tc;
                 match nbytes {
                     1 => {
@@ -3898,9 +3891,7 @@ fn type_vcgt_read(
                 params[0] = gamma;
                 params[1] = (max - min).cpow(1.0 / gamma);
                 params[5] = min;
-                let Some(tc) = build_parametric_tone_curve(None, 5, &params) else {
-                    return None;
-                };
+                let tc = build_parametric_tone_curve(None, 5, &params)?;
                 *c = Some(tc);
             }
         }
@@ -3916,7 +3907,7 @@ fn type_vcgt_read(
     *n_items = 1;
     let c = curves.map(|c| c.unwrap());
     let _ = s;
-    Some(TagObject::Vcgt(VcgtData::Curves(c)))
+    Some(TagObject::Vcgt(VcgtData::Curves(Box::new(c))))
 }
 
 /// `Type_vcgt_Write` — formula iff all 3 are parametric-5, else 256×u16 table

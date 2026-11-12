@@ -361,10 +361,12 @@ impl CieCam02 {
 
     /// `cmsCIECAM02Reverse`
     pub fn reverse(&self, p_in: &JCh, p_out: &mut CieXyz) {
-        let mut clr = Cam02Color::default();
-        clr.j_upper = p_in.J;
-        clr.c_upper = p_in.C;
-        clr.h = p_in.h;
+        let mut clr = Cam02Color {
+            j_upper: p_in.J,
+            c_upper: p_in.C,
+            h: p_in.h,
+            ..Default::default()
+        };
 
         clr = inverse_correlates(clr, self);
         clr = inverse_nonlinearity(clr, self);

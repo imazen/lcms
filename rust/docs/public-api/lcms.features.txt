@@ -10,7 +10,7 @@
 ## summary
 #
 #   pub modules                                30
-#   pub types (struct/enum/trait/alias)       175
+#   pub types (struct/enum/trait/alias)       178
 #   pub consts/statics                        126
 #   free functions                            394
 #   inherent methods                          445
@@ -42,20 +42,20 @@
 #   lut                             158
 #   md5                               6
 #   mtrx                             13
-#   named                           157
+#   named                           158
 #   opt                              34
 #   pack                            161
 #   pcs                              23
 #   profile                          54
 #   ps2                               5
 #   sm                                6
-#   tagtypes                        137
+#   tagtypes                        139
 #   types                            21
 #   virt                             14
 #   wtpnt                             7
 #   xform                            74
 
-## items (1820 lines)
+## items (1823 lines)
 
 pub mod alpha
 pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
@@ -126,8 +126,8 @@ pub fn named::Mlu::set(&mut self, api::Locale, &str) -> api::Result<()>
 pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> api::Result<()>
 pub fn named::Mlu::set_text(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
-pub fn named::Mlu::text(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
-pub fn named::Mlu::text_ascii(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
+pub fn named::Mlu::text(&self, lcms2::Locale) -> lcms2::LCMSResult<alloc::string::String>
+pub fn named::Mlu::text_ascii(&self, lcms2::Locale) -> lcms2::LCMSResult<alloc::string::String>
 pub fn named::Mlu::translations_count(&self) -> u32
 pub api::NamedColorList::allocated: u32
 pub api::NamedColorList::colorant_count: u32
@@ -1243,8 +1243,8 @@ pub fn named::Mlu::set(&mut self, api::Locale, &str) -> api::Result<()>
 pub fn named::Mlu::set_ascii(&mut self, api::Locale, &str) -> api::Result<()>
 pub fn named::Mlu::set_text(&mut self, &str, lcms2::Locale) -> bool
 pub fn named::Mlu::set_text_ascii(&mut self, &str, lcms2::Locale) -> bool
-pub fn named::Mlu::text(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
-pub fn named::Mlu::text_ascii(&self, lcms2::Locale) -> core::result::Result<alloc::string::String, ()>
+pub fn named::Mlu::text(&self, lcms2::Locale) -> lcms2::LCMSResult<alloc::string::String>
+pub fn named::Mlu::text_ascii(&self, lcms2::Locale) -> lcms2::LCMSResult<alloc::string::String>
 pub fn named::Mlu::translations_count(&self) -> u32
 pub struct named::MluEntry
 pub named::MluEntry::country: u16
@@ -1322,8 +1322,9 @@ pub fn named::mlu_translations_codes(&named::Mlu, u32) -> core::option::Option<(
 pub fn named::mlu_translations_count(&named::Mlu) -> u32
 pub fn named::named_color_count(&named::NamedColorList) -> u32
 pub fn named::named_color_index(&named::NamedColorList, &[u8]) -> i32
-pub fn named::named_color_info(&named::NamedColorList, u32) -> core::option::Option<([u8; 256], [u8; 33], [u8; 33], [u16; 3], [u16; 16])>
+pub fn named::named_color_info(&named::NamedColorList, u32) -> core::option::Option<named::NamedColorInfo>
 pub fn named::stage_alloc_named_color(&named::NamedColorList, bool) -> core::option::Option<lut::Stage>
+pub type named::NamedColorInfo = ([u8; 256], [u8; 33], [u8; 33], [u16; 3], [u16; 16])
 pub type named::Wchar = i32
 pub mod opt
 pub enum opt::OptData
@@ -1666,7 +1667,7 @@ pub tagtypes::TagObject::VideoSignal(tagtypes::VideoSignal)
 pub tagtypes::TagObject::ViewingConditions(tagtypes::IccViewingConditions)
 pub tagtypes::TagObject::Xyz(types::CieXyz)
 pub enum tagtypes::VcgtData
-pub tagtypes::VcgtData::Curves([gamma::ToneCurve; 3])
+pub tagtypes::VcgtData::Curves(alloc::boxed::Box<[gamma::ToneCurve; 3]>)
 pub tagtypes::VcgtData::Table
 pub tagtypes::VcgtData::Table::bytes: u16
 pub tagtypes::VcgtData::Table::channels: u16
@@ -1699,9 +1700,9 @@ pub tagtypes::Mhc2::red_curve: alloc::vec::Vec<f64>
 pub tagtypes::Mhc2::xyz2xyz_matrix: [[f64; 4]; 3]
 pub struct tagtypes::MpeElemHandler
 pub tagtypes::MpeElemHandler::foreign: usize
-pub tagtypes::MpeElemHandler::read: core::option::Option<fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &mut u32, u32) -> core::option::Option<tagtypes::TagObject>>
+pub tagtypes::MpeElemHandler::read: core::option::Option<tagtypes::TagReadFn>
 pub tagtypes::MpeElemHandler::signature: u32
-pub tagtypes::MpeElemHandler::write: core::option::Option<fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &tagtypes::TagObject, u32) -> bool>
+pub tagtypes::MpeElemHandler::write: core::option::Option<tagtypes::TagWriteFn>
 pub struct tagtypes::Screening
 pub tagtypes::Screening::channels: [tagtypes::ScreeningChannel; 16]
 pub tagtypes::Screening::flag: u32
@@ -1718,9 +1719,9 @@ pub struct tagtypes::TagTypeHandler
 pub tagtypes::TagTypeHandler::ctx: usize
 pub tagtypes::TagTypeHandler::foreign: usize
 pub tagtypes::TagTypeHandler::icc_version: u32
-pub tagtypes::TagTypeHandler::read: fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &mut u32, u32) -> core::option::Option<tagtypes::TagObject>
+pub tagtypes::TagTypeHandler::read: tagtypes::TagReadFn
 pub tagtypes::TagTypeHandler::signature: u32
-pub tagtypes::TagTypeHandler::write: fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &tagtypes::TagObject, u32) -> bool
+pub tagtypes::TagTypeHandler::write: tagtypes::TagWriteFn
 pub struct tagtypes::Tm
 pub tagtypes::Tm::tm_hour: i32
 pub tagtypes::Tm::tm_isdst: i32
@@ -1760,6 +1761,8 @@ pub fn tagtypes::read_wchar_array(&mut io::IoHandler, u32, &mut alloc::vec::Vec<
 pub fn tagtypes::write_position_table(&mut io::IoHandler, u32, u32, u32, impl core::ops::function::FnMut(&mut io::IoHandler, usize, u32) -> bool) -> bool
 pub fn tagtypes::write_wchar_array(&mut io::IoHandler, &[named::Wchar]) -> bool
 pub type tagtypes::PositionTableEntryFn = fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, usize, u32) -> bool
+pub type tagtypes::TagReadFn = fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &mut u32, u32) -> core::option::Option<tagtypes::TagObject>
+pub type tagtypes::TagWriteFn = fn(&tagtypes::TagTypeHandler, &mut io::IoHandler, &tagtypes::TagObject, u32) -> bool
 pub fn types::CieXyz::d50() -> Self
 pub fn types::CiexyY::d50() -> Self
 pub struct types::Context [also: context]

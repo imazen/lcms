@@ -50,7 +50,7 @@ fn plugin_type_matrix() {
     let types: Vec<(u32, *mut c_void)> = vec![
         (0x696E7048, {
             // 'inpH' interpolation
-            
+
             Box::leak(Box::new(CPluginInterp {
                 base: CPluginBase {
                     magic: MAGIC,
@@ -63,7 +63,7 @@ fn plugin_type_matrix() {
         }),
         (0x74797048, {
             // 'typH' tag type
-            
+
             Box::leak(Box::new(CPluginTagType {
                 base: CPluginBase {
                     magic: MAGIC,
@@ -76,7 +76,7 @@ fn plugin_type_matrix() {
         }),
         (0x74616748, {
             // 'tagH' tag
-            
+
             Box::leak(Box::new(CPluginTag {
                 base: CPluginBase {
                     magic: MAGIC,
@@ -89,7 +89,7 @@ fn plugin_type_matrix() {
         }),
         (0x6D706548, {
             // 'mpeH' multiprocess elements
-            
+
             Box::leak(Box::new(CPluginMpe {
                 base: CPluginBase {
                     magic: MAGIC,
@@ -175,19 +175,19 @@ fn plugin_memh_mtxh() {
         calloc: *mut c_void,
         dup: *mut c_void,
     }
-    unsafe extern "C" fn my_malloc(_ctx: *mut c_void, size: usize) -> *mut c_void { unsafe {
-        libc_malloc(size)
-    }}
-    unsafe extern "C" fn my_free(_ctx: *mut c_void, ptr: *mut c_void) { unsafe {
-        libc_free(ptr)
-    }}
+    unsafe extern "C" fn my_malloc(_ctx: *mut c_void, size: usize) -> *mut c_void {
+        unsafe { libc_malloc(size) }
+    }
+    unsafe extern "C" fn my_free(_ctx: *mut c_void, ptr: *mut c_void) {
+        unsafe { libc_free(ptr) }
+    }
     unsafe extern "C" fn my_realloc(
         _ctx: *mut c_void,
         ptr: *mut c_void,
         size: usize,
-    ) -> *mut c_void { unsafe {
-        libc_realloc(ptr, size)
-    }}
+    ) -> *mut c_void {
+        unsafe { libc_realloc(ptr, size) }
+    }
     unsafe extern "C" {
         fn malloc(s: usize) -> *mut c_void;
         fn free(p: *mut c_void);
@@ -233,11 +233,13 @@ fn plugin_memh_mtxh() {
     unsafe extern "C" fn mtx_create(_c: *mut c_void) -> *mut c_void {
         Box::into_raw(Box::new(0u8)) as *mut c_void
     }
-    unsafe extern "C" fn mtx_destroy(_c: *mut c_void, m: *mut c_void) { unsafe {
-        if !m.is_null() {
-            drop(Box::from_raw(m as *mut u8));
+    unsafe extern "C" fn mtx_destroy(_c: *mut c_void, m: *mut c_void) {
+        unsafe {
+            if !m.is_null() {
+                drop(Box::from_raw(m as *mut u8));
+            }
         }
-    }}
+    }
     unsafe extern "C" fn mtx_lock(_c: *mut c_void, _m: *mut c_void) -> i32 {
         1
     }

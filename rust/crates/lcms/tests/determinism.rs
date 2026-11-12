@@ -19,8 +19,11 @@ fn fnv(b: &[u8]) -> u64 {
     zenhash::xxh3_64(b)
 }
 
+/// One emitted cell: (name, Rust output bytes, C oracle output bytes).
+type Cell = (String, Vec<u8>, Vec<u8>);
+
 thread_local! {
-    static CELLS: std::cell::RefCell<Vec<(String, Vec<u8>, Vec<u8>)>> =
+    static CELLS: std::cell::RefCell<Vec<Cell>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
@@ -37,12 +40,16 @@ fn digest(cells: &[(String, Vec<u8>, Vec<u8>)]) -> u64 {
 }
 
 /// zero the volatile header fields (creation datetime, profile ID)
-fn mask(b: &mut Vec<u8>) {
+fn mask(b: &mut [u8]) {
     for i in 0..12 {
-        b.get_mut(24 + i).map(|x| *x = 0);
+        if let Some(x) = b.get_mut(24 + i) {
+            *x = 0;
+        }
     }
     for i in 0..16 {
-        b.get_mut(84 + i).map(|x| *x = 0);
+        if let Some(x) = b.get_mut(84 + i) {
+            *x = 0;
+        }
     }
 }
 
@@ -278,18 +285,6 @@ unsafe fn c_mft2_pipeline(in_ch: u32, out_ch: u32) -> *mut c_void {
     let cl = c::cmsStageAllocCLut16bit(std::ptr::null_mut(), npts, in_ch, out_ch, tab.as_ptr());
     c::cmsPipelineInsertStage(lut, 1, cl);
     lut
-}
-
-unsafe fn c_mandatory_tags(p: *mut c_void) {
-    let mlu = c::cmsMLUalloc(std::ptr::null_mut(), 1);
-    c::cmsMLUsetASCII(mlu, c"en".as_ptr(), c"US".as_ptr(), c"x".as_ptr());
-    c::cmsWriteTag(p, 0x64657363, mlu); // 'desc'
-    let mlu2 = c::cmsMLUdup(mlu);
-    c::cmsWriteTag(p, 0x63707274, mlu2); // 'cprt'
-    let mlu3 = c::cmsMLUdup(mlu);
-    c::cmsWriteTag(p, 0x77747074, mlu3); // 'wtpt' as mluc? no — wtpt is XYZ
-    c::cmsMLUfree(mlu3); // don't leave wrong-type tag
-    c::cmsMLUfree(mlu);
 }
 
 unsafe fn c_profiles() -> Vec<(String, Vec<u8>)> {
@@ -823,7 +818,8 @@ fn manifest() {
         }
         // transform cells
         let get = |n: &str| -> &[u8] { &profs.iter().find(|p| p.0 == n).unwrap().1 };
-        let plan: &[(&str, &str, u32, u32, u32, u32, &[u32])] = &[
+        type Row<'a> = (&'a str, &'a str, u32, u32, u32, u32, &'a [u32]);
+        let plan: &[Row] = &[
             ("srgb", "lab4", 4, 3, 10, 3, &[0, 1]),
             ("srgb", "gray", 4, 3, 3, 1, &[0]),
             ("rgbp4", "rgb22", 4, 3, 4, 3, &[0]),

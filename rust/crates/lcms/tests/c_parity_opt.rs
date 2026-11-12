@@ -128,8 +128,7 @@ fn optimizer_branch_matrix() {
                     None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, flags,
                 );
                 assert_eq!(ct.is_null(), rt.is_none(), "{name} f{flags:#x}");
-                if !ct.is_null() && rt.is_some() {
-                    let mut rt = rt.unwrap();
+                if let Some(mut rt) = rt {
                     let inp = [0x1234u16, 0x5678, 0x9abc];
                     let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
                     let mut co = [0u16; 3];

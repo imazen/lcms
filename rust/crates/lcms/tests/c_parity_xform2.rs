@@ -19,7 +19,6 @@ const PT_LAB: u32 = 10;
 const RGB8: u32 = PT_RGB << 16 | 3 << 3 | 1;
 const LAB8: u32 = PT_LAB << 16 | 3 << 3 | 1;
 const RGB16: u32 = PT_RGB << 16 | 3 << 3 | 2;
-const CMYK8: u32 = 5 << 16 | 4 << 3 | 1;
 
 fn fill(n: usize) -> Vec<u8> {
     let mut v = vec![0u8; n];
@@ -93,7 +92,8 @@ fn proofing_transform() {
         let c_out = unsafe {
             let i = c::cmsCreate_sRGBProfile();
             let o = c::cmsCreate_sRGBProfile();
-            let prf = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
+            let prf =
+                c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
             assert!(!prf.is_null());
             let t = c::cmsCreateProofingTransform(i, RGB8, o, RGB8, prf, 0, 0, flags);
             assert!(!t.is_null(), "C proofing flags={flags:#x}");
@@ -403,8 +403,7 @@ fn u8_packed_formats() {
                 None, &mut profs, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
             );
             assert_eq!(ct.is_null(), rt.is_none(), "{name}");
-            if !ct.is_null() && rt.is_some() {
-                let mut rt = rt.unwrap();
+            if let Some(mut rt) = rt {
                 let inp = [0x80u8, 0x40, 0xC0];
                 let mut co = [0u8; 4];
                 let mut ro = [0u8; 4];
@@ -441,8 +440,7 @@ fn packed_byte_formats() {
             None, &mut profs, &mut bpc, &intents, &adapt, None, 0, packed3, lab8, 0,
         );
         assert_eq!(ct.is_null(), rt.is_none(), "packed3");
-        if !ct.is_null() && rt.is_some() {
-            let mut rt = rt.unwrap();
+        if let Some(mut rt) = rt {
             let inp = [0x80u8, 0x40, 0xC0];
             let mut co = [0u8; 4];
             let mut ro = [0u8; 4];
@@ -1069,7 +1067,8 @@ fn gamutcheck_workers() {
         let c_out = unsafe {
             let i = c::cmsCreate_sRGBProfile();
             let o = c::cmsCreate_sRGBProfile();
-            let prf = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
+            let prf =
+                c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
             assert!(!prf.is_null());
             let t = c::cmsCreateProofingTransform(i, RGB8, o, RGB8, prf, 0, 0, flags);
             assert!(!t.is_null(), "C gamutcheck flags={flags:#x}");
@@ -1165,7 +1164,7 @@ fn xform_internals() {
         );
         // user data roundtrip
         static mut UD: usize = 0x1234;
-        c::_cmsSetTransformUserData(t, &raw mut UD as *mut usize as _, noop_free as *mut _);
+        c::_cmsSetTransformUserData(t, &raw mut UD as _, noop_free as *mut _);
         let ud = c::_cmsGetTransformUserData(t);
         eprintln!(
             "flags={flags:#x} w={} mw={mw} wf={wf:#x} \
@@ -1173,7 +1172,7 @@ fn xform_internals() {
             !w.is_null(),
             !f16a.is_null(),
             !ffa.is_null(),
-            ud == (&raw mut UD as *mut usize as _)
+            ud == (&raw mut UD as _)
         );
         // NULLTRANSFORM + float -> NullFloatXFORM
         let tn = c::cmsCreateTransform(i, flt, o, flt, 0, 0x200);
@@ -1196,9 +1195,9 @@ fn xform_internals() {
         }
         // profile user data + ReadProfileSequence + SetHeaderCMM
         static mut PD: usize = 0xBEEF;
-        c::_cmsSetProfileUserData(i, &raw mut PD as *mut usize as _, noop_free as *mut _);
+        c::_cmsSetProfileUserData(i, &raw mut PD as _, noop_free as *mut _);
         let pd = c::_cmsGetProfileUserData(i);
-        eprintln!("profile-ud={}", pd == (&raw mut PD as *mut usize as _));
+        eprintln!("profile-ud={}", pd == (&raw mut PD as _));
         let seq = c::_cmsReadProfileSequence(i);
         eprintln!("pseq={}", !seq.is_null());
         c::_cmsSetHeaderCMM(i, 0xDEADBEEF);
@@ -1229,7 +1228,8 @@ fn xform_internals() {
             "linlcms2.icc",
         ] {
             let path = format!("{}/../../{name}\0", env!("CARGO_MANIFEST_DIR"));
-            let h = c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
+            let h =
+                c::cmsOpenProfileFromFile(path.as_ptr() as *const std::ffi::c_char, c"r".as_ptr());
             if h.is_null() {
                 continue;
             }
@@ -1326,10 +1326,12 @@ fn transform2_adaptor() {
         _fi: *mut u32,
         _fo: *mut u32,
         _fl: *mut u32,
-    ) -> i32 { unsafe {
-        *xform = legacy as *const _;
-        1
-    }}
+    ) -> i32 {
+        unsafe {
+            *xform = legacy as *const _;
+            1
+        }
+    }
     unsafe {
         let i = c::cmsCreate_sRGBProfile();
         let o = c::cmsCreate_sRGBProfile();
@@ -1768,8 +1770,7 @@ fn cnvt_named_abstract() {
 fn cnvt_named_color() {
     unsafe {
         // build an nmcl profile: placeholder + nmcl class + ncl2
-        let ncl =
-            c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"".as_ptr(), c"".as_ptr());
+        let ncl = c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"".as_ptr(), c"".as_ptr());
         let pcs = [0x8000u16; 3];
         let cols = [0x4000u16; 16];
         c::cmsAppendNamedColor(ncl, c"red".as_ptr(), pcs.as_ptr(), cols.as_ptr());
@@ -4462,9 +4463,6 @@ fn plugin_valid_arms() {
     if solo::delegated("plugin_valid_arms") {
         return;
     }
-    unsafe extern "C" {
-        fn memset(p: *mut std::ffi::c_void, v: i32, n: usize) -> *mut std::ffi::c_void;
-    }
     // minimal valid plugin base: magic + version + type + sig
     fn mk(sig: u32, payload_len: usize) -> Vec<u64> {
         let mut v = vec![0u64; payload_len / 8 + 8];
@@ -4493,7 +4491,10 @@ fn plugin_valid_arms() {
         if f.is_null() {
             None
         } else {
-            Some(std::mem::transmute(f))
+            Some(std::mem::transmute::<
+                *mut std::ffi::c_void,
+                unsafe extern "C" fn() -> i32,
+            >(f))
         }
     };
     let pid = unsafe { fork() };
@@ -4540,10 +4541,7 @@ fn plugin_real_arms() {
         return;
     }
     unsafe extern "C" fn m_malloc(_c: *mut std::ffi::c_void, n: usize) -> *mut std::ffi::c_void {
-        unsafe {
-            
-            libc_malloc(n)
-        }
+        unsafe { libc_malloc(n) }
     }
     unsafe extern "C" fn m_free(_c: *mut std::ffi::c_void, p: *mut std::ffi::c_void) {
         unsafe {
@@ -4598,7 +4596,10 @@ fn plugin_real_arms() {
         if f.is_null() {
             None
         } else {
-            Some(std::mem::transmute(f))
+            Some(std::mem::transmute::<
+                *mut std::ffi::c_void,
+                unsafe extern "C" fn() -> i32,
+            >(f))
         }
     };
     let pid = unsafe { fork() };
@@ -5210,7 +5211,8 @@ fn float_fmt_arms() {
             .ok()
             .map(|d| c::cmsOpenProfileFromMem(d.as_ptr() as *const _, d.len() as u32))
             .unwrap_or(std::ptr::null_mut());
-        let _enc = |cs: u32, ch: u32, b: u32, flags: u32| (flags << 22) | (cs << 16) | (ch << 3) | b;
+        let _enc =
+            |cs: u32, ch: u32, b: u32, flags: u32| (flags << 22) | (cs << 16) | (ch << 3) | b;
         // FLOAT_SH=1<<22 → flags arg
         let fl = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16) | (ch << 3) | 4;
         let db = |cs: u32, ch: u32| (1u32 << 22) | (cs << 16) | (ch << 3); // bytes=0 → double
@@ -6144,7 +6146,7 @@ fn opt_cnvrt_internal_arms() {
 
 /// cmsvirt/cmsopt/cmscnvrt residual — profile-creation internals
 ///   + optimizer on unusual profiles + black-preserving
-///   internals residual.
+///     internals residual.
 #[test]
 fn virt_opt_cnvrt_arms() {
     unsafe {
@@ -6199,7 +6201,6 @@ fn virt_opt_cnvrt_arms() {
                 trcs.as_ptr() as *const *mut std::ffi::c_void,
             );
             let t = if !prof.is_null() {
-                
                 c::cmsCreateTransform(prof, r8, lab, l8, 0, 0)
             } else {
                 std::ptr::null_mut()
@@ -7150,11 +7151,7 @@ fn xform_fmtcheck_arms() {
         // bogus colorspace codes + channel mismatches +
         //   bit-width edges
         for (fin, fout, name) in [
-            (
-                (3 << 3) | 2,
-                (10u32 << 16) | (3 << 3) | 2,
-                "cs0",
-            ),
+            ((3 << 3) | 2, (10u32 << 16) | (3 << 3) | 2, "cs0"),
             (
                 (20u32 << 16) | (3 << 3) | 2,
                 (10u32 << 16) | (3 << 3) | 2,
@@ -7170,11 +7167,7 @@ fn xform_fmtcheck_arms() {
                 (10u32 << 16) | (3 << 3) | 2,
                 "9ch",
             ),
-            (
-                (4u32 << 16) | 2,
-                (10u32 << 16) | (3 << 3) | 2,
-                "0ch",
-            ),
+            ((4u32 << 16) | 2, (10u32 << 16) | (3 << 3) | 2, "0ch"),
             (
                 ((4u32 << 16) | (3 << 3)),
                 (10u32 << 16) | (3 << 3) | 2,

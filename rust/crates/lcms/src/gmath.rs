@@ -4,6 +4,10 @@
 //! libm PLT call. Apply via `.g_cos()`/`.g_sin()`/`crate::math::sin_cos()`/...
 //! anywhere C calls `cos`/`sin`/`sincos`/`atan2`/`tan`/`asin`/`acos`/`atan`.
 
+#[allow(
+    dead_code,
+    reason = "the full libm surface lcms2 calls, kept complete so a newly ported call site uses the glibc-exact wrapper instead of std"
+)]
 pub(crate) trait GmathExt {
     fn g_cos(self) -> f64;
     fn g_sin(self) -> f64;

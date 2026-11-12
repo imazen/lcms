@@ -65,10 +65,13 @@ fn save_to_mem_reserialize() {
         let mut r_out = profile::save_profile_to_mem(&mut rp).unwrap_or_default();
         // mask the volatile `created` timestamp — C rewrites it on save
         for i in 0..12 {
-            c_out.get_mut(CREATED_OFF + i).map(|b| *b = 0);
-            r_out.get_mut(CREATED_OFF + i).map(|b| *b = 0);
+            if let Some(b) = c_out.get_mut(CREATED_OFF + i) {
+                *b = 0;
+            }
+            if let Some(b) = r_out.get_mut(CREATED_OFF + i) {
+                *b = 0;
+            }
         }
-        let mut c_out = c_out;
         c_out.resize(r_out.len().max(c_out.len()), 0);
         r_out.resize(c_out.len(), 0);
         assert_eq!(c_out, r_out, "save_to_mem reserialize");
@@ -153,18 +156,8 @@ fn internal_chad_labv_arms() {
         );
         let pcs3 = [0x1000u16, 0x2000, 0x3000];
         let dev3 = [0x4000u16, 0x5000, 0x6000];
-        c::cmsAppendNamedColor(
-            nl,
-            c"a".as_ptr() as *const _,
-            pcs3.as_ptr(),
-            dev3.as_ptr(),
-        );
-        c::cmsAppendNamedColor(
-            nl,
-            c"b".as_ptr() as *const _,
-            pcs3.as_ptr(),
-            dev3.as_ptr(),
-        );
+        c::cmsAppendNamedColor(nl, c"a".as_ptr() as *const _, pcs3.as_ptr(), dev3.as_ptr());
+        c::cmsAppendNamedColor(nl, c"b".as_ptr() as *const _, pcs3.as_ptr(), dev3.as_ptr());
         c::cmsWriteTag(ncp, 0x6E636C32, nl as *const _);
         let tn = c::cmsCreateTransform(
             ncp,
@@ -341,7 +334,8 @@ fn internal_hdr_get_arms() {
                 info.as_mut_ptr() as *mut _,
                 info.len() as u32,
             );
-            let s = std::ffi::CStr::from_ptr(info.as_ptr() as *const std::ffi::c_char).to_string_lossy();
+            let s = std::ffi::CStr::from_ptr(info.as_ptr() as *const std::ffi::c_char)
+                .to_string_lossy();
             eprintln!("{name} n={n} '{s}'");
         }
         // bad lang/country + missing fields

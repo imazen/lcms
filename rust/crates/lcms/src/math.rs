@@ -21,6 +21,10 @@
 // --- provider impls — one `mod imp` per feature -------------------------
 
 #[cfg(all(not(feature = "math-libm"), feature = "math-rust"))]
+#[allow(
+    dead_code,
+    reason = "the full libm surface lcms2 calls, kept complete so a newly ported call site uses the glibc-exact wrapper instead of std"
+)]
 mod imp {
     #[inline]
     pub fn cos(x: f64) -> f64 {
@@ -117,6 +121,10 @@ mod imp {
 /// correctly-rounded glibc fns on 2.39+ mostly match; musl/fdlibm and
 /// MSVCRT diverge more).
 #[cfg(all(not(feature = "math-rust"), feature = "math-libm"))]
+#[allow(
+    dead_code,
+    reason = "the full libm surface lcms2 calls, kept complete so a newly ported call site uses the glibc-exact wrapper instead of std"
+)]
 mod imp {
     #[inline]
     pub fn cos(x: f64) -> f64 {
@@ -212,6 +220,10 @@ mod imp {
     not(feature = "math-libm"),
     feature = "math-zen"
 ))]
+#[allow(
+    dead_code,
+    reason = "the full libm surface lcms2 calls, kept complete so a newly ported call site uses the glibc-exact wrapper instead of std"
+)]
 mod imp {
     // `zenmath` provider — correctly-rounded implementations, intended to
     // be bit-identical across platforms AND to the oracle's libm where

@@ -909,18 +909,12 @@ fn chain2lab(
     }
     plist.push(Box::new(*lab));
     let mut bpc_list = vec![false; n_profiles + 1];
-    for i in 0..n_profiles {
-        bpc_list[i] = bpc[i];
-    }
+    bpc_list[..n_profiles].copy_from_slice(&bpc[..n_profiles]);
     let mut intent_list = vec![0u32; n_profiles + 1];
-    for i in 0..n_profiles {
-        intent_list[i] = intents[i];
-    }
+    intent_list[..n_profiles].copy_from_slice(&intents[..n_profiles]);
     intent_list[n_profiles] = crate::types::INTENT_RELATIVE_COLORIMETRIC;
     let mut adapt_list = vec![1.0f64; n_profiles + 1];
-    for i in 0..n_profiles {
-        adapt_list[i] = adaptation_states[i];
-    }
+    adapt_list[..n_profiles].copy_from_slice(&adaptation_states[..n_profiles]);
     crate::xform::create_extended_transform(
         None,
         &mut plist,

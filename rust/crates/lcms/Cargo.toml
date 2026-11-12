@@ -47,6 +47,7 @@ zenhash = { path = "/home/lilith/work/zen/zenhash", features = ["xxh3"] }
 [[bench]]
 name = "perf_zenbench"
 harness = false
+required-features = ["little-cms-api"]
 
 [[test]]
 name = "c_parity_alpha"
@@ -502,3 +503,6 @@ required-features = ["little-cms-api"]
 name = "tokcheck"
 path = "examples/tokcheck.rs"
 required-features = ["little-cms-api"]
+
+[lints]
+workspace = true

@@ -213,8 +213,7 @@ fn intent_link_matrix() {
                 None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, 0,
             );
             assert_eq!(ct.is_null(), rt.is_none(), "intent{intent}");
-            if !ct.is_null() && rt.is_some() {
-                let mut rt = rt.unwrap();
+            if let Some(mut rt) = rt {
                 let inp = [0x1234u16, 0x5678, 0x9abc];
                 let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
                 let mut co = [0u16; 3];
@@ -258,8 +257,7 @@ fn null_profile_link() {
             None, &mut profs, &mut bpc, &intents, &adapt, None, 0, fi, fo, 0,
         );
         assert_eq!(ct.is_null(), rt.is_none(), "null profile xform");
-        if !ct.is_null() && rt.is_some() {
-            let mut rt = rt.unwrap();
+        if let Some(mut rt) = rt {
             let inp = [0x1234u16, 0x5678, 0x9abc];
             let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
             let mut co = [0u16; 4];
@@ -298,8 +296,7 @@ fn multiprofile_transform() {
                 None, &mut ps, &mut bpc, &intents, &adapt, None, 0, in_fmt, out_fmt, 0,
             );
             assert_eq!(ct.is_null(), rt.is_none(), "n{n}");
-            if !ct.is_null() && rt.is_some() {
-                let mut rt = rt.unwrap();
+            if let Some(mut rt) = rt {
                 let inp = [0x1234u16, 0x5678, 0x9abc];
                 let inb: Vec<u8> = inp.iter().flat_map(|v| v.to_be_bytes()).collect();
                 let mut co = [0u16; 3];

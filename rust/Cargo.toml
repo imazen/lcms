@@ -11,3 +11,18 @@ repository = "https://github.com/imazen/lcms"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# The port mirrors lcms2's C source function for function and branch for
+# branch (PORTING.md). These lints ask for rewrites that would break that
+# 1:1 map, or change C's NaN behaviour; everything else clippy reports is
+# fixed in code.
+[workspace.lints.clippy]
+too_many_arguments = "allow"        # signatures are lcms2's C signatures
+needless_range_loop = "allow"       # C index loops, kept index for index
+if_same_then_else = "allow"         # C's arms, kept even when two match
+manual_clamp = "allow"              # C's compare-and-assign chains
+neg_cmp_op_on_partial_ord = "allow" # `!(a < b)` is C's NaN-true test
+
+[workspace.lints.rust]
+# lcms-cref's build.rs sets `math_sys` when LCMS_CREF_MATH=sys.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(math_sys)"] }

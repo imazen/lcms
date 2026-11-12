@@ -37,8 +37,12 @@ fn file_open_save_roundtrip() {
             let mut c_out = c_bytes;
             let mut r_out = r_bytes;
             for i in 0..12 {
-                c_out.get_mut(24 + i).map(|b| *b = 0);
-                r_out.get_mut(24 + i).map(|b| *b = 0);
+                if let Some(b) = c_out.get_mut(24 + i) {
+                    *b = 0;
+                }
+                if let Some(b) = r_out.get_mut(24 + i) {
+                    *b = 0;
+                }
             }
             c_out.resize(r_out.len().max(c_out.len()), 0);
             r_out.resize(c_out.len(), 0);
@@ -199,7 +203,7 @@ fn internal_matshaper_out_arms() {
 
 /// cmsio1 residual — _cmsReadInputLUT Lab-colorspace
 ///   + mft1-type A2B0 -> LabV4ToV2 + LabV2ToV4 stage
-///   inserts (v2 Lab device profile).
+///     inserts (v2 Lab device profile).
 #[test]
 fn internal_lab_mft_in_arms() {
     unsafe {
