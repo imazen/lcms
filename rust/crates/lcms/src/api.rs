@@ -1450,6 +1450,7 @@ impl Profile {
         tag: impl Into<Tag>,
         value: impl Into<TagData<'a>>,
     ) -> Result<()> {
+        let tag = tag.into();
         let obj = match value.into() {
             TagData::Xyz(x) => TagObject::Xyz(x),
             TagData::Chromaticity(c) => TagObject::Chromaticity(c),
@@ -1462,6 +1463,12 @@ impl Profile {
                 TagObject::Mlu(m)
             }
             TagData::Mlu(m) => TagObject::Mlu(m),
+            // One list type serves namedColor2Type and colorantTableType.
+            TagData::NamedColors(l)
+                if tag == Tag::COLORANT_TABLE || tag == Tag::COLORANT_TABLE_OUT =>
+            {
+                TagObject::ColorantTable(l)
+            }
             TagData::NamedColors(l) => TagObject::NamedColor(l),
             TagData::Pipeline(p) => TagObject::Lut16(p),
             TagData::Data(d) => TagObject::Data(d),
@@ -1522,7 +1529,7 @@ impl Profile {
             TagData::S15Fixed16(v) => TagObject::S15Fixed16(v),
             TagData::U16Fixed16(v) => TagObject::U16Fixed16(v),
         };
-        let sig = tag.into().0;
+        let sig = tag.0;
         let r = attempt_bool(types::ERROR_UNKNOWN_EXTENSION, "write_tag", || {
             crate::profile::cms_write_tag(&mut self.icc, sig, Some(obj))
         });
@@ -2652,7 +2659,10 @@ pub enum TagData<'a> {
     Xyz(CieXyz),
     /// Chromaticity triple (`'chrm'`).
     Chromaticity(CiexyYTriple),
-    /// `'clro'` — channel order indices (up to 16 channels).
+    /// `'clro'` — channel order indices (up to 16 channels). Fill unused
+    /// slots with `0xFF`: the writer stores the entries that are not
+    /// `0xFF`, and ICC.1:2022 10.4 requires their count to match the data
+    /// colour space.
     ColorantOrder([u8; 16]),
     /// A tone curve — writes as `'curv'`/`'para'` per its shape.
     Curve(ToneCurve),
@@ -3374,9 +3384,28 @@ impl fmt::Debug for ProfileSeqEntry {
 
 /// An ICC `'data'` payload.
 impl IccData {
-    /// ASCII text (stored with `flag` 0).
-    pub fn text(text: &str) -> IccData {
-        IccData::with_flag(0, text.as_bytes().to_vec())
+    /// ASCII text, stored with `flag` 0 and the terminating NUL that
+    /// ICC.1:2022 10.7 requires for ASCII data. `ERROR_RANGE` if `text` is
+    /// not 7-bit ASCII or contains a NUL.
+    ///
+    /// ```
+    /// use lcms::api::IccData;
+    /// let d = IccData::text("perceptual")?;
+    /// assert_eq!(d.bytes(), b"perceptual\0");
+    /// assert_eq!(d.as_str(), Some("perceptual"));
+    /// assert!(IccData::text("café").is_err());
+    /// # Ok::<(), lcms::api::Error>(())
+    /// ```
+    pub fn text(text: &str) -> Result<IccData> {
+        if !text.is_ascii() || text.contains('\0') {
+            return Err(Error::new(
+                types::ERROR_RANGE,
+                "dataType ASCII text must be 7-bit ASCII without NUL",
+            ));
+        }
+        let mut data = text.as_bytes().to_vec();
+        data.push(0);
+        Ok(IccData::with_flag(0, data))
     }
     /// Binary bytes (`flag` 1).
     pub fn binary(bytes: Vec<u8>) -> IccData {
@@ -3393,9 +3422,23 @@ impl IccData {
     pub fn is_binary(&self) -> bool {
         self.flag != 0
     }
-    /// The payload bytes.
+    /// The payload bytes as stored (ASCII data includes its NUL).
     pub fn bytes(&self) -> &[u8] {
         &self.data[..(self.len as usize).min(self.data.len())]
+    }
+    /// ASCII data as text, without the terminating NUL; `None` for binary
+    /// data or bytes that are not 7-bit ASCII.
+    pub fn as_str(&self) -> Option<&str> {
+        if self.is_binary() {
+            return None;
+        }
+        let b = self.bytes();
+        let b = b.split(|&c| c == 0).next().unwrap_or(b);
+        if b.is_ascii() {
+            std::str::from_utf8(b).ok()
+        } else {
+            None
+        }
     }
 }
 impl fmt::Debug for IccData {

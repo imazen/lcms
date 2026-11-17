@@ -6,7 +6,7 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1025 lines (supported surface) | lcms.features.txt 1942 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 93 lines (93 hidden + 0 excluded-feature)
+# files: lcms.txt 1026 lines (supported surface) | lcms.features.txt 1993 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 93 lines (93 hidden + 0 excluded-feature)
 
 ## summary
 #
@@ -14,7 +14,7 @@
 #   pub types (struct/enum/trait/alias)        66
 #   pub consts/statics                        471
 #   free functions                             30
-#   inherent methods                          185
+#   inherent methods                          186
 #   struct fields                             103
 #   enum variants                             106
 #   trait roster entries (type × trait)       216
@@ -23,11 +23,11 @@
 #
 # per-module pub lines:
 #   (root)                           33
-#   api                             553
+#   api                             554
 #   signatures                      249
 #   types                           143
 
-## items (970 lines)
+## items (971 lines)
 
 pub mod lcms
 pub mod api
@@ -283,10 +283,11 @@ pub const fn api::Format::pixel_size(self) -> usize
 pub const fn api::Format::planar(self) -> api::Format
 pub const fn api::Format::total_channels(self) -> usize
 pub struct api::IccData
+pub fn api::IccData::as_str(&self) -> core::option::Option<&str>
 pub fn api::IccData::binary(alloc::vec::Vec<u8>) -> api::IccData
 pub fn api::IccData::bytes(&self) -> &[u8]
 pub fn api::IccData::is_binary(&self) -> bool
-pub fn api::IccData::text(&str) -> api::IccData
+pub fn api::IccData::text(&str) -> api::Result<api::IccData>
 #[repr(C)] pub struct api::IccMeasurementConditions [also: types]
 pub api::IccMeasurementConditions::backing: types::EncodedXyzNumber
 pub api::IccMeasurementConditions::flare: f64

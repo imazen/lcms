@@ -13,9 +13,9 @@
 #   pub types (struct/enum/trait/alias)       178
 #   pub consts/statics                        126
 #   free functions                            394
-#   inherent methods                          445
+#   inherent methods                          447
 #   struct fields                             393
-#   enum variants                             269
+#   enum variants                             318
 #   re-exports                                  3
 #   trait roster entries (type × trait)       279
 #   auto-trait-complete types                  96
@@ -38,7 +38,7 @@
 #   intrp                            65
 #   io                               47
 #   io1                              12
-#   lcms2                           333
+#   lcms2                           382
 #   lut                             158
 #   md5                               6
 #   mtrx                             13
@@ -49,13 +49,13 @@
 #   profile                          54
 #   ps2                               5
 #   sm                                6
-#   tagtypes                        139
+#   tagtypes                        141
 #   types                            21
 #   virt                             14
 #   wtpnt                             7
 #   xform                            74
 
-## items (1823 lines)
+## items (1874 lines)
 
 pub mod alpha
 pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
@@ -107,10 +107,11 @@ pub fn named::Dict::new() -> named::Dict
 pub api::IccData::data: alloc::vec::Vec<u8>
 pub api::IccData::flag: u32
 pub api::IccData::len: u32
+pub fn tagtypes::IccData::as_str(&self) -> core::option::Option<&str>
 pub fn tagtypes::IccData::binary(alloc::vec::Vec<u8>) -> tagtypes::IccData
 pub fn tagtypes::IccData::bytes(&self) -> &[u8]
 pub fn tagtypes::IccData::is_binary(&self) -> bool
-pub fn tagtypes::IccData::text(&str) -> tagtypes::IccData
+pub fn tagtypes::IccData::text(&str) -> api::Result<tagtypes::IccData>
 pub api::Mlu::allocated_entries: u32
 pub api::Mlu::entries: alloc::vec::Vec<named::MluEntry>
 pub api::Mlu::pool: alloc::vec::Vec<u8>
@@ -812,27 +813,76 @@ pub lcms2::Tag::VcgtCurves([&'a lcms2::ToneCurveRef; 3])
 pub lcms2::Tag::VideoSignal(&'a lcms2::VideoSignalType)
 pub fn lcms2::Tag<'_>::is_none(&self) -> bool
 pub enum lcms2::TagSignature
-pub lcms2::TagSignature::ATToB1Tag
-pub lcms2::TagSignature::ATToB2Tag
 pub lcms2::TagSignature::AToB0Tag
+pub lcms2::TagSignature::AToB1Tag
+pub lcms2::TagSignature::AToB2Tag
+pub lcms2::TagSignature::ArgyllArtsTag
 pub lcms2::TagSignature::BToA0Tag
 pub lcms2::TagSignature::BToA1Tag
 pub lcms2::TagSignature::BToA2Tag
 pub lcms2::TagSignature::BToD0Tag
 pub lcms2::TagSignature::BToD1Tag
 pub lcms2::TagSignature::BToD2Tag
+pub lcms2::TagSignature::BToD3Tag
 pub lcms2::TagSignature::BlueColorantTag
 pub lcms2::TagSignature::BlueTRCTag
+pub lcms2::TagSignature::CalibrationDateTimeTag
+pub lcms2::TagSignature::CharTargetTag
+pub lcms2::TagSignature::ChromaticAdaptationTag
+pub lcms2::TagSignature::ChromaticityTag
+pub lcms2::TagSignature::CicpTag
+pub lcms2::TagSignature::ColorantOrderTag
+pub lcms2::TagSignature::ColorantTableOutTag
+pub lcms2::TagSignature::ColorantTableTag
+pub lcms2::TagSignature::ColorimetricIntentImageStateTag
 pub lcms2::TagSignature::CopyrightTag
+pub lcms2::TagSignature::CrdInfoTag
+pub lcms2::TagSignature::DToB0Tag
+pub lcms2::TagSignature::DToB1Tag
+pub lcms2::TagSignature::DToB2Tag
+pub lcms2::TagSignature::DToB3Tag
+pub lcms2::TagSignature::DataTag
+pub lcms2::TagSignature::DateTimeTag
+pub lcms2::TagSignature::DeviceMfgDescTag
+pub lcms2::TagSignature::DeviceModelDescTag
+pub lcms2::TagSignature::DeviceSettingsTag
+pub lcms2::TagSignature::GamutTag
 pub lcms2::TagSignature::GrayTRCTag
 pub lcms2::TagSignature::GreenColorantTag
 pub lcms2::TagSignature::GreenTRCTag
+pub lcms2::TagSignature::LuminanceTag
+pub lcms2::TagSignature::MHC2Tag
+pub lcms2::TagSignature::MeasurementTag
+pub lcms2::TagSignature::MediaBlackPointTag
 pub lcms2::TagSignature::MediaWhitePointTag
+pub lcms2::TagSignature::MetaTag
 pub lcms2::TagSignature::NamedColor2Tag
+pub lcms2::TagSignature::NamedColorTag
+pub lcms2::TagSignature::OutputResponseTag
+pub lcms2::TagSignature::PerceptualRenderingIntentGamutTag
+pub lcms2::TagSignature::Preview0Tag
+pub lcms2::TagSignature::Preview1Tag
+pub lcms2::TagSignature::Preview2Tag
+pub lcms2::TagSignature::ProfileDescriptionMLTag
 pub lcms2::TagSignature::ProfileDescriptionTag
+pub lcms2::TagSignature::ProfileSequenceDescTag
+pub lcms2::TagSignature::ProfileSequenceIdTag
+pub lcms2::TagSignature::Ps2CRD0Tag
+pub lcms2::TagSignature::Ps2CRD1Tag
+pub lcms2::TagSignature::Ps2CRD2Tag
+pub lcms2::TagSignature::Ps2CRD3Tag
+pub lcms2::TagSignature::Ps2CSATag
+pub lcms2::TagSignature::Ps2RenderingIntentTag
 pub lcms2::TagSignature::RedColorantTag
 pub lcms2::TagSignature::RedTRCTag
+pub lcms2::TagSignature::SaturationRenderingIntentGamutTag
+pub lcms2::TagSignature::ScreeningDescTag
+pub lcms2::TagSignature::ScreeningTag
+pub lcms2::TagSignature::TechnologyTag
+pub lcms2::TagSignature::UcrBgTag
 pub lcms2::TagSignature::VcgtTag
+pub lcms2::TagSignature::ViewingCondDescTag
+pub lcms2::TagSignature::ViewingConditionsTag
 pub fn lcms2::TagSignature::from_u32(u32) -> core::option::Option<Self>
 pub fn lcms2::TagSignature::to_u32(self) -> u32
 pub enum lcms2::TechnologySignature
@@ -1682,10 +1732,11 @@ pub struct tagtypes::IccData
 pub tagtypes::IccData::data: alloc::vec::Vec<u8>
 pub tagtypes::IccData::flag: u32
 pub tagtypes::IccData::len: u32
+pub fn tagtypes::IccData::as_str(&self) -> core::option::Option<&str>
 pub fn tagtypes::IccData::binary(alloc::vec::Vec<u8>) -> tagtypes::IccData
 pub fn tagtypes::IccData::bytes(&self) -> &[u8]
 pub fn tagtypes::IccData::is_binary(&self) -> bool
-pub fn tagtypes::IccData::text(&str) -> tagtypes::IccData
+pub fn tagtypes::IccData::text(&str) -> api::Result<tagtypes::IccData>
 pub struct tagtypes::IccViewingConditions
 pub tagtypes::IccViewingConditions::illuminant_type: u32
 pub tagtypes::IccViewingConditions::illuminant_xyz: types::CieXyz
@@ -2006,7 +2057,7 @@ profile::IccProfile: !Freeze
 xform::Transform: !Freeze !RefUnwindSafe !UnwindSafe
 xform::TransformPlan: !Freeze !RefUnwindSafe !UnwindSafe
 
-## removed by features (356 lines)
+## removed by features (357 lines)
 
 pub api::TagData::Curve(api::ToneCurve)
 pub api::TagData::Data(api::IccData)
@@ -2073,10 +2124,11 @@ impl core::marker::UnsafeUnpin for api::Dict
 impl core::panic::unwind_safe::RefUnwindSafe for api::Dict
 impl core::panic::unwind_safe::UnwindSafe for api::Dict
 impl api::IccData
+pub fn api::IccData::as_str(&self) -> core::option::Option<&str>
 pub fn api::IccData::binary(alloc::vec::Vec<u8>) -> api::IccData
 pub fn api::IccData::bytes(&self) -> &[u8]
 pub fn api::IccData::is_binary(&self) -> bool
-pub fn api::IccData::text(&str) -> api::IccData
+pub fn api::IccData::text(&str) -> api::Result<api::IccData>
 impl core::clone::Clone for api::IccData
 pub fn api::IccData::clone(&self) -> api::IccData
 impl core::fmt::Debug for api::IccData

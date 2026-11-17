@@ -1278,9 +1278,16 @@ fn date_time_and_data_tags_roundtrip() {
         Some(TagValue::Data(bytes)) => assert_eq!(bytes, [0, 1, 2, 255]),
         other => panic!("{other:?}"),
     }
-    let text = IccData::text("hello");
+    let text = IccData::text("hello").unwrap();
     assert!(!text.is_binary());
-    assert_eq!(text.bytes(), b"hello");
+    assert_eq!(
+        text.bytes(),
+        b"hello\0",
+        "ICC.1:2022 10.7: ASCII data ends in NUL"
+    );
+    assert_eq!(text.as_str(), Some("hello"));
+    assert!(IccData::text("h\u{e9}llo").is_err());
+    assert!(IccData::text("a\0b").is_err());
 }
 
 #[test]
@@ -1329,4 +1336,27 @@ fn inconsistent_plain_tag_data_is_an_error_not_a_panic() {
         other => panic!("{other:?}"),
     }
     assert!(matches!(q.get(mhc2), Some(TagValue::Mhc2(m)) if m.curve_entries == 2));
+}
+
+/// A colorant table goes through `write_tag` with the same list type as
+/// named colours (lcms2 uses one `cmsNAMEDCOLORLIST` for both); it used to
+/// be stored as a namedColor2 object and fail to save.
+#[test]
+fn colorant_table_round_trips() {
+    let mut p = Profile::placeholder();
+    p.set_color_space(ColorSpace::Rgb);
+    let mut list = NamedColorList::new(0, "", "").unwrap();
+    list.push("red", [0x8000, 0xD000, 0xB000], &[]).unwrap();
+    list.push("green", [0xC000, 0x3000, 0xC000], &[]).unwrap();
+    list.push("blue", [0x4000, 0x9000, 0x2000], &[]).unwrap();
+    p.write_tag(Tag::COLORANT_TABLE, TagData::NamedColors(list))
+        .unwrap();
+    let q = Profile::open(&p.save().unwrap()).unwrap();
+    match q.get(Tag::COLORANT_TABLE) {
+        Some(TagValue::NamedColors(l)) => {
+            assert_eq!(l.len(), 3);
+            assert_eq!(l.entry(1).map(|e| e.name).as_deref(), Some("green"));
+        }
+        other => panic!("{other:?}"),
+    }
 }
