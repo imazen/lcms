@@ -181,4 +181,6 @@ exclusive.
 - `crates/lcms-cref` — the unmodified-lcms2 oracle FFI (dev-dep only)
 - `crates/lcms2-ffi` — C-ABI wrapper (upstream testbed driver)
 - `docs/` — `WORKING-ON-THIS` (port loop + traps), `COVERAGE`, `C-BUGS`
-  (confirmed upstream quirks reproduced), `PORTING.md` (C→Rust map)
+  (confirmed upstream quirks reproduced), `CONFORMANCE` (ICC specification
+  audit: where lcms2.20, and so the port, departs from ICC.1),
+  `PORTING.md` (C→Rust map)

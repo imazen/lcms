@@ -83,6 +83,13 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
 
 ## Structural traps (each cost a bug — found 2026-11-10 by `tests/api_c_parity.rs`)
 
+- **A masked byte range can hide a real divergence.** The parity gates mask
+  the header date (bytes 24..36) because C stamps the current time; that
+  hid the port writing an all-zero date, which ICC.1:2022 4.2 forbids.
+  `tests/conformance_icc.rs` checks every written profile against the ICC
+  text and the C oracle's profile together. A new deviation it flags must be
+  either fixed (port bug) or listed with its clause in
+  `KNOWN_LCMS2_DEVIATIONS` and `docs/CONFORMANCE.md` (lcms2 behaviour).
 - **Duplicating a profile = `clone()`, never save+reopen.** Where C passes the
   same handle twice (black-point round trips, K-preserving chains), the port
   must clone. A serialize+reopen copy re-encodes tags that were already
