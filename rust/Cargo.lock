@@ -367,6 +367,7 @@ dependencies = [
  "lcms-cref",
  "libm",
  "magetypes",
+ "md-5",
  "zenbench",
  "zenhash",
 ]
@@ -410,6 +411,16 @@ version = "0.9.31-beta.2"
 dependencies = [
  "archmage 0.9.31-beta.2",
  "rustversion",
+]
+
+[[package]]
+name = "md-5"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69b6441f590336821bb897fb28fc622898ccceb1d6cea3fde5ea86b090c4de98"
+dependencies = [
+ "cfg-if",
+ "digest",
 ]
 
 [[package]]

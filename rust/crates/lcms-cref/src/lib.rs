@@ -966,6 +966,7 @@ unsafe extern "C" {
     pub fn cmsGetHeaderCreator(p: *mut c_void) -> u32;
     pub fn cmsGetHeaderModel(p: *mut c_void) -> u32;
     pub fn cmsGetHeaderProfileID(p: *mut c_void, id: *mut u8);
+    pub fn cmsMD5computeID(p: *mut c_void) -> i32;
     pub fn cmsGetHeaderCreationDateTime(p: *mut c_void, dt: *mut c_void) -> i32;
     pub fn cmsIsCLUT(prof: *mut c_void, intent: u32, direction: u32) -> i32;
     pub fn cmsGetInfo(p: *mut c_void, info: u32) -> *const u16;

@@ -1,6 +1,6 @@
 # lcms port — common recipes
 #
-# Gates:      test / gate / verify / testbed
+# Gates:      test / gate / verify / testbed / conformance / icc-validate
 # Benches:    bench / bench-one / c-oracle
 # Coverage:   coverage / coverage-all / coverage-testbed
 # API docs:   api-doc / api-doc-check
@@ -47,6 +47,33 @@ determinism-goldens dir:
 # port-conformance sweep.
 verify: test test-default determinism-gate testbed api-doc-check
     bench/bench.sh 2>&1 | grep -A10 "differentials"
+
+# ICC conformance: every profile the port writes, checked against ICC.1:2022 /
+# ICC.1:2001-04 (tests/support/icc_spec.rs) next to the C oracle's; plus the
+# spec's own values. Report: docs/CONFORMANCE.md.
+conformance:
+    cargo test -p lcms --features "little-cms-api lcms2-api" --test conformance_icc
+
+# Validate the same profiles with ICC's iccDEV (`iccDumpProfile -v`) and check
+# the port and C get the same verdict. ICCDUMP = path to iccDumpProfile.
+icc-validate dir="target/icc-validate":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${ICCDUMP:?set ICCDUMP to the iccDumpProfile path}"
+    d=$(realpath -m "{{dir}}")
+    rm -rf "$d"
+    LCMS_CONFORMANCE_DUMP="$d" cargo test -q -p lcms --features "little-cms-api lcms2-api" --test conformance_icc >/dev/null
+    # iccDumpProfile exits non-zero for invalid profiles; that is a verdict.
+    verdict() { { "$ICCDUMP" -v "$1" 2>&1 || true; } | sed -n '/Validation Report/,$p' | { grep -v -e '^-*$' -e 'Validation Report' || true; } | tr '\n' ' ' | sed -E 's/version [0-9.]+/version/; s/ +/ /g'; }
+    diff=0
+    for c in "$d"/*.c.icc; do
+        p="${c%.c.icc}.port.icc"
+        [ -f "$p" ] || continue
+        vc=$(verdict "$c"); vp=$(verdict "$p")
+        printf '%s :: %s\n' "$(basename "${c%.c.icc}")" "$vc"
+        [ "$vc" = "$vp" ] || { echo "  port differs: $vp"; diff=1; }
+    done
+    exit $diff
 
 # Build + run the upstream testbed (testcms2) against both libs in a scratch
 # dir; reports the C and Rust pass counts.
