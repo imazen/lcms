@@ -33,7 +33,7 @@ fn srgb_profile_bytes() {
 
     assert_eq!(r_bytes.len(), c_bytes.len(), "size srgb");
     let (mut rb, mut cb) = (r_bytes.clone(), c_bytes.clone());
-    rb[24..36].fill(0); // Created = time() in C, epoch in port
+    rb[24..36].fill(0); // Created = the current UTC time on both sides
     cb[24..36].fill(0);
     assert_eq!(rb, cb, "sRGB profile bytes differ");
 }

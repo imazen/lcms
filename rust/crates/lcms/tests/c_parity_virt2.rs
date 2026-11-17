@@ -28,10 +28,10 @@ fn r_save(p: &mut lcms::profile::IccProfile) -> Option<Vec<u8>> {
 }
 
 /// Both-NULL is parity on the error path; otherwise byte-compare with the
-/// 12-byte `created` datetime (header bytes 24..36) masked — C stamps
-/// `time(0)` at placeholder creation, the port deliberately keeps epoch
-/// (documented at `profile::create_profile_placeholder`). Mask it on both
-/// sides, same convention as existing serialize gates.
+/// 12-byte `created` datetime (header bytes 24..36) masked — both sides
+/// stamp the current UTC time at placeholder creation, so the seconds can
+/// differ. Mask it on both sides, same convention as existing serialize
+/// gates (`conformance_icc::creation_date_is_utc_now_like_c` checks it).
 fn cmp(name: &str, c: Option<Vec<u8>>, r: Option<Vec<u8>>) {
     match (c, r) {
         (None, None) => {}

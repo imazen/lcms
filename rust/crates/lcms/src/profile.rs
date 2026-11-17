@@ -662,14 +662,51 @@ pub fn open_profile_from_mem(ctx: Option<Context>, data: &[u8]) -> Option<Box<Ic
     Some(icc)
 }
 
-/// `cmsCreateProfilePlaceholder` — an empty write-side profile
-/// `cmsCreateProfilePlaceholder` — defaults per C: CMM/creator='lcms',
-/// platform='APPL' (non-Windows), class=Display, version=2.1.
-/// `Created` stays epoch (C fills `time()`; deterministic for the port —
-/// tests mask bytes 24..36).
+/// `_cmsGetTime` — the current time as a UTC dateTimeNumber (C:
+/// `gmtime(time(NULL))`). ICC.1:2022 4.2 requires UTC and valid fields.
+/// Targets without a clock (`wasm32-unknown-unknown`, where
+/// `SystemTime::now` panics) get 1970-01-01T00:00:00, which is valid.
+pub(crate) fn utc_now() -> DateTimeNumber {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    let secs = 0u64;
+    date_time_from_unix(secs)
+}
+
+/// Seconds since 1970-01-01T00:00:00Z to a proleptic-Gregorian UTC
+/// dateTimeNumber (days-to-civil, H. Hinnant's algorithm).
+pub(crate) fn date_time_from_unix(secs: u64) -> DateTimeNumber {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    DateTimeNumber {
+        year: year as u16,
+        month: month as u16,
+        day: day as u16,
+        hours: (rem / 3_600) as u16,
+        minutes: (rem / 60 % 60) as u16,
+        seconds: (rem % 60) as u16,
+    }
+}
+
+/// `cmsCreateProfilePlaceholder` — an empty write-side profile with C's
+/// defaults: CMM/creator 'lcms', platform 'APPL' (non-Windows), class
+/// Display, version 2.1, created now (UTC), as `_cmsGetTime` stamps it.
 pub fn create_profile_placeholder(ctx: Option<Context>) -> Box<IccProfile> {
     let mut icc = Box::new(IccProfile::default());
     icc.ctx = ctx;
+    icc.created = utc_now();
     icc.device_class = crate::signatures::profileclass::SigDisplayClass;
     icc.color_space = 0;
     icc.pcs = crate::signatures::colorspace::SigXYZData;
@@ -1077,4 +1114,51 @@ pub fn get_encoded_icc_version(icc: &IccProfile) -> u32 {
 }
 pub fn set_encoded_icc_version(icc: &mut IccProfile, v: u32) {
     icc.version = v;
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::date_time_from_unix;
+    use crate::types::DateTimeNumber;
+
+    /// Reference values from GNU `date -u -d @<secs>`.
+    #[test]
+    fn unix_seconds_to_utc_date() {
+        let d = |y, mo, da, h, mi, s| DateTimeNumber {
+            year: y,
+            month: mo,
+            day: da,
+            hours: h,
+            minutes: mi,
+            seconds: s,
+        };
+        for (secs, want) in [
+            (0, d(1970, 1, 1, 0, 0, 0)),
+            (951_782_400, d(2000, 2, 29, 0, 0, 0)),
+            (1_709_251_199, d(2024, 2, 29, 23, 59, 59)),
+            (4_102_444_800, d(2100, 1, 1, 0, 0, 0)),
+            (1_794_852_000, d(2026, 11, 16, 18, 0, 0)),
+        ] {
+            let got = date_time_from_unix(secs);
+            assert_eq!(
+                (
+                    got.year,
+                    got.month,
+                    got.day,
+                    got.hours,
+                    got.minutes,
+                    got.seconds
+                ),
+                (
+                    want.year,
+                    want.month,
+                    want.day,
+                    want.hours,
+                    want.minutes,
+                    want.seconds
+                ),
+                "{secs}"
+            );
+        }
+    }
 }
