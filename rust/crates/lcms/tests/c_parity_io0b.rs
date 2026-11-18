@@ -5,23 +5,6 @@ use lcms::profile;
 use lcms_cref as c;
 use std::ffi::c_void;
 
-/// C `struct tm` — fields used by cmsGetHeaderCreationDateTime.
-#[repr(C)]
-#[derive(Default, Debug, PartialEq)]
-struct CTm {
-    sec: i32,
-    min: i32,
-    hour: i32,
-    mday: i32,
-    mon: i32,
-    year: i32,
-    wday: i32,
-    yday: i32,
-    isdst: i32,
-    gmtoff: i64,
-    zone: *const std::ffi::c_char,
-}
-
 fn corpus() -> Vec<Vec<u8>> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../");
     let mut files: Vec<_> = std::fs::read_dir(&dir)
@@ -81,27 +64,27 @@ fn save_to_mem_reserialize() {
 #[test]
 fn header_creation_datetime() {
     for data in corpus() {
-        let mut ct = CTm::default();
+        let mut ct = c::HeaderCreationDateTime::default();
         let ok = unsafe {
             let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
             if h.is_null() {
                 continue;
             }
-            let ok = c::cmsGetHeaderCreationDateTime(h, &mut ct as *mut _ as *mut c_void);
+            let ok = c::cref_get_header_creation_datetime(h, &mut ct);
             c::cmsCloseProfile(h);
             ok
         };
         let rp = profile::open_profile_from_mem(None, &data).unwrap();
         // rust side: read the raw `created` header bytes directly (the
-        // profile struct keeps them verbatim) and compare to C's tm
+        // profile struct keeps them verbatim) and compare to C's calendar fields
         assert_eq!(ok, 1, "C get_header_creation_date_time");
         let d = &rp.created;
-        assert_eq!(ct.year + 1900, d.year as i32, "tm year");
-        assert_eq!(ct.mon, d.month as i32 - 1, "tm mon");
-        assert_eq!(ct.mday, d.day as i32, "tm mday");
-        assert_eq!(ct.hour, d.hours as i32, "tm hour");
-        assert_eq!(ct.min, d.minutes as i32, "tm min");
-        assert_eq!(ct.sec, d.seconds as i32, "tm sec");
+        assert_eq!(ct.year, d.year as i32, "tm year");
+        assert_eq!(ct.month, d.month as i32, "tm mon");
+        assert_eq!(ct.day, d.day as i32, "tm mday");
+        assert_eq!(ct.hours, d.hours as i32, "tm hour");
+        assert_eq!(ct.minutes, d.minutes as i32, "tm min");
+        assert_eq!(ct.seconds, d.seconds as i32, "tm sec");
     }
 }
 

@@ -74,6 +74,14 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
   use `c_char`; tests pass `c"..".as_ptr()` and `.cast()` byte buffers.
   `just check-aarch64` catches a mismatch on an x86 box.
 
+The creation-date oracle uses `cref_get_header_creation_datetime`. The
+upstream API copies a full platform-native `struct tm`. The C shim owns
+that object and returns the six calendar fields in a fixed layout.
+For planar transform fixtures, size input and output buffers for the plane
+stride and every channel. In a single-line fixture the last sample starts
+at `(planes - 1) * plane_stride + (pixels - 1) * bytes_per_sample`.
+Include guards or padding in the comparison when the buffer has gaps.
+
 ## Numeric traps (each cost a bug)
 
 - `sin_cos()` — see PORTING.md: GCC merges `cos`/`sin` pairs into `sincos`.

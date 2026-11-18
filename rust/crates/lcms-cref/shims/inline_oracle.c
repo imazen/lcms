@@ -9,6 +9,25 @@ cmsUInt16Number  cref_quick_saturate_word(cmsFloat64Number d){ return _cmsQuickS
 cmsS15Fixed16Number cref_to_fixed_domain(int a)           { return _cmsToFixedDomain(a); }
 int              cref_from_fixed_domain(cmsS15Fixed16Number a){ return _cmsFromFixedDomain(a); }
 
+// Keep the platform-specific struct tm layout inside the C translation unit.
+typedef struct {
+    cmsInt32Number year, month, day, hours, minutes, seconds;
+} OrcHeaderCreationDateTime;
+
+cmsBool cref_get_header_creation_datetime(cmsHPROFILE profile, OrcHeaderCreationDateTime* out)
+{
+    struct tm date;
+    cmsBool ok = cmsGetHeaderCreationDateTime(profile, &date);
+    if (!ok) return ok;
+    out->year = date.tm_year + 1900;
+    out->month = date.tm_mon + 1;
+    out->day = date.tm_mday;
+    out->hours = date.tm_hour;
+    out->minutes = date.tm_min;
+    out->seconds = date.tm_sec;
+    return ok;
+}
+
 // --- cmspack parity: formatters only read info->InputFormat/OutputFormat ---
 typedef struct { cmsUInt32Number InputFormat, OutputFormat; } OrcInfo;
 typedef cmsUInt8Number* (*Fmt16Fn)(OrcInfo*, cmsUInt16Number*, cmsUInt8Number*, cmsUInt32Number);

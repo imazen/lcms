@@ -1557,13 +1557,9 @@ fn creation_date_is_utc_now_like_c() {
     let port = Profile::placeholder().creation_date();
     let cdt = unsafe {
         let h = CProf(c::cmsCreateProfilePlaceholder(ptr::null_mut()));
-        let mut tm = [0i32; 16]; // struct tm, generous
-        assert_ne!(
-            c::cmsGetHeaderCreationDateTime(h.0, tm.as_mut_ptr() as *mut c_void),
-            0
-        );
-        // tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year
-        (tm[5] + 1900, tm[4] + 1, tm[3], tm[2], tm[1], tm[0])
+        let mut date = c::HeaderCreationDateTime::default();
+        assert_ne!(c::cref_get_header_creation_datetime(h.0, &mut date), 0);
+        date
     };
     let secs = |y: i32, mo: i32, d: i32, h: i32, mi: i32, s: i32| -> i64 {
         // days from civil (inverse of the conversion under test)
@@ -1583,7 +1579,14 @@ fn creation_date_is_utc_now_like_c() {
         port.minutes as i32,
         port.seconds as i32,
     );
-    let q = secs(cdt.0, cdt.1, cdt.2, cdt.3, cdt.4, cdt.5);
+    let q = secs(
+        cdt.year,
+        cdt.month,
+        cdt.day,
+        cdt.hours,
+        cdt.minutes,
+        cdt.seconds,
+    );
     assert!((p - q).abs() <= 2, "port {port:?} vs C {cdt:?}");
 }
 

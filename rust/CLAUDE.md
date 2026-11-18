@@ -44,10 +44,10 @@ writable cases, typed refusals and unimplemented semantics in
 - When wrong, correct it in place — doc, comment, commit message.
 
 
-## Known Bugs
+## Oracle harness bugs fixed after the SpecExact audit
 
-- The workspace parity run on the `6c0918df` base aborts with SIGSEGV in
-  `c_parity_io1e` and `c_parity_pack` on Linux x86-64. Both reproduced in
-  a clean source copy with the pinned C oracle and identical testbed fixtures
-  during the mode implementation. The conformance, API facade and lcms2
-  migration suites have independent gates.
+- `c_parity_io1e` passed a 12-byte ICC date record to a C API that copies a
+  native `struct tm`. The test shim now keeps native storage on the C side.
+- `c_parity_pack` passed an 8-byte buffer to a four-plane transform with
+  two pixels and a four-byte plane stride. The fixture now allocates every
+  plane and compares transformed bytes and padding.
