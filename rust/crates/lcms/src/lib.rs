@@ -146,6 +146,8 @@ pub mod pcs;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod pcs;
+mod spec;
+mod spec_text;
 // `types` + `signatures` are pure ICC vocabulary — POD structs and
 // signature constants, no C-API functions. Always pub so the `api` and
 // `lcms2` facades can name shared data types.

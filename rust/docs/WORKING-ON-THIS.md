@@ -43,9 +43,13 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
 
 ## Port discipline
 
-- **1:1 with the C source.** Same operation order, same casts, same
-  constants. Where C is wrong, be wrong the same way (lcms has few genuine
-  bugs; record any in `docs/SUSPECTED-C-BUGS.md` and reproduce them).
+- **Lcms2Exact follows the C source.** Keep operation order, casts and
+  constants. Pin oracle behavior and record confirmed deviations in
+  [C-BUGS.md](C-BUGS.md) and [CONFORMANCE.md](CONFORMANCE.md).
+- **SpecExact follows the audited ICC.1 clauses.** Keep the choice attached
+  to each profile and plan. Test authored bytes, reopen behavior and curve
+  computation with clause-backed expectations. Keep foreign C ABI and
+  migration-facade callers on the default compatibility contract.
 - **No transcriptions of the oracle.** Never re-implement a C function on the
   *test* side; call the compiled symbol. Two transcriptions diverge.
 - **`Option<&Context>` = `cmsContext`**, `None` = NULL (global context).

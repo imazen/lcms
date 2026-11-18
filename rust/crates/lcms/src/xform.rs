@@ -2890,6 +2890,23 @@ pub fn create_extended_transform(
     output_format: u32,
     dw_flags: u32,
 ) -> Option<Box<Transform>> {
+    let profile_ctx = profiles.first().and_then(|p| p.ctx.as_ref());
+    let ctx = ctx.or_else(|| {
+        profile_ctx
+            .filter(|c| crate::spec::enabled(Some(c)))
+            .cloned()
+    });
+    let exact = crate::spec::enabled(ctx.as_ref());
+    if profiles
+        .iter()
+        .any(|p| crate::spec::enabled(p.ctx.as_ref()) != exact)
+        || gamut_profile
+            .as_ref()
+            .is_some_and(|p| crate::spec::enabled(p.ctx.as_ref()) != exact)
+    {
+        crate::spec::refuse("profile and transform behavior modes differ");
+        return None;
+    }
     let mut flags = dw_flags;
     // C checks `cmsFLAGS_NULLTRANSFORM` before validating the profile array —
     // a null transform needs no profiles at all.
@@ -2978,7 +2995,7 @@ pub fn create_extended_transform(
     }
     // `_cmsOptimizePipeline` runs unconditionally in C's `AllocEmptyTransform`:
     // `PreOptimize` strips identity/inverse pairs even under NOOPTIMIZE.
-    {
+    if !exact {
         let mut infmt = input_format;
         let mut outfmt = output_format;
         crate::opt::optimize_pipeline(
@@ -3016,6 +3033,10 @@ pub fn create_extended_transform(
                 gamut_pcs_position,
                 gp,
             );
+            if exact && t.gamut_check.is_none() {
+                crate::spec::refuse("could not construct the SpecExact gamut check");
+                return None;
+            }
             // C seeds the cache after the gamut check exists.
             if t.gamut_check.is_some() {
                 let f = t.dw_flags;
@@ -3074,7 +3095,7 @@ pub fn create_extended_transform(
         }
     }
     // Store the sequence of profiles (cmsxform.c:1267)
-    t.sequence = if flags & crate::types::FLAGS_KEEP_SEQUENCE != 0 {
+    t.sequence = if exact || flags & crate::types::FLAGS_KEEP_SEQUENCE != 0 {
         crate::io1::compile_profile_sequence(profiles)
     } else {
         None

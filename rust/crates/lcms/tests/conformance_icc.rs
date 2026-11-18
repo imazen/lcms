@@ -405,11 +405,11 @@ fn generated_cases() -> Vec<Case> {
 
 /// A profile carrying every tag type the port writes, as v4.4 and v2.1.
 /// The C side re-encodes the port's bytes with C's own writers.
-fn kitchen_sink_cases() -> Vec<Case> {
+fn kitchen_sink_profiles(mode: api::BehaviorMode) -> Vec<(String, Profile)> {
     use api::{IccData, Mlu, Pipeline, Stage, Tag, TagData};
     let mut out = Vec::new();
     for version in [4.4, 2.1] {
-        let mut p = Profile::placeholder();
+        let mut p = Profile::with_mode(mode).placeholder();
         // Version first: tag types are chosen when a tag is written.
         profile::set_profile_version(p.icc_mut(), version);
         p.set_device_class(api::ProfileClass::Display);
@@ -677,20 +677,11 @@ fn kitchen_sink_cases() -> Vec<Case> {
             sig(b"vcgt"),
             TagData::VcgtCurves([g.clone(), g.clone(), g.clone()]),
         );
-        let mut icc = p.icc().clone();
-        let port = profile::save_profile_to_mem(&mut icc);
-        assert!(port.is_some(), "kitchen sink @{version} saves");
-        let cb = port.as_deref().and_then(c_reencode);
-        out.push(Case {
-            name: format!("kitchen-sink@{version}"),
-            port: port.and_then(|b| port_reencode(&b)),
-            c: cb,
-            source: None,
-        });
+        out.push((format!("kitchen-sink@{version}"), p));
     }
     // A NamedColor profile (8.9): CMYK device side, PCSLAB.
     for version in [4.4, 2.1] {
-        let mut p = Profile::placeholder();
+        let mut p = Profile::with_mode(mode).placeholder();
         profile::set_profile_version(p.icc_mut(), version);
         p.set_device_class(api::ProfileClass::NamedColor);
         p.set_color_space(api::ColorSpace::Cmyk);
@@ -732,17 +723,26 @@ fn kitchen_sink_cases() -> Vec<Case> {
         )
         .unwrap();
         w(&mut p, sig(b"ncl2"), TagData::NamedColors(list));
-        let port = profile::save_profile_to_mem(&mut p.icc().clone());
-        assert!(port.is_some(), "named color @{version} saves");
-        let cb = port.as_deref().and_then(c_reencode);
-        out.push(Case {
-            name: format!("named-color@{version}"),
-            port: port.and_then(|b| port_reencode(&b)),
-            c: cb,
-            source: None,
-        });
+        out.push((format!("named-color@{version}"), p));
     }
     out
+}
+
+fn kitchen_sink_cases() -> Vec<Case> {
+    kitchen_sink_profiles(api::BehaviorMode::Lcms2Exact)
+        .into_iter()
+        .map(|(name, p)| {
+            let port = profile::save_profile_to_mem(&mut p.icc().clone());
+            assert!(port.is_some(), "{name} saves");
+            let c = port.as_deref().and_then(c_reencode);
+            Case {
+                name,
+                port: port.and_then(|b| port_reencode(&b)),
+                c,
+                source: None,
+            }
+        })
+        .collect()
 }
 
 /// Every testbed profile, re-encoded through each side's writers.
@@ -1588,7 +1588,7 @@ fn creation_date_is_utc_now_like_c() {
 }
 
 fn with_tag(base: &[u8], tag: &[u8; 4], data: &[u8]) -> Vec<u8> {
-    // Rebuild `base` with one extra tag appended (header fields kept).
+    // Rebuild `base` with the given tag replaced or appended.
     let n = u32::from_be_bytes(base[128..132].try_into().unwrap()) as usize;
     let mut tags: Vec<([u8; 4], Vec<u8>)> = (0..n)
         .map(|i| {
@@ -1599,7 +1599,11 @@ fn with_tag(base: &[u8], tag: &[u8; 4], data: &[u8]) -> Vec<u8> {
             (s, base[off..off + sz].to_vec())
         })
         .collect();
-    tags.push((*tag, data.to_vec()));
+    if let Some((_, payload)) = tags.iter_mut().find(|(signature, _)| signature == tag) {
+        *payload = data.to_vec();
+    } else {
+        tags.push((*tag, data.to_vec()));
+    }
     let mut out = base[..128].to_vec();
     let mut table = (tags.len() as u32).to_be_bytes().to_vec();
     let mut body = Vec::new();
@@ -1817,5 +1821,412 @@ fn lcms2_shim_writes_colorant_tables() {
     match q.read_tag(l2::TagSignature::ColorantTableTag) {
         l2::Tag::NamedColorList(l) => assert_eq!(l.count(), 2),
         _ => panic!("colorant table did not round-trip"),
+    }
+}
+
+fn spec_factory() -> api::ProfileFactory {
+    Profile::with_mode(api::BehaviorMode::SpecExact)
+}
+
+fn check_spec_profile(name: &str, p: &Profile) -> Vec<u8> {
+    let bytes = p.save().unwrap_or_else(|e| panic!("{name}: {e}"));
+    let findings = check(&bytes);
+    assert!(findings.is_empty(), "{name}: {findings:#?}",);
+    if p.version() >> 24 == 4 {
+        use md5::{Digest, Md5};
+        let mut input = bytes.clone();
+        for r in [44..48, 64..68, 84..100] {
+            input[r].fill(0);
+        }
+        assert_eq!(&bytes[84..100], &Md5::digest(&input)[..], "{name}");
+    } else {
+        assert_eq!(&bytes[84..100], &[0; 16], "{name}");
+    }
+    let reopened = spec_factory()
+        .open(&bytes)
+        .unwrap_or_else(|e| panic!("{name} reopen: {e}"));
+    assert_eq!(reopened.behavior_mode(), api::BehaviorMode::SpecExact);
+    let again = reopened
+        .save()
+        .unwrap_or_else(|e| panic!("{name} resave: {e}"));
+    assert!(
+        bytes == again,
+        "{name} re-encode changed {} bytes to {}, first difference at {:?}",
+        bytes.len(),
+        again.len(),
+        bytes.iter().zip(&again).position(|(a, b)| a != b)
+    );
+    if let Some(dir) = std::env::var_os("LCMS_SPEC_EXACT_DUMP") {
+        let dir = std::path::PathBuf::from(dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{name}.icc")), &bytes).unwrap();
+    }
+    bytes
+}
+
+#[test]
+fn spec_exact_generators_and_writable_types() {
+    use api::{ColorSpace, ErrorKind, Tag, TagData};
+    let factory = spec_factory();
+    let g = ToneCurve::gamma(2.2).unwrap();
+    let d50 = d50();
+    let d65 = api::D65;
+    let p3 = CiexyYTriple {
+        Red: xyy(0.680, 0.320),
+        Green: xyy(0.265, 0.690),
+        Blue: xyy(0.150, 0.060),
+    };
+    let generators = [
+        ("sRGB", factory.srgb()),
+        ("Lab4", factory.lab4()),
+        ("Lab4-D65", factory.lab4_with_white_point(&d65).unwrap()),
+        ("Lab2", factory.lab2()),
+        ("XYZ", factory.xyz()),
+        ("Gray-D50", factory.gray_curve(&d50, &g).unwrap()),
+        ("Gray-D65", factory.gray_curve(&d65, &g).unwrap()),
+        ("RGB-P3-D65", factory.rgb(&d65, &p3, [&g; 3]).unwrap()),
+        ("RGB-P3-D50", factory.rgb(&d50, &p3, [&g; 3]).unwrap()),
+        (
+            "LinLink-RGB",
+            factory
+                .linearization_device_link(ColorSpace::Rgb, &[g.clone(), g.clone(), g.clone()])
+                .unwrap(),
+        ),
+        (
+            "LinLink-CMYK",
+            factory
+                .linearization_device_link(ColorSpace::Cmyk, &[g.clone(), g.clone(), g.clone(), g])
+                .unwrap(),
+        ),
+        (
+            "InkLimit-CMYK",
+            factory
+                .ink_limiting_device_link(ColorSpace::Cmyk, 250.0)
+                .unwrap(),
+        ),
+        (
+            "BCHSW",
+            factory
+                .bchsw_abstract(17, 10.0, 1.2, 5.0, 1.1, 5000, 6500)
+                .unwrap(),
+        ),
+    ];
+    for (name, mut p) in generators {
+        check_spec_profile(name, &p);
+        p.set_version(0x0210_0000).unwrap();
+        if p.has_tag(Tag::from(sig(b"psid"))) {
+            let e = p.save().unwrap_err();
+            assert_eq!(e.kind(), ErrorKind::NotSuitable);
+            assert!(e.message().contains("psid"), "{name}: {e}");
+            assert!(p.remove_tag(Tag::from(sig(b"psid"))));
+        }
+        check_spec_profile(&format!("{name}-v2"), &p);
+    }
+    for (name, p) in [("NULL", factory.null()), ("OkLab", factory.oklab())] {
+        for version in [0x0210_0000, 0x0440_0000] {
+            let mut p = p.clone();
+            p.set_version(version).unwrap();
+            assert_eq!(
+                p.save().unwrap_err().kind(),
+                ErrorKind::NotSuitable,
+                "{name}"
+            );
+        }
+    }
+    for (name, p) in kitchen_sink_profiles(api::BehaviorMode::SpecExact) {
+        check_spec_profile(&name, &p);
+    }
+    let mut v2 = factory.lab2();
+    assert!(!lcms::md5::compute_id(v2.icc_mut()));
+    assert_eq!(v2.profile_id().id8, [0; 16]);
+    let mut v4 = factory.srgb();
+    let bytes = v4.save().unwrap();
+    assert!(lcms::md5::compute_id(v4.icc_mut()));
+    assert_eq!(&v4.profile_id().id8, &bytes[84..100]);
+    let bad = ToneCurve::tabulated16(&[0, 50000, 10000, u16::MAX]).unwrap();
+    v4.write_tag(Tag::RED_TRC, TagData::Curve(bad)).unwrap();
+    assert!(Plan::new(&factory.lab4(), &v4, Format::LAB_FLT, Format::RGB_FLT).is_err());
+}
+
+#[test]
+fn spec_exact_device_links_and_mode_isolation() {
+    use api::{BehaviorMode, ErrorKind, ProfileFactory, Tag, flags};
+    let factory: ProfileFactory = spec_factory();
+    let rgb = factory.srgb();
+    let lab = factory.lab4();
+    let gray = factory
+        .gray_curve(&api::D65, &ToneCurve::gamma(2.2).unwrap())
+        .unwrap();
+    let cmyk = factory.open(&testbed("test1.icc")).unwrap();
+    let pairs = [
+        ("CMYK-sRGB", &cmyk, &rgb, Format::CMYK_8, Format::RGB_8),
+        ("sRGB-Lab4", &rgb, &lab, Format::RGB_8, Format::LAB_16),
+        ("sRGB-CMYK", &rgb, &cmyk, Format::RGB_8, Format::CMYK_8),
+        ("sRGB-Gray", &rgb, &gray, Format::RGB_8, Format::GRAY_8),
+    ];
+    for (name, src, dst, fi, fo) in pairs {
+        for version in [2.1, 4.3] {
+            for flags in [
+                0,
+                flags::KEEP_SEQUENCE,
+                flags::KEEP_SEQUENCE | flags::DEVICELINK_8BITS,
+            ] {
+                let id = format!("{name}-{version}-{flags:x}");
+                let plan = Plan::build(src, dst, fi, fo, Intent::Perceptual, flags)
+                    .unwrap_or_else(|e| panic!("{id}: {e}"));
+                assert_eq!(plan.behavior_mode(), BehaviorMode::SpecExact);
+                let link = plan
+                    .to_device_link_flags(version, flags)
+                    .unwrap_or_else(|e| panic!("{id}: {e}"));
+                assert_eq!(link.behavior_mode(), BehaviorMode::SpecExact);
+                let seq = link.get(Tag::from(sig(b"pseq"))).unwrap().as_seq().unwrap();
+                assert_eq!(seq.len(), 2);
+                check_spec_profile(&id, &link);
+            }
+        }
+    }
+    let ordinary = Profile::srgb();
+    let parity = Profile::with_mode(BehaviorMode::Lcms2Exact).srgb();
+    assert_eq!(ordinary.behavior_mode(), BehaviorMode::Lcms2Exact);
+    assert_eq!(ordinary.version(), parity.version());
+    let e = Plan::new(&ordinary, &rgb, Format::RGB_8, Format::RGB_8).unwrap_err();
+    assert_eq!(e.kind(), ErrorKind::NotSuitable);
+    let same = Plan::new(&ordinary, &parity, Format::RGB_8, Format::RGB_8).unwrap();
+    assert_eq!(same.behavior_mode(), BehaviorMode::Lcms2Exact);
+
+    let proof = Plan::new_proofing(
+        &rgb,
+        &rgb,
+        &rgb,
+        Format::RGB_8,
+        Format::RGB_8,
+        Intent::RelativeColorimetric,
+        Intent::RelativeColorimetric,
+        flags::SOFT_PROOFING | flags::GAMUT_CHECK | flags::BLACK_POINT_COMPENSATION,
+    )
+    .unwrap();
+    assert_eq!(proof.behavior_mode(), BehaviorMode::SpecExact);
+    let mut out = [[0u8; 3]];
+    proof.transform_pixels(&[[0u8, 121, 255]], &mut out);
+}
+
+#[test]
+fn spec_exact_table_68_and_annex_f1() {
+    use api::{BehaviorMode, ColorSpace};
+    let bound = |curve: ToneCurve| curve.with_mode(BehaviorMode::SpecExact).unwrap();
+    let g = ToneCurve::parametric(4, &[1.0, 2.0, 0.0, -1.0, 0.5]).unwrap();
+    assert_eq!(g.eval_float(0.75), 1.5);
+    assert_eq!(g.eval_float(0.25), -0.25);
+    let exact = bound(g.clone());
+    assert_eq!(exact.eval_float(0.75), 1.0);
+    assert_eq!(exact.eval_float(0.25), 0.0);
+    let offset = bound(ToneCurve::parametric(3, &[1.0, 1.0, -0.25, 0.125]).unwrap());
+    assert_eq!(offset.eval_float(0.25), 0.125);
+    let factory = spec_factory();
+    let link = factory
+        .linearization_device_link(ColorSpace::Rgb, &[g.clone(), g.clone(), g])
+        .unwrap();
+    for profile in [link.clone(), factory.open(&link.save().unwrap()).unwrap()] {
+        let plan = Plan::new_multiprofile(
+            &[&profile],
+            Format::RGB_FLT,
+            Format::RGB_FLT,
+            Intent::Perceptual,
+            0,
+        )
+        .unwrap();
+        let mut out = [[0.0f32; 3]];
+        plan.transform_pixels(&[[0.75f32, 0.25, 0.5]], &mut out);
+        assert_eq!(out, [[1.0, 0.0, 1.0]]);
+    }
+
+    let size = 4096;
+    let table: Vec<u16> = (0..size)
+        .map(|i| {
+            let x = i as f64 / f64::from(size - 1);
+            let v = if x < 0.3 {
+                x / 0.3 * 0.5
+            } else if x <= 0.6 {
+                0.5
+            } else {
+                0.5 + (x - 0.6) / 0.4 * 0.5
+            };
+            (v * 65535.0).round() as u16
+        })
+        .collect();
+    let lo = table.iter().position(|&v| v == 32768).unwrap() as f32 / (size - 1) as f32;
+    let hi = table.iter().rposition(|&v| v == 32768).unwrap() as f32 / (size - 1) as f32;
+    let dense = bound(ToneCurve::tabulated16(&table).unwrap())
+        .inverse()
+        .unwrap();
+    let stored = 32768.0f32 / 65535.0;
+    assert_eq!(dense.eval_float(stored), hi);
+    assert!(dense.eval_float(0.5) < lo);
+    assert!(dense.eval_float(f32::from_bits(stored.to_bits() - 1)) <= lo);
+    assert!(dense.eval_float(f32::from_bits(stored.to_bits() + 1)) >= hi);
+
+    let y = 32768.0f32 / 65535.0;
+    for (samples, ascending) in [(17, true), (4096, true), (257, false)] {
+        let table = if ascending {
+            [0, 32768, 32768, 32768, 65535]
+        } else {
+            [65535, 32768, 32768, 32768, 0]
+        };
+        let inverse = bound(ToneCurve::tabulated16(&table).unwrap())
+            .inverse_sampled(samples)
+            .unwrap();
+        assert_eq!(inverse.eval_float(y), 0.75);
+        assert_eq!(inverse.eval16(32768), 49151);
+        let below = inverse.eval_float(f32::from_bits(y.to_bits() - 1));
+        let above = inverse.eval_float(f32::from_bits(y.to_bits() + 1));
+        if ascending {
+            assert!(below <= 0.25 && above >= 0.75);
+        } else {
+            assert!(above <= 0.25 && below >= 0.75);
+        }
+    }
+    for (table, at) in [
+        ([0, 30000, 52428, 52428, 52428], 0.8),
+        ([0, 30000, 65535, 65535, 65535], 1.0),
+        ([65535, 30000, 0, 0, 0], 0.0),
+    ] {
+        let inverse = bound(ToneCurve::tabulated16(&table).unwrap())
+            .inverse()
+            .unwrap();
+        assert_eq!(inverse.eval_float(at), 0.5);
+    }
+    let first = bound(ToneCurve::tabulated16(&[20000, 20000, 65535]).unwrap())
+        .inverse()
+        .unwrap();
+    assert_eq!(first.eval_float(0.0), 0.5);
+    let constant = bound(ToneCurve::tabulated16(&[20000; 3]).unwrap());
+    assert!(constant.inverse().is_err());
+    let clip = bound(ToneCurve::parametric(4, &[1.0, 2.0, 0.0, 2.0, 0.5]).unwrap());
+    assert_eq!(clip.inverse().unwrap().eval_float(1.0), 0.5);
+}
+
+#[test]
+fn spec_exact_cicp_text_and_malformed_boundaries() {
+    use api::{ErrorKind, Locale, Mlu, Tag, TagValue, VideoSignal};
+    let factory = spec_factory();
+    let mut p = factory.srgb();
+    let signal = VideoSignal {
+        colour_primaries: 2,
+        transfer_characteristics: 13,
+        matrix_coefficients: 0,
+        video_full_range_flag: 1,
+    };
+    let coords = [41943, 21627, 19661, 39322, 9830, -1, 20493, 21561];
+    p.write_cicp_with_chromaticities(signal, coords).unwrap();
+    let mut desc = Mlu::new();
+    desc.set(Locale::new("en_US"), "Display 🐈").unwrap();
+    desc.set(Locale::new("de_DE"), "Bildschirm").unwrap();
+    p.write_tag(Tag::from(sig(b"desc")), desc).unwrap();
+    let bytes = check_spec_profile("extended-cicp", &p);
+    let p = factory.open(&bytes).unwrap();
+    assert_eq!(p.cicp_chromaticities(), Some(coords));
+    assert!(matches!(p.get(Tag::CICP), Some(TagValue::VideoSignal(v)) if *v == signal));
+    assert_eq!(
+        p.info_in(api::InfoType::Description, Locale::new("en_US"))
+            .as_deref(),
+        Some("Display 🐈")
+    );
+    assert_eq!(
+        p.info_in(api::InfoType::Description, Locale::new("de_DE"))
+            .as_deref(),
+        Some("Bildschirm")
+    );
+    assert!(Profile::open(&bytes).unwrap().get(Tag::CICP).is_none());
+    let mut truncated = bytes.clone();
+    truncated.pop();
+    assert_eq!(
+        factory.open(&truncated).unwrap_err().kind(),
+        ErrorKind::CorruptionDetected
+    );
+    let bad_cicp = with_tag(
+        &factory.srgb().save().unwrap(),
+        b"cicp",
+        b"cicp\0\0\0\0\x02\x0d\0\x01\0",
+    );
+    assert_eq!(
+        factory.open(&bad_cicp).unwrap_err().kind(),
+        ErrorKind::CorruptionDetected
+    );
+    let opaque = with_tag(&bytes, b"xUnk", b"zRaw\0\0\0\0test");
+    let resaved = factory.open(&opaque).unwrap().save().unwrap();
+    let tag = |b: &[u8]| -> Vec<u8> {
+        let n = u32::from_be_bytes(b[128..132].try_into().unwrap()) as usize;
+        let data = b[132..132 + n * 12]
+            .chunks_exact(12)
+            .find(|r| &r[..4] == b"xUnk")
+            .unwrap();
+        let off = u32::from_be_bytes(data[4..8].try_into().unwrap()) as usize;
+        let len = u32::from_be_bytes(data[8..].try_into().unwrap()) as usize;
+        b[off..off + len].to_vec()
+    };
+    assert_eq!(tag(&resaved), tag(&opaque));
+}
+
+#[test]
+fn spec_exact_legacy_translation_and_extended_mpe() {
+    use api::{BehaviorMode, ErrorKind, InfoType, Locale, Pipeline, Stage, Tag, TagData};
+    let factory = spec_factory();
+    let mut desc = b"desc\0\0\0\0".to_vec();
+    desc.extend(6u32.to_be_bytes());
+    desc.extend(b"ASCII\0");
+    desc.extend(0u32.to_be_bytes());
+    desc.extend(2u32.to_be_bytes());
+    desc.extend(0x03a9u16.to_be_bytes());
+    desc.extend([0; 72]);
+    let base = Profile::lab2().save().unwrap();
+    let bytes = with_tag(&base, b"desc", &desc);
+    let mut p = factory.open(&bytes).unwrap();
+    assert_eq!(
+        p.info_in(InfoType::Description, Locale::new("en_US"))
+            .as_deref(),
+        Some("ASCII")
+    );
+    p.set_version(0x0440_0000).unwrap();
+    let out = check_spec_profile("v2-description-to-v4", &p);
+    let p = factory.open(&out).unwrap();
+    assert_eq!(
+        p.info_in(InfoType::Description, Locale::NONE).as_deref(),
+        Some("Ω")
+    );
+    assert_eq!(
+        p.info_in(InfoType::Description, Locale::new("en_US"))
+            .as_deref(),
+        Some("ASCII")
+    );
+
+    let mut link = factory.srgb();
+    let build_pipeline = |curve: &ToneCurve| {
+        let mut pipe = Pipeline::new(3, 3).unwrap();
+        pipe.push(Stage::tone_curves(&[curve; 3]).unwrap()).unwrap();
+        pipe
+    };
+    let table = ToneCurve::tabulated16(&[0, 65535]).unwrap();
+    let d2b0 = Tag::from(sig(b"D2B0"));
+    link.write_tag(d2b0, TagData::Pipeline(build_pipeline(&table)))
+        .unwrap();
+    assert_eq!(link.save().unwrap_err().kind(), ErrorKind::NotSuitable);
+
+    let extended = ToneCurve::parametric(6, &[1.0, 2.0, 0.0, 0.0]).unwrap();
+    assert_eq!(extended.eval_float(0.75), 1.5);
+    assert_eq!(
+        extended
+            .with_mode(BehaviorMode::SpecExact)
+            .unwrap_err()
+            .kind(),
+        ErrorKind::NotSuitable
+    );
+    link.write_tag(d2b0, TagData::Pipeline(build_pipeline(&extended)))
+        .unwrap();
+    let bytes = check_spec_profile("extended-mpe", &link);
+    for p in [link, factory.open(&bytes).unwrap()] {
+        let pipe = p.get(d2b0).unwrap().as_pipeline().unwrap();
+        let mut out = [0.0f32; 3];
+        pipe.eval_float(&[0.75; 3], &mut out);
+        assert_eq!(out, [1.5; 3]);
     }
 }

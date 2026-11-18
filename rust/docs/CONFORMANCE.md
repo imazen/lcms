@@ -1,25 +1,27 @@
 # ICC and colorimetry conformance
 
-What the port writes and computes, checked against the published
-specifications. The port is bit-exact with lcms2.20, so this is also an audit
-of lcms2.20: where lcms2 departs from a specification, the port departs the
-same way, and that is listed here rather than changed.
+The default `BehaviorMode::Lcms2Exact` reproduces the Little CMS 2.20
+oracle, including the deviations in the compatibility audit below.
+`BehaviorMode::SpecExact` opts into ICC.1 profile serialization and curve
+computation for the audited behaviors. See the [Rust API guide](../README.md)
+for profile factories, linking and standalone curves.
 
-Run it: `just conformance` (part of the full test suite). Independent
-validation: `just icc-validate` (needs ICC's iccDEV `iccDumpProfile`).
+Run the compatibility and specification gates with `just conformance`.
+`LCMS_SPEC_EXACT_DUMP=<fresh-directory>` writes the SpecExact profiles for
+independent readback with ICC's `iccDumpProfile -v`.
+`just icc-validate` compares the compatibility writer with the C oracle.
 
 ## Sources
 
-From `imazen-private/standards-ark` (`icc/`, `itu-t/`) and the zenpapers
-corpus, at the latest revisions: zenpapers `docs/standards-and-references.md`
-records a 2026-11-16 check of color.org that the base specifications are
-still ICC.1:2022 and ICC.2:2023, with the amendments as the later changes.
+The ICC publishes the base v4 text, historical v2 text and current amendments.
+The CICP amendment supplies the 44-byte encoding and describes the companion
+HDR amendment's ColorSpace placement rule. [ICC specifications and amendments](https://www.color.org/v4spec/)
 
 | Text | Used for |
 |---|---|
-| ICC.1:2022-05, profile version 4.4.0.0 | clauses 4, 6.3.4, 6.4, 7, 8, 9, 10; Annex E; Annex F (normative) |
-| ICC.1:2001-04, profile version 2.4.0 | clauses 6.1 to 6.5, for profiles the port writes as v2 |
-| ICC.1 amendment: cicpType ColourPrimaries = 2 chromaticities (approved 2026-10-19) | the 44-byte cicpType |
+| [ICC.1:2022-05](https://www.color.org/specifications/ICC.1-2022-05.pdf), profile version 4.4.0.0 | clauses 4, 6.3.4, 6.4, 7, 8, 9, 10; Annex E; Annex F (normative) |
+| [ICC.1:2001-04](https://www.color.org/specifications/ICC.1-2001-04.pdf), profile version 2.4.0 | clauses 6.1 to 6.5, for profiles the port writes as v2 |
+| [ICC.1 amendment for cicpType chromaticities](https://media.color.org/icc1_amendment_cicptype.pdf), approved 2026-10-19 | the 44-byte cicpType |
 | ICC.1 amendment: Headroom Adaptive Gain Curve (approved 2026-10-19) | the 'HAGC' tag |
 | ICC 3-component colour encoding registry: sRGB | the built-in sRGB profile |
 | ICC technical notes: populating v4 matrix entries; applying partial adaptation | read; neither adds a requirement lcms2 is subject to (the first is guidance for profile builders, the second concerns iccMAX PCC tags) |
@@ -106,7 +108,46 @@ D1 to D12 are enforced by `KNOWN_LCMS2_DEVIATIONS`; D13 to D15 are pinned by
 `cicp_with_2026_chromaticity_extension`, so a change in lcms2 (or the port)
 fails a test.
 
-### Conformant, as checked
+## SpecExact disposition
+
+| Finding | ICC rule and SpecExact behavior |
+|---|---|
+| D1 | DeviceLinks require `pseq` under v4 §8.6 and v2 §6.3.4.1. Plans keep the source sequence even when `KEEP_SEQUENCE` is clear. The writer emits `pseq` and the applicable v4 `psid`. |
+| D2 | The NULL profile is an internal gamut-check sink. Export returns `ErrorKind::NotSuitable` because the profile lacks the required Output transform set (§8.5.2) and its reduction cannot use the declared matrix-only LUT model (§10.13.1). The internal OkLab profile also returns a typed refusal. |
+| D3 | A v4 gray Display generator records D50 `wtpt` and the supplied-white-to-D50 Bradford `chad` (§9.2.36 and Annex E). Imported v4 Display profiles with another `wtpt` need correction before export. |
+| D4 | v2 §6.2.3 and §6.5.17 count the exact bytes of `desc`. The writer keeps tag-table alignment outside the payload and writes v2 `pseq` descriptions back to back (Table 59). |
+| D5 | `psid` writes each structure at a four-byte boundary with zero padding and counts its unpadded size (§10.20 and §7.3.5). |
+| D6 | The selected version governs known tag availability and the payload encoding (§7.3.1, §9.2 and v2 §6.4). A downgrade that would discard metadata such as `psid` or `cicp` returns `NotSuitable`. The author can explicitly remove the affected tag. Opaque private payloads survive ordinary round trips. |
+| D7 | Legacy `lut8Type` and `lut16Type` require a CLUT (§§10.10–10.11 and v2 §6.5.7). The writer supplies a two-point-per-axis identity grid for a compatible curves-only pipeline and refuses shapes the legacy format cannot represent. |
+| D8 | v2 invariant ASCII becomes `enUS` (§10.20.3). A distinct legacy Unicode string with unspecified language maps to the unknown locale. The writer emits UTF-16BE and uses valid locale byte shapes (§10.15), including zero for unknown (§10.1). |
+| D9 | The v2 profile ID bytes are reserved (v2 §6.1). SpecExact writes zero there and explicitly refuses a v2 ID computation. |
+| D10 | Profile creators **should** record an ID (§7.2.18). SpecExact computes MD5 over the final v4 encoding with the specified fields zeroed for hashing. Saving an immutable profile computes the ID in the output bytes. |
+| D11 | Each dictionary data item starts at a four-byte offset, with zero padding after the payload (§10.9). The record size accounts for a display value without a display name. |
+| D12 | Every nonempty localized dictionary element has a full `mluc` header (§10.9). The reader retains optional missing values and distinguishes them from empty strings. Bare legacy display elements and hidden-display records without a representation return a typed read error. |
+| D13 | Table 68 functions evaluate in the unit domain and clip to the unit range (§10.18). ICC TRC tags and embedded LUT curves use bounded evaluation. Explicit unbounded primitives and MPE formula segments keep their range. |
+| D14 | Annex F.1 evaluates the inverse of the actual forward curve. An interior plateau selects its highest x, a terminal one selects its lowest x, and an out-of-range query selects the nearest ordinate. A constant, nonmonotone or already generalized-inverse curve returns an error on inversion. |
+| D15 | SpecExact retains all eight signed fixed-point coordinates in amended `cicpType` and exposes both read and write access. The extended tag requires ColourPrimaries 2 and an eligible v4.4 RGB or YCbCr profile. ICC transforms continue to follow the profile's colorimetric model. |
+
+The clause checker covers the writable generators and the existing tag matrix
+in v2 and v4, including transform-generated DeviceLinks. It checks the
+serialized bytes and the test reopens and resaves them. The separate numerical
+checks cover Table 68 clipping, unbounded MPE evaluation, and Annex F.1 on
+encoded plateau ordinates and their neighbors, including a 4096-entry forward
+table. DeviceLink export can sample a linked pipeline into an ICC CLUT. The
+live inverse retains its discontinuity, and the exported CLUT has the
+resolution selected for that serialization.
+
+The SpecExact reader checks directory bounds and decodes supported known tags
+within their declared spans. It accepts some recoverable legacy encodings.
+Profile classes, required models and the audited constraints are checked on
+export. Valid legacy ScriptCode and nonzero v2 Unicode language codes, v2
+downgrades that would lose multiple translations, dictionary hidden-display
+records, and standalone serialization of a generalized inverse currently
+require another representation. Arbitrary private and unimplemented tag
+semantics remain opaque. The unverified standards below also apply to
+SpecExact.
+
+### Compatibility findings that conform
 
 - Header (7.2): every field with a constraint (size, version, class,
   colour spaces, date, 'acsp', platform, flags, attributes, intent, PCS
@@ -167,6 +208,30 @@ allows Y and L* to disagree. All three encode to Table 16's 16-bit values
 
 These modules are still bit-exact with lcms2.20 (their `c_parity_*` gates).
 
+## Independent SpecExact readback
+
+iccDEV `iccDumpProfile -v` (IccProfLib 2.4.2.6+4a9ca21) read 57
+SpecExact outputs. Its verdicts were 23 valid, 26 with warnings, 3
+noncompliant and 5 critical. The two latter categories were the following
+validator disagreements.
+
+- Three built-in DeviceLinks have one-entry `pseq` tags with the empty
+  descriptions recommended by §10.19. iccDEV rejects their structure.
+- Two v2 files report zero input-table entries. The encoded counts are
+  2 for XYZ `A2B0` and 4096 for the kitchen-sink `B2A0`.
+- Three CMYK-to-sRGB v4 exports carry the same real manufacturer and
+  model strings. iccDEV expects four-byte alignment for descriptions
+  within `pseq`. Table 70 places the model immediately after the
+  manufacturer, with tag-table padding outside the complete tag.
+
+Other verdicts included `wtpt` on DeviceLinks, empty recommended `mluc`
+placeholders, unknown locale code 0, and a negative Z in the Bradford-adapted
+P3 red colorant. The profile checker found no violations on the 57 outputs.
+The amended CICP sample received a valid verdict, and the Rust reopen
+test separately compared all eight coordinate words. The checker and the
+validator cover the layouts they inspect. Additional ICC rules and
+unimplemented modules remain outside this gate.
+
 ## Where iccDEV disagrees
 
 A disagreement is settled against the specification text:
@@ -186,8 +251,8 @@ A disagreement is settled against the specification text:
   recommends, and language code 0x0000 is called malformed, where 10.1 makes
   0 the "unknown" value of enumerated fields.
 - iccDEV expects mluc descriptions inside 'pseq' to start on 4-byte
-  boundaries; Table 70 has no padding field and lcms2 writes none for mluc
-  (it does pad textDescriptionType: D4). No checked case hit this.
+  boundaries; Table 70 places the descriptions back to back. The
+  SpecExact CMYK-to-sRGB profiles above exercise this disagreement.
 
 Upstream reports to iccDEV would be posts outside the imazen/lilith orgs and
 need the owner's approval.

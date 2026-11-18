@@ -92,10 +92,16 @@ pub(crate) fn formatter_for_colorspace(icc: &IccProfile, n_bytes: u32, is_float:
 /// `_cmsLCMScolorSpace` inverse — colorspace signature → PT_* enum
 /// `CreateRoundtripXForm` — Lab4→prof→prof→Lab4 (rel, intent, rel, rel)
 fn create_roundtrip_xform(icc: &mut IccProfile, intent: u32) -> Option<crate::xform::Transform> {
-    let hlab = virt::create_lab4_profile(None, None)?;
+    let hlab = virt::create_lab4_profile(
+        icc.ctx.clone().filter(|c| crate::spec::enabled(Some(c))),
+        None,
+    )?;
     // TYPE_Lab_DBL = float|colorspace(Lab)|3chan|bytes0
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
-    let hlab2 = virt::create_lab4_profile(None, None)?;
+    let hlab2 = virt::create_lab4_profile(
+        icc.ctx.clone().filter(|c| crate::spec::enabled(Some(c))),
+        None,
+    )?;
     // C passes the same handle twice. Clone it (tags already decoded stay
     // decoded, undecoded ones stay raw) — a serialize+reopen copy would
     // re-encode decoded tags and make the black point depend on which
@@ -166,7 +172,10 @@ fn black_point_as_darker_colorant(icc: &mut IccProfile, intent: u32) -> Option<C
     if n_ch != crate::pack::t_channels(fmt) {
         return None;
     }
-    let hlab = virt::create_lab2_profile(None, None)?;
+    let hlab = virt::create_lab2_profile(
+        icc.ctx.clone().filter(|c| crate::spec::enabled(Some(c))),
+        None,
+    )?;
     let type_lab_dbl: u32 = 1 << 22 | 10 << 16 | 3 << 3;
     // same handle in C — clone, not serialize+reopen (see create_roundtrip_xform)
     let prof = Box::new(icc.clone());

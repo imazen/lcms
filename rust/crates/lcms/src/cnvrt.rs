@@ -827,7 +827,10 @@ fn make_last_proof(
     in_fmt: u32,
     out_fmt: u32,
 ) -> Option<Box<crate::xform::Transform>> {
-    let lab = crate::virt::create_lab4_profile(None, None)?;
+    let lab = crate::virt::create_lab4_profile(
+        p.ctx.clone().filter(|c| crate::spec::enabled(Some(c))),
+        None,
+    )?;
     let pd = dup_box(p)?;
     let mut profs = vec![pd, lab];
     let mut bpc = [false, false];
@@ -1066,7 +1069,10 @@ fn detect_tac(p: &mut IccProfile) -> f64 {
     }
     let n_out = n_out as usize;
     // Lab → profile transform (perceptual, no opt/cache)
-    let lab = match crate::virt::create_lab4_profile(None, None) {
+    let lab = match crate::virt::create_lab4_profile(
+        p.ctx.clone().filter(|c| crate::spec::enabled(Some(c))),
+        None,
+    ) {
         Some(l) => l,
         None => return 0.0,
     };
