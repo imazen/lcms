@@ -232,6 +232,27 @@ test separately compared all eight coordinate words. The checker and the
 validator cover the layouts they inspect. Additional ICC rules and
 unimplemented modules remain outside this gate.
 
+## moxcms readback
+
+On the same 57 SpecExact outputs, moxcms 0.9.2 parsed and re-encoded 55.
+It returned `InvalidProfile` for the v2 CMYK ink-limiting and linearization
+DeviceLinks. Both files passed the clause checker and received valid iccDEV
+verdicts. [Pinned moxcms revision](https://github.com/awxkee/moxcms/tree/5fc602b66fefeb40094a4adc7eea965aae0c28ea)
+
+Across successful re-encodes, moxcms dropped all 28 input `pseq` tags,
+all 15 `psid` tags, and the dictionary in the v4 tag matrix. Its amended
+CICP readback retained the four base fields and wrote a 12-byte tag from
+the 44-byte input. This probe compared parse results and tag retention.
+Pixel agreement requires a transform comparison.
+
+The separate arithmetic witnesses explain two further differences. The
+moxcms default RGB float transform clips, while its direct parametric
+evaluator and explicitly enabled extended-range transform can return
+values outside the unit range. Its sampled inverse selects an interior
+plateau value and a different terminal value for the tested 4096-entry
+curves. SpecExact uses the endpoint rule from Annex F.1.
+[ICC.1:2022](https://www.color.org/specifications/ICC.1-2022-05.pdf)
+
 ## Where iccDEV disagrees
 
 A disagreement is settled against the specification text:
