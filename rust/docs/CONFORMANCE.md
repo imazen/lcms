@@ -147,6 +147,35 @@ require another representation. Arbitrary private and unimplemented tag
 semantics remain opaque. The unverified standards below also apply to
 SpecExact.
 
+## Remaining ICC.1 gaps
+
+The following probes used the public Rust API in SpecExact mode at
+`1dfbdfff`. The transform witnesses save and reopen the authored profiles
+before linking. Numerical expectations come from the ICC.1 clauses and
+encoded operands. [ICC.1:2022](https://www.color.org/specifications/ICC.1-2022-05.pdf)
+
+| Priority | Clause and witness | Next change |
+|---|---|---|
+| 1 | **DeviceLink float selection (§8.10.3 and §6.3.4.1).** A single RGB → XYZ DeviceLink with a constant `D2B0` returns XYZ `[0.2, 0.3, 0.4]` for perceptual and `[0.3999939, 0.59999084, 0.7999878]` for media-relative. The two `D2B0` branches take different PCS normalization paths. | Use the same float normalization whenever the DeviceLink or Abstract profile selects `D2B0`. Exercise all intents, Lab/XYZ endpoints, and supported fallback. |
+| 1 | **Absolute float tags (§9.1, §9.2.12, §9.2.28).** A `D2B3` that emits XYZ `[0.2, 0.3, 0.4]` into a D50 XYZ identity returns `[0.1000003, 0.15, 0.19999762]` with source `wtpt` at half D50. The selected tag already supplies absolute colorimetry. | Carry the chosen tag's PCS semantics into linking. Apply media-white conversion only on the sides using relative PCS. Exercise both direct tags, either side by itself, and relative fallback. |
+| 1 | **PCS encoding on resave (§6.3.4.2, Tables 12–13, §10.10, Tables 42–43).** Changing a v2 RGB → Lab profile to v4 rewrites `mft2` as `mAB`. A constant legacy tuple `[32768, 32768, 32768]` measured approximately Lab `[50.1961, 0, 0]` before and `[50.0008, -0.4981, -0.4981]` after, using media-relative intent. Both encodings pass the byte checker. | Preserve a still-permitted LUT type or convert the PCS samples explicitly. Return a typed refusal when the target cannot preserve the transform. Compare pixels across version changes in both directions. |
+| 2 | **Unsupported MPE fallback (§8.10.2–3 and §10.16.1).** A profile with usable matrix/TRCs and an optional `D2B0` with an unrecognized process element returns a profile-open error. | Distinguish a well-framed unsupported element from malformed data. Preserve unsupported optional payloads and use the next permitted transform. |
+| 2 | **Export model validation (§8.4.3, Table 41, §9.2.15).** The writer saves an RGB matrix/TRC profile relabelled CMYK, a 1→1 `A2B0` in a 3→3 RGB/XYZ profile, and a zero `chad` matrix. The clause checker catches the singular matrix. iccDEV catches the channel mismatch and accepts the other two witnesses. | Validate the header against the selected model and tag channel counts. Check that the nine encoded `chad` values remain invertible after fixed-point quantization. Add explicit rejection witnesses to the writer gate. |
+
+The next work should keep `Lcms2Exact` on its existing oracle gates. The
+SpecExact gates should check the selected transform and output coordinates
+as well as the file layout. A profile structure verdict alone cannot
+establish that a transform uses the intended PCS encoding.
+
+Additional feature work includes typed `resp` calibration data (§9.2.38 and
+§10.21) and the approved `HAGC` metadata and HDR operation. The current tag
+reader preserves these as opaque bytes. Black-point compensation can be
+audited separately against the published ISO 18619 edition. The publicly
+available ICC committee draft can guide fixture design.
+[Headroom Adaptive Gain Curve amendment](https://media.color.org/icc1_amendment_headroom_adaptive_gain_curve.pdf)
+[ISO 18619:2015](https://www.iso.org/standard/63033.html)
+[ICC-hosted committee draft](https://archive.color.org/files/BlackPointCompensation.pdf)
+
 ### Compatibility findings that conform
 
 - Header (7.2): every field with a constraint (size, version, class,
@@ -159,8 +188,8 @@ SpecExact.
 - Type layouts (10; v2 6.5): 21 of the 30 ICC.1:2022 tag types appear in
   checked v4 profiles. The other 9: lut8Type/lut16Type, which lcms2 writes
   only in v2 profiles (checked there, except D7); dataType, which no v4 tag
-  uses (checked in v2); responseCurveSet16Type, which the port reads but has
-  no writer for; and the five ui*/uf32 array types, which no ICC.1 tag uses.
+  uses (checked in v2); responseCurveSet16Type, which the port preserves
+  as opaque tag data; and the five ui*/uf32 array types, which no ICC.1 tag uses.
   Across both versions 27 ICC types are checked (plus Apple's private
   'vcgt'), including the v2-only textDescriptionType, screeningType and
   ucrbgType.
