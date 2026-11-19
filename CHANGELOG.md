@@ -11,3 +11,4 @@
 ### Fixed
 
 - Correct native date storage and planar stride buffer sizing in the C oracle tests. (929c4c0745)
+- Honor ICC LUT precedence and direct absolute PCS, preserve legacy LUT encodings on resave, and validate SpecExact export models. (732a9f3c12)
