@@ -29,7 +29,64 @@ pub(crate) fn decode_known_tags(icc: &mut IccProfile) -> bool {
     tags.into_iter().all(|sig| {
         get_tag_descriptor(icc.ctx.as_ref(), sig).is_none()
             || profile::cms_read_tag(icc, sig).is_some()
+            || is_opaque_mpe(icc, sig)
     })
+}
+
+pub(crate) fn is_opaque_mpe(icc: &IccProfile, sig: u32) -> bool {
+    let Ok(i) = usize::try_from(profile::search_tag(icc, sig, true)) else {
+        return false;
+    };
+    icc.tag_save_as_raw[i]
+        && icc.tag_type_sigs[i] == u32::from_be_bytes(*b"mpet")
+        && icc.tag_offsets[i] != 0
+}
+
+// ICC.1 §10.16 defines the framing even for an undefined element type.
+// Validate it before allowing the complete tag to be carried as opaque data.
+fn mpe_has_undefined_element(bytes: &[u8]) -> Option<bool> {
+    let channels = |data: &[u8], at: usize| {
+        let n = u16::from_be_bytes(data.get(at..at + 2)?.try_into().ok()?);
+        (n != 0).then_some(n)
+    };
+    let mut input = channels(bytes, 8)?;
+    let output = channels(bytes, 10)?;
+    let n = u32_at(bytes, 12)? as usize;
+    if n == 0 {
+        return None;
+    }
+    let start = 16usize.checked_add(n.checked_mul(8)?)?;
+    let mut undefined = false;
+    let positions = bytes.get(16..start)?;
+    let mut spans = Vec::new();
+    spans.try_reserve_exact(n).ok()?;
+    for position in positions.chunks_exact(8) {
+        let offset = u32_at(position, 0)? as usize;
+        let size = u32_at(position, 4)? as usize;
+        if offset < start || offset % 4 != 0 || size < 12 {
+            return None;
+        }
+        let end = offset.checked_add(size)?;
+        let element = bytes.get(offset..end)?;
+        if element[4..8] != [0; 4] || channels(element, 8)? != input {
+            return None;
+        }
+        input = channels(element, 10)?;
+        undefined |= !matches!(&element[..4], b"cvst" | b"matf" | b"clut");
+        spans.push((offset, end));
+    }
+    spans.sort_unstable();
+    spans.dedup();
+    let contiguous = spans.windows(2).all(|p| {
+        let (end, next) = (p[0].1, p[1].0);
+        bytes
+            .get(end..next)
+            .is_some_and(|pad| pad.len() <= 3 && pad.iter().all(|&v| v == 0))
+    });
+    if input != output || spans[0].0 != start || !contiguous {
+        return None;
+    }
+    Some(undefined)
 }
 
 pub(crate) fn bind_curves(object: &mut TagObject, kind: u32) -> bool {
@@ -60,10 +117,15 @@ pub(crate) fn decode_tag(
     handler: &TagTypeHandler,
     bytes: &[u8],
     count: &mut u32,
-) -> Result<TagObject, &'static str> {
+) -> Result<Option<TagObject>, &'static str> {
     let kind = handler.signature;
     if bytes.get(4..8) != Some(&[0; 4]) {
         return Err("nonzero tag reserved field");
+    }
+    if kind == u32::from_be_bytes(*b"mpet")
+        && mpe_has_undefined_element(bytes).ok_or("invalid MPE element framing")?
+    {
+        return Ok(None);
     }
     let obj = if &kind.to_be_bytes() == b"cicp" {
         Some(TagObject::VideoSignal(
@@ -74,7 +136,7 @@ pub(crate) fn decode_tag(
     };
     if let Some(obj) = obj {
         *count = 1;
-        return Ok(obj);
+        return Ok(Some(obj));
     }
     let mut io =
         io::io_handler_from_mem(None, bytes.to_vec(), "r").ok_or("cannot open tag data")?;
@@ -97,7 +159,7 @@ pub(crate) fn decode_tag(
         };
         lut.set_save_as_8bits(eight_bit);
     }
-    Ok(obj)
+    Ok(Some(obj))
 }
 
 pub(crate) fn read_cicp(icc: &IccProfile, bytes: &[u8]) -> Option<VideoSignal> {
@@ -259,6 +321,35 @@ fn validate_pipeline(lut: &Pipeline, kind: &[u8; 4]) -> bool {
     true
 }
 
+fn pipeline_dimensions(icc: &IccProfile, sig: u32, input: u32, output: u32) -> bool {
+    let device = crate::pcs::channels_of_color_space(icc.color_space) as u32;
+    let pcs = crate::pcs::channels_of_color_space(icc.pcs) as u32;
+    let expected = match &sig.to_be_bytes() {
+        b"A2B0" | b"A2B1" | b"A2B2" | b"D2B0" | b"D2B1" | b"D2B2" | b"D2B3" => (device, pcs),
+        b"B2A0" | b"B2A1" | b"B2A2" | b"B2D0" | b"B2D1" | b"B2D2" | b"B2D3" => (pcs, device),
+        b"pre0" | b"pre1" | b"pre2" => (pcs, pcs),
+        b"gamt" => (pcs, 1),
+        _ => return true,
+    };
+    expected == (input, output)
+}
+
+fn invertible_chad(values: &[f64]) -> bool {
+    let Ok(values) = <&[f64; 9]>::try_from(values) else {
+        return false;
+    };
+    if values
+        .iter()
+        .any(|&v| !(-32768.0..=i32::MAX as f64 / 65536.0).contains(&v))
+    {
+        return false;
+    }
+    // Use the exact determinant of the values that the writer will encode.
+    let [a, b, c, d, e, f, g, h, i] =
+        values.map(|v| i128::from(crate::fixed::double_to_s15_fixed16(v)));
+    a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g) != 0
+}
+
 /// Encode only the operations implemented here and use the existing handlers
 /// for common byte layouts.
 pub(crate) fn write_tag(
@@ -362,7 +453,9 @@ pub(crate) fn check_export(icc: &IccProfile) -> bool {
     if !all(&[b"desc", b"cprt"]) || class != *b"link" && !has(b"wtpt") {
         return refuse("ICC profile is missing required description, copyright or white point");
     }
-    let matrix = all(&[b"rXYZ", b"gXYZ", b"bXYZ", b"rTRC", b"gTRC", b"bTRC"]) && pcs == *b"XYZ ";
+    let matrix = all(&[b"rXYZ", b"gXYZ", b"bXYZ", b"rTRC", b"gTRC", b"bTRC"])
+        && pcs == *b"XYZ "
+        && crate::pcs::channels_of_color_space(icc.color_space) == 3;
     let gray = color == *b"GRAY" && has(b"kTRC");
     let xclr = |cs: [u8; 4]| &cs[1..] == b"CLR";
     let valid = match &class {
@@ -415,7 +508,7 @@ pub(crate) fn check_export(icc: &IccProfile) -> bool {
         }
         if let Some(desc) = get_tag_descriptor(icc.ctx.as_ref(), sig) {
             let linked = profile::search_tag(icc, sig, true);
-            if linked < 0 || icc.tag_ptrs[linked as usize].is_none() {
+            if linked < 0 || (icc.tag_ptrs[linked as usize].is_none() && !is_opaque_mpe(icc, sig)) {
                 return refuse("known ICC tag has no decoded representation");
             }
             if !desc
@@ -423,6 +516,38 @@ pub(crate) fn check_export(icc: &IccProfile) -> bool {
                 .contains(&icc.tag_type_sigs[linked as usize])
             {
                 return refuse("linked ICC tags require incompatible types");
+            }
+            if &sig.to_be_bytes() == b"chad"
+                && !matches!(
+                    &icc.tag_ptrs[linked as usize], Some(TagObject::S15Fixed16(v)) if invertible_chad(v)
+                )
+            {
+                return refuse(
+                    "ICC chromatic adaptation matrix must encode nine invertible values",
+                );
+            }
+            let dimensions = if is_opaque_mpe(icc, sig) {
+                let bytes = icc.tag_raw[linked as usize].as_ref().unwrap();
+                Some((
+                    u32::from(u16::from_be_bytes([bytes[8], bytes[9]])),
+                    u32::from(u16::from_be_bytes([bytes[10], bytes[11]])),
+                ))
+            } else {
+                match &icc.tag_ptrs[linked as usize] {
+                    Some(
+                        TagObject::Lut8(l)
+                        | TagObject::Lut16(l)
+                        | TagObject::LutA2B(l)
+                        | TagObject::LutB2A(l)
+                        | TagObject::Mpe(l),
+                    ) => Some((l.input_channels, l.output_channels)),
+                    _ => None,
+                }
+            };
+            if dimensions
+                .is_some_and(|(input, output)| !pipeline_dimensions(icc, sig, input, output))
+            {
+                return refuse("ICC LUT channel counts disagree with the profile colour spaces");
             }
         } else if icc.tag_linked[i] == 0 && icc.tag_ptrs[i].is_none() {
             // Unknown types are opaque. Their bytes are carried by the source

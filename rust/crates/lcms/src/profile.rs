@@ -485,6 +485,10 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
     }
     let n = n as usize;
 
+    if crate::spec::enabled(ctx) && crate::spec::is_opaque_mpe(icc, sig) {
+        return None;
+    }
+
     // Already in memory
     if icc.tag_ptrs[n].is_some() {
         if icc.tag_type_sigs[n] == 0 {
@@ -553,11 +557,16 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
             return None;
         }
         match crate::spec::decode_tag(icc, &local, &raw, &mut elem_count) {
-            Ok(o) => {
+            Ok(Some(o)) => {
                 if sig == u32::from_be_bytes(*b"cicp") && raw.len() == 44 {
                     icc.tag_raw[n] = Some(raw);
                 }
                 Some(o)
+            }
+            Ok(None) => {
+                icc.tag_raw[n] = Some(raw);
+                icc.tag_save_as_raw[n] = true;
+                return None;
             }
             Err(e) => {
                 crate::spec::bad_tag(sig, e);
@@ -1007,10 +1016,21 @@ fn save_tags(
             let Some(obj) = icc.tag_ptrs[i].clone() else {
                 continue;
             };
-            let typ = match desc.decide_type {
+            let mut typ = match desc.decide_type {
                 Some(d) => d(ver, &obj),
                 None => desc.supported_types[0],
             };
+            if crate::spec::enabled(ctx) && orig_offsets[i] != 0 {
+                match &icc.tag_type_sigs[i].to_be_bytes() {
+                    b"mft1" | b"mft2" => typ = icc.tag_type_sigs[i],
+                    b"mAB " | b"mBA " if icc.version < 0x04000000 => {
+                        return crate::spec::refuse(
+                            "legacy ICC LUT export cannot preserve a decoded mAB or mBA transform",
+                        );
+                    }
+                    _ => {}
+                }
+            }
             let Some(handler) = get_tag_type_handler(ctx, typ) else {
                 err::signal_error(None, ERROR_INTERNAL, "(Internal) no handler for tag");
                 continue;

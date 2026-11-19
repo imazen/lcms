@@ -147,25 +147,72 @@ require another representation. Arbitrary private and unimplemented tag
 semantics remain opaque. The unverified standards below also apply to
 SpecExact.
 
-## Remaining ICC.1 gaps
+## ICC.1 transform and export follow-up
 
-The following probes used the public Rust API in SpecExact mode at
-`1dfbdfff`. The transform witnesses save and reopen the authored profiles
-before linking. Numerical expectations come from the ICC.1 clauses and
-encoded operands. [ICC.1:2022](https://www.color.org/specifications/ICC.1-2022-05.pdf)
+The regression fixtures serialize and reopen the profiles before linking.
+They check transform values separately from tag layout and the profile ID.
+The applicable rules are in [ICC.1:2022](https://www.color.org/specifications/ICC.1-2022-05.pdf).
 
-| Priority | Clause and witness | Next change |
-|---|---|---|
-| 1 | **DeviceLink float selection (§8.10.3 and §6.3.4.1).** A single RGB → XYZ DeviceLink with a constant `D2B0` returns XYZ `[0.2, 0.3, 0.4]` for perceptual and `[0.3999939, 0.59999084, 0.7999878]` for media-relative. The two `D2B0` branches take different PCS normalization paths. | Use the same float normalization whenever the DeviceLink or Abstract profile selects `D2B0`. Exercise all intents, Lab/XYZ endpoints, and supported fallback. |
-| 1 | **Absolute float tags (§9.1, §9.2.12, §9.2.28).** A `D2B3` that emits XYZ `[0.2, 0.3, 0.4]` into a D50 XYZ identity returns `[0.1000003, 0.15, 0.19999762]` with source `wtpt` at half D50. The selected tag already supplies absolute colorimetry. | Carry the chosen tag's PCS semantics into linking. Apply media-white conversion only on the sides using relative PCS. Exercise both direct tags, either side by itself, and relative fallback. |
-| 1 | **PCS encoding on resave (§6.3.4.2, Tables 12–13, §10.10, Tables 42–43).** Changing a v2 RGB → Lab profile to v4 rewrites `mft2` as `mAB`. A constant legacy tuple `[32768, 32768, 32768]` measured approximately Lab `[50.1961, 0, 0]` before and `[50.0008, -0.4981, -0.4981]` after, using media-relative intent. Both encodings pass the byte checker. | Preserve a still-permitted LUT type or convert the PCS samples explicitly. Return a typed refusal when the target cannot preserve the transform. Compare pixels across version changes in both directions. |
-| 2 | **Unsupported MPE fallback (§8.10.2–3 and §10.16.1).** A profile with usable matrix/TRCs and an optional `D2B0` with an unrecognized process element returns a profile-open error. | Distinguish a well-framed unsupported element from malformed data. Preserve unsupported optional payloads and use the next permitted transform. |
-| 2 | **Export model validation (§8.4.3, Table 41, §9.2.15).** The writer saves an RGB matrix/TRC profile relabelled CMYK, a 1→1 `A2B0` in a 3→3 RGB/XYZ profile, and a zero `chad` matrix. The clause checker catches the singular matrix. iccDEV catches the channel mismatch and accepts the other two witnesses. | Validate the header against the selected model and tag channel counts. Check that the nine encoded `chad` values remain invertible after fixed-point quantization. Add explicit rejection witnesses to the writer gate. |
+| Area | SpecExact behavior and regression evidence |
+|---|---|
+| **DeviceLink and Abstract selection (§8.10.3, §6.3.4.1)** | Select a usable `D2B0`, otherwise `A2B0`, for all four requested intents. Apply the float PCS normalization in every case. The RGB → XYZ DeviceLink now returns `[0.2, 0.3, 0.4]` across all four intents. The previous media-relative result was `[0.3999939, 0.59999084, 0.7999878]`. A Lab → Lab Abstract fixture verifies the corresponding Lab coordinates. Both fixtures also compare the unsupported-`D2B0` route with a profile containing only the legacy transform. |
+| **Direct absolute PCS (§9.1, §9.2.12, §9.2.28)** | A selected `D2B3` or `B2D3` supplies or consumes absolute PCS. In a mixed link, apply the media-white ratio only to the relative side. When both sides are direct, the PCS bridge needs no white-point scaling. The fixtures exercise all four direct/relative combinations, use different media whites, and replace each direct tag in turn with an unsupported element to verify that it falls back to relative PCS. A half-D50 source `D2B3` now supplies `[0.2, 0.3, 0.4]` to a D50 XYZ identity where it previously supplied `[0.1000003, 0.15, 0.19999762]`. |
+| **Legacy Lab data on resave (§6.3.4.2, Tables 12–13, §10.10, Tables 42–43, §10.11)** | Preserve the original encoding of decoded `mft1` and `mft2` LUTs when saving to v2 or v4. The fixtures compare the tag bytes and transformed Lab output before and after re-opening and upgrading both layouts. The `mft2` case also downgrades back to v2, preserving the legacy tuple `[32768, 32768, 32768]` and its Lab result of approximately `[50.1961, 0, 0]`. A decoded modern `mAB` or `mBA` LUT returns `NotSuitable` on v2 export. Converting those layouts to legacy LUTs with a proven pixel-preservation contract remains open. |
+| **Optional MPE fallback (§8.10.2–3, §10.16.1–2)** | Preserve the original bytes of an optional `mpet` tag containing an undefined element with valid framing. The tag remains visible in the directory and has no cooked pipeline. Linking continues to the permitted legacy LUT or matrix/TRC model. The fixtures compare the fallback output and saved tag bytes, and reject malformed offsets, element sizes and reserved fields. |
+| **Export model validation (§8.4.3, Table 41, §9.2.15)** | A matrix/TRC model requires three device channels and PCSXYZ. Check tag directions and dimensions against the profile colour spaces, including linked tags. Require exactly nine `chad` values with a nonzero determinant after s15Fixed16 quantization. Tests cover a CMYK header with only an RGB matrix/TRC model, 1 → 1 LUTs in 3 → 3 profiles, and quantization that makes a matrix singular. An invertible matrix with one fixed-point unit on the diagonal is accepted. |
 
-The next work should keep `Lcms2Exact` on its existing oracle gates. The
-SpecExact gates should check the selected transform and output coordinates
-as well as the file layout. A profile structure verdict alone cannot
-establish that a transform uses the intended PCS encoding.
+All five regression tests fail with the previous implementation at
+`ceb60ec8` and pass with these changes. The full Rust workspace gate and
+fixture replays covered 1,962 tests, including 27 conformance tests and
+151 corpus transforms compared with the pinned C reference. The direct
+absolute bridge uses the ICC media-white ratio. Little CMS's partial
+adaptation option still applies to links between two relative PCS endpoints.
+
+The independent readback used eight saved follow-up profiles. iccDEV
+4a9ca21 reported four valid profiles, three with warnings, and one critical
+verdict. The warnings concerned the colour-space exclusion check and the
+unknown locale in upgraded v2 copyright text. The critical verdict was the
+existing 64-byte DeviceLink `pseq` disagreement described below. moxcms
+5fc602b parsed and re-encoded all eight profiles and omitted `pseq` and
+`psid` from the DeviceLink. These readbacks check file interpretation.
+The transform assertions use the ICC encoding and known fixture values.
+
+### Little CMS upstream history
+
+- **DeviceLink normalization.** The 2.3 release-candidate diff introduced
+  float Lab/XYZ normalization and applied it to the initial intent-indexed
+  lookup. The fallback lookup remained a pipeline copy. The published
+  revision leaves the difference unexplained. The maintainer later
+  explained why the XYZ float formatter exposes a wider range than a
+  normalized 0–1 buffer. [2.3 release-candidate diff](https://github.com/mm2/Little-CMS/commit/8385449504700f6ffc9f7efd1c132f5ea42cd2fa)
+  [XYZ formatter explanation](https://github.com/mm2/Little-CMS/issues/500#issuecomment-3102590227)
+- **Absolute colorimetry.** The C conversion source explicitly describes
+  joining two media-relative conversions through absolute PCS. It identifies
+  full adaptation as standard v4 behavior and partial adaptation as an
+  advanced option. The upstream v2/v4 proofing discussion also documents
+  that the D50 handling of old v2 display profiles was a deliberate
+  workaround for widely deployed sRGB profiles. That discussion concerns
+  media-relative PCS. The white-point ratio for direct absolute tags
+  remains unexplained. [Pinned conversion source](https://github.com/mm2/Little-CMS/blob/7717fce0d85447ef3b2df0cca2e99207c15eeecd/src/cmscnvrt.c#L247-L286)
+  [Maintainer explanation of the v2 display workaround](https://github.com/mm2/Little-CMS/pull/509#issuecomment-3213837031)
+- **LUT encoding on save.** The initial public source already chooses
+  `mft1` or `mft2` below v4 and `mAB` or `mBA` at v4 when writing
+  cooked LUTs. The code documents the format selection, and the history
+  searched leaves the change to decoded PCS data unexplained. [Pinned LUT type selectors](https://github.com/mm2/Little-CMS/blob/7717fce0d85447ef3b2df0cca2e99207c15eeecd/src/cmstypes.c#L1857-L1884)
+- **Unsupported MPEs.** The C dispatcher reports an unknown element as an
+  error, and the caller returns the chosen float-tag result directly.
+  The maintainer describes the float tags as complements to the legacy
+  A/B transforms. The search left the bypassed fallback unexplained. The maintainer also
+  documents the raw tag API as an unchecked byte interface whose contents
+  can be decoded after serializing and reopening. [Pinned MPE dispatcher](https://github.com/mm2/Little-CMS/blob/7717fce0d85447ef3b2df0cca2e99207c15eeecd/src/cmstypes.c#L4745-L4777)
+  [Maintainer explanation of optional float tags](https://github.com/mm2/Little-CMS/issues/380#issuecomment-1807635465)
+  [Maintainer explanation of raw and cooked tags](https://github.com/mm2/Little-CMS/issues/275#issuecomment-907041554)
+- **Export validation.** Upstream's 2022 validation change documents
+  accepting some data on read while requiring valid data on write. The
+  commit tightens individual type writers. The ICC clauses supply the
+  rationale for the three profile-level checks added here. [Upstream validation change](https://github.com/mm2/Little-CMS/commit/54390818348493a88c43b0dadbad77bdc9750699)
+
+## Remaining ICC.1 work
 
 Additional feature work includes typed `resp` calibration data (§9.2.38 and
 §10.21) and the approved `HAGC` metadata and HDR operation. The current tag
