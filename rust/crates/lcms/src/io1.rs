@@ -235,6 +235,27 @@ fn get_tag_true_type(icc: &IccProfile, sig: u32) -> u32 {
     icc.tag_type_sigs[n as usize]
 }
 
+fn has_usable_float_tag(icc: &IccProfile, sig: u32) -> bool {
+    profile::cms_is_tag(icc, sig)
+        && (!crate::spec::enabled(icc.ctx.as_ref()) || !crate::spec::is_opaque_mpe(icc, sig))
+}
+
+// Only the selected float intent-3 LUT uses absolute PCS coordinates.
+// The caller checks this after successfully reading the corresponding LUT.
+pub(crate) fn uses_absolute_pcs(icc: &IccProfile, intent: u32, input: bool) -> bool {
+    crate::spec::enabled(icc.ctx.as_ref())
+        && intent == 3
+        && icc.device_class != pc::SigNamedColorClass
+        && has_usable_float_tag(
+            icc,
+            if input {
+                DEVICE2PCSFLOAT[3]
+            } else {
+                PCS2DEVICEFLOAT[3]
+            },
+        )
+}
+
 /// `_cmsReadInputLUT` — named-color, float tag, LUT tag, or matrix shaper
 pub fn read_input_lut(icc: &mut IccProfile, intent: u32) -> Option<Pipeline> {
     if icc.device_class == pc::SigNamedColorClass {
@@ -257,7 +278,7 @@ pub fn read_input_lut(icc: &mut IccProfile, intent: u32) -> Option<Pipeline> {
     if intent <= 3 {
         let mut tag16 = DEVICE2PCS16[intent as usize];
         let tag_float = DEVICE2PCSFLOAT[intent as usize];
-        if profile::cms_is_tag(icc, tag_float) {
+        if has_usable_float_tag(icc, tag_float) {
             return read_float_input_tag(icc, tag_float);
         }
         if !profile::cms_is_tag(icc, tag16) {
@@ -449,7 +470,7 @@ pub fn read_output_lut(icc: &mut IccProfile, intent: u32) -> Option<Pipeline> {
     if intent <= 3 {
         let mut tag16 = PCS2DEVICE16[intent as usize];
         let tag_float = PCS2DEVICEFLOAT[intent as usize];
-        if profile::cms_is_tag(icc, tag_float) {
+        if has_usable_float_tag(icc, tag_float) {
             return read_float_output_tag(icc, tag_float);
         }
         if !profile::cms_is_tag(icc, tag16) {
@@ -525,19 +546,25 @@ pub fn read_devicelink_lut(icc: &mut IccProfile, intent: u32) -> Option<Pipeline
         }
         return Some(lut);
     }
-    if profile::cms_is_tag(icc, tag_float) {
+    if crate::spec::enabled(icc.ctx.as_ref()) {
+        if has_usable_float_tag(icc, DEVICE2PCSFLOAT[0]) {
+            return read_float_devicelink_tag(icc, DEVICE2PCSFLOAT[0]);
+        }
+        tag16 = DEVICE2PCS16[0];
+    } else if profile::cms_is_tag(icc, tag_float) {
         return read_float_devicelink_tag(icc, tag_float);
-    }
-    tag_float = DEVICE2PCSFLOAT[0];
-    if profile::cms_is_tag(icc, tag_float) {
-        return match profile::cms_read_tag(icc, tag_float) {
-            Some(TagObject::Mpe(l))
-            | Some(TagObject::LutA2B(l))
-            | Some(TagObject::LutB2A(l))
-            | Some(TagObject::Lut8(l))
-            | Some(TagObject::Lut16(l)) => Some(l.clone()),
-            _ => None,
-        };
+    } else {
+        tag_float = DEVICE2PCSFLOAT[0];
+        if profile::cms_is_tag(icc, tag_float) {
+            return match profile::cms_read_tag(icc, tag_float) {
+                Some(TagObject::Mpe(l))
+                | Some(TagObject::LutA2B(l))
+                | Some(TagObject::LutB2A(l))
+                | Some(TagObject::Lut8(l))
+                | Some(TagObject::Lut16(l)) => Some(l.clone()),
+                _ => None,
+            };
+        }
     }
     if !profile::cms_is_tag(icc, tag16) {
         tag16 = DEVICE2PCS16[0];

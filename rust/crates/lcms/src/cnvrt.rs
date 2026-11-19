@@ -153,6 +153,7 @@ fn compute_conversion(
     intent: u32,
     bpc: bool,
     adaptation_state: f64,
+    absolute_pcs: (bool, bool),
     m: &mut Mat3,
     off: &mut Vec3,
 ) -> bool {
@@ -160,12 +161,30 @@ fn compute_conversion(
     *off = Vec3 { n: [0.0, 0.0, 0.0] };
     if intent == INTENT_ABSOLUTE_COLORIMETRIC {
         let (before, after) = profiles.split_at_mut(i);
-        let wp_in = io1::read_media_white_point(before[i - 1].as_mut());
-        let chad_in = io1::read_chad(before[i - 1].as_mut());
-        let wp_out = io1::read_media_white_point(after[0].as_mut());
-        let chad_out = io1::read_chad(after[0].as_mut());
-        if !compute_absolute_intent(adaptation_state, &wp_in, &chad_in, &wp_out, &chad_out, m) {
-            return false;
+        let src = before[i - 1].as_mut();
+        let dst = after[0].as_mut();
+        if absolute_pcs != (false, false) {
+            // §9.1. Apply the media-white ratio only on a relative PCS side.
+            let white = |profile: &mut IccProfile, direct| {
+                if direct {
+                    d50_xyz()
+                } else {
+                    io1::read_media_white_point(profile)
+                }
+            };
+            let src_white = white(src, absolute_pcs.0);
+            let dst_white = white(dst, absolute_pcs.1);
+            m.v[0].n[0] = src_white.X / dst_white.X;
+            m.v[1].n[1] = src_white.Y / dst_white.Y;
+            m.v[2].n[2] = src_white.Z / dst_white.Z;
+        } else {
+            let wp_in = io1::read_media_white_point(src);
+            let chad_in = io1::read_chad(src);
+            let wp_out = io1::read_media_white_point(dst);
+            let chad_out = io1::read_chad(dst);
+            if !compute_absolute_intent(adaptation_state, &wp_in, &chad_in, &wp_out, &chad_out, m) {
+                return false;
+            }
         }
     } else if bpc {
         // C ignores the detectors' return values — a failure leaves the
@@ -201,6 +220,7 @@ fn add_conversion(
     out_pcs: u32,
     m: &Mat3,
     off: &Vec3,
+    exact_identity: bool,
 ) -> bool {
     let mut m_flat = [0.0f64; 9];
     let mut o_flat = [0.0f64; 3];
@@ -210,7 +230,11 @@ fn add_conversion(
         }
         o_flat[r] = off.n[r];
     }
-    let empty = is_empty_layer(m, off);
+    let empty = if exact_identity {
+        m_flat == [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] && o_flat == [0.0; 3]
+    } else {
+        is_empty_layer(m, off)
+    };
     match in_pcs {
         x if x == cs::SigXYZData => match out_pcs {
             y if y == cs::SigXYZData => {
@@ -321,6 +345,7 @@ fn default_icc_intents(
     let mut result = pipeline_alloc(ctx, 0, 0)?;
     let mut current_color_space = profiles[0].color_space;
     let mut color_space_out = cs::SigLabData;
+    let mut current_absolute_pcs = false;
 
     for i in 0..n {
         let class_sig = profiles[i].device_class;
@@ -349,6 +374,9 @@ fn default_icc_intents(
         let mut m = Mat3::default();
         let mut off = Vec3::default();
         let lut: Option<Pipeline>;
+        let mut next_absolute_pcs = false;
+        let exact_absolute = intent == INTENT_ABSOLUTE_COLORIMETRIC
+            && crate::spec::enabled(profiles[i].ctx.as_ref());
         if is_device_link || (class_sig == pc::SigNamedColorClass && n == 1) {
             lut = io1::read_devicelink_lut(&mut profiles[i], intent);
             lut.as_ref()?;
@@ -359,6 +387,7 @@ fn default_icc_intents(
                     intent,
                     bpc[i],
                     adaptation_states[i],
+                    (current_absolute_pcs, false),
                     &mut m,
                     &mut off,
                 ) {
@@ -375,6 +404,7 @@ fn default_icc_intents(
                 color_space_in,
                 &m,
                 &off,
+                exact_absolute && current_absolute_pcs,
             ) {
                 return None;
             }
@@ -382,15 +412,18 @@ fn default_icc_intents(
             if is_input {
                 lut = io1::read_input_lut(&mut profiles[i], intent);
                 lut.as_ref()?;
+                next_absolute_pcs = io1::uses_absolute_pcs(&profiles[i], intent, true);
             } else {
                 lut = io1::read_output_lut(&mut profiles[i], intent);
                 lut.as_ref()?;
+                let direct = io1::uses_absolute_pcs(&profiles[i], intent, false);
                 if !compute_conversion(
                     i,
                     profiles,
                     intent,
                     bpc[i],
                     adaptation_states[i],
+                    (current_absolute_pcs, direct),
                     &mut m,
                     &mut off,
                 ) {
@@ -403,6 +436,7 @@ fn default_icc_intents(
                     color_space_in,
                     &m,
                     &off,
+                    exact_absolute && (current_absolute_pcs || direct),
                 ) {
                     return None;
                 }
@@ -413,6 +447,7 @@ fn default_icc_intents(
             return None;
         }
         current_color_space = color_space_out;
+        current_absolute_pcs = next_absolute_pcs;
     }
 
     if dw_flags & FLAGS_NONEGATIVES != 0
@@ -827,7 +862,10 @@ fn make_last_proof(
     in_fmt: u32,
     out_fmt: u32,
 ) -> Option<Box<crate::xform::Transform>> {
-    let lab = crate::virt::create_lab4_profile(None, None)?;
+    let lab = crate::virt::create_lab4_profile(
+        p.ctx.clone().filter(|c| crate::spec::enabled(Some(c))),
+        None,
+    )?;
     let pd = dup_box(p)?;
     let mut profs = vec![pd, lab];
     let mut bpc = [false, false];
@@ -1066,7 +1104,10 @@ fn detect_tac(p: &mut IccProfile) -> f64 {
     }
     let n_out = n_out as usize;
     // Lab → profile transform (perceptual, no opt/cache)
-    let lab = match crate::virt::create_lab4_profile(None, None) {
+    let lab = match crate::virt::create_lab4_profile(
+        p.ctx.clone().filter(|c| crate::spec::enabled(Some(c))),
+        None,
+    ) {
         Some(l) => l,
         None => return 0.0,
     };

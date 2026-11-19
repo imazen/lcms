@@ -1905,35 +1905,51 @@ fn change_buffers_devicelink() {
     }
 }
 
-/// cmsDoTransformStride on the devicelinks — the stride
-/// machinery on more channel counts.
+/// cmsDoTransformStride on a four-channel planar DeviceLink.
 #[test]
 fn stride_devicelink() {
+    const PLANES: usize = 4;
+    const PIXELS: usize = 2;
+    const PLANE_STRIDE: usize = 4;
+    const CMYK: u32 = u32::from_be_bytes(*b"CMYK");
+
+    let fmt = pl(f(PT_ANY, PLANES as u32, 0, 1));
+    let mut input = [0xa5; PLANES * PLANE_STRIDE];
+    for plane in 0..PLANES {
+        let start = plane * PLANE_STRIDE;
+        input[start..start + PIXELS]
+            .copy_from_slice(&[32 + 32 * plane as u8, 255 - 32 * plane as u8]);
+    }
+    let mut c_out = [0x5a; PLANES * PLANE_STRIDE];
     unsafe {
         let g = c::cmsBuildGamma(std::ptr::null_mut(), 2.2);
-        let mut curves = [g; 4];
-        let dl = c::cmsCreateLinearizationDeviceLinkTHR(
-            std::ptr::null_mut(),
-            0x434D594B,
-            curves.as_mut_ptr(),
+        assert!(!g.is_null());
+        let mut curves = [g; PLANES];
+        let dl =
+            c::cmsCreateLinearizationDeviceLinkTHR(std::ptr::null_mut(), CMYK, curves.as_mut_ptr());
+        c::cmsFreeToneCurve(g);
+        assert!(!dl.is_null());
+        let ct = c_xform(dl, fmt, dl, fmt);
+        assert!(!ct.is_null());
+        c::cmsDoTransformStride(
+            ct,
+            input.as_ptr().cast(),
+            c_out.as_mut_ptr().cast(),
+            PIXELS as u32,
+            PLANE_STRIDE as u32,
         );
-        let ct = c::cmsCreateTransform(
-            dl,
-            (1 << 12) | (4 << 3) | 1,
-            dl,
-            (1 << 12) | (4 << 3) | 1,
-            0,
-            0,
-        );
-        eprintln!("t={}", !ct.is_null());
-        if !ct.is_null() {
-            // planar stride eval
-            let inp = [0x40u8; 8];
-            let mut out = [0u8; 8];
-            c::cmsDoTransformStride(ct, inp.as_ptr() as _, out.as_mut_ptr() as *mut _, 2, 4);
-            c::cmsDeleteTransform(ct);
-        }
-        let _ = c::cmsCloseProfile(dl);
+        c::cmsDeleteTransform(ct);
+        c::cmsCloseProfile(dl);
+    }
+
+    let g = gamma::build_gamma(None, 2.2).unwrap();
+    let dl = virt::create_linearization_device_link(None, CMYK, &[&g; PLANES]).unwrap();
+    let mut transform = r_xform(&dl, fmt, &dl, fmt).unwrap();
+    let mut rust_out = [0x5a; PLANES * PLANE_STRIDE];
+    transform.do_transform_stride(&input, &mut rust_out, PIXELS as u32, PLANE_STRIDE as u32);
+    assert_eq!(rust_out, c_out);
+    for plane in c_out.chunks_exact(PLANE_STRIDE) {
+        assert_eq!(&plane[PIXELS..], &[0x5a; PLANE_STRIDE - PIXELS]);
     }
 }
 

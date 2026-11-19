@@ -225,11 +225,29 @@ pub fn create_gray_profile(
         return None;
     }
     if let Some(wp) = white_point {
-        let tmp = crate::pcs::xyy2xyz(wp);
+        let source_white = crate::pcs::xyy2xyz(wp);
+        let white = if crate::spec::enabled(icc.ctx.as_ref()) {
+            let white = d50_xyz();
+            let mut chad = Mat3::default();
+            if !adaptation_matrix(&mut chad, None, &source_white, &white) {
+                return None;
+            }
+            let values = chad.v.iter().flat_map(|row| row.n).collect();
+            if !cms_write_tag(
+                &mut icc,
+                tags::SigChromaticAdaptationTag,
+                Some(TagObject::S15Fixed16(values)),
+            ) {
+                return None;
+            }
+            white
+        } else {
+            source_white
+        };
         if !cms_write_tag(
             &mut icc,
             tags::SigMediaWhitePointTag,
-            Some(TagObject::Xyz(tmp)),
+            Some(TagObject::Xyz(white)),
         ) {
             return None;
         }
@@ -259,6 +277,12 @@ pub fn create_linearization_device_link(
     icc.pcs = color_space;
     icc.rendering_intent = INTENT_PERCEPTUAL;
     let n_ch = channels_of_color_space(color_space) as u32;
+    if crate::spec::enabled(icc.ctx.as_ref())
+        && (n_ch as usize != transfers.len() || !(1..=15).contains(&n_ch))
+    {
+        crate::spec::refuse("linearization requires one curve per ICC device channel");
+        return None;
+    }
     let mut lut = pipeline_alloc(None, n_ch, n_ch)?;
     let st = stage_alloc_tone_curves(None, n_ch, Some(transfers))?;
     if !lut.insert_stage(StageLoc::AtBegin, st) {
@@ -960,12 +984,32 @@ pub fn transform2_device_link(
     version: f64,
     mut dw_flags: u32,
 ) -> Option<Box<IccProfile>> {
+    let exact = crate::spec::enabled(xform.ctx.as_ref());
+    if exact
+        && (!version.is_finite()
+            || !(2.0..=4.4).contains(&version)
+            || (3.0..4.0).contains(&version))
+    {
+        crate::spec::refuse("only ICC.1 v2 and v4 device-link exports are supported");
+        return None;
+    }
     let x_lut = xform.lut.as_ref()?;
 
     // Named-color transform → the named-color devicelink path
     if let Some(first) = x_lut.elements.as_ref() {
         if first.stage_type() == ssig::SigNamedColorElemType {
-            return create_named_color_devicelink(xform);
+            let mut icc = create_named_color_devicelink(xform)?;
+            if exact {
+                profile::set_profile_version(&mut icc, version);
+                if !cms_write_tag(
+                    &mut icc,
+                    tags::SigMediaWhitePointTag,
+                    Some(TagObject::Xyz(d50_xyz())),
+                ) {
+                    return None;
+                }
+            }
+            return Some(icc);
         }
     }
 
@@ -1032,6 +1076,18 @@ pub fn transform2_device_link(
     }
 
     // If no way, force CLUT that for sure can be written
+    // A live Annex F.1 inverse can be discontinuous. DeviceLink export
+    // explicitly samples it into the selected ICC CLUT encoding.
+    if exact
+        && lut.stages().any(|stage| match &stage.data {
+            crate::lut::StageData::ToneCurves(curves) => {
+                curves.iter().any(|c| c.has_exact_inverse_representation())
+            }
+            _ => false,
+        })
+    {
+        allowed = None;
+    }
     if allowed.is_none() {
         dw_flags |= crate::types::FLAGS_FORCE_CLUT;
         crate::opt::optimize_pipeline(

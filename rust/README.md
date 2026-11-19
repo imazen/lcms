@@ -82,6 +82,41 @@ fields and C-shaped methods are crate-private unless `little-cms-api` is on,
 so borrowing costs nothing and no `lcms::api` signature exposes an internal
 type (`docs/public-api/lcms.txt` is the checked snapshot).
 
+### Select ICC behavior
+
+Existing constructors, the `lcms::lcms2` migration facade, and the
+`lcms2-ffi` C ABI use `BehaviorMode::Lcms2Exact` for Little CMS 2.20
+compatibility. Rust-native callers can select `BehaviorMode::SpecExact`
+with a `ProfileFactory`. Use the same factory for all profiles in a plan.
+The plan retains the mode when it builds a DeviceLink. Reopen its bytes with
+the same factory to select the behavior for subsequent operations.
+
+```rust
+use lcms::api::{BehaviorMode, Format, Plan, Profile, ToneCurve};
+
+let icc = Profile::with_mode(BehaviorMode::SpecExact);
+let source = icc.srgb();
+let destination = icc.lab4();
+let plan = Plan::new(&source, &destination, Format::RGB_8, Format::LAB_16)?;
+let link = plan.to_device_link(4.4)?;
+let bytes = link.save()?;
+let reopened = icc.open(&bytes)?;
+let inverse = ToneCurve::srgb().with_mode(BehaviorMode::SpecExact)?.inverse()?;
+# Ok::<(), lcms::api::Error>(())
+```
+
+The factory provides the standard built-ins, custom profiles, placeholders
+and file or memory open. `Profile::set_version` selects a v2 or v4 writer.
+If the target version cannot represent a tag, `save` returns
+`ErrorKind::NotSuitable`. A SpecExact v4 save calculates its profile ID.
+Use `write_cicp_with_chromaticities` and `cicp_chromaticities` for amended
+CICP. The coordinates are the eight exact s15Fixed16 words.
+
+ICC `curveType` and `parametricCurveType` data use bounded evaluation and
+the Annex F.1 inverse. Explicit unbounded math and MPE formulas remain
+available. The [conformance audit](docs/CONFORMANCE.md#specexact-disposition)
+lists the supported ICC rules, refusals and validation scope.
+
 ### `lcms::lcms2` — drop-in migration from the `lcms2` crate
 
 ```toml

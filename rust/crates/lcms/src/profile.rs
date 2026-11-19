@@ -485,6 +485,10 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
     }
     let n = n as usize;
 
+    if crate::spec::enabled(ctx) && crate::spec::is_opaque_mpe(icc, sig) {
+        return None;
+    }
+
     // Already in memory
     if icc.tag_ptrs[n].is_some() {
         if icc.tag_type_sigs[n] == 0 {
@@ -545,7 +549,33 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
     local.icc_version = icc.version;
     local.ctx = ctx.map(|c| c as *const Context as usize).unwrap_or(0);
     let mut elem_count = 0u32;
-    let obj = (local.read)(&local, icc.io.as_mut().unwrap(), &mut elem_count, tag_size);
+    let exact = crate::spec::enabled(ctx);
+    let obj = if exact {
+        let mut raw = bytemuck::try_zeroed_vec::<u8>(tag_size as usize + 8).ok()?;
+        let io = icc.io.as_mut().unwrap();
+        if !io.seek(offset) || io.read(&mut raw, 1, tag_size + 8) != tag_size + 8 {
+            return None;
+        }
+        match crate::spec::decode_tag(icc, &local, &raw, &mut elem_count) {
+            Ok(Some(o)) => {
+                if sig == u32::from_be_bytes(*b"cicp") && raw.len() == 44 {
+                    icc.tag_raw[n] = Some(raw);
+                }
+                Some(o)
+            }
+            Ok(None) => {
+                icc.tag_raw[n] = Some(raw);
+                icc.tag_save_as_raw[n] = true;
+                return None;
+            }
+            Err(e) => {
+                crate::spec::bad_tag(sig, e);
+                return None;
+            }
+        }
+    } else {
+        (local.read)(&local, icc.io.as_mut().unwrap(), &mut elem_count, tag_size)
+    };
     match obj {
         Some(o) => {
             if let Some(d) = desc {
@@ -584,16 +614,22 @@ pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) ->
         return true;
     };
 
-    let Some(i) = new_tag(icc, sig) else {
-        return false;
+    let exact = crate::spec::enabled(icc.ctx.as_ref());
+    let compatibility_slot = if exact {
+        None
+    } else {
+        let Some(i) = new_tag(icc, sig) else {
+            return false;
+        };
+
+        if icc.tag_save_as_raw[i] {
+            err::signal_error(None, ERROR_ALREADY_DEFINED, "Tag was already saved as RAW");
+            return false;
+        }
+        icc.tag_linked[i] = 0;
+
+        Some(i)
     };
-
-    if icc.tag_save_as_raw[i] {
-        err::signal_error(None, ERROR_ALREADY_DEFINED, "Tag was already saved as RAW");
-        return false;
-    }
-    icc.tag_linked[i] = 0;
-
     let ctx = icc.ctx.as_ref();
     let Some(desc) = get_tag_descriptor(ctx, sig) else {
         err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported tag");
@@ -618,6 +654,23 @@ pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) ->
     let Some(handler) = get_tag_type_handler(ctx, typ) else {
         err::signal_error(None, ERROR_UNKNOWN_EXTENSION, "Unsupported type for tag");
         return false;
+    };
+
+    if exact && !crate::spec::bind_curves(&mut obj, typ) {
+        return crate::spec::refuse("undefined or unsupported ICC curve function");
+    }
+    let i = if let Some(i) = compatibility_slot {
+        i
+    } else {
+        let Some(i) = new_tag(icc, sig) else {
+            return false;
+        };
+        if icc.tag_save_as_raw[i] {
+            err::signal_error(None, ERROR_ALREADY_DEFINED, "Tag was already saved as RAW");
+            return false;
+        }
+        icc.tag_linked[i] = 0;
+        i
     };
 
     icc.tag_type_sigs[i] = handler.signature;
@@ -649,6 +702,10 @@ pub fn cms_write_tag(icc: &mut IccProfile, sig: u32, data: Option<TagObject>) ->
 
 /// `cmsOpenProfileFromMemTHR` — open a profile from a memory buffer
 pub fn open_profile_from_mem(ctx: Option<Context>, data: &[u8]) -> Option<Box<IccProfile>> {
+    let exact = crate::spec::enabled(ctx.as_ref());
+    if exact && !crate::spec::validate_directory(data) {
+        return None;
+    }
     let io = io::io_handler_from_mem(None, data.to_vec(), "r")?;
     let mut icc = Box::new(IccProfile {
         io: Some(io),
@@ -658,6 +715,14 @@ pub fn open_profile_from_mem(ctx: Option<Context>, data: &[u8]) -> Option<Box<Ic
     });
     if !read_header(&mut icc) {
         return None;
+    }
+    if exact {
+        if !crate::spec::decode_known_tags(&mut icc) {
+            return None;
+        }
+        if icc.version < 0x04000000 {
+            icc.profile_id = ProfileId::default();
+        }
     }
     Some(icc)
 }
@@ -781,7 +846,11 @@ pub fn cms_read_raw_tag(icc: &mut IccProfile, sig: u32, data: Option<&mut [u8]>)
             }
             None => icc.tag_sizes[i],
         }
-    } else if icc.tag_save_as_raw[i] {
+    } else if icc.tag_save_as_raw[i]
+        || crate::spec::enabled(icc.ctx.as_ref())
+            && sig == u32::from_be_bytes(*b"cicp")
+            && icc.tag_raw[i].is_some()
+    {
         // Written raw — hand back the stored block
         match data {
             Some(buf) => {
@@ -816,12 +885,19 @@ pub fn cms_read_raw_tag(icc: &mut IccProfile, sig: u32, data: Option<&mut [u8]>)
         local.ctx = ctx.map(|c| c as *const Context as usize).unwrap_or(0);
         let obj = icc.tag_ptrs[i].clone().unwrap();
 
+        let write = |mem: &mut IoHandler| {
+            if crate::spec::enabled(ctx) {
+                crate::spec::write_tag(icc, sig, &local, mem, obj.clone(), desc.elem_count)
+            } else {
+                io::write_type_base(mem, type_sig)
+                    && (local.write)(&local, mem, &obj, desc.elem_count)
+            }
+        };
+
         match data {
             None => {
                 let mut mem = io::io_handler_from_null(ctx);
-                if !io::write_type_base(&mut mem, type_sig)
-                    || !(local.write)(&local, &mut mem, &obj, desc.elem_count)
-                {
+                if !write(&mut mem) {
                     return 0;
                 }
                 mem.tell()
@@ -830,9 +906,7 @@ pub fn cms_read_raw_tag(icc: &mut IccProfile, sig: u32, data: Option<&mut [u8]>)
                 // Sized to the caller's buffer — models C's MemoryWrite truncation
                 let mut mem = io::io_handler_from_mem(None, vec![0u8; buf_size as usize], "w")
                     .unwrap_or_else(|| io::io_handler_from_null(ctx));
-                if !io::write_type_base(&mut mem, type_sig)
-                    || !(local.write)(&local, &mut mem, &obj, desc.elem_count)
-                {
+                if !write(&mut mem) {
                     return 0;
                 }
                 let written = (mem.tell() as usize).min(buf_size as usize);
@@ -942,23 +1016,41 @@ fn save_tags(
             let Some(obj) = icc.tag_ptrs[i].clone() else {
                 continue;
             };
-            let typ = match desc.decide_type {
+            let mut typ = match desc.decide_type {
                 Some(d) => d(ver, &obj),
                 None => desc.supported_types[0],
             };
+            if crate::spec::enabled(ctx) && orig_offsets[i] != 0 {
+                match &icc.tag_type_sigs[i].to_be_bytes() {
+                    b"mft1" | b"mft2" => typ = icc.tag_type_sigs[i],
+                    b"mAB " | b"mBA " if icc.version < 0x04000000 => {
+                        return crate::spec::refuse(
+                            "legacy ICC LUT export cannot preserve a decoded mAB or mBA transform",
+                        );
+                    }
+                    _ => {}
+                }
+            }
             let Some(handler) = get_tag_type_handler(ctx, typ) else {
                 err::signal_error(None, ERROR_INTERNAL, "(Internal) no handler for tag");
                 continue;
             };
-            if !io::write_type_base(io, handler.signature) {
-                return false;
-            }
             let mut local = handler;
             local.icc_version = icc.version;
             local.ctx = ctx.map(|c| c as *const Context as usize).unwrap_or(0);
-            if !(local.write)(&local, io, &obj, desc.elem_count) {
-                err::signal_error(None, ERROR_WRITE, "Couldn't write type");
-                return false;
+            if crate::spec::enabled(ctx) {
+                if !crate::spec::write_tag(icc, icc.tag_names[i], &local, io, obj, desc.elem_count)
+                {
+                    return false;
+                }
+            } else {
+                if !io::write_type_base(io, handler.signature) {
+                    return false;
+                }
+                if !(local.write)(&local, io, &obj, desc.elem_count) {
+                    err::signal_error(None, ERROR_WRITE, "Couldn't write type");
+                    return false;
+                }
             }
         }
         icc.tag_sizes[i] = io.used_space.wrapping_sub(begin);
@@ -988,6 +1080,21 @@ fn set_links(icc: &mut IccProfile) -> bool {
 /// `cmsSaveProfileToIOhandler` — two-pass save; `out = None` computes sizes
 /// only (C passes NULL). Returns bytes used, 0 on error.
 pub fn save_profile_to_iohandler(icc: &mut IccProfile, out: Option<&mut IoHandler>) -> u32 {
+    if crate::spec::enabled(icc.ctx.as_ref()) {
+        let Some(bytes) = save_spec_profile(icc) else {
+            return 0;
+        };
+        let size = bytes.len() as u32;
+        return if out.is_none_or(|out| out.write(size, &bytes)) {
+            size
+        } else {
+            0
+        };
+    }
+    save_profile_to_iohandler_inner(icc, out)
+}
+
+fn save_profile_to_iohandler_inner(icc: &mut IccProfile, out: Option<&mut IoHandler>) -> u32 {
     // Header-plugin version ceiling — the registered plugin declares the
     // maximum ICC version it accepts; above it the save fails.
     if let Some(c) = icc.ctx.as_ref() {
@@ -1046,12 +1153,32 @@ fn restore_dir(icc: &mut IccProfile, offsets: &[u32], sizes: &[u32]) {
 
 /// `cmsSaveProfileToMem` — sizing pass, then a sized buffer write
 pub fn save_profile_to_mem(icc: &mut IccProfile) -> Option<Vec<u8>> {
-    let needed = save_profile_to_iohandler(icc, None);
+    if crate::spec::enabled(icc.ctx.as_ref()) {
+        return save_spec_profile(icc);
+    }
+    save_profile_bytes(icc)
+}
+
+fn save_spec_profile(icc: &mut IccProfile) -> Option<Vec<u8>> {
+    if !crate::spec::check_export(icc) {
+        return None;
+    }
+    let mut bytes = save_profile_bytes(icc)?;
+    bytes[84..100].fill(0);
+    if icc.version >= 0x04000000 {
+        let id = crate::spec::digest(&bytes);
+        bytes[84..100].copy_from_slice(&id.id8);
+    }
+    Some(bytes)
+}
+
+fn save_profile_bytes(icc: &mut IccProfile) -> Option<Vec<u8>> {
+    let needed = save_profile_to_iohandler_inner(icc, None);
     if needed == 0 {
         return None;
     }
     let mut mem = io::io_handler_from_mem(None, vec![0u8; needed as usize], "w")?;
-    if save_profile_to_iohandler(icc, Some(&mut mem)) == 0 {
+    if save_profile_to_iohandler_inner(icc, Some(&mut mem)) == 0 {
         return None;
     }
     match mem.stream {
@@ -1062,6 +1189,9 @@ pub fn save_profile_to_mem(icc: &mut IccProfile) -> Option<Vec<u8>> {
 
 /// `cmsSaveProfileToFile`
 pub fn save_profile_to_file(icc: &mut IccProfile, path: &str) -> bool {
+    if crate::spec::enabled(icc.ctx.as_ref()) {
+        return save_profile_to_mem(icc).is_some_and(|bytes| std::fs::write(path, bytes).is_ok());
+    }
     let Some(mut io) = io::io_handler_from_file(None, path, "w") else {
         return false;
     };
@@ -1078,6 +1208,13 @@ pub fn open_profile_from_file(
     path: &str,
     access: &str,
 ) -> Option<Box<IccProfile>> {
+    if crate::spec::enabled(ctx.as_ref()) {
+        if !access.starts_with(['r', 'R']) {
+            crate::spec::refuse("open ICC files for reading or save an authored profile");
+            return None;
+        }
+        return open_profile_from_mem(ctx, &std::fs::read(path).ok()?);
+    }
     let io = io::io_handler_from_file(None, path, access)?;
     let mut icc = Box::new(IccProfile {
         io: Some(io),

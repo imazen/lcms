@@ -13,7 +13,7 @@
 #   pub types (struct/enum/trait/alias)       178
 #   pub consts/statics                        126
 #   free functions                            394
-#   inherent methods                          447
+#   inherent methods                          455
 #   struct fields                             393
 #   enum variants                             318
 #   re-exports                                  3
@@ -24,14 +24,14 @@
 # per-module pub lines:
 #   (root)                           62
 #   alpha                             3
-#   api                              90
+#   api                              94
 #   cam02                             4
 #   cgats                           111
 #   cnvrt                            13
 #   context                          82
 #   err                               3
 #   fixed                            14
-#   gamma                           100
+#   gamma                           104
 #   gbd                              19
 #   half                              2
 #   half_tables                       5
@@ -55,7 +55,7 @@
 #   wtpnt                             7
 #   xform                            74
 
-## items (1874 lines)
+## items (1882 lines)
 
 pub mod alpha
 pub fn alpha::get_formatter_alpha(core::option::Option<&context::Context>, u32, u32) -> core::option::Option<alpha::FormatterAlphaFn>
@@ -197,6 +197,10 @@ pub fn api::Profile::icc_mut(&mut self) -> &mut profile::IccProfile
 pub fn api::Profile::linearization_device_link(api::ColorSpace, &[gamma::ToneCurve]) -> api::Result<Self>
 pub fn api::Profile::named_colors(&self) -> core::option::Option<&named::NamedColorList>
 pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&gamma::ToneCurve; 3]) -> api::Result<Self>
+pub fn api::Profile::write_cicp_with_chromaticities(&mut self, tagtypes::VideoSignal, [i32; 8]) -> api::Result<()>
+pub fn api::ProfileFactory::gray_curve(self, &types::CiexyY, &gamma::ToneCurve) -> api::Result<api::Profile>
+pub fn api::ProfileFactory::linearization_device_link(self, api::ColorSpace, &[gamma::ToneCurve]) -> api::Result<api::Profile>
+pub fn api::ProfileFactory::rgb(self, &types::CiexyY, &types::CiexyYTriple, [&gamma::ToneCurve; 3]) -> api::Result<api::Profile>
 pub api::ProfileSeqDesc::seq: alloc::vec::Vec<named::PSeqDesc>
 pub fn named::ProfileSeqDesc::get(&self, usize) -> core::option::Option<&named::PSeqDesc>
 pub fn named::ProfileSeqDesc::is_empty(&self) -> bool
@@ -247,14 +251,7 @@ pub api::ToneCurve::evals: alloc::vec::Vec<core::option::Option<context::Paramet
 pub api::ToneCurve::n_entries: u32
 pub api::ToneCurve::segments: alloc::vec::Vec<gamma::CurveSegment>
 pub api::ToneCurve::table16: alloc::vec::Vec<u16>
-pub fn gamma::ToneCurve::estimated_entries(&self) -> &[u16]
-pub fn gamma::ToneCurve::estimated_entry_count(&self) -> u32
-pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
-pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
-pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
-pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
-pub fn gamma::ToneCurve::smooth(&mut self, f64) -> bool
-pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::behavior_mode(&self) -> api::BehaviorMode
 pub fn gamma::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
 pub fn gamma::ToneCurve::gamma(f64) -> api::Result<Self>
 pub fn gamma::ToneCurve::inverse(&self) -> api::Result<gamma::ToneCurve>
@@ -271,6 +268,15 @@ pub fn gamma::ToneCurve::srgb() -> Self
 pub fn gamma::ToneCurve::tabulated16(&[u16]) -> api::Result<Self>
 pub fn gamma::ToneCurve::tabulated_float(&[f32]) -> api::Result<Self>
 pub fn gamma::ToneCurve::then_inverse_of(&self, &gamma::ToneCurve, usize) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::with_mode(&self, api::BehaviorMode) -> api::Result<Self>
+pub fn gamma::ToneCurve::estimated_entries(&self) -> &[u16]
+pub fn gamma::ToneCurve::estimated_entry_count(&self) -> u32
+pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
+pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::smooth(&mut self, f64) -> bool
+pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::estimated_table(&self) -> &[u16]
 pub fn gamma::ToneCurve::eval16(&self, u16) -> u16
 pub fn gamma::ToneCurve::eval_float(&self, f32) -> f32
@@ -526,14 +532,7 @@ pub gamma::ToneCurve::evals: alloc::vec::Vec<core::option::Option<context::Param
 pub gamma::ToneCurve::n_entries: u32
 pub gamma::ToneCurve::segments: alloc::vec::Vec<gamma::CurveSegment>
 pub gamma::ToneCurve::table16: alloc::vec::Vec<u16>
-pub fn gamma::ToneCurve::estimated_entries(&self) -> &[u16]
-pub fn gamma::ToneCurve::estimated_entry_count(&self) -> u32
-pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
-pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
-pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
-pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
-pub fn gamma::ToneCurve::smooth(&mut self, f64) -> bool
-pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::behavior_mode(&self) -> api::BehaviorMode
 pub fn gamma::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
 pub fn gamma::ToneCurve::gamma(f64) -> api::Result<Self>
 pub fn gamma::ToneCurve::inverse(&self) -> api::Result<gamma::ToneCurve>
@@ -550,6 +549,15 @@ pub fn gamma::ToneCurve::srgb() -> Self
 pub fn gamma::ToneCurve::tabulated16(&[u16]) -> api::Result<Self>
 pub fn gamma::ToneCurve::tabulated_float(&[f32]) -> api::Result<Self>
 pub fn gamma::ToneCurve::then_inverse_of(&self, &gamma::ToneCurve, usize) -> api::Result<gamma::ToneCurve>
+pub fn gamma::ToneCurve::with_mode(&self, api::BehaviorMode) -> api::Result<Self>
+pub fn gamma::ToneCurve::estimated_entries(&self) -> &[u16]
+pub fn gamma::ToneCurve::estimated_entry_count(&self) -> u32
+pub fn gamma::ToneCurve::eval<V: lcms2::FloatOrU16>(&self, V) -> V
+pub fn gamma::ToneCurve::join(&self, &lcms2::ToneCurveRef, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed(&self) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::reversed_samples(&self, usize) -> lcms2::ToneCurve
+pub fn gamma::ToneCurve::smooth(&mut self, f64) -> bool
+pub fn gamma::ToneCurve::to_owned(&self) -> lcms2::ToneCurve
 pub fn gamma::ToneCurve::estimated_table(&self) -> &[u16]
 pub fn gamma::ToneCurve::eval16(&self, u16) -> u16
 pub fn gamma::ToneCurve::eval_float(&self, f32) -> f32
@@ -2057,7 +2065,7 @@ profile::IccProfile: !Freeze
 xform::Transform: !Freeze !RefUnwindSafe !UnwindSafe
 xform::TransformPlan: !Freeze !RefUnwindSafe !UnwindSafe
 
-## removed by features (357 lines)
+## removed by features (363 lines)
 
 pub api::TagData::Curve(api::ToneCurve)
 pub api::TagData::Data(api::IccData)
@@ -2255,6 +2263,10 @@ pub fn api::Profile::gray_curve(&types::CiexyY, &api::ToneCurve) -> api::Result<
 pub fn api::Profile::linearization_device_link(api::ColorSpace, &[api::ToneCurve]) -> api::Result<Self>
 pub fn api::Profile::named_colors(&self) -> core::option::Option<&api::NamedColorList>
 pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&api::ToneCurve; 3]) -> api::Result<Self>
+pub fn api::Profile::write_cicp_with_chromaticities(&mut self, api::VideoSignal, [i32; 8]) -> api::Result<()>
+pub fn api::ProfileFactory::gray_curve(self, &types::CiexyY, &api::ToneCurve) -> api::Result<api::Profile>
+pub fn api::ProfileFactory::linearization_device_link(self, api::ColorSpace, &[api::ToneCurve]) -> api::Result<api::Profile>
+pub fn api::ProfileFactory::rgb(self, &types::CiexyY, &types::CiexyYTriple, [&api::ToneCurve; 3]) -> api::Result<api::Profile>
 impl api::ProfileSeqDesc
 pub fn api::ProfileSeqDesc::get(&self, usize) -> core::option::Option<&api::ProfileSeqEntry>
 pub fn api::ProfileSeqDesc::is_empty(&self) -> bool
@@ -2349,6 +2361,7 @@ impl core::panic::unwind_safe::UnwindSafe for api::Stage
 pub type api::Stages<'a>::Item = &'a api::Stage
 pub fn api::Stages<'a>::next(&mut self) -> core::option::Option<&'a api::Stage>
 impl api::ToneCurve
+pub fn api::ToneCurve::behavior_mode(&self) -> api::BehaviorMode
 pub fn api::ToneCurve::estimated_gamma(&self, f64) -> core::option::Option<f64>
 pub fn api::ToneCurve::gamma(f64) -> api::Result<Self>
 pub fn api::ToneCurve::inverse(&self) -> api::Result<api::ToneCurve>
@@ -2365,6 +2378,7 @@ pub fn api::ToneCurve::srgb() -> Self
 pub fn api::ToneCurve::tabulated16(&[u16]) -> api::Result<Self>
 pub fn api::ToneCurve::tabulated_float(&[f32]) -> api::Result<Self>
 pub fn api::ToneCurve::then_inverse_of(&self, &api::ToneCurve, usize) -> api::Result<api::ToneCurve>
+pub fn api::ToneCurve::with_mode(&self, api::BehaviorMode) -> api::Result<Self>
 impl api::ToneCurve
 pub fn api::ToneCurve::estimated_table(&self) -> &[u16]
 pub fn api::ToneCurve::eval16(&self, u16) -> u16

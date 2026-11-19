@@ -1177,6 +1177,196 @@ pub mod flags {
     }
 }
 
+/// ICC profile and tone-curve behavior.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[non_exhaustive]
+pub enum BehaviorMode {
+    /// Reproduce the Little CMS 2.20 behavior. This is the default.
+    #[default]
+    Lcms2Exact,
+    /// Apply the ICC.1 rules supported by this crate, including bounded ICC
+    /// curves and the Annex F.1 inverse. Unsupported exports return an error.
+    SpecExact,
+}
+
+impl BehaviorMode {
+    pub(crate) fn of(ctx: Option<&crate::context::Context>) -> Self {
+        ctx.map_or(Self::Lcms2Exact, |ctx| ctx.behavior_mode)
+    }
+
+    fn context(self) -> Option<crate::context::Context> {
+        match self {
+            Self::Lcms2Exact => None,
+            Self::SpecExact => Some(crate::context::Context {
+                behavior_mode: self,
+                alarm_codes: crate::context::global()
+                    .alarm_codes
+                    .lock()
+                    .unwrap()
+                    .to_owned()
+                    .into(),
+                ..Default::default()
+            }),
+        }
+    }
+}
+
+/// Creates and opens profiles whose operation uses the selected ICC behavior.
+/// Create one with [`Profile::with_mode`].
+#[derive(Clone, Copy, Debug)]
+pub struct ProfileFactory {
+    mode: BehaviorMode,
+}
+
+impl ProfileFactory {
+    // -- constructors -----------------------------------------------------
+
+    /// `cmsCreate_sRGBProfile` — IEC 61966-2.1 sRGB ([`D65`] white,
+    /// [`REC709_PRIMARIES`], the sRGB curve), ICC v4.4.
+    pub fn srgb(self) -> Profile {
+        Profile::builtin("create_srgb_profile", || {
+            virt::create_srgb_profile(self.mode.context())
+        })
+    }
+    /// `cmsCreateLab4Profile(NULL)` — Lab (D50) identity, ICC v4 encoding.
+    pub fn lab4(self) -> Profile {
+        Profile::builtin("create_lab4_profile", || {
+            virt::create_lab4_profile(self.mode.context(), None)
+        })
+    }
+    /// `cmsCreateLab2Profile(NULL)` — Lab (D50) identity, ICC v2 encoding.
+    pub fn lab2(self) -> Profile {
+        Profile::builtin("create_lab2_profile", || {
+            virt::create_lab2_profile(self.mode.context(), None)
+        })
+    }
+    /// `cmsCreateLab4Profile` with a custom white point.
+    pub fn lab4_with_white_point(self, white_point: &CiexyY) -> Result<Profile> {
+        Profile::wrap("create_lab4_profile", || {
+            virt::create_lab4_profile(self.mode.context(), Some(white_point))
+        })
+    }
+    /// `cmsCreateGrayProfile` with the [`D50`] white and a 2.2-gamma TRC —
+    /// see [`Profile::gray_curve`] for a custom curve.
+    pub fn gray(self) -> Profile {
+        let g = ToneCurve::gamma(2.2).expect("gamma 2.2 is valid");
+        Profile::builtin("create_gray_profile", || {
+            virt::create_gray_profile(self.mode.context(), Some(&D50), Some(&g))
+        })
+    }
+    /// `cmsCreateXYZProfile` — XYZ identity.
+    pub fn xyz(self) -> Profile {
+        Profile::builtin("create_xyz_profile", || {
+            virt::create_xyz_profile(self.mode.context())
+        })
+    }
+    /// `cmsCreateNULLProfile` — an output profile mapping every color to
+    /// gray 0 (black); useful as a gamut-check sink.
+    pub fn null(self) -> Profile {
+        Profile::builtin("create_null_profile", || {
+            virt::create_null_profile(self.mode.context())
+        })
+    }
+    /// `cmsCreate_OkLabProfile` — OkLab color-space profile (MPE pipeline;
+    /// cannot be saved to an ICC file, like C).
+    pub fn oklab(self) -> Profile {
+        Profile::builtin("create_oklab_profile", || {
+            virt::create_oklab_profile(self.mode.context())
+        })
+    }
+    /// `cmsCreateProfilePlaceholder` — a bare profile shell for authoring
+    /// (display class, `'XYZ '` PCS, no color space or tags yet; set them
+    /// with [`Profile::set_color_space`], [`Profile::write_tag`], ...).
+    pub fn placeholder(self) -> Profile {
+        Profile::frozen(crate::profile::create_profile_placeholder(
+            self.mode.context(),
+        ))
+    }
+    /// Create a matrix/TRC RGB profile from a white point, primaries, and curves.
+    pub fn rgb(
+        self,
+        white_point: &CiexyY,
+        primaries: &CiexyYTriple,
+        curves: [&ToneCurve; 3],
+    ) -> Result<Profile> {
+        Profile::wrap("create_rgb_profile", || {
+            virt::create_rgb_profile(
+                self.mode.context(),
+                Some(white_point),
+                Some(primaries),
+                Some(curves),
+            )
+        })
+    }
+    /// `cmsCreateGrayProfile` — white point + a custom tone curve.
+    pub fn gray_curve(self, white_point: &CiexyY, curve: &ToneCurve) -> Result<Profile> {
+        Profile::wrap("create_gray_profile", || {
+            virt::create_gray_profile(self.mode.context(), Some(white_point), Some(curve))
+        })
+    }
+    /// `cmsCreateLinearizationDeviceLink` — a device-link profile whose
+    /// `A2B0` pipeline is one tone-curve stage per channel.
+    pub fn linearization_device_link(
+        self,
+        color_space: ColorSpace,
+        curves: &[ToneCurve],
+    ) -> Result<Profile> {
+        let refs: Vec<&ToneCurve> = curves.iter().collect();
+        Profile::wrap("create_linearization_device_link", || {
+            virt::create_linearization_device_link(self.mode.context(), color_space.code(), &refs)
+        })
+    }
+    /// `cmsCreateInkLimitingDeviceLink` — a CMYK→CMYK device link that
+    /// caps total ink coverage (`limit` %, e.g. `250.0`).
+    pub fn ink_limiting_device_link(self, color_space: ColorSpace, limit: f64) -> Result<Profile> {
+        Profile::wrap("create_ink_limiting_device_link", || {
+            virt::create_ink_limiting_device_link(self.mode.context(), color_space.code(), limit)
+        })
+    }
+    /// `cmsCreateBCHSWabstractProfile` — a Lab→Lab abstract profile applying
+    /// brightness/contrast/hue/saturation/temperature adjustments.
+    ///
+    /// `temp_src`/`temp_dest` are white-point temperatures in K; equal
+    /// values skip the white-point move.
+    #[allow(clippy::too_many_arguments)]
+    pub fn bchsw_abstract(
+        self,
+        lut_points: u32,
+        brightness: f64,
+        contrast: f64,
+        hue: f64,
+        saturation: f64,
+        temp_src: u32,
+        temp_dest: u32,
+    ) -> Result<Profile> {
+        Profile::wrap("create_bchsw_abstract_profile", || {
+            virt::create_bchsw_abstract_profile(
+                self.mode.context(),
+                lut_points,
+                brightness,
+                contrast,
+                hue,
+                saturation,
+                temp_src,
+                temp_dest,
+            )
+        })
+    }
+    /// `cmsOpenProfileFromMem` — parse an ICC profile from bytes.
+    /// Materializes every tag eagerly (see the type docs).
+    pub fn open(self, data: &[u8]) -> Result<Profile> {
+        Profile::wrap("open_profile_from_mem", || {
+            profile::open_profile_from_mem(self.mode.context(), data)
+        })
+    }
+    /// `cmsOpenProfileFromFile` — read an ICC file off disk.
+    pub fn open_file(self, path: impl AsRef<std::path::Path>) -> Result<Profile> {
+        let data = std::fs::read(path.as_ref())
+            .map_err(|e| Error::new(types::ERROR_FILE, e.to_string()))?;
+        self.open(&data)
+    }
+}
+
 // -- Profile ------------------------------------------------------------------
 
 /// An owned ICC profile — `Send` + `Sync`.
@@ -1246,58 +1436,59 @@ impl Profile {
         Self::wrap(what, f).unwrap_or_else(|e| panic!("built-in profile {what}: {e}"))
     }
 
+    /// Select the behavior for profile creation and parsing.
+    pub const fn with_mode(mode: BehaviorMode) -> ProfileFactory {
+        ProfileFactory { mode }
+    }
+
+    /// The behavior selected when this profile was created or opened.
+    pub fn behavior_mode(&self) -> BehaviorMode {
+        BehaviorMode::of(self.icc.ctx.as_ref())
+    }
+
     // -- constructors -----------------------------------------------------
 
     /// `cmsCreate_sRGBProfile` — IEC 61966-2.1 sRGB ([`D65`] white,
     /// [`REC709_PRIMARIES`], the sRGB curve), ICC v4.4.
     pub fn srgb() -> Self {
-        Self::builtin("create_srgb_profile", || virt::create_srgb_profile(None))
+        Self::with_mode(BehaviorMode::Lcms2Exact).srgb()
     }
     /// `cmsCreateLab4Profile(NULL)` — Lab (D50) identity, ICC v4 encoding.
     pub fn lab4() -> Self {
-        Self::builtin("create_lab4_profile", || {
-            virt::create_lab4_profile(None, None)
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).lab4()
     }
     /// `cmsCreateLab2Profile(NULL)` — Lab (D50) identity, ICC v2 encoding.
     pub fn lab2() -> Self {
-        Self::builtin("create_lab2_profile", || {
-            virt::create_lab2_profile(None, None)
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).lab2()
     }
     /// `cmsCreateLab4Profile` with a custom white point.
     pub fn lab4_with_white_point(white_point: &CiexyY) -> Result<Self> {
-        Self::wrap("create_lab4_profile", || {
-            virt::create_lab4_profile(None, Some(white_point))
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).lab4_with_white_point(white_point)
     }
     /// `cmsCreateGrayProfile` with the [`D50`] white and a 2.2-gamma TRC —
     /// see [`Profile::gray_curve`] for a custom curve.
     pub fn gray() -> Self {
-        let g = ToneCurve::gamma(2.2).expect("gamma 2.2 is valid");
-        Self::builtin("create_gray_profile", || {
-            virt::create_gray_profile(None, Some(&D50), Some(&g))
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).gray()
     }
     /// `cmsCreateXYZProfile` — XYZ identity.
     pub fn xyz() -> Self {
-        Self::builtin("create_xyz_profile", || virt::create_xyz_profile(None))
+        Self::with_mode(BehaviorMode::Lcms2Exact).xyz()
     }
     /// `cmsCreateNULLProfile` — an output profile mapping every color to
     /// gray 0 (black); useful as a gamut-check sink.
     pub fn null() -> Self {
-        Self::builtin("create_null_profile", || virt::create_null_profile(None))
+        Self::with_mode(BehaviorMode::Lcms2Exact).null()
     }
     /// `cmsCreate_OkLabProfile` — OkLab color-space profile (MPE pipeline;
     /// cannot be saved to an ICC file, like C).
     pub fn oklab() -> Self {
-        Self::builtin("create_oklab_profile", || virt::create_oklab_profile(None))
+        Self::with_mode(BehaviorMode::Lcms2Exact).oklab()
     }
     /// `cmsCreateProfilePlaceholder` — a bare profile shell for authoring
     /// (display class, `'XYZ '` PCS, no color space or tags yet; set them
     /// with [`Profile::set_color_space`], [`Profile::write_tag`], ...).
     pub fn placeholder() -> Self {
-        Profile::frozen(crate::profile::create_profile_placeholder(None))
+        Self::with_mode(BehaviorMode::Lcms2Exact).placeholder()
     }
     /// `cmsCreateRGBProfile` — white point, primaries, transfer curves.
     ///
@@ -1323,15 +1514,11 @@ impl Profile {
         primaries: &CiexyYTriple,
         curves: [&ToneCurve; 3],
     ) -> Result<Self> {
-        Self::wrap("create_rgb_profile", || {
-            virt::create_rgb_profile(None, Some(white_point), Some(primaries), Some(curves))
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).rgb(white_point, primaries, curves)
     }
     /// `cmsCreateGrayProfile` — white point + a custom tone curve.
     pub fn gray_curve(white_point: &CiexyY, curve: &ToneCurve) -> Result<Self> {
-        Self::wrap("create_gray_profile", || {
-            virt::create_gray_profile(None, Some(white_point), Some(curve))
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).gray_curve(white_point, curve)
     }
     /// `cmsCreateLinearizationDeviceLink` — a device-link profile whose
     /// `A2B0` pipeline is one tone-curve stage per channel.
@@ -1339,17 +1526,12 @@ impl Profile {
         color_space: ColorSpace,
         curves: &[ToneCurve],
     ) -> Result<Self> {
-        let refs: Vec<&ToneCurve> = curves.iter().collect();
-        Self::wrap("create_linearization_device_link", || {
-            virt::create_linearization_device_link(None, color_space.code(), &refs)
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).linearization_device_link(color_space, curves)
     }
     /// `cmsCreateInkLimitingDeviceLink` — a CMYK→CMYK device link that
     /// caps total ink coverage (`limit` %, e.g. `250.0`).
     pub fn ink_limiting_device_link(color_space: ColorSpace, limit: f64) -> Result<Self> {
-        Self::wrap("create_ink_limiting_device_link", || {
-            virt::create_ink_limiting_device_link(None, color_space.code(), limit)
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).ink_limiting_device_link(color_space, limit)
     }
     /// `cmsCreateBCHSWabstractProfile` — a Lab→Lab abstract profile applying
     /// brightness/contrast/hue/saturation/temperature adjustments.
@@ -1366,24 +1548,18 @@ impl Profile {
         temp_src: u32,
         temp_dest: u32,
     ) -> Result<Self> {
-        Self::wrap("create_bchsw_abstract_profile", || {
-            virt::create_bchsw_abstract_profile(
-                None, lut_points, brightness, contrast, hue, saturation, temp_src, temp_dest,
-            )
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).bchsw_abstract(
+            lut_points, brightness, contrast, hue, saturation, temp_src, temp_dest,
+        )
     }
     /// `cmsOpenProfileFromMem` — parse an ICC profile from bytes.
     /// Materializes every tag eagerly (see the type docs).
     pub fn open(data: &[u8]) -> Result<Self> {
-        Self::wrap("open_profile_from_mem", || {
-            profile::open_profile_from_mem(None, data)
-        })
+        Self::with_mode(BehaviorMode::Lcms2Exact).open(data)
     }
     /// `cmsOpenProfileFromFile` — read an ICC file off disk.
     pub fn open_file(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let data = std::fs::read(path.as_ref())
-            .map_err(|e| Error::new(types::ERROR_FILE, e.to_string()))?;
-        Self::open(&data)
+        Self::with_mode(BehaviorMode::Lcms2Exact).open_file(path)
     }
 
     // -- serialization ------------------------------------------------------
@@ -1406,6 +1582,36 @@ impl Profile {
     /// API (constructors freeze already); kept for explicitness.
     pub fn freeze(&mut self) {
         profile::freeze(&mut self.icc);
+    }
+
+    /// Read the custom CICP coordinates in ICC s15Fixed16 representation,
+    /// ordered as red x/y, green x/y, blue x/y, then white x/y.
+    pub fn cicp_chromaticities(&self) -> Option<[i32; 8]> {
+        crate::spec::cicp_chromaticities(&self.icc)
+    }
+
+    /// Write an amended CICP tag with ColourPrimaries 2 and eight custom
+    /// s15Fixed16 coordinates. Requires a SpecExact ICC v4.4 RGB or YCbCr
+    /// Input, Display or ColorSpace profile.
+    pub fn write_cicp_with_chromaticities(
+        &mut self,
+        signal: VideoSignal,
+        chromaticities: [i32; 8],
+    ) -> Result<()> {
+        let bytes = crate::spec::encode_cicp(signal, Some(chromaticities));
+        if self.behavior_mode() != BehaviorMode::SpecExact
+            || crate::spec::read_cicp(&self.icc, &bytes).is_none()
+        {
+            return Err(Error::new(
+                types::ERROR_NOT_SUITABLE,
+                "custom CICP coordinates require a supported SpecExact profile and ColourPrimaries 2",
+            ));
+        }
+        self.write_tag(Tag::CICP, signal)?;
+        let index = profile::search_tag(&self.icc, Tag::CICP.0, true) as usize;
+        self.icc.tag_sizes[index] = bytes.len() as u32;
+        self.icc.tag_raw[index] = Some(bytes);
+        Ok(())
     }
 
     // -- tag access -----------------------------------------------------------
@@ -1533,7 +1739,7 @@ impl Profile {
         let r = attempt_bool(types::ERROR_UNKNOWN_EXTENSION, "write_tag", || {
             crate::profile::cms_write_tag(&mut self.icc, sig, Some(obj))
         });
-        if r.is_err() {
+        if r.is_err() && self.behavior_mode() == BehaviorMode::Lcms2Exact {
             // C leaves the directory slot named but empty; drop it so
             // `has_tag` and `get` agree.
             crate::profile::cms_write_tag(&mut self.icc, sig, None);
@@ -1653,6 +1859,20 @@ impl Profile {
     }
 
     // -- header setters (authoring) ----------------------------------------------
+
+    /// Set the ICC.1 version as the encoded BCD word (for example,
+    /// `0x02400000` for v2.4). Saving can reject tags the target version
+    /// cannot represent. The version selects the writer's tag encodings.
+    pub fn set_version(&mut self, version: u32) -> Result<()> {
+        if !crate::spec::allowed_version(version) {
+            return Err(Error::new(
+                types::ERROR_RANGE,
+                "unsupported ICC.1 profile version",
+            ));
+        }
+        profile::set_encoded_icc_version(&mut self.icc, version);
+        Ok(())
+    }
 
     /// `cmsSetColorSpace`.
     pub fn set_color_space(&mut self, cs: ColorSpace) {
@@ -1966,6 +2186,7 @@ impl Plan {
         options: &PlanOptions,
         per_profile: Option<(Vec<u32>, Vec<bool>)>,
     ) -> Result<Self> {
+        let mode = profiles[0].behavior_mode();
         // create_extended_transform takes &mut [Box<IccProfile>] — work on
         // clones so `&Profile` suffices.
         let mut profs: Vec<Box<crate::profile::IccProfile>> =
@@ -1978,7 +2199,7 @@ impl Plan {
         let gamut_pcs_position = if gamut.is_some() { 1 } else { 0 };
         let t = attempt(types::ERROR_NOT_SUITABLE, "create_transform", || {
             xform::create_extended_transform(
-                None,
+                mode.context(),
                 &mut profs,
                 &mut bpc,
                 &intents,
@@ -1992,6 +2213,11 @@ impl Plan {
         })?;
         let xform::Transform { plan, .. } = *t;
         Ok(Plan { inner: plan })
+    }
+
+    /// The behavior of the profiles used to construct this plan.
+    pub fn behavior_mode(&self) -> BehaviorMode {
+        BehaviorMode::of(self.inner.ctx.as_ref())
     }
 
     /// `cmsTransform2DeviceLink` — turn this plan back into a `link`-class
@@ -2310,6 +2536,37 @@ fn stride_layout(
 /// Construction, evaluation and inversion. `eval16`, `eval_float`,
 /// `estimated_table` and `parametric_type` come from the parity impl.
 impl ToneCurve {
+    /// Select bounded ICC evaluation and Annex F.1 inversion for a
+    /// curveType table or a Table 68 parametric function.
+    ///
+    /// Extended-range and MPE curves keep their original evaluation contract.
+    pub fn with_mode(&self, mode: BehaviorMode) -> Result<Self> {
+        let mut curve = self.clone();
+        if mode == BehaviorMode::SpecExact {
+            if !curve.bind_icc() {
+                return Err(Error::new(
+                    types::ERROR_NOT_SUITABLE,
+                    "curve has no ICC.1 Table 68 or curveType representation",
+                ));
+            }
+        } else if !curve.clear_icc_mode() {
+            return Err(Error::new(
+                types::ERROR_NOT_SUITABLE,
+                "apply Lcms2Exact to the forward curve before inverting it",
+            ));
+        }
+        Ok(curve)
+    }
+
+    /// The evaluation and inversion behavior of this curve.
+    pub fn behavior_mode(&self) -> BehaviorMode {
+        if self.behavior_is_spec() {
+            BehaviorMode::SpecExact
+        } else {
+            BehaviorMode::Lcms2Exact
+        }
+    }
+
     /// `cmsBuildGamma` — a plain `v^g` curve.
     pub fn gamma(g: f64) -> Result<Self> {
         attempt(types::ERROR_RANGE, "build_gamma", || {
@@ -2397,6 +2654,26 @@ impl ToneCurve {
     /// `cmsJoinToneCurve(self, other)` — `other⁻¹(self(t))` sampled at
     /// `points` points: map through `self`, then back through `other`.
     pub fn then_inverse_of(&self, other: &ToneCurve, points: usize) -> Result<ToneCurve> {
+        if self.behavior_mode() != other.behavior_mode() {
+            return Err(Error::new(
+                types::ERROR_NOT_SUITABLE,
+                "curve behavior modes differ",
+            ));
+        }
+        if self.behavior_mode() == BehaviorMode::SpecExact {
+            let n = u32::try_from(points)
+                .map_err(|_| Error::new(types::ERROR_RANGE, "too many curve samples"))?;
+            let inverse = other.inverse_sampled(points)?;
+            let values = (0..n)
+                .map(|i| {
+                    let x = (i as f64 / f64::from(n - 1)) as f32;
+                    crate::fixed::quick_saturate_word(
+                        f64::from(inverse.eval_float(self.eval_float(x))) * 65535.0,
+                    )
+                })
+                .collect::<Vec<_>>();
+            return Self::tabulated16(&values)?.with_mode(BehaviorMode::SpecExact);
+        }
         attempt(types::ERROR_RANGE, "join_tone_curve", || {
             crate::gamma::join_tone_curve(None, self, other, points as u32)
         })
