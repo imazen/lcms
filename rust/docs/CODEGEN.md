@@ -110,26 +110,22 @@ targets and both compatibility API features enabled.
 
 ### Where to reduce linked size
 
-1. Start with the [integer transform loop](../crates/lcms/src/xform.rs).
-   The x86-64 build emits a copy of the generic loop for each CPU tier
-   and retained formatter/evaluator combination. In a trial that
+1. Start with formatter specialization in the
+   [integer transform loop](../crates/lcms/src/xform.rs). Keep direct
+   calls for format pairs that show a throughput benefit and share a
+   loop with formatter callbacks for the rest. The measurements below
+   show the effect of sharing the full loop on all three targets.
+2. Evaluate CPU tiers for the resulting loop. In an earlier trial that
    changed only its attribute from `#[archmage::autoversion]` to
    `#[archmage::attune(dispatch)]`, the converter fell from
    4,251,192 to 3,259,976 bytes (21.0%). Its `.text` fell from
    3,628,310 to 2,754,646 bytes. The trial reproduced the fixture
    checksum and passed 14 C API and transform-matrix parity tests.
    Measure packed RGB8, strided and planar conversions, and a CLUT
-   workload before selecting the production tiers. Keep explicit wider
-   tiers for vector kernels where they improve throughput.
+   workload before changing the production loop. Keep explicit wider
+   tiers for vector kernels where they improve throughput. Evaluate the
+   floating-point loop separately.
    [Archmage 0.9.33 dispatch guide](https://github.com/imazen/archmage/blob/3143371be7eea1f00cac047470cef4d27333d49a/docs/ATTUNE.md)
-2. Measure formatter specialization separately. The integer
-   loop also specializes for input/output formatter pairs that remain
-   reachable through the API's runtime format selection. Try keeping
-   direct calls for measured hot pairs and sharing a loop with
-   function-pointer callbacks for other pairs. Recheck bitwise C parity
-   and throughput with caching and strides, then repeat the size
-   measurements on Apple ARM64 and WASI. Evaluate the floating-point
-   loop separately if symbol sizes show the same pattern.
 3. Use token-first Magetypes operations where a kernel does meaningful
    vector work. Keep scalar tails equivalent in rounding, endpoint,
    and NaN behavior. Evaluate each Magemath approximation against its
@@ -137,3 +133,80 @@ targets and both compatibility API features enabled.
    Dispatch and formatter changes can be measured without changing
    those arithmetic contracts.
    [Magemath migration guide](https://github.com/imazen/archmage/blob/3143371be7eea1f00cac047470cef4d27333d49a/docs/MAGEMATH-MIGRATION.md)
+
+## Formatter specialization and CPU tiers
+
+These scratch builds use source revision `d8cee076`, the same inputs
+and optimization flags as above, and function names for attribution.
+Linux and WASI used Rust 1.100.0. Apple ARM64 used Rust 1.99.1.
+The stock C comparators used GCC 15.2 on Linux, WASI SDK 34 on WASI,
+and the recorded Apple Clang 21 result above.
+
+| Converter code bytes | x86-64 Linux | Apple ARM64 | WASI Preview 1 |
+|---|---:|---:|---:|
+| Stock Little CMS 2.20 | 194,079 | 273,748 | 301,787 |
+| Rust baseline | 3,628,310 | 1,330,476 | 1,272,842 |
+| Remove `autoversion` from integer loop | 1,868,038 | 1,330,540 | 1,274,791 |
+| Share integer loop across formatter pairs | 1,038,022 | 662,764 | 564,195 |
+| Apply both changes | 1,020,070 | 662,764 | 564,160 |
+
+The shared-loop trial replaces the body of `xform16_run` with a single
+call to `xform16_eval_loop` using its existing unpack and pack function
+pointers. Its evaluator remains generic. The other trial removes only
+the integer loop's `#[archmage::autoversion]` attribute. Both leave
+the floating-point loop and separately dispatched SIMD kernels in place.
+Every Rust variant reproduced the stock C fixture checksum `ff03e6a7`.
+The shared-loop variant also passed all 14 x86-64 tests in
+`api_c_parity` and `c_parity_xform_matrix`. Throughput and the full
+parity suite remain to be measured for these changes.
+
+On x86-64, GNU `nm` attributes 840,124 bytes to the baseline
+integer loop's scalar family, and 761,277 bytes each to its v3 and v4
+families. After sharing formatters, there are 12 evaluator instances
+per tier, with 25,772 bytes of loop bodies across all three tiers.
+The full executable's code benefit from removing integer-loop CPU
+dispatch falls from 1,760,272 to 17,952 bytes after sharing formatters.
+On Apple ARM64, `nm` finds 792 integer loop bodies before sharing and
+12 after. Removing `autoversion` alone saves no bytes on Apple ARM64
+or this WASI target.
+
+On WASI, Twiggy 0.8.0 counts 792 `xform16_eval_loop` bodies
+(553,938 bytes) and 12 `xform16_run` bodies (162,102 bytes). Together
+they account for 56.3% of the code section. These are shallow sizes
+from `twiggy top`. The dominator tree attributes 727,925 retained
+bytes to `TransformPlan::xform16`. Retaining paths run from
+`Plan::apply` and internal gamut-check and black-point transforms
+through the common transform entry point. An RGB8 call therefore still
+links the runtime format selection and the evaluator specializations.
+After sharing formatters, Twiggy still attributes 105,099 retained bytes
+to `Plan::build` and 88,198 to `cms_read_tag`. The named `core`,
+`std`, and `alloc` bodies total 104,946 bytes before and after the
+change. Retained sizes can overlap.
+
+For attribution, build with `cargo rustc --locked --release --target
+<target> --manifest-path bench/codegen/Cargo.toml -- -C strip=none`
+from the Rust workspace. Keep the Wasm name section with
+`wasm-tools strip`, then use `twiggy top -f csv`, `twiggy monos -g`,
+`twiggy dominators`, and `twiggy paths --regex` on the named copy.
+Measure code bytes with `wasm-tools objdump`, `size -A`, or
+`size -m`. Use `nm -S --defined-only --demangle` on ELF and
+count unique address and size pairs to avoid aliases. Wasmtime 40.0.1
+ran all WASI variants. The Rust inspector and converter modules both
+require SIMD instructions under this toolchain, including the variant
+with integer-loop `autoversion` removed. WASI validates SIMD support
+when it loads the module.
+
+### Little CMS 2.20 dispatch
+
+Stock C chooses the unpack, evaluation, and pack functions at runtime.
+It reuses the transform loop across formatter pairs by calling those
+functions through pointers. The x86-64 stock executable contained no
+`cpuid` instructions. The separately registered `fast_float` plugin
+does have runtime SIMD selection. Its 8-bit matrix-shaper optimization
+checks SSE2 through CPUID before choosing the SSE2 kernel.
+An otherwise matched C build with the plugin registered at startup
+contained that CPUID check and the SSE2 kernel. Its `.text` was 244,511
+bytes, 50,432 bytes larger than stock C, and its fixture checksum was
+`f1d714d3`.
+[Stock C transform loop](https://github.com/mm2/Little-CMS/blob/7717fce0d85447ef3b2df0cca2e99207c15eeecd/src/cmsxform.c#L518-L554)
+[C plugin SSE2 check](https://github.com/mm2/Little-CMS/blob/7717fce0d85447ef3b2df0cca2e99207c15eeecd/plugins/fast_float/src/fast_8_matsh_sse.c#L302-L345)
