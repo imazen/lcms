@@ -15,6 +15,7 @@
 ### Changed
 
 - Declare Rust 1.89 as the minimum supported version for the workspace. (171eeebcc9)
+- Use registry releases of Magetypes and Archmage 0.9.33. (25e6dedb86)
 
 ### Fixed
 

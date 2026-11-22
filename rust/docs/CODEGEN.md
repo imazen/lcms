@@ -82,3 +82,58 @@ unique executable symbol address/size pairs from `nm -S --demangle`.
 The WASI programs ran under Wasmtime 40.0.1 with the input
 fixtures supplied through the runtime's directory mapping.
 [WASI SDK](https://github.com/WebAssembly/wasi-sdk)
+
+## Magetypes and Archmage 0.9.33
+
+The released dependencies replaced the local 0.9.31-beta.2 checkout.
+These Lcms2Exact builds use the same Display P3 input, API calls, and
+release options as above. For each Linux and WASI pair, both builds
+used the same Linux host and Rust 1.100.0 with LLVM 23.1.5. The Apple
+ARM64 comparison uses the recorded baseline above and Rust 1.99.1
+with LLVM 23.1.1 on both sides.
+
+| Target | Consumer | File bytes, beta → 0.9.33 | Code bytes, beta → 0.9.33 |
+|---|---|---:|---:|
+| x86-64 Linux | Inspect | 707,120 → 707,136 | 546,646 → 546,630 |
+| x86-64 Linux | Convert | 4,251,160 → 4,251,192 | 3,628,310 → 3,628,310 |
+| Apple ARM64 | Inspect | 624,928 → 624,928 | 430,124 → 430,124 |
+| Apple ARM64 | Convert | 1,702,464 → 1,702,464 | 1,330,476 → 1,330,540 |
+| WASI Preview 1 | Inspect | 333,200 → 333,232 | 302,131 → 302,131 |
+| WASI Preview 1 | Convert | 1,350,181 → 1,350,229 | 1,272,842 → 1,272,842 |
+
+Gzipped WASI changed from 119,309 to 119,338 bytes for inspection
+and from 292,037 to 292,029 bytes for conversion. The inspectors agreed
+across all six Rust builds. All six Rust converters returned
+`ff03e6a7`. The Apple ARM64 rerun also matched the original C and
+SpecDefault checksums. The Rust 1.89 workspace check passed with all
+targets and both compatibility API features enabled.
+
+### Where to reduce linked size
+
+1. Start with the [integer transform loop](../crates/lcms/src/xform.rs).
+   The x86-64 build emits a copy of the generic loop for each CPU tier
+   and retained formatter/evaluator combination. In a trial that
+   changed only its attribute from `#[archmage::autoversion]` to
+   `#[archmage::attune(dispatch)]`, the converter fell from
+   4,251,192 to 3,259,976 bytes (21.0%). Its `.text` fell from
+   3,628,310 to 2,754,646 bytes. The trial reproduced the fixture
+   checksum and passed 14 C API and transform-matrix parity tests.
+   Measure packed RGB8, strided and planar conversions, and a CLUT
+   workload before selecting the production tiers. Keep explicit wider
+   tiers for vector kernels where they improve throughput.
+   [Archmage 0.9.33 dispatch guide](https://github.com/imazen/archmage/blob/3143371be7eea1f00cac047470cef4d27333d49a/docs/ATTUNE.md)
+2. Measure formatter specialization separately. The integer
+   loop also specializes for input/output formatter pairs that remain
+   reachable through the API's runtime format selection. Try keeping
+   direct calls for measured hot pairs and sharing a loop with
+   function-pointer callbacks for other pairs. Recheck bitwise C parity
+   and throughput with caching and strides, then repeat the size
+   measurements on Apple ARM64 and WASI. Evaluate the floating-point
+   loop separately if symbol sizes show the same pattern.
+3. Use token-first Magetypes operations where a kernel does meaningful
+   vector work. Keep scalar tails equivalent in rounding, endpoint,
+   and NaN behavior. Evaluate each Magemath approximation against its
+   domain and precision contract, including C parity for Lcms2Exact.
+   Dispatch and formatter changes can be measured without changing
+   those arithmetic contracts.
+   [Magemath migration guide](https://github.com/imazen/archmage/blob/3143371be7eea1f00cac047470cef4d27333d49a/docs/MAGEMATH-MIGRATION.md)
