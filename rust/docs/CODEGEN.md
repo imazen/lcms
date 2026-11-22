@@ -404,3 +404,34 @@ codecs in this probe. Its savings were 2,098 bytes after gzip. Its
 float throughput and parity still need measurement. For a WASI
 download, use the compressed size alongside code bytes when ranking
 these changes.
+
+## sRGB8 and Display P3 RGB8 baseline
+
+These stripped WASI Preview 1 consumers use lcms defaults,
+Lcms2Exact, Rust 1.100.0, ThinLTO, and one codegen unit. They read
+packed RGB8 pixels, build a relative colorimetric `Plan`, apply it,
+and print the same checksum used above. The ICC variant opens the
+extracted input profile. The known-space variant selects a source
+by name. Both select the destination at runtime using
+`Profile::srgb()` or the Display P3 recipe in
+[`Profile::rgb`](../crates/lcms/src/api.rs), with D65 and an sRGB
+transfer curve.
+
+| Consumer | Optimization level | File bytes | Code bytes | Brotli bytes |
+|---|---|---:|---:|---:|
+| Read and checksum packed RGB8 | 2 | 76,214 | 61,934 | 25,690 |
+| RGB ICC to sRGB (existing converter) | 2 | 667,726 | 591,244 | 182,146 |
+| RGB ICC to sRGB or Display P3 | 2 | 671,584 | 594,847 | 183,135 |
+| Known sRGB or Display P3 to either | 2 | 661,228 | 585,136 | 180,107 |
+| RGB ICC to sRGB or Display P3 | z | 567,204 | 479,742 | 164,149 |
+| Known sRGB or Display P3 to either | z | 558,955 | 472,275 | 161,164 |
+
+Brotli 1.2.0 used generic mode, quality 11, and window size 22.
+All files validated and ran in Wasmtime on the same 4,096-pixel
+fixture. Both optimization levels produced identical checksums
+for both destinations and for all four known-space routes.
+The known-space identity conversions reproduced the input checksum,
+and the two-destination ICC consumer matched the existing sRGB
+converter for its sRGB route. These figures cover pixel conversion.
+Encoded image decoding and encoding are separate steps. Throughput
+with optimization level `z` remains unmeasured.
