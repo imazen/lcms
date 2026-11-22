@@ -252,12 +252,47 @@ One Apple Wide Color input witness changed from `-0.045454875` to `0.0`.
 The sample probe does not attribute every delta to a clause. Applicable
 float ranges and C compatibility need separate arithmetic witnesses.
 
-The remaining 47 import refusals include unsupported headers and profile
-classes, malformed directories, and text or tag payload failures.
-SpecDefault shares the existing ICC.1 export checks, which refused 30 of
-the 146 files it opened. The most frequent export refusal was missing
-required description, copyright, or white-point data (25 files). The
-recovery is specific to the measured compact v2 layout.
+### Read, link, and save outcomes
+
+All 30 files that SpecDefault opened and refused to save produced at
+least one successful link. They produced 136 successful links in total.
+
+| Files | First export refusal |
+|---:|---|
+| 25 | v2 camera input profiles lack `wtpt`. They all contain `desc` and `cprt`. ICC.1:2001-04 §6.3.1 requires the media white point. The renderer currently substitutes D50 when it reads a missing white point. A successful absolute-colorimetric link therefore does not establish the actual media white. |
+| 3 | The v4 writer rejects the legacy `bkpt` tag. |
+| 2 | The v2 writer rejects `clrt` on one file and `meta` on the other. |
+
+Of the 47 SpecDefault open refusals, 30 open in Lcms2Exact and 17 fail
+in both modes. Lcms2Exact produced usable links for 22 of its 30
+additional opens, across 164 link cases. These are the first rejection
+points for the 30 files.
+
+| Files | First import refusal |
+|---:|---|
+| 15 | Text or metadata payload. Eight `desc`, two `cprt`, two `dmnd`, two `meta`, and one `vued`. |
+| 12 | Header or tag directory. These include unsupported ICC versions, invalid extents, short tags, unaligned offsets, and partial overlaps. |
+| 2 | Generic profile-open error. |
+| 1 | Nonzero reserved bytes in the `A2B0` type header. |
+
+To isolate the first group, a scratch probe removed directory entries
+for `desc`, `cprt`, `dmnd`, `dmdd`, `meta`, and `vued` from those
+15 files. The remaining tag offsets and payload bytes stayed identical.
+Both ICC.1 modes then opened and linked 12 of 15 files, yielding 88
+successful link cases each. The other three reached a `wtpt` reserved
+field failure, a `rTRC` reserved field failure, and a generic open
+failure. These copies isolate the effect of metadata admission. The
+probe is separate from profile authoring and export.
+
+Profile admission, the semantics of a selected transform, and ICC
+export are distinct checks. An import policy can retain a bounded
+metadata payload without decoding it and still apply the ICC.1 rules
+to every tag involved in rendering. A damaged or ambiguous color tag
+can prevent the requested transform even when the file is readable for
+inspection. Export separately requires the data mandated by the
+target ICC version and profile class.
+[ICC.1:2001-04](https://www.color.org/specifications/ICC.1-2001-04.pdf)
+· [ICC.1:2022](https://www.color.org/specifications/ICC.1-2022-05.pdf)
 
 ## Black-point compensation
 

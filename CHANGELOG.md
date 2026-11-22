@@ -10,6 +10,10 @@
 
 - Add opt-in SpecDefault with compact ICC v2 description recovery and import diagnostics. (efd85b9542)
 
+### Changed
+
+- Declare Rust 1.89 as the minimum supported version for the workspace. (171eeebcc9)
+
 ### Fixed
 
 - Correct native date storage and planar stride buffer sizing in the C oracle tests. (929c4c0745)
