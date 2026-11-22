@@ -6,7 +6,7 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1061 lines (supported surface) | lcms.features.txt 2001 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 100 lines (100 hidden + 0 excluded-feature)
+# files: lcms.txt 1062 lines (supported surface) | lcms.features.txt 2001 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 100 lines (100 hidden + 0 excluded-feature)
 
 ## summary
 #
@@ -16,18 +16,18 @@
 #   free functions                             30
 #   inherent methods                          210
 #   struct fields                             103
-#   enum variants                             110
+#   enum variants                             111
 #   trait roster entries (type × trait)       231
 #   auto-trait-complete types                  48
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
 #   (root)                           34
-#   api                             585
+#   api                             586
 #   signatures                      249
 #   types                           143
 
-## items (1003 lines)
+## items (1004 lines)
 
 pub mod lcms
 pub mod api
@@ -124,6 +124,7 @@ pub fn api::ProfileClass::code(self) -> u32
 pub fn api::ProfileClass::from_u32(u32) -> api::ProfileClass
 #[non_exhaustive] pub enum api::ProfileReadWarning
 pub api::ProfileReadWarning::CompactedV2Description
+pub api::ProfileReadWarning::UnreadableMetadata(api::Tag)
 #[non_exhaustive] pub enum api::TagData<'a>
 pub api::TagData::Chromaticity(types::CiexyYTriple)
 pub api::TagData::ColorantOrder([u8; 16])

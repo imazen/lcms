@@ -26,11 +26,42 @@ pub(crate) fn bad_tag(sig: u32, reason: &str) {
 
 pub(crate) fn decode_known_tags(icc: &mut IccProfile) -> bool {
     let tags: Vec<_> = icc.tag_names[..icc.tag_count as usize].to_vec();
-    tags.into_iter().all(|sig| {
-        get_tag_descriptor(icc.ctx.as_ref(), sig).is_none()
+    let defer_metadata = BehaviorMode::of(icc.ctx.as_ref()) == BehaviorMode::SpecDefault;
+    for sig in tags {
+        if get_tag_descriptor(icc.ctx.as_ref(), sig).is_none()
             || profile::cms_read_tag(icc, sig).is_some()
             || is_opaque_mpe(icc, sig)
-    })
+        {
+            continue;
+        }
+        if defer_metadata && is_render_independent_metadata(sig) {
+            // The validated input stream continues to own the original bytes.
+            let i = profile::search_tag(icc, sig, true) as usize;
+            icc.tag_save_as_raw[i] = true;
+            icc.tag_type_sigs[i] = 0;
+            let _ = crate::err::take_last_error();
+        } else {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_render_independent_metadata(sig: u32) -> bool {
+    matches!(
+        &sig.to_be_bytes(),
+        b"desc" | b"cprt" | b"dmnd" | b"dmdd" | b"meta" | b"vued"
+    )
+}
+
+pub(crate) fn is_deferred_metadata(icc: &IccProfile, sig: u32) -> bool {
+    if !is_render_independent_metadata(sig) {
+        return false;
+    }
+    let Ok(i) = usize::try_from(profile::search_tag(icc, sig, true)) else {
+        return false;
+    };
+    icc.tag_save_as_raw[i] && icc.tag_type_sigs[i] == 0 && icc.tag_offsets[i] != 0
 }
 
 pub(crate) fn is_opaque_mpe(icc: &IccProfile, sig: u32) -> bool {
@@ -505,6 +536,12 @@ pub(crate) fn check_export(icc: &IccProfile) -> bool {
         }
         if &sig.to_be_bytes() == b"clot" && class != *b"link" {
             return refuse("colorantTableOutTag requires a DeviceLink profile");
+        }
+        if is_deferred_metadata(icc, sig) {
+            return refuse(&format!(
+                "tag '{}' could not be decoded for ICC export",
+                String::from_utf8_lossy(&sig.to_be_bytes())
+            ));
         }
         if let Some(desc) = get_tag_descriptor(icc.ctx.as_ref(), sig) {
             let linked = profile::search_tag(icc, sig, true);

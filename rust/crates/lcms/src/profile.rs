@@ -485,7 +485,9 @@ pub fn cms_read_tag(icc: &mut IccProfile, sig: u32) -> Option<&TagObject> {
     }
     let n = n as usize;
 
-    if crate::spec::enabled(ctx) && crate::spec::is_opaque_mpe(icc, sig) {
+    if crate::spec::enabled(ctx)
+        && (crate::spec::is_opaque_mpe(icc, sig) || crate::spec::is_deferred_metadata(icc, sig))
+    {
         return None;
     }
 

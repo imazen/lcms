@@ -4,7 +4,8 @@ The default `BehaviorMode::Lcms2Exact` reproduces the Little CMS 2.20
 oracle, including the deviations in the compatibility audit below.
 `BehaviorMode::SpecExact` opts into ICC.1 profile serialization and curve
 computation for the audited behaviors. `BehaviorMode::SpecDefault` shares
-those rules and enables the documented compact v2 import recovery. See the
+those rules and enables the documented compact v2 and metadata import
+recoveries. See the
 [Rust API guide](../README.md) for profile factories, linking and standalone
 curves.
 
@@ -219,7 +220,8 @@ The transform assertions use the ICC encoding and known fixture values.
 The corpus contains 193 immutable ICC files, identified by SHA-256 manifest
 `e769fc59ae4954ce1654f9d51247888b8969c551032fe50e9f112b8a5cfc82cf`.
 It includes the Compact ICC Profiles set and extracted real-world profiles.
-The compatibility baseline was `e8a67f81`. Invoke
+The compatibility baseline was `e8a67f81`. The counts in the next table
+measure the compact-description-only release candidate. Invoke
 `just icc-readback <profile>...` to report open, save/reopen and link
 outcomes for explicit files. The probe uses all four intents, 64 packed
 float pixels per link, and `NO_OPTIMIZE`. It links to or from built-in sRGB
@@ -293,6 +295,27 @@ inspection. Export separately requires the data mandated by the
 target ICC version and profile class.
 [ICC.1:2001-04](https://www.color.org/specifications/ICC.1-2001-04.pdf)
 · [ICC.1:2022](https://www.color.org/specifications/ICC.1-2022-05.pdf)
+
+### Metadata admission in SpecDefault
+
+SpecDefault opens bounded unreadable description, copyright, manufacturer,
+model description, dictionary, and viewing-condition description tags.
+It retains their original bytes in the input stream and reports each
+signature through `ProfileReadWarning::UnreadableMetadata`. A cooked tag
+read returns no value for that signature. These tags are independent of
+the pixel transform. SpecExact continues to require their cooked
+decoding, and the ICC export checks require the caller to replace or remove
+unreadable metadata as permitted for the target profile class. Invalid
+color-tag encodings and unsafe tag directories still fail admission.
+
+The 15 original profiles selected by the preceding metadata probe were
+replayed without changing any bytes. SpecDefault opened 12 and rendered
+88 link cases. Those opens reported 17 unreadable tags. All 12 were
+refused by the writer until metadata or profile-class requirements are
+addressed. The three remaining files failed on white-point data, tone
+curve data, and a generic profile-open failure. The regression also
+tests a structurally readable profile with a missing required RGB curve.
+Opening succeeds and building that transform fails.
 
 ## Black-point compensation
 

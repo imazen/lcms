@@ -1187,8 +1187,9 @@ pub enum BehaviorMode {
     /// Apply the ICC.1 rules supported by this crate, including bounded ICC
     /// curves and the Annex F.1 inverse. Unsupported exports return an error.
     SpecExact,
-    /// Use the SpecExact transform and export rules and recover documented
-    /// compact profile descriptions on import. See [`Profile::read_warnings`].
+    /// Use the SpecExact transform and export rules. Import can recover
+    /// compact descriptions and retain unreadable rendering-independent
+    /// metadata. See [`Profile::read_warnings`].
     SpecDefault,
 }
 
@@ -1367,7 +1368,9 @@ impl ProfileFactory {
             profile::open_profile_from_mem(self.mode.context(), expanded.as_deref().unwrap_or(data))
         })?;
         if expanded.is_some() {
-            profile.read_warning = Some(ProfileReadWarning::CompactedV2Description);
+            profile
+                .read_warnings
+                .insert(0, ProfileReadWarning::CompactedV2Description);
         }
         Ok(profile)
     }
@@ -1388,6 +1391,9 @@ pub enum ProfileReadWarning {
     /// The v2 profile description overlapped other tags at the unused
     /// ScriptCode storage. The reader restored that storage before decoding.
     CompactedV2Description,
+    /// The tag is carried from the input as opaque bytes. A cooked read returns
+    /// `None`; replace or remove this tag before exporting the profile.
+    UnreadableMetadata(Tag),
 }
 
 /// An owned ICC profile — `Send` + `Sync`.
@@ -1411,14 +1417,14 @@ pub enum ProfileReadWarning {
 /// ```
 pub struct Profile {
     pub(crate) icc: Box<crate::profile::IccProfile>,
-    read_warning: Option<ProfileReadWarning>,
+    read_warnings: Vec<ProfileReadWarning>,
 }
 
 impl Clone for Profile {
     fn clone(&self) -> Self {
         Profile {
             icc: self.icc.clone(),
-            read_warning: self.read_warning,
+            read_warnings: self.read_warnings.clone(),
         }
     }
 }
@@ -1443,10 +1449,17 @@ impl Profile {
         // a tag that fails to decode stays unmaterialized (reads `None`);
         // its signalled error isn't the constructor's failure.
         let _ = crate::err::take_last_error();
-        Profile {
-            icc,
-            read_warning: None,
-        }
+        let read_warnings = if BehaviorMode::of(icc.ctx.as_ref()) == BehaviorMode::SpecDefault {
+            icc.tag_names[..icc.tag_count as usize]
+                .iter()
+                .copied()
+                .filter(|&sig| crate::spec::is_deferred_metadata(&icc, sig))
+                .map(|sig| ProfileReadWarning::UnreadableMetadata(Tag(sig)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Profile { icc, read_warnings }
     }
     fn wrap(
         what: &str,
@@ -1472,7 +1485,7 @@ impl Profile {
 
     /// Recoveries applied to the input bytes when this profile was opened.
     pub fn read_warnings(&self) -> &[ProfileReadWarning] {
-        self.read_warning.as_slice()
+        &self.read_warnings
     }
 
     // -- constructors -----------------------------------------------------

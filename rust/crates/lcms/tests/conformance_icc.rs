@@ -2684,3 +2684,74 @@ fn spec_default_restores_compact_description_only() {
 
     assert!(usual.open(&full).unwrap().read_warnings().is_empty());
 }
+
+#[test]
+fn spec_default_checks_open_link_and_save_independently() {
+    use api::{BehaviorMode, ErrorKind, ProfileReadWarning, Tag, flags};
+    let exact = spec_factory();
+    let usual = Profile::with_mode(BehaviorMode::SpecDefault);
+    let canonical = exact.srgb().save().unwrap();
+    let metadata = Tag::new(*b"dmnd");
+    let unreadable = b"mluc\0\0\0\0\0\0\0\x01\0\0\0\x0c";
+    let input = spec_with_tag(&canonical, b"dmnd", unreadable);
+    assert!(exact.open(&input).is_err());
+
+    let mut p = usual.open(&input).unwrap();
+    assert_eq!(
+        p.read_warnings(),
+        &[ProfileReadWarning::UnreadableMetadata(metadata)]
+    );
+    assert!(p.has_tag(metadata));
+    assert!(p.get(metadata).is_none());
+    let mut raw = [0u8; 16];
+    assert_eq!(
+        profile::cms_read_raw_tag(p.icc_mut(), sig(b"dmnd"), Some(&mut raw)),
+        16
+    );
+    assert_eq!(&raw, unreadable);
+    let incompatible = spec_with_tag(&input, b"A2B0", unreadable);
+    let err = usual.open(&incompatible).unwrap_err();
+    assert!(!err.message().contains("dmnd"));
+
+    let source = exact.open(&canonical).unwrap();
+    let dst = exact.srgb();
+    let pixel = |p: &Profile| {
+        spec_pixel(
+            &Plan::build(
+                p,
+                &dst,
+                Format::RGB_FLT,
+                Format::RGB_FLT,
+                Intent::RelativeColorimetric,
+                flags::NO_OPTIMIZE,
+            )
+            .unwrap(),
+            [0.1, 0.25, 0.7],
+        )
+    };
+    assert_eq!(pixel(&p), pixel(&source));
+
+    let err = p.save().unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::NotSuitable);
+    assert!(err.message().contains("dmnd"));
+    assert!(p.remove_tag(metadata));
+    assert!(exact.open(&p.save().unwrap()).is_ok());
+
+    // Removing a required matrix/shaper curve leaves the directory readable
+    // but prevents building this profile's device-to-PCS transform.
+    let mut unlinked = input;
+    let count = u32::from_be_bytes(unlinked[128..132].try_into().unwrap()) as usize;
+    unlinked[132..132 + count * 12]
+        .as_chunks_mut::<12>()
+        .0
+        .iter_mut()
+        .find(|record| &record[..4] == b"rTRC")
+        .unwrap()[..4]
+        .copy_from_slice(b"ztrc");
+    let p = usual.open(&unlinked).unwrap();
+    assert!(Plan::new(&p, &dst, Format::RGB_FLT, Format::RGB_FLT).is_err());
+
+    // Rendering tags still require valid encodings at the ICC reader.
+    let bad_white = spec_with_tag(&canonical, b"wtpt", b"XYZ \x01\0\0\0");
+    assert!(usual.open(&bad_white).is_err());
+}
