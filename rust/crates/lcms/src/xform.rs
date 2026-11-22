@@ -610,11 +610,10 @@ fn clut16_tetra_loop_scalar(
     }
 }
 
-/// inlined, so no per-pixel `opt_data` match or `eval16_fn` indirection.
-/// `U`/`P` are generic so `xform16_run` can pass fn ITEMS (direct,
-/// inlinable calls) for the hot formatters instead of fn ptrs.
+/// Keep the evaluator and the selected formatter pair in the loop's type
+/// so the compiler can inline them. The shared path uses formatter pointers.
 #[allow(clippy::too_many_arguments)]
-#[archmage::autoversion]
+#[archmage::attune(dispatch)]
 fn xform16_eval_loop<E, U, P>(
     unroll: U,
     pack: P,
@@ -667,10 +666,9 @@ fn xform16_eval_loop<E, U, P>(
     }
 }
 
-/// Dispatch on the (unroll, pack) fn-ptr identity: for the hot
-/// channel/byte combos pass fn ITEMS so the calls inside the pixel loop
-/// are direct + inlinable (C's formatters are always indirect). Fallback
-/// keeps the fn-ptr path for every other formatter (incl. foreign).
+/// Specialize the packed RGB8, RGBA8, and CMYK8-to-RGB8 formatter
+/// pairs. Share one loop per evaluator and CPU tier for the other
+/// formatters, including callbacks supplied by plugins.
 #[allow(clippy::too_many_arguments)]
 fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     unroll: crate::pack::Unpack16Fn,
@@ -687,104 +685,77 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     eval: E,
 ) {
     use crate::pack as pk;
-    type U16F = crate::pack::Unpack16Fn;
-    type P16F = crate::pack::Pack16Fn;
-    // chunky `ch`ch+ex1, no swap/reverse/endian/premul/planar — the shape
-    // the generic Any*/Chunky* formatters decode per pixel.
-    let is_ch_ex1 = |fmt: u32, ch: u32, bytes: u32| {
-        pk::t_channels(fmt) == ch
-            && pk::t_extra(fmt) == 1
-            && pk::t_bytes(fmt) == bytes
-            && pk::t_doswap(fmt) == 0
-            && pk::t_flavor(fmt) == 0
-            && pk::t_swapfirst(fmt) == 0
-            && pk::t_endian16(fmt) == 0
-            && pk::t_premul(fmt) == 0
-            && pk::t_planar(fmt) == 0
+    if std::ptr::fn_addr_eq(unroll, pk::unroll3_bytes as pk::Unpack16Fn)
+        && std::ptr::fn_addr_eq(pack, pk::pack3_bytes as pk::Pack16Fn)
+    {
+        return xform16_eval_loop(
+            pk::unroll3_bytes,
+            pk::pack3_bytes,
+            info,
+            input,
+            output,
+            ppl,
+            lines,
+            stride,
+            cache,
+            ci,
+            co,
+            eval,
+        );
+    }
+    let rgba_shape = |format| {
+        pk::t_channels(format) == 3
+            && pk::t_extra(format) == 1
+            && pk::t_bytes(format) == 1
+            && pk::t_doswap(format) == 0
+            && pk::t_flavor(format) == 0
+            && pk::t_swapfirst(format) == 0
+            && pk::t_endian16(format) == 0
+            && pk::t_premul(format) == 0
+            && pk::t_planar(format) == 0
     };
-    macro_rules! go {
-        ($u:expr, $p:expr) => {
-            return xform16_eval_loop(
-                $u, $p, info, input, output, ppl, lines, stride, cache, ci, co, eval,
-            )
-        };
-    }
-    macro_rules! with_pack {
-        ($u:expr) => {{
-            if std::ptr::fn_addr_eq(pack, pk::pack4_bytes as P16F) {
-                go!($u, pk::pack4_bytes);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_bytes as P16F) {
-                go!($u, pk::pack3_bytes);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack4_words as P16F) {
-                go!($u, pk::pack4_words);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_words as P16F) {
-                go!($u, pk::pack3_words);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_words_and_skip1 as P16F) {
-                go!($u, pk::pack3_words_and_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_bytes_and_skip1 as P16F) {
-                go!($u, pk::pack3_bytes_and_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F)
-                && is_ch_ex1(info.output_format, 4, 2)
-            {
-                go!($u, pk::pack4_words_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F)
-                && is_ch_ex1(info.output_format, 3, 2)
-            {
-                go!($u, pk::pack3_words_and_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F)
-                && is_ch_ex1(info.output_format, 4, 1)
-            {
-                go!($u, pk::pack4_bytes_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F)
-                && is_ch_ex1(info.output_format, 3, 1)
-            {
-                go!($u, pk::pack3_bytes_and_skip1);
-            }
-            go!($u, pack);
-        }};
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll4_bytes as U16F) {
-        with_pack!(pk::unroll4_bytes);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll3_bytes as U16F) {
-        with_pack!(pk::unroll3_bytes);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll4_words as U16F) {
-        with_pack!(pk::unroll4_words);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll3_words as U16F) {
-        with_pack!(pk::unroll3_words);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F)
-        && is_ch_ex1(info.input_format, 4, 2)
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as pk::Unpack16Fn)
+        && rgba_shape(info.input_format)
+        && (std::ptr::fn_addr_eq(pack, pk::pack3_bytes_and_skip1 as pk::Pack16Fn)
+            || (std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as pk::Pack16Fn)
+                && rgba_shape(info.output_format)))
     {
-        with_pack!(pk::unroll4_words_skip1);
+        return xform16_eval_loop(
+            pk::unroll3_bytes_skip1,
+            pk::pack3_bytes_and_skip1,
+            info,
+            input,
+            output,
+            ppl,
+            lines,
+            stride,
+            cache,
+            ci,
+            co,
+            eval,
+        );
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F)
-        && is_ch_ex1(info.input_format, 3, 2)
+    if std::ptr::fn_addr_eq(unroll, pk::unroll4_bytes as pk::Unpack16Fn)
+        && std::ptr::fn_addr_eq(pack, pk::pack3_bytes as pk::Pack16Fn)
     {
-        with_pack!(pk::unroll3_words_skip1);
+        return xform16_eval_loop(
+            pk::unroll4_bytes,
+            pk::pack3_bytes,
+            info,
+            input,
+            output,
+            ppl,
+            lines,
+            stride,
+            cache,
+            ci,
+            co,
+            eval,
+        );
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F)
-        && is_ch_ex1(info.input_format, 4, 1)
-    {
-        with_pack!(pk::unroll4_bytes_skip1);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F)
-        && is_ch_ex1(info.input_format, 3, 1)
-    {
-        with_pack!(pk::unroll3_bytes_skip1);
-    }
-    with_pack!(unroll);
+    xform16_eval_loop(
+        unroll, pack, info, input, output, ppl, lines, stride, cache, ci, co, eval,
+    )
 }
 
 /// Float twin of `xform16_eval_loop` — `OptData` arm evals monomorphized.
