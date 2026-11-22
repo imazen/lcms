@@ -210,3 +210,77 @@ bytes, 50,432 bytes larger than stock C, and its fixture checksum was
 `f1d714d3`.
 [Stock C transform loop](https://github.com/mm2/Little-CMS/blob/7717fce0d85447ef3b2df0cca2e99207c15eeecd/src/cmsxform.c#L518-L554)
 [C plugin SSE2 check](https://github.com/mm2/Little-CMS/blob/7717fce0d85447ef3b2df0cca2e99207c15eeecd/plugins/fast_float/src/fast_8_matsh_sse.c#L302-L345)
+
+## x86-64 formatter throughput
+
+The scratch builds use source revision `d2fc005e`, Rust 1.100.0,
+LLVM/LLD 23.1.5, and the converter's release settings above. A Ryzen 9
+9950X3D ran the benchmark inside a verified one-CPU Linux cpuset on
+the 96 MiB L3 cache die. The workload uses the public `Plan::build`,
+`apply`, and `apply_strided` APIs in Lcms2Exact mode, with relative
+colorimetric intent. Each run reuses the plan, scratch, and resident
+buffers for a 512 × 256 input. Its samples are the top byte of
+xorshift32 with shifts 13, 17, and 5 and seed `0x63a5d5df`.
+The strided and planar cases pad each row by 32 bytes. The RGB cases
+use the Display P3 profile above, and CMYK uses the pinned C testbed's
+`test1.icc` (SHA-256
+`1a996ebe6b5d1e7a21620993ce1903df16e4e8fa6cca312bedfb5ae133e62b4d`).
+
+Each invocation ran four warmup applies followed by 192 applies
+with `perf stat` task-clock, cycles, and instructions enabled.
+Zenbench 0.1.11 interleaved five blocks per case and compared the
+output buffers, including padding, with each block's baseline.
+Latency deltas below are geometric means of within-block ratios.
+Positive numbers mean slower. A/A compares identical baseline builds
+and indicates timing variation. These are exploratory measurements on
+one CPU and image size.
+
+| Converter variant | Linked `.text` bytes |
+|---|---:|
+| Full formatter grid, scalar/v3/v4 | 3,628,310 |
+| Shared loop, scalar/v3/v4 | 1,038,022 |
+| Shared loop, scalar/v3 | 1,029,142 |
+| RGB8 direct pair, scalar/v3/v4 | 1,069,430 |
+| RGB8 direct pair, scalar/v3 | 1,049,046 |
+| Three direct pairs, scalar/v3/v4 | 1,135,734 |
+| Three direct pairs, scalar/v3 | 1,091,958 |
+
+The initial comparison completed all 180 invocations with matching
+output buffers. Sharing all formatters raised latency by 7.5% on
+forced-CLUT RGB8, 53.0% on strided RGBA8, and 3.2% on CMYK8 to RGB8.
+Keeping direct calls for the RGB8 formatter pair recovered the
+forced-CLUT case. The strided RGBA8 and CMYK cases still executed
+73.2% and 3.7% more instructions, respectively. Those cases motivated
+the three-pair experiment.
+
+The second comparison kept direct calls for packed RGB8 to RGB8,
+packed RGBA8 to RGBA8, and packed CMYK8 to RGB8. The RGBA8 path
+preserves the original formatter and layout checks before using
+`unroll3_bytes_skip1` and `pack3_bytes_and_skip1`. The remaining
+formats use their original unpack and pack callbacks. The v3-only
+specialization uses `#[archmage::autoversion(v3, scalar)]` on
+`xform16_eval_loop` in the x86-64 scratch build. Other SIMD dispatch
+stays in place.
+
+| Workload | Baseline ns/pixel | Three pairs, scalar/v3/v4 | Three pairs, scalar/v3 | A/A |
+|---|---:|---:|---:|---:|
+| Display P3, packed RGB8 | 6.101 | −0.72% | −1.02% | −0.15% |
+| Display P3, forced-CLUT RGB8 | 17.327 | −0.10% | +0.41% | +0.02% |
+| Display P3, strided RGBA8 with alpha copy | 7.120 | +0.81% | −0.72% | −0.28% |
+| Display P3, packed RGB16 | 14.471 | +2.07% | −0.17% | −0.02% |
+| Display P3, planar RGB8 | 12.818 | −0.07% | +0.42% | +0.05% |
+| CMYK8 to sRGB RGB8 | 26.152 | +3.19% | +1.05% | +0.19% |
+
+All 120 invocations in the second comparison matched the baseline
+output. The three-pair build with v3 and scalar removes 2,536,352
+linked code bytes (69.9%). Removing v4 from that build accounts
+for 43,776 bytes. Both three-pair builds restore the baseline
+instruction counts on the six workloads. The v3 and scalar build's
+latency deltas range from −1.02% to +1.05%.
+That build also passed 148 x86-64 tests across `api_c_parity`,
+`c_parity_pack`, and `c_parity_xform_matrix`.
+These data support testing the three-pair build on a wider set of
+profiles, formats, and CPU generations.
+
+[Initial formatter comparison CSV](../../benchmarks/x64-formatter-screen_2026-11-22.csv)
+· [Three-pair comparison CSV](../../benchmarks/x64-three-pair_2026-11-22.csv)
