@@ -90,38 +90,20 @@ dependencies = [
 
 [[package]]
 name = "archmage"
-version = "0.9.31-beta.2"
-dependencies = [
- "archmage-macros 0.9.31-beta.2",
- "safe_unaligned_simd",
- "winarm-cpufeatures",
-]
-
-[[package]]
-name = "archmage"
-version = "0.9.31-beta.2"
+version = "0.9.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88a77003bd21035bb9ded3659d9ea666fc58499c2cf41949402a9bb388b9a2b"
+checksum = "2261f8722a6b01db495cddca47194ddcb293747025192ae189ab5412e724e358"
 dependencies = [
- "archmage-macros 0.9.31-beta.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "archmage-macros",
  "safe_unaligned_simd",
  "winarm-cpufeatures",
 ]
 
 [[package]]
 name = "archmage-macros"
-version = "0.9.31-beta.2"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
-name = "archmage-macros"
-version = "0.9.31-beta.2"
+version = "0.9.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a1148cd0448e74ae017248ce560c1f6577da191855f083986e74a2587def019"
+checksum = "4cbd5e93a65bd3c08bc1f8fdddc1eff1f42a39bf2b4395f11281eb939d097ba8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -362,14 +344,14 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 name = "lcms"
 version = "0.0.0"
 dependencies = [
- "archmage 0.9.31-beta.2",
+ "archmage",
  "bytemuck",
  "lcms-cref",
  "libm",
  "magetypes",
  "md-5",
+ "xxhash-rust",
  "zenbench",
- "zenhash",
 ]
 
 [[package]]
@@ -407,9 +389,11 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "magetypes"
-version = "0.9.31-beta.2"
+version = "0.9.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c97530899f0a93eebffd5e8a9ce8e733e35236e7349ada63ad4126142014bf45"
 dependencies = [
- "archmage 0.9.31-beta.2",
+ "archmage",
  "rustversion",
 ]
 
@@ -807,12 +791,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
-name = "whereat"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab90f361db038ba3135da12c938c328fb43a012992101879e3d6ebccb4d7eba8"
-
-[[package]]
 name = "win32job"
 version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -977,6 +955,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "xxhash-rust"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40de123dbb523ebcc00d61ec01840ad192578afc378d859f3429caa38308fad5"
+
+[[package]]
 name = "zenbench"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -997,14 +981,6 @@ dependencies = [
  "sysinfo",
  "terminal_size",
  "win32job",
-]
-
-[[package]]
-name = "zenhash"
-version = "0.1.0"
-dependencies = [
- "archmage 0.9.31-beta.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "whereat",
 ]
 
 [[package]]
