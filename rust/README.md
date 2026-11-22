@@ -185,13 +185,17 @@ A proxy server does: profile cache (`Arc` by content-hash) → plan cache
 (`Arc<Plan>` by config key) → per-request `plan.scratch()` → `apply`. The
 whole pixel path is `&self` on shared state — no locks anywhere.
 
-## The math provider
+## Cargo features
 
-`lcms::math` selects the transcendental backend at compile time (default
-`math-libm` — the `libm` crate, deterministic on every platform).
-`math-rust` uses `f64` intrinsics; `math-zen` is a reserved slot for a
-future correctly-rounded implementation. The providers are mutually
-exclusive.
+Ordinary Rust consumers can use the default features. Cargo selects
+`math-libm` for the transcendental math backend. Builds that disable
+default features select one provider explicitly. `math-rust` uses
+`f64` methods, and `math-zen` currently uses the same implementation
+while reserving the feature name for a future provider.
+
+Use `little-cms-api` for the C-shaped Rust surface and `lcms2-api`
+for the migration facade. ICC behavior modes are runtime API choices.
+The integer transform loop selects its available SIMD tier automatically.
 
 ## Parity & determinism (development)
 

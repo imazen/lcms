@@ -16,6 +16,7 @@
 
 - Declare Rust 1.89 as the minimum supported version for the workspace. (171eeebcc9)
 - Use registry releases of Magetypes and Archmage 0.9.33. (25e6dedb86)
+- Reduce linked transform code by specializing three integer formatter pairs and selecting portable integer-loop SIMD tiers. (a74fa4a4e8)
 
 ### Fixed
 

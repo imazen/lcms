@@ -284,3 +284,51 @@ profiles, formats, and CPU generations.
 
 [Initial formatter comparison CSV](../../benchmarks/x64-formatter-screen_2026-11-22.csv)
 · [Three-pair comparison CSV](../../benchmarks/x64-three-pair_2026-11-22.csv)
+
+## Integrated formatter dispatch and moxcms 0.9.2
+
+The integer loop now uses three direct formatter pairs and
+`#[archmage::attune(dispatch)]`. This selects v3 and scalar on x86-64
+and uses the corresponding portable tiers on Apple ARM64 and WASI.
+This requires no additional Cargo features.
+
+The integrated dispatcher matched the prototype's x86-64 code size.
+An exploratory rerun of the six throughput workloads matched every
+output buffer and measured latency deltas of −1.05% to +1.02% against
+the prototype. The A/A deltas ranged from −0.56% to +0.63%.
+[Integrated dispatch comparison CSV](../../benchmarks/x64-integrated-dispatch_2026-11-22.csv)
+
+The paired consumers use the Display P3 fixture and release settings
+from the earlier measurements. The moxcms consumer opens the profile
+and uses its native public RGB8-to-RGB8 API with relative colorimetric
+intent. Both implementations use their default library feature sets.
+The Linux and WASI builds use Rust 1.100.0 and the Apple ARM64 builds
+use Rust 1.99.1. These are linked application sizes, including retained
+runtime code.
+
+| Target | Consumer | lcms file bytes | moxcms file bytes | lcms code bytes | moxcms code bytes |
+|---|---|---:|---:|---:|---:|
+| x86-64 Linux | Inspect | 707,232 | 375,584 | 546,630 | 279,573 |
+| x86-64 Linux | Convert | 1,396,552 | 779,824 | 1,091,958 | 575,974 |
+| Apple ARM64 | Inspect | 624,928 | 374,432 | 430,124 | 244,588 |
+| Apple ARM64 | Convert | 957,808 | 627,968 | 685,036 | 398,444 |
+| WASI Preview 1 | Inspect | 333,328 | 115,218 | 302,131 | 97,753 |
+| WASI Preview 1 | Convert | 667,726 | 365,860 | 591,244 | 283,162 |
+
+Gzipped WASI converters were 227,467 bytes for lcms and 144,030
+bytes for moxcms. All inspectors printed the same fields and text.
+Lcms2Exact produced the stock C checksum `ff03e6a7` on all three
+targets, and moxcms produced `0d2ddcd3` on all three.
+
+The moxcms comparator also supports dropping its default SIMD paths
+while retaining LUT support. Its converter then has 501,334 code
+bytes on Linux, 384,172 on Apple ARM64, and 283,162 on WASI.
+The measured fixture checksum is the same for both moxcms configurations.
+[moxcms 0.9.2 feature list](https://docs.rs/crate/moxcms/0.9.2/features)
+
+Run `cargo build --locked --release --target <target> --manifest-path
+bench/codegen/moxcms/Cargo.toml` from the Rust workspace. Add
+`--features inspect` for the inspector or `--no-default-features`
+for the LUT-only comparison. The lcms comparator uses
+`bench/codegen/Cargo.toml` and the same `inspect` flag.
+Measure the stripped binaries with the tools above.
