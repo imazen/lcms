@@ -825,7 +825,7 @@ Run: `cargo test -p lcms --test determinism -- --nocapture`.
   from the NULL query). Fixed: query-then-save. ALL 12 ser cells
   now byte-identical. **51/51 bit-exact on dev.**
 
-- **Hashing is `zenhash::xxh3_64`** (per-cell `R:hash|C:hash`) +
+- **Hashing is `xxhash_rust::xxh3::xxh3_64`** (per-cell `R:hash|C:hash`) +
   a manifest-level `DIGEST` (streaming `Xxh3` over all 51 cells —
   `737b5de1adc3a350`) — one fingerprint to diff across
   platforms/CI. xxh3 is bit-identical on every target/SIMD tier.
