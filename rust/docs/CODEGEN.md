@@ -1,0 +1,84 @@
+# Linked consumer code size
+
+These measurements link complete, stripped programs against the default
+Rust crate or the pinned Little CMS 2.20 C source. The programs open a
+supplied ICC file. The inspector prints its version, color space, PCS,
+and description. The converter reads packed RGB8, builds a relative
+colorimetric transform to sRGB, renders the input, and prints a pixel
+checksum. The workloads are in [the consumer sources](../bench/codegen/).
+
+The input was DisplayP3-v4 from the
+[Compact ICC Profiles collection](https://github.com/saucecontrol/Compact-ICC-Profiles).
+Its SHA-256 was
+`cb51de38e482ee974c0c76b9689e16aad04bad16e226fed2f30c842d15ff3a3d`.
+The converter input was a 16 × 16 × 16 RGB lattice with all channels
+stepping by 17, red outermost and blue innermost. Its SHA-256 was
+`2163a4097f6fb9c65610491bbbc71b12e579df1572e686a0e1e2513efaeeb980`.
+
+## Results
+
+Executable bytes and code-section bytes below include the retained runtime.
+Native builds dynamically link system libraries. The WASI modules include
+the code retained from their respective C or Rust runtimes. These figures
+describe the two linked applications.
+
+| Target | Consumer | Implementation | File bytes | Code bytes | gzip bytes |
+|---|---|---|---:|---:|---:|
+| x86-64 Linux | Inspect | C | 153,960 | 99,055 |  |
+| x86-64 Linux | Inspect | Rust Lcms2Exact | 707,240 | 547,337 |  |
+| x86-64 Linux | Inspect | Rust SpecDefault | 707,240 | 547,337 |  |
+| x86-64 Linux | Convert | C | 283,848 | 190,767 |  |
+| x86-64 Linux | Convert | Rust Lcms2Exact | 4,255,792 | 3,634,793 |  |
+| x86-64 Linux | Convert | Rust SpecDefault | 4,255,808 | 3,634,809 |  |
+| Apple ARM64 | Inspect | C | 205,496 | 156,032 |  |
+| Apple ARM64 | Inspect | Rust Lcms2Exact | 624,928 | 430,124 |  |
+| Apple ARM64 | Inspect | Rust SpecDefault | 624,928 | 430,124 |  |
+| Apple ARM64 | Convert | C | 357,768 | 273,748 |  |
+| Apple ARM64 | Convert | Rust Lcms2Exact | 1,702,464 | 1,330,476 |  |
+| Apple ARM64 | Convert | Rust SpecDefault | 1,702,464 | 1,330,476 |  |
+| WASI Preview 1 | Inspect | C | 219,351 | 192,517 | 63,451 |
+| WASI Preview 1 | Inspect | Rust Lcms2Exact | 324,710 | 294,731 | 116,355 |
+| WASI Preview 1 | Inspect | Rust SpecDefault | 324,710 | 294,731 | 116,356 |
+| WASI Preview 1 | Convert | C | 348,294 | 301,787 | 103,170 |
+| WASI Preview 1 | Convert | Rust Lcms2Exact | 1,346,759 | 1,270,454 | 288,360 |
+| WASI Preview 1 | Convert | Rust SpecDefault | 1,346,761 | 1,270,454 | 288,361 |
+
+Adding conversion brings in transform selection, interpolation, and pixel
+execution. The x86-64 symbol-attribution build precedes the last diagnostic change
+and has a 3,634,553-byte `.text` section, 240 bytes smaller than the
+final stripped build. Its symbol table attributes 840,124 bytes to the scalar `xform16_eval_loop` family
+and 761,277 bytes each to its v3 and v4 families. Together these are
+2,362,678 bytes of retained code, or 65.0% of `.text`. Runtime format and
+CPU dispatch retain those implementations even in the RGB8-only consumer.
+
+The inspectors agreed in all nine executions. All three platforms produced
+checksum `ff03e6a7` with C and Rust Lcms2Exact, and `b8dece2c` with Rust
+SpecDefault. These are same-input execution checks. The C differential
+gates separately compare the pixels under the compatibility contract.
+
+## Reproduce
+
+Use `just codegen gcc <output-dir>` on x86-64 Linux, `just codegen apple
+<output-dir>` on an ARM Mac, and `just codegen wasi <output-dir>` with
+`WASI_SDK_PATH` pointing to a WASI SDK installation. Use an absolute output
+directory outside the source checkout. The script records compiler and target
+information and creates a separate executable for each API path and mode.
+
+Rust 1.99.1 used optimization level 2, ThinLTO, one codegen unit, the default
+`math-libm` feature, and stripped symbols. The resolved archmage checkout
+was `c8c7f5e223fa96187988e09ba4168fb24318105f`. C used the oracle source
+`7717fce0d85447ef3b2df0cca2e99207c15eeecd`, optimization level 2,
+`-fno-strict-aliasing`, section-level dead stripping, and LTO. The compilers
+were GCC 11.4.0 with full LTO, Apple Clang 21.0.0 with ThinLTO, and WASI SDK
+34 Clang 23.1.0 with ThinLTO. The ARM Mac build adapted the absolute paths
+for local Rust dependencies in an isolated source copy.
+
+Use `size -A` for ELF `.text`, `size -m` for Mach-O `__text`,
+`wasm-tools objdump` for the WebAssembly code section, and
+`gzip -n -9 -c` for compressed WASI size. For symbol attribution, build
+the x86-64 Rust compatibility converter with `cargo rustc` and the
+build script's release options, appending `-- -C strip=none`. Aggregate
+unique executable symbol address/size pairs from `nm -S --demangle`.
+The WASI programs ran under Wasmtime 40.0.1 with the input
+fixtures supplied through the runtime's directory mapping.
+[WASI SDK](https://github.com/WebAssembly/wasi-sdk)

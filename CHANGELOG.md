@@ -10,6 +10,8 @@
 
 - Add opt-in SpecDefault with compact ICC v2 description recovery and import diagnostics. (efd85b9542)
 
+- Preserve unreadable rendering-independent metadata at SpecDefault import and report affected tags. (1dfb775843)
+
 ### Changed
 
 - Declare Rust 1.89 as the minimum supported version for the workspace. (171eeebcc9)

@@ -1,0 +1,20 @@
+[package]
+name = "lcms-codegen-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+lcms = { path = "../../crates/lcms" }
+
+[features]
+inspect = []
+spec-default = []
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

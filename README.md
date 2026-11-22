@@ -41,6 +41,9 @@ same flags the `lcms-cref` differential oracle uses). `just bench` builds
 both, runs each benchmark in the upstream testbed dir, and prints the
 side-by-side table plus the differential-dump counts.
 
+See [linked consumer code size](rust/docs/CODEGEN.md) for matching Rust and
+C executables on x86-64 Linux, Apple ARM64, and WASI.
+
 ## Testing on a fresh box
 
 ```bash

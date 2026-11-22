@@ -59,6 +59,11 @@ conformance:
 icc-readback *profiles:
     cargo run --locked -p lcms --example icc_readback -- "$@"
 
+# Link matching Rust and C consumer programs for gcc, apple, or wasi.
+[positional-arguments]
+codegen toolchain output:
+    bash bench/codegen/build.sh "$@"
+
 # Validate the same profiles with ICC's iccDEV (`iccDumpProfile -v`) and check
 # the port and C get the same verdict. ICCDUMP = path to iccDumpProfile.
 icc-validate dir="target/icc-validate":
