@@ -10,7 +10,7 @@ differential test oracle have separate crates.
 
 The workspace currently uses local dependency checkouts. From a configured
 checkout, add `lcms` as a path dependency pointing to `rust/crates/lcms`.
-The Rust API needs no surface feature.
+Use Rust 1.89 or later. The Rust API needs no surface feature.
 
 Pick the layer that matches what you're doing:
 
