@@ -8,6 +8,8 @@
 
 - Add opt-in ICC.1 SpecExact profiles, transforms, and curves. Lcms2Exact remains the compatibility default. (e3d3bf31b6)
 
+- Add opt-in SpecDefault with compact ICC v2 description recovery and import diagnostics. (efd85b9542)
+
 ### Fixed
 
 - Correct native date storage and planar stride buffer sizing in the C oracle tests. (929c4c0745)
