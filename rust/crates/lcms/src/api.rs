@@ -3,10 +3,10 @@
 //! The `cms*`/`pub mod` surface (`little-cms-api` feature) stays 1:1 with
 //! the C source for conformance; this module wraps it in owned,
 //! `Result`-returning, `Send`/`Sync`-friendly types for real applications.
-//! It is always compiled — no feature required. Plans built here link
-//! exactly as C's `cmsCreateTransform` / `cmsCreateMultiprofileTransform` /
-//! `cmsCreateProofingTransform` do, and produce the same pixels
-//! (gated by `tests/api_c_parity.rs` against the C library).
+//! It is always compiled. Select a [`BehaviorMode`] through
+//! [`Profile::with_mode`]. The default, `Lcms2Exact`, uses the C-parity
+//! profile, curve, and linking behavior. `SpecExact` and `SpecDefault` use
+//! the implemented ICC.1 rules for transforms and export.
 //!
 //! ## The shared-plan model (for services)
 //!
@@ -1187,6 +1187,9 @@ pub enum BehaviorMode {
     /// Apply the ICC.1 rules supported by this crate, including bounded ICC
     /// curves and the Annex F.1 inverse. Unsupported exports return an error.
     SpecExact,
+    /// Use the SpecExact transform and export rules and recover documented
+    /// compact profile descriptions on import. See [`Profile::read_warnings`].
+    SpecDefault,
 }
 
 impl BehaviorMode {
@@ -1197,7 +1200,7 @@ impl BehaviorMode {
     fn context(self) -> Option<crate::context::Context> {
         match self {
             Self::Lcms2Exact => None,
-            Self::SpecExact => Some(crate::context::Context {
+            Self::SpecExact | Self::SpecDefault => Some(crate::context::Context {
                 behavior_mode: self,
                 alarm_codes: crate::context::global()
                     .alarm_codes
@@ -1355,9 +1358,18 @@ impl ProfileFactory {
     /// `cmsOpenProfileFromMem` — parse an ICC profile from bytes.
     /// Materializes every tag eagerly (see the type docs).
     pub fn open(self, data: &[u8]) -> Result<Profile> {
-        Profile::wrap("open_profile_from_mem", || {
-            profile::open_profile_from_mem(self.mode.context(), data)
-        })
+        let expanded = if self.mode == BehaviorMode::SpecDefault {
+            crate::spec::expand_compact_v2_description(data)
+        } else {
+            None
+        };
+        let mut profile = Profile::wrap("open_profile_from_mem", || {
+            profile::open_profile_from_mem(self.mode.context(), expanded.as_deref().unwrap_or(data))
+        })?;
+        if expanded.is_some() {
+            profile.read_warning = Some(ProfileReadWarning::CompactedV2Description);
+        }
+        Ok(profile)
     }
     /// `cmsOpenProfileFromFile` — read an ICC file off disk.
     pub fn open_file(self, path: impl AsRef<std::path::Path>) -> Result<Profile> {
@@ -1369,15 +1381,22 @@ impl ProfileFactory {
 
 // -- Profile ------------------------------------------------------------------
 
+/// A recovery applied when opening an ICC profile.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ProfileReadWarning {
+    /// The v2 profile description overlapped other tags at the unused
+    /// ScriptCode storage. The reader restored that storage before decoding.
+    CompactedV2Description,
+}
+
 /// An owned ICC profile — `Send` + `Sync`.
 ///
-/// Every constructor **materializes all tags eagerly** (the C library's
-/// lazy `cmsReadTag` materialization done up front — the same objects it
-/// would produce). That makes `&Profile` reads — [`Profile::get`],
-/// [`Profile::info`], [`Profile::named_colors`], [`Profile::tags`] —
-/// lock-free and `Sync`-safe: `Arc<Profile>` is shareable as-is. The
-/// trade-off: `open`/`open_file` decode every tag at construction, and
-/// [`Profile::save`] re-encodes them rather than copying raw blobs.
+/// Constructors **materialize supported tags eagerly**. The read APIs
+/// [`Profile::get`], [`Profile::info`], [`Profile::named_colors`] and
+/// [`Profile::tags`] can then share a profile across threads without a lock.
+/// [`Profile::save`] encodes the decoded tags and carries supported opaque
+/// payloads through to the output.
 ///
 /// [`Profile::freeze`] remains for explicitness — it is a no-op on a
 /// profile built by this API.
@@ -1392,12 +1411,14 @@ impl ProfileFactory {
 /// ```
 pub struct Profile {
     pub(crate) icc: Box<crate::profile::IccProfile>,
+    read_warning: Option<ProfileReadWarning>,
 }
 
 impl Clone for Profile {
     fn clone(&self) -> Self {
         Profile {
             icc: self.icc.clone(),
+            read_warning: self.read_warning,
         }
     }
 }
@@ -1422,7 +1443,10 @@ impl Profile {
         // a tag that fails to decode stays unmaterialized (reads `None`);
         // its signalled error isn't the constructor's failure.
         let _ = crate::err::take_last_error();
-        Profile { icc }
+        Profile {
+            icc,
+            read_warning: None,
+        }
     }
     fn wrap(
         what: &str,
@@ -1444,6 +1468,11 @@ impl Profile {
     /// The behavior selected when this profile was created or opened.
     pub fn behavior_mode(&self) -> BehaviorMode {
         BehaviorMode::of(self.icc.ctx.as_ref())
+    }
+
+    /// Recoveries applied to the input bytes when this profile was opened.
+    pub fn read_warnings(&self) -> &[ProfileReadWarning] {
+        self.read_warning.as_slice()
     }
 
     // -- constructors -----------------------------------------------------
@@ -1591,7 +1620,7 @@ impl Profile {
     }
 
     /// Write an amended CICP tag with ColourPrimaries 2 and eight custom
-    /// s15Fixed16 coordinates. Requires a SpecExact ICC v4.4 RGB or YCbCr
+    /// s15Fixed16 coordinates. Requires an ICC.1 mode and a v4.4 RGB or YCbCr
     /// Input, Display or ColorSpace profile.
     pub fn write_cicp_with_chromaticities(
         &mut self,
@@ -1599,12 +1628,12 @@ impl Profile {
         chromaticities: [i32; 8],
     ) -> Result<()> {
         let bytes = crate::spec::encode_cicp(signal, Some(chromaticities));
-        if self.behavior_mode() != BehaviorMode::SpecExact
+        if self.behavior_mode() == BehaviorMode::Lcms2Exact
             || crate::spec::read_cicp(&self.icc, &bytes).is_none()
         {
             return Err(Error::new(
                 types::ERROR_NOT_SUITABLE,
-                "custom CICP coordinates require a supported SpecExact profile and ColourPrimaries 2",
+                "custom CICP coordinates require a supported ICC.1 profile and ColourPrimaries 2",
             ));
         }
         self.write_tag(Tag::CICP, signal)?;
@@ -2539,10 +2568,11 @@ impl ToneCurve {
     /// Select bounded ICC evaluation and Annex F.1 inversion for a
     /// curveType table or a Table 68 parametric function.
     ///
+    /// `SpecDefault` selects the same curve behavior as `SpecExact`.
     /// Extended-range and MPE curves keep their original evaluation contract.
     pub fn with_mode(&self, mode: BehaviorMode) -> Result<Self> {
         let mut curve = self.clone();
-        if mode == BehaviorMode::SpecExact {
+        if mode != BehaviorMode::Lcms2Exact {
             if !curve.bind_icc() {
                 return Err(Error::new(
                     types::ERROR_NOT_SUITABLE,

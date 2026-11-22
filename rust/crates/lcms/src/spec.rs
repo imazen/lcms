@@ -10,7 +10,7 @@ use crate::tagtypes::{TagObject, TagTypeHandler, VideoSignal, get_tag_descriptor
 use crate::types::{ERROR_CORRUPTION_DETECTED, ERROR_NOT_SUITABLE, ProfileId};
 
 pub(crate) fn enabled(ctx: Option<&Context>) -> bool {
-    BehaviorMode::of(ctx) == BehaviorMode::SpecExact
+    BehaviorMode::of(ctx) != BehaviorMode::Lcms2Exact
 }
 
 pub(crate) fn refuse(reason: &str) -> bool {
@@ -558,6 +558,81 @@ pub(crate) fn check_export(icc: &IccProfile) -> bool {
         }
     }
     true
+}
+
+// Compact ICC Profiles stores other tags over the unused ScriptCode bytes
+// of the v2 description. Recognize the complete text and the zeroed headers
+// for the unused representations before replacing only that description.
+pub(crate) fn expand_compact_v2_description(data: &[u8]) -> Option<Vec<u8>> {
+    let version = u32_at(data, 8)?;
+    if u32_at(data, 0)? as usize != data.len() || !allowed_version(version) || version >> 24 != 2 {
+        return None;
+    }
+    let count = u32_at(data, 128)? as usize;
+    let table_end = 132usize.checked_add(count.checked_mul(12)?)?;
+    let entries = data.get(132..table_end)?;
+    let mut records = entries
+        .chunks_exact(12)
+        .enumerate()
+        .filter(|(_, r)| &r[..4] == b"desc");
+    let (i, record) = records.next()?;
+    if records.next().is_some() {
+        return None;
+    }
+    let offset = u32_at(record, 4)? as usize;
+    let declared = u32_at(record, 8)? as usize;
+    let desc = data.get(offset..offset.checked_add(declared)?)?;
+    if offset < table_end || offset % 4 != 0 || desc.get(..8)? != b"desc\0\0\0\0" {
+        return None;
+    }
+    let ascii_end = 12usize.checked_add(u32_at(desc, 8)? as usize)?;
+    let full_size = ascii_end.checked_add(78)?;
+    let prefix_end = ascii_end.checked_add(14)? & !3;
+    // These profiles declare either the full textDescriptionType size or
+    // one byte less. The shared tail begins exactly after the zero headers.
+    if !matches!(full_size.checked_sub(declared), Some(0 | 1))
+        || desc.get(ascii_end..prefix_end)?.iter().any(|&b| b != 0)
+    {
+        return None;
+    }
+    let ascii = desc.get(12..ascii_end)?.strip_suffix(&[0])?;
+    if ascii.is_empty() || !ascii.iter().all(|b| b.is_ascii_graphic() || *b == b' ') {
+        return None;
+    }
+    let next = offset.checked_add(prefix_end)?;
+    let mut first_after = usize::MAX;
+    for (index, entry) in entries.chunks_exact(12).enumerate() {
+        if index == i {
+            continue;
+        }
+        let start = u32_at(entry, 4)? as usize;
+        let stop = start.checked_add(u32_at(entry, 8)? as usize)?;
+        // Check against the original extent and the part of the description
+        // that contains text. Appending storage must never legalize either.
+        if stop > data.len() || (start < next && offset < stop) {
+            return None;
+        }
+        if start > offset {
+            first_after = first_after.min(start);
+        }
+    }
+    if first_after != next {
+        return None;
+    }
+
+    let start = data.len().checked_add(3)? & !3;
+    let end = start.checked_add(full_size)?.checked_add(3)? & !3;
+    let end_u32 = u32::try_from(end).ok()?;
+    let mut expanded = bytemuck::try_zeroed_vec::<u8>(end).ok()?;
+    expanded[..data.len()].copy_from_slice(data);
+    expanded[start..start + ascii_end].copy_from_slice(&desc[..ascii_end]);
+    expanded[..4].copy_from_slice(&end_u32.to_be_bytes());
+    let at = 132 + i * 12;
+    expanded[at + 4..at + 8].copy_from_slice(&(start as u32).to_be_bytes());
+    expanded[at + 8..at + 12].copy_from_slice(&(full_size as u32).to_be_bytes());
+    // The ordinary ICC reader checks all remaining spans and decodes their
+    // contents. The expanded backing buffer is internal to the reader.
+    Some(expanded)
 }
 
 pub(crate) fn validate_directory(data: &[u8]) -> bool {

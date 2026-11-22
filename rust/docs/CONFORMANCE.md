@@ -3,8 +3,10 @@
 The default `BehaviorMode::Lcms2Exact` reproduces the Little CMS 2.20
 oracle, including the deviations in the compatibility audit below.
 `BehaviorMode::SpecExact` opts into ICC.1 profile serialization and curve
-computation for the audited behaviors. See the [Rust API guide](../README.md)
-for profile factories, linking and standalone curves.
+computation for the audited behaviors. `BehaviorMode::SpecDefault` shares
+those rules and enables the documented compact v2 import recovery. See the
+[Rust API guide](../README.md) for profile factories, linking and standalone
+curves.
 
 Run the compatibility and specification gates with `just conformance`.
 `LCMS_SPEC_EXACT_DUMP=<fresh-directory>` writes the SpecExact profiles for
@@ -211,6 +213,77 @@ The transform assertions use the ICC encoding and known fixture values.
   accepting some data on read while requiring valid data on write. The
   commit tightens individual type writers. The ICC clauses supply the
   rationale for the three profile-level checks added here. [Upstream validation change](https://github.com/mm2/Little-CMS/commit/54390818348493a88c43b0dadbad77bdc9750699)
+
+## Real-profile readback and SpecDefault
+
+The corpus contains 193 immutable ICC files, identified by SHA-256 manifest
+`e769fc59ae4954ce1654f9d51247888b8969c551032fe50e9f112b8a5cfc82cf`.
+It includes the Compact ICC Profiles set and extracted real-world profiles.
+The compatibility baseline was `e8a67f81`. Invoke
+`just icc-readback <profile>...` to report open, save/reopen and link
+outcomes for explicit files. The probe uses all four intents, 64 packed
+float pixels per link, and `NO_OPTIMIZE`. It links to or from built-in sRGB
+as appropriate to the class and applies DeviceLink and Abstract profiles
+as a single transform.
+
+| Mode | Opened (193 files) | Saved and reopened (193 files) | Linked (1,236 cases) |
+|---|---:|---:|---:|
+| Lcms2Exact | 176 | 176 | 1,172 |
+| SpecExact | 118 | 88 | 724 |
+| SpecDefault | 146 | 116 | 944 |
+
+All 28 additional opens and saves use the same recovery. Compact ICC Profiles
+stores other tags in the unused ScriptCode portion of a v2 description.
+SpecDefault verifies the ASCII text and zero headers for the unused
+representations, restores the description, and validates all other tag
+extents against the original input. It reports
+`ProfileReadWarning::CompactedV2Description` through `Profile::read_warnings`.
+Saving writes a normal description without the overlap. The corpus saw
+bit-identical float samples for all 220 links through the recovered
+profiles and their SpecExact save/reopen controls. Both ICC.1 modes also
+matched bit-for-bit on all 724 links sharing accepted inputs.
+[Compact ICC Profiles layout rationale](https://github.com/saucecontrol/Compact-ICC-Profiles)
+
+SpecExact and Lcms2Exact differed in 704 of their 724 common links. The
+sample comparison counts float bit patterns. Of those 704, 146 had an
+absolute channel delta at or below 0.0001. Larger changes include the
+bounded evaluation of wide-gamut input to the destination sRGB curve.
+One Apple Wide Color input witness changed from `-0.045454875` to `0.0`.
+The sample probe does not attribute every delta to a clause. Applicable
+float ranges and C compatibility need separate arithmetic witnesses.
+
+The remaining 47 import refusals include unsupported headers and profile
+classes, malformed directories, and text or tag payload failures.
+SpecDefault shares the existing ICC.1 export checks, which refused 30 of
+the 146 files it opened. The most frequent export refusal was missing
+required description, copyright, or white-point data (25 files). The
+recovery is specific to the measured compact v2 layout.
+
+## Black-point compensation
+
+ISO 18619:2015 remains the published standard. Its public preview
+establishes scope and terminology. The detailed procedure below was checked
+against the ICC-hosted committee draft. The final algorithm clauses require
+access to the published text. [ISO record and preview](https://www.iso.org/standard/63033.html)
+· [ICC-hosted committee draft](https://archive.color.org/files/BlackPointCompensation.pdf)
+
+| Draft requirement | Observed source behavior |
+|---|---|
+| §4.1 Equal source and destination intents sampled from relative colorimetric, perceptual and saturation | The linker disables BPC for absolute intent and enables it for v4 perceptual or saturation links. The port also supports multi-profile linking and per-profile intents. |
+| §4.2.3 Derive a neutral source black from the local device black, with a perceptual return leg for output-capable CMYK | The current detector uses the fixed ICC perceptual black for certain v4 transforms, a perceptual round trip for relative output/ink profiles, and device black endpoints elsewhere. The draft's conditions need a separate endpoint matrix. |
+| §4.2.4–5 Measure a destination endpoint or fit a LUT round-trip ramp | The destination detector uses endpoint or ramp paths. Its LUT classification follows the legacy integer tag lookup. Optional floating-point LUT selection and regression fixtures for the fit remain to be checked against the final clauses. |
+| §4.2.6–7 Map between neutral blacks in XYZ while preserving D50 white | The port implements a diagonal affine map. For neutral black endpoints, it is algebraically equivalent to the draft's scalar map. The linker also drops a near-identity conversion below its aggregate 0.002 tolerance, even with optimization disabled. |
+
+A public-API witness uses gray profiles at D50, a source
+`ToneCurve::tabulated16(&[floor, 65535])`, a linear destination, and
+`Format::GRAY_FLT`. Link with relative colorimetric intent, set
+`NO_OPTIMIZE` through `PlanOptions::flags`, then explicitly toggle
+`black_point_compensation`. For input black, a floor of one code produces
+`0.000015259022` with BPC both on and off in both modes. A floor of 64 codes
+produces `0.0009765774` with BPC off and `0` with BPC on in SpecExact.
+This establishes the small-bridge suppression at the public boundary.
+The current BPC rules remain in place while the final clauses are unverified.
+[Link conversion](../crates/lcms/src/cnvrt.rs) · [Black-point detection](../crates/lcms/src/sm.rs)
 
 ## Remaining ICC.1 work
 

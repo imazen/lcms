@@ -12,12 +12,12 @@ NOTE: excluded-feature surface (math-rust,math-zen) not buildable: rustdoc JSON 
 #
 #   pub consts/statics                          1
 #   free functions                              4
-#   inherent methods                           28
+#   inherent methods                           29
 #   struct fields                               2
-#   trait roster entries (type × trait)        63
+#   trait roster entries (type × trait)        64
 #
 # per-module pub lines:
-#   api                              10
+#   api                              11
 #   cgats                             2
 #   cnvrt                             2
 #   context                           2
@@ -30,7 +30,7 @@ NOTE: excluded-feature surface (math-rust,math-zen) not buildable: rustdoc JSON 
 #   types                             1
 #   xform                             1
 
-## items (35 lines)
+## items (36 lines)
 
 pub fn api::BehaviorMode::assert_fields_are_eq(&self)
 pub fn api::ColorSpace::assert_fields_are_eq(&self)
@@ -41,6 +41,7 @@ pub fn api::InfoType::assert_fields_are_eq(&self)
 pub fn api::Intent::assert_fields_are_eq(&self)
 pub fn api::Locale::assert_fields_are_eq(&self)
 pub fn api::ProfileClass::assert_fields_are_eq(&self)
+pub fn api::ProfileReadWarning::assert_fields_are_eq(&self)
 pub fn api::Tag::assert_fields_are_eq(&self)
 pub fn cgats::Symbol::assert_fields_are_eq(&self)
 pub fn cgats::WriteMode::assert_fields_are_eq(&self)
@@ -68,7 +69,7 @@ pub context::Context::behavior_mode: api::BehaviorMode
 pub types::Context::behavior_mode: api::BehaviorMode
 pub static err::GLOBAL_LOG_HOOK: std::sync::poison::mutex::Mutex<core::option::Option<context::LogErrorHandler>>
 
-## trait impls (63 types)
+## trait impls (64 types)
 
 api::BehaviorMode: TrivialClone
 api::ColorSpace: TrivialClone
@@ -80,6 +81,7 @@ api::Locale: TrivialClone
 api::PlanOptions: TrivialClone
 api::ProfileClass: TrivialClone
 api::ProfileFactory: TrivialClone
+api::ProfileReadWarning: TrivialClone
 api::Tag: TrivialClone
 cgats::Keyword: TrivialClone
 cgats::Symbol: TrivialClone

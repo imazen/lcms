@@ -6,28 +6,28 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1056 lines (supported surface) | lcms.features.txt 2001 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 98 lines (98 hidden + 0 excluded-feature)
+# files: lcms.txt 1061 lines (supported surface) | lcms.features.txt 2001 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 100 lines (100 hidden + 0 excluded-feature)
 
 ## summary
 #
 #   pub modules                                17
-#   pub types (struct/enum/trait/alias)        68
+#   pub types (struct/enum/trait/alias)        69
 #   pub consts/statics                        472
 #   free functions                             30
-#   inherent methods                          209
+#   inherent methods                          210
 #   struct fields                             103
-#   enum variants                             108
-#   trait roster entries (type × trait)       226
-#   auto-trait-complete types                  47
+#   enum variants                             110
+#   trait roster entries (type × trait)       231
+#   auto-trait-complete types                  48
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
 #   (root)                           34
-#   api                             581
+#   api                             585
 #   signatures                      249
 #   types                           143
 
-## items (999 lines)
+## items (1003 lines)
 
 pub mod lcms
 pub mod api
@@ -55,6 +55,7 @@ pub const api::flags::SOFT_PROOFING: u32
 pub fn api::flags::gridpoints(u32) -> u32
 #[non_exhaustive] pub enum api::BehaviorMode
 pub api::BehaviorMode::Lcms2Exact
+pub api::BehaviorMode::SpecDefault
 pub api::BehaviorMode::SpecExact
 pub enum api::ColorSpace
 pub api::ColorSpace::Cmy
@@ -121,6 +122,8 @@ pub api::ProfileClass::Other(u32)
 pub api::ProfileClass::Output
 pub fn api::ProfileClass::code(self) -> u32
 pub fn api::ProfileClass::from_u32(u32) -> api::ProfileClass
+#[non_exhaustive] pub enum api::ProfileReadWarning
+pub api::ProfileReadWarning::CompactedV2Description
 #[non_exhaustive] pub enum api::TagData<'a>
 pub api::TagData::Chromaticity(types::CiexyYTriple)
 pub api::TagData::ColorantOrder([u8; 16])
@@ -433,6 +436,7 @@ pub fn api::Profile::pcs(&self) -> api::ColorSpace
 pub fn api::Profile::placeholder() -> Self
 pub fn api::Profile::platform(&self) -> u32
 pub fn api::Profile::profile_id(&self) -> types::ProfileId
+pub fn api::Profile::read_warnings(&self) -> &[api::ProfileReadWarning]
 pub fn api::Profile::remove_tag(&mut self, impl core::convert::Into<api::Tag>) -> bool
 pub fn api::Profile::rgb(&types::CiexyY, &types::CiexyYTriple, [&api::ToneCurve; 3]) -> api::Result<Self>
 pub fn api::Profile::save(&self) -> api::Result<alloc::vec::Vec<u8>>
@@ -1029,7 +1033,7 @@ pub type types::Signature = u32
 pub type types::U16Fixed16 = u32
 pub type types::U8Fixed8 = u16
 
-## trait impls (55 types)
+## trait impls (56 types)
 
 &'a api::NamedColorList: IntoIterator
 &'a api::Pipeline: IntoIterator
@@ -1057,6 +1061,7 @@ api::PlanOptions: Clone, Copy, Debug, Default, From<api::Intent>, PartialEq
 api::Profile: Clone, Debug
 api::ProfileClass: Clone, Copy, Debug, Display, Eq, From<u32>, Hash, PartialEq
 api::ProfileFactory: Clone, Copy, Debug
+api::ProfileReadWarning: Clone, Copy, Debug, Eq, PartialEq
 api::ProfileSeqDesc: Clone, Debug
 api::ProfileSeqEntry: Clone, Debug
 api::Scratch: Clone, Debug
@@ -1089,5 +1094,5 @@ u32: From<api::ColorSpace>, From<api::Format>, From<api::Intent>, From<api::Prof
 
 ## auto traits
 
-47 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
+48 types implement all of: Freeze, RefUnwindSafe, Send, Sync, Unpin, UnwindSafe
 api::Plan: !Freeze !RefUnwindSafe !UnwindSafe

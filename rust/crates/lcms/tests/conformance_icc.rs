@@ -2618,3 +2618,69 @@ fn spec_exact_export_validates_lut_dimensions_and_encoded_chad() {
     .unwrap();
     assert!(p.save().is_ok());
 }
+
+#[test]
+fn spec_default_restores_compact_description_only() {
+    use api::{BehaviorMode, InfoType, ProfileReadWarning};
+    let exact = spec_factory();
+    let usual = Profile::with_mode(BehaviorMode::SpecDefault);
+    let mut rgb = exact.srgb();
+    rgb.set_version(0x0210_0000).unwrap();
+    let base = rgb.save().unwrap();
+    let mut desc = b"desc\0\0\0\0\0\0\0\x05uRGB\0".to_vec();
+    desc.resize(95, 0);
+
+    let full = with_tag(&base, b"desc", &desc);
+    let correct = exact.open(&full).unwrap();
+    let strict_plan = Plan::new(&correct, &exact.srgb(), Format::RGB_8, Format::RGB_8).unwrap();
+    let mut reference = [[0u8; 3]; 3];
+    let input = [[1u8, 2, 3], [128, 40, 205], [255, 254, 0]];
+    strict_plan.transform_pixels(&input, &mut reference);
+    let mut compact = with_tag(&base, b"desc", &desc[..28]);
+    let entry = compact[132..]
+        .chunks_exact(12)
+        .position(|r| &r[..4] == b"desc")
+        .unwrap()
+        * 12
+        + 132;
+    let offset = u32::from_be_bytes(compact[entry + 4..entry + 8].try_into().unwrap()) as usize;
+    for length in [94u32, 95] {
+        compact[entry + 8..entry + 12].copy_from_slice(&length.to_be_bytes());
+        assert!(exact.open(&compact).is_err());
+        let parsed = usual.open(&compact).unwrap();
+        assert_eq!(parsed.behavior_mode(), BehaviorMode::SpecDefault);
+        assert_eq!(
+            parsed.read_warnings(),
+            &[ProfileReadWarning::CompactedV2Description]
+        );
+        assert_eq!(parsed.info(InfoType::Description).as_deref(), Some("uRGB"));
+        let plan = Plan::new(&parsed, &exact.srgb(), Format::RGB_8, Format::RGB_8).unwrap();
+        let mut recovered = [[0u8; 3]; 3];
+        plan.transform_pixels(&input, &mut recovered);
+        assert_eq!(recovered, reference);
+        let saved = parsed.save().unwrap();
+        assert!(check(&saved).is_empty());
+        assert!(usual.open(&saved).unwrap().read_warnings().is_empty());
+        assert_eq!(saved, correct.save().unwrap());
+    }
+
+    let mut bad_header = compact.clone();
+    bad_header[offset + 17] = 1; // a nonempty discarded language field
+    assert!(usual.open(&bad_header).is_err());
+
+    let mut bad_bounds = compact;
+    let count = u32::from_be_bytes(bad_bounds[128..132].try_into().unwrap()) as usize;
+    let entry = bad_bounds[132..132 + count * 12]
+        .chunks_exact(12)
+        .position(|r| &r[..4] == b"wtpt")
+        .unwrap()
+        * 12
+        + 132;
+    let length = bad_bounds.len() as u32
+        - u32::from_be_bytes(bad_bounds[entry + 4..entry + 8].try_into().unwrap())
+        + 1;
+    bad_bounds[entry + 8..entry + 12].copy_from_slice(&length.to_be_bytes());
+    assert!(usual.open(&bad_bounds).is_err());
+
+    assert!(usual.open(&full).unwrap().read_warnings().is_empty());
+}
