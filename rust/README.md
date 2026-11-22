@@ -11,6 +11,9 @@ The C oracle (`lcms-cref`, dev-only) never reaches the production deps.
 
 ## Quickstart
 
+From a checkout, add `lcms` as a path dependency pointing to
+`rust/crates/lcms`. Use Rust 1.89 or later. The Rust API needs no surface feature.
+
 Pick the layer that matches what you're doing:
 
 | You want… | Use | Feature |

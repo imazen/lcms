@@ -13,10 +13,8 @@ use lcms::{cam02, gamma, pcs, profile, types::*, virt, wtpnt, xform};
 use lcms_cref as c;
 use std::ffi::c_void;
 
-fn fnv(b: &[u8]) -> u64 {
-    // zenhash::xxh3_64 — bit-identical on every target/SIMD tier, so the
-    // per-cell hashes are meaningful to compare across CI/platforms.
-    zenhash::xxh3_64(b)
+fn cell_hash(b: &[u8]) -> u64 {
+    xxhash_rust::xxh3::xxh3_64(b)
 }
 
 /// One emitted cell: (name, Rust output bytes, C oracle output bytes).
@@ -30,7 +28,7 @@ thread_local! {
 /// manifest-level digest: xxh3 over every cell's bytes in order — one
 /// value CI can diff across platforms.
 fn digest(cells: &[(String, Vec<u8>, Vec<u8>)]) -> u64 {
-    let mut h = zenhash::Xxh3::new();
+    let mut h = xxhash_rust::xxh3::Xxh3::new();
     for (name, r, cb) in cells {
         h.update(name.as_bytes());
         h.update(r);
@@ -58,7 +56,7 @@ fn emit(name: &str, r: &[u8], cb: &[u8]) {
         c.borrow_mut()
             .push((name.to_string(), r.to_vec(), cb.to_vec()))
     });
-    let (rh, ch) = (fnv(r), fnv(cb));
+    let (rh, ch) = (cell_hash(r), cell_hash(cb));
     let eq = r == cb;
     // element-wise diffs: f32-ulp for xfl cells, u16 otherwise
     let mut dmax = 0u64;
@@ -871,7 +869,7 @@ fn manifest() {
 "
             );
             for (n, r, c) in &cells {
-                txt += &format!("{n}\t{:016x}\t{:016x}\n", fnv(r), fnv(c));
+                txt += &format!("{n}\t{:016x}\t{:016x}\n", cell_hash(r), cell_hash(c));
             }
             let upd = std::env::var("LCMS_GOLDEN_UPDATE").is_ok();
             let old = std::fs::read_to_string(&g).ok();
@@ -890,7 +888,7 @@ fn manifest() {
                         })
                         .collect();
                     for (n, r, _c) in &cells {
-                        let rh = format!("{:016x}", fnv(r));
+                        let rh = format!("{:016x}", cell_hash(r));
                         if let Some(&or) = on.get(n.as_str()) {
                             if or != rh {
                                 eprintln!("GOLDEN-DRIFT {n}: {or} -> {rh}");
