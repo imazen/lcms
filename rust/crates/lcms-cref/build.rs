@@ -39,9 +39,14 @@ fn main() {
 
     // Rebuild only when the submodule HEAD (or this script) changes.
     let submodule_head = repo_root.join(".git/modules/reference/lcms2/HEAD");
+    println!("cargo:rerun-if-env-changed=LCMS_CREF_MATH");
     let math_mode = env::var("LCMS_CREF_MATH")
         .ok()
         .unwrap_or_else(|| "abi".into());
+    // Reusing the stamped C archive still needs the Rust shim's math mode.
+    if math_mode == "sys" {
+        println!("cargo:rustc-cfg=math_sys");
+    }
     let mut stamp_key = format!("lcms-cref-v3:{math_mode}:");
     if submodule_head.exists() {
         println!("cargo:rerun-if-changed={}", submodule_head.display());
@@ -92,11 +97,6 @@ fn main() {
         println!("cargo:rerun-if-changed={}", f.display());
     }
 
-    println!("cargo:rerun-if-env-changed=LCMS_CREF_MATH");
-    let math_sys = env::var("LCMS_CREF_MATH").ok().as_deref() == Some("sys");
-    if math_sys {
-        println!("cargo:rustc-cfg=math_sys");
-    }
     let mut b = cc::Build::new();
     b.files(&c_files)
         .include(c_root.join("include"))
