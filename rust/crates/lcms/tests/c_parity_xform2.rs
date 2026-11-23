@@ -32,6 +32,13 @@ fn fill(n: usize) -> Vec<u8> {
     v
 }
 
+// These coverage fixtures mix byte and word formats. Backing them with
+// u16 keeps the C word formatters aligned, including on ARM.
+fn four_packed_pixels(format: u32, fill: u16) -> Vec<u16> {
+    let pixel_bytes = lcms::api::Format::from_u32(format).pixel_size();
+    vec![fill; (4 * pixel_bytes).div_ceil(size_of::<u16>())]
+}
+
 fn r_xform(
     profs: &mut [Box<lcms::profile::IccProfile>],
     gamut: Option<&mut lcms::profile::IccProfile>,
@@ -2036,8 +2043,8 @@ fn optimizer_arms() {
             let t = c::cmsCreateTransform(inp, if_, outp, of_, intent, fl);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x80u8; 64];
-                let mut ob = [0x8000u16; 8];
+                let ib = four_packed_pixels(if_, 0x8080);
+                let mut ob = four_packed_pixels(of_, 0x8000);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -2048,8 +2055,8 @@ fn optimizer_arms() {
                 let t = c::cmsCreateTransform(cmyk, k16, cmyk, k16, intent, 0);
                 eprintln!("cmyk-i{intent} t={}", !t.is_null());
                 if !t.is_null() {
-                    let ib = [0x8000u16; 8];
-                    let mut ob = [0x8000u16; 8];
+                    let ib = four_packed_pixels(k16, 0x8000);
+                    let mut ob = four_packed_pixels(k16, 0x8000);
                     c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                     c::cmsDeleteTransform(t);
                 }
@@ -2111,8 +2118,8 @@ fn opt_linearization_arms() {
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x80u8; 64];
-                let mut ob = [0x8000u16; 8];
+                let ib = four_packed_pixels(if_, 0x8080);
+                let mut ob = four_packed_pixels(of_, 0x8000);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -2405,8 +2412,8 @@ fn opt_resample_arms() {
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x80u8; 64];
-                let mut ob = [0x8000u16; 8];
+                let ib = four_packed_pixels(if_, 0x8080);
+                let mut ob = four_packed_pixels(of_, 0x8000);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -2586,8 +2593,8 @@ fn opt_flag_arms() {
                 let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
                 eprintln!("{name} fl={fl:#x} t={}", !t.is_null());
                 if !t.is_null() {
-                    let ib = [0x80u8; 64];
-                    let mut ob = [0x8000u16; 8];
+                    let ib = four_packed_pixels(if_, 0x8080);
+                    let mut ob = four_packed_pixels(of_, 0x8000);
                     c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                     c::cmsDeleteTransform(t);
                 }
@@ -2640,8 +2647,8 @@ fn black_preserving_arms() {
             let t = c::cmsCreateTransform(inp, k16, outp, k16, intent, fl);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x8000u16; 8];
-                let mut ob = [0x8000u16; 8];
+                let ib = four_packed_pixels(k16, 0x8000);
+                let mut ob = four_packed_pixels(k16, 0x8000);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -2711,8 +2718,8 @@ fn opt_prelin_rgb() {
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x80u8; 12];
-                let mut ob = [0x80u8; 12];
+                let ib = four_packed_pixels(if_, 0x8080);
+                let mut ob = four_packed_pixels(of_, 0x8080);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -2834,8 +2841,8 @@ fn opt_join_curves() {
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x8000u16; 4];
-                let mut ob = [0x8000u16; 4];
+                let ib = four_packed_pixels(if_, 0x8000);
+                let mut ob = four_packed_pixels(of_, 0x8000);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -2869,13 +2876,13 @@ fn opt_matshaper_arms() {
         let p2020 = c::cmsCreateRGBProfileTHR(
             std::ptr::null_mut(),
             wp.as_ptr() as *const _,
-            [0.708f64, 0.292, 0.170, 0.797, 0.131, 0.046, 0.161, 0.023].as_ptr() as *const _,
+            [0.708f64, 0.292, 1.0, 0.170, 0.797, 1.0, 0.131, 0.046, 1.0].as_ptr() as *const _,
             [g2, g2, g2].as_ptr() as *mut _,
         );
         let p709 = c::cmsCreateRGBProfileTHR(
             std::ptr::null_mut(),
             wp.as_ptr() as *const _,
-            [0.64f64, 0.33, 0.30, 0.60, 0.15, 0.06].as_ptr() as *const _,
+            [0.64f64, 0.33, 1.0, 0.30, 0.60, 1.0, 0.15, 0.06, 1.0].as_ptr() as *const _,
             [g3, g3, g3].as_ptr() as *mut _,
         );
         let r16 = (4u32 << 16) | (3 << 3) | 2;
@@ -2900,8 +2907,8 @@ fn opt_matshaper_arms() {
             let t = c::cmsCreateTransform(inp, if_, outp, of_, intent, 0);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x80u8; 12];
-                let mut ob = [0x80u8; 12];
+                let ib = four_packed_pixels(if_, 0x8080);
+                let mut ob = four_packed_pixels(of_, 0x8080);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -3194,8 +3201,8 @@ fn opt_resample_deep() {
             let t = c::cmsCreateTransform(inp, if_, outp, of_, 0, fl);
             eprintln!("{name} t={}", !t.is_null());
             if !t.is_null() {
-                let ib = [0x80u8; 64];
-                let mut ob = [0x8000u16; 8];
+                let ib = four_packed_pixels(if_, 0x8080);
+                let mut ob = four_packed_pixels(of_, 0x8000);
                 c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                 c::cmsDeleteTransform(t);
             }
@@ -3272,8 +3279,8 @@ fn opt_arms3() {
                 let t = c::cmsCreateTransform(inp, if_, outp, of_, intent, fl);
                 eprintln!("{name} i{intent} t={}", !t.is_null());
                 if !t.is_null() {
-                    let ib = [0x80u8; 64];
-                    let mut ob = [0x8000u16; 8];
+                    let ib = four_packed_pixels(if_, 0x8080);
+                    let mut ob = four_packed_pixels(of_, 0x8000);
                     c::cmsDoTransform(t, ib.as_ptr() as *const _, ob.as_mut_ptr() as *mut _, 4);
                     c::cmsDeleteTransform(t);
                 }
