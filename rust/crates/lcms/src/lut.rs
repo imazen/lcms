@@ -300,6 +300,20 @@ fn evaluate_matrix(input: &[f32], output: &mut [f32], mpe: &Stage) {
     if let StageData::Matrix { double, offset } = &mpe.data {
         let n_in = mpe.input_channels as usize;
         let n_out = mpe.output_channels as usize;
+        if n_in == 3 && n_out == 3 {
+            let x = f64::from(input[0]);
+            let y = f64::from(input[1]);
+            let z = f64::from(input[2]);
+            for i in 0..3 {
+                let j = i * 3;
+                let mut value = ((0.0 + x * double[j]) + y * double[j + 1]) + z * double[j + 2];
+                if let Some(off) = offset {
+                    value += off[i];
+                }
+                output[i] = value as f32;
+            }
+            return;
+        }
         // f64x4: the n_out lanes multiply-accumulate columns in the same
         // j-order as the scalar — each product rounds then adds, so the
         // per-lane result is bit-identical. (No FMA.)
@@ -1233,6 +1247,16 @@ impl Pipeline {
     /// `cmsPipelineEvalFloat`
     pub fn eval_float(&self, input: &[f32], output: &mut [f32]) {
         (self.eval_float_fn)(input, output, self);
+    }
+
+    pub(crate) fn uses_compact_float_eval(&self) -> bool {
+        std::ptr::fn_addr_eq(self.eval_float_fn, lut_eval_float as PipelineEvalFloatFn)
+            && pipeline_max_channels(self) <= 4
+    }
+
+    #[inline]
+    pub(crate) fn eval_float_compact(&self, input: &[f32; 4], output: &mut [f32; 4]) {
+        lut_eval_float_impl::<4>(input, output, self);
     }
     /// `cmsPipelineGetPtrToFirstStage`
     pub fn first_stage(&self) -> Option<&Stage> {

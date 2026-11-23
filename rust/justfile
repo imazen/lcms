@@ -102,6 +102,10 @@ bench:
 bench-one +names:
     bench/bench.sh {{names}}
 
+# Packed transform throughput against stock Little CMS and moxcms.
+bench-cms *args:
+    LCMS_CREF_MATH=sys cargo bench --locked -p lcms --features little-cms-api --bench cms_shootout -- {{args}}
+
 # Build just the C oracle static lib (bench/out/liblcms2_c.a)
 c-oracle:
     #!/usr/bin/env bash
