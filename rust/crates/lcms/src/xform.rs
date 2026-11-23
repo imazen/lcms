@@ -188,8 +188,8 @@ fn clut16_tetra_loop_v3(
 }
 
 /// `clut16_tetra_loop_v3` for `TYPE_RGBA_FLT` — quick-saturate three
-/// f32s to u16, tetra3_i32x4 on the u16 table, back to f32; extra slot
-/// writes 0.0f like the generic path's zeroed `f_out`.
+/// f32s to u16, tetra3_i32x4 on the u16 table, back to f32. The caller
+/// has already handled the extra channel.
 #[archmage::arcane]
 #[allow(clippy::too_many_arguments)]
 fn clutflt_tetra_loop_v3(
@@ -216,12 +216,7 @@ fn clutflt_tetra_loop_v3(
                 crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
             ];
             let [r, g, b] = crate::intrp::tetra3_i32x4(token, vin, p);
-            let outv = [
-                r as f32 / 65535.0,
-                g as f32 / 65535.0,
-                b as f32 / 65535.0,
-                0.0,
-            ];
+            let outv = [r as f32 / 65535.0, g as f32 / 65535.0, b as f32 / 65535.0];
             for (cch, v) in outv.iter().enumerate() {
                 oline[px + cch * 4..px + cch * 4 + 4].copy_from_slice(&v.to_le_bytes());
             }
@@ -231,8 +226,22 @@ fn clutflt_tetra_loop_v3(
     }
 }
 
-/// `clut16_eval4_loop_v3` for `TYPE_CMYK_FLT` — four f32s in,
-/// quick-saturate to u16, eval4 on the 16-bit table, back to f32.
+// Match the float formatters' conversions between ink percentages and
+// normalized floats, including the intermediate rounding to f32.
+#[inline]
+fn cmyk_float_to_word(value: f32) -> u16 {
+    let normalized = (value as f64 / 100.0) as f32;
+    crate::fixed::quick_saturate_word(normalized as f64 * 65535.0)
+}
+
+#[inline]
+fn cmyk_word_to_float(value: u16) -> f32 {
+    let normalized = value as f32 / 65535.0;
+    (normalized as f64 * 100.0) as f32
+}
+
+/// `clut16_eval4_loop_v3` for `TYPE_CMYK_FLT` with ink percentages on
+/// input and output and a normalized 16-bit CLUT.
 #[archmage::arcane]
 #[allow(clippy::too_many_arguments)]
 fn clutflt_eval4_loop_v3(
@@ -253,15 +262,10 @@ fn clutflt_eval4_loop_v3(
         for i in 0..ppl as usize {
             let px = i * 16;
             let rd = |o: usize| f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap());
-            let vin = [
-                crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
-                crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
-                crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
-                crate::fixed::quick_saturate_word(rd(12) as f64 * 65535.0),
-            ];
+            let vin = [0, 4, 8, 12].map(|offset| cmyk_float_to_word(rd(offset)));
             let outv = crate::intrp::eval4_i32x4(token, vin, 4, p);
             for (cch, v) in outv.iter().enumerate() {
-                let fv = *v as f32 / 65535.0;
+                let fv = cmyk_word_to_float(*v);
                 oline[px + cch * 4..px + cch * 4 + 4].copy_from_slice(&fv.to_le_bytes());
             }
         }
@@ -1734,6 +1738,7 @@ impl TransformPlan {
                 if let Some(l) = self.lut.as_ref() {
                     let of = self.output_format;
                     let plain8 = crate::pack::t_bytes(of) == 1
+                        && crate::pack::t_colorspace(of) != crate::types::PT_LABV2
                         && crate::pack::t_extra(of) == 0
                         && crate::pack::t_doswap(of) == 0
                         && crate::pack::t_flavor(of) == 0
@@ -1824,6 +1829,7 @@ impl TransformPlan {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         let of = self.output_format;
                         let plain16 = crate::pack::t_bytes(of) == 2
+                            && crate::pack::t_colorspace(of) != crate::types::PT_LABV2
                             && crate::pack::t_extra(of) == 0
                             && crate::pack::t_doswap(of) == 0
                             && crate::pack::t_flavor(of) == 0
@@ -1885,7 +1891,7 @@ impl TransformPlan {
                     }
                 }
             }
-            if self.input_format == GRAY16 {
+            if self.input_format == GRAY16 && self.output_format == GRAY16 {
                 if let Some(l) = self.lut.as_ref() {
                     if let Some(crate::opt::OptData::Curves16(c)) = l.opt_data.as_ref() {
                         // Fused `unroll1_word`→1-curve `Curves16`→`pack1_word`.
@@ -2303,10 +2309,8 @@ impl TransformPlan {
         if !gamut {
             if let Some(l) = self.lut.as_ref() {
                 // Fused `unroll_floats`→u16-tetra→`pack_floats` for
-                // TYPE_RGBA_FLT (the "32 bits" bench shape): 3 f32s in,
-                // quick-saturate to u16, tetra3 on the 16-bit table,
-                // back to f32 — extras write 0.0f, matching the generic
-                // path's zeroed `f_out` slots.
+                // TYPE_RGBA_FLT. Store just the three color channels.
+                // The extra channel was handled before dispatch.
                 const RGBA_FLT: u32 = 1 << 22 | 4 << 16 | 1 << 7 | 3 << 3 | 4;
                 if self.input_format == RGBA_FLT && self.output_format == RGBA_FLT {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
@@ -2354,13 +2358,12 @@ impl TransformPlan {
                                         crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
                                     ];
                                     let [r, g, b] = crate::intrp::tetra3_interp16(vin, p);
-                                    let out128 = [
+                                    let outv = [
                                         r as f32 / 65535.0,
                                         g as f32 / 65535.0,
                                         b as f32 / 65535.0,
-                                        0.0f32,
                                     ];
-                                    for (cch, v) in out128.iter().enumerate() {
+                                    for (cch, v) in outv.iter().enumerate() {
                                         oline[px + cch * 4..px + cch * 4 + 4]
                                             .copy_from_slice(&v.to_le_bytes());
                                     }
@@ -2372,9 +2375,7 @@ impl TransformPlan {
                         }
                     }
                 }
-                // TYPE_CMYK_FLT (the "32-bit CMYK" bench shape): 4 f32s
-                // in, quick-saturate to u16, eval4 on the 16-bit table,
-                // back to f32.
+                // TYPE_CMYK_FLT uses ink percentages on input and output.
                 const CMYK_FLT: u32 = 1 << 22 | 6 << 16 | 4 << 3 | 4;
                 if self.input_format == CMYK_FLT && self.output_format == CMYK_FLT {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
@@ -2416,16 +2417,12 @@ impl TransformPlan {
                                             iline[px + o..px + o + 4].try_into().unwrap(),
                                         )
                                     };
-                                    let vin = [
-                                        crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
-                                        crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
-                                        crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
-                                        crate::fixed::quick_saturate_word(rd(12) as f64 * 65535.0),
-                                    ];
+                                    let vin =
+                                        [0, 4, 8, 12].map(|offset| cmyk_float_to_word(rd(offset)));
                                     let mut w_out = [0u16; 4];
                                     crate::intrp::eval4_inputs(&vin, &mut w_out, p);
                                     for cch in 0..4 {
-                                        let fv = w_out[cch] as f32 / 65535.0;
+                                        let fv = cmyk_word_to_float(w_out[cch]);
                                         oline[px + cch * 4..px + cch * 4 + 4]
                                             .copy_from_slice(&fv.to_le_bytes());
                                     }

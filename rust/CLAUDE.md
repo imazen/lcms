@@ -37,6 +37,17 @@ writable cases, typed refusals and unimplemented semantics in
 5. **lcms2.20 has no `_cmsLstar2Y`/`_cmsY2Lstar`** — older versions did; the
    functions were removed. Check the header before declaring a symbol.
 
+## Known Bugs
+
+- Issue 3 exposed fused transform loops that bypassed formatter behavior.
+  RGBA float CLUT writes must preserve the fourth lane after the extra-channel
+  pass, including when alpha copy is disabled. CMYK float CLUTs use ink
+  percentages at the pixel boundary. Gray16 curve fusion requires plain Gray16
+  output, and Lab v2 CLUT output needs the Lab v2 packer.
+- `c_parity_xform_matrix` compares these routes with the C oracle. Its float
+  fixture checks the stock pipeline before supplying the same optimized CLUT
+  explicitly because the stock optimizer does not resample float formats.
+
 ## Habits
 
 - Report what you ran, not what you believe.
