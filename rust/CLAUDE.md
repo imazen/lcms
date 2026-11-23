@@ -45,6 +45,10 @@ Size these fixtures from the format and four-pixel count with native word
 alignment. A C `cmsCIExyYTRIPLE` also requires all nine doubles, including
 the three Y values.
 
+When reusing the stamped C archive, the build script must still report
+the selected `LCMS_CREF_MATH` mode to Cargo. Dropping `math_sys` on that
+path silently changes a stock-C benchmark to shared-math mode.
+
 - Issue 3 exposed fused transform loops that bypassed formatter behavior.
   RGBA float CLUT writes must preserve the fourth lane after the extra-channel
   pass, including when alpha copy is disabled. CMYK float CLUTs use ink

@@ -176,6 +176,8 @@ exclusive.
   macOS arm64, musl, and Windows MSVC (wine).
 - `just determinism-gate` runs the CI parity+confinement gate;
   `just determinism-goldens <dir>` writes per-platform hash baselines.
+- `just bench-cms` compares packed transforms with stock Little CMS and
+  moxcms. See the [throughput measurements](docs/TRANSFORM-THROUGHPUT.md).
 
 ## Layout
 
