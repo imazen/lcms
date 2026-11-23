@@ -20,5 +20,6 @@
 
 ### Fixed
 
+- Preserve RGBA float alpha, CMYK float ink units, and gray output formatting in fused transforms. (0596a24ea4)
 - Correct native date storage and planar stride buffer sizing in the C oracle tests. (929c4c0745)
 - Honor ICC LUT precedence and direct absolute PCS, preserve legacy LUT encodings on resave, and validate SpecExact export models. (732a9f3c12)
