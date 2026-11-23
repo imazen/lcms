@@ -8,10 +8,210 @@ use lcms::virt;
 use lcms::xform;
 use lcms_cref as c;
 
+#[path = "support/throughput_profiles.rs"]
+mod throughput_profiles;
+
 const TYPE_RGB_8: u32 = 4 << 16 | 3 << 3 | 1;
 const TYPE_BGR_8: u32 = 4 << 16 | 3 << 3 | 1 | 1 << 10;
 const TYPE_RGB_16: u32 = 4 << 16 | 3 << 3 | 2;
 const TYPE_LAB_16: u32 = 10 << 16 | 3 << 3 | 2;
+
+const PACKED_WIDTH: usize = 259;
+const PACKED_ROWS: usize = 3;
+
+fn check_packed_route<T: bytemuck::Pod>(
+    src_bytes: &[u8],
+    src_format: Format,
+    dst_format: Format,
+    input: &[T],
+    pad: T,
+    flags: u32,
+) {
+    use lcms::api::{Intent, Plan, PlanOptions, Profile};
+    let src = Profile::open(src_bytes).unwrap();
+    let dst = Profile::srgb().save().unwrap();
+    let plan = Plan::with_options(
+        &src,
+        &Profile::open(&dst).unwrap(),
+        src_format,
+        dst_format,
+        &PlanOptions::new()
+            .intent(Intent::RelativeColorimetric)
+            .flags(flags),
+    )
+    .unwrap();
+    let size = size_of::<T>();
+    let src_stride = PACKED_WIDTH * src_format.pixel_size() + 4 * size;
+    let dst_stride = PACKED_WIDTH * dst_format.pixel_size() + 5 * size;
+    let mut expected = vec![pad; dst_stride / size * PACKED_ROWS];
+    let mut actual = expected.clone();
+    unsafe {
+        let src = c::cmsOpenProfileFromMem(src_bytes.as_ptr().cast(), src_bytes.len() as u32);
+        let dst = c::cmsOpenProfileFromMem(dst.as_ptr().cast(), dst.len() as u32);
+        assert!(!src.is_null() && !dst.is_null());
+        let transform =
+            c::cmsCreateTransform(src, src_format.code(), dst, dst_format.code(), 1, flags);
+        assert!(!transform.is_null());
+        c::cmsDoTransformLineStride(
+            transform,
+            input.as_ptr().cast(),
+            expected.as_mut_ptr().cast(),
+            PACKED_WIDTH as u32,
+            PACKED_ROWS as u32,
+            src_stride as u32,
+            dst_stride as u32,
+            0,
+            0,
+        );
+        c::cmsDeleteTransform(transform);
+        c::cmsCloseProfile(src);
+        c::cmsCloseProfile(dst);
+    }
+    plan.apply_strided(
+        &mut plan.scratch(),
+        bytemuck::cast_slice(input),
+        src_stride,
+        bytemuck::cast_slice_mut(&mut actual),
+        dst_stride,
+        PACKED_WIDTH,
+        PACKED_ROWS,
+    );
+    for (i, (ours, oracle)) in bytemuck::cast_slice::<T, u8>(&actual)
+        .chunks_exact(size)
+        .zip(bytemuck::cast_slice::<T, u8>(&expected).chunks_exact(size))
+        .enumerate()
+    {
+        assert_eq!(
+            ours, oracle,
+            "{src_format:?} -> {dst_format:?}, flags {flags:#x}, sample {i}"
+        );
+    }
+}
+
+fn packed_witness<T: Copy>(channels: usize, mut sample: impl FnMut(usize) -> T) -> Vec<T> {
+    let row_samples = PACKED_WIDTH * channels + 4;
+    (0..row_samples * PACKED_ROWS)
+        .map(|i| {
+            let px = i % row_samples / channels;
+            let cell = i % row_samples % channels;
+            match px {
+                0 | 1 => sample(cell),            // repeated black, including the seeded cache
+                2 | 3 => sample(channels + cell), // repeated white, including the final CLUT node
+                _ => sample(2 * channels + i),
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn packed_matrix_shaper8_matches_c() {
+    for profile in [
+        throughput_profiles::display_p3(),
+        throughput_profiles::adobe_rgb(),
+    ] {
+        for (format, n) in [
+            (Format::RGB_8, 3),
+            (Format::BGR_8, 3),
+            (Format::RGBA_8, 4),
+            (Format::BGRA_8, 4),
+        ] {
+            let input = packed_witness(n, |i| match i {
+                i if i < n => 0,
+                i if i < 2 * n => 255,
+                _ => (i * 131 + i / 7) as u8,
+            });
+            for flags in [0, flags::COPY_ALPHA] {
+                check_packed_route(&profile, format, format, &input, 0xa7, flags);
+            }
+        }
+    }
+}
+
+#[test]
+fn packed_rgb_clut8_matches_c_at_endpoints_and_with_cache() {
+    let profile = throughput_profiles::synthetic_rgb_icc();
+    let input = packed_witness(3, |i| match i {
+        0..3 => 0,
+        3..6 => 255,
+        _ => (i * 113 + i / 7) as u8,
+    });
+    for flags in [0, flags::NO_CACHE] {
+        check_packed_route(&profile, Format::RGB_8, Format::RGB_8, &input, 0xa7, flags);
+    }
+}
+
+#[test]
+fn packed_cmyk_clut_matches_c_with_and_without_cache() {
+    let profile = throughput_profiles::synthetic_cmyk_icc();
+    let input8 = packed_witness(4, |i| match i {
+        0..4 => 0,
+        4..8 => 255,
+        _ => (i * 43 + i / 13) as u8,
+    });
+    let input16 = packed_witness(4, |i| match i {
+        0..4 => 0,
+        4..8 => u16::MAX,
+        _ => (i * 9973 + 12345) as u16,
+    });
+    for flags in [0, flags::NO_CACHE, flags::BLACK_POINT_COMPENSATION] {
+        for format in [Format::RGB_8, Format::RGBA_8] {
+            check_packed_route(&profile, Format::CMYK_8, format, &input8, 0xa7, flags);
+        }
+        for format in [Format::RGB_16, Format::RGBA_16] {
+            check_packed_route(&profile, Format::CMYK_16, format, &input16, 0xa5a7, flags);
+        }
+    }
+}
+
+#[test]
+fn packed_rgb_and_cmyk_float_profiles_match_c() {
+    let pad = f32::from_bits(0x3f37_19a1);
+    for profile in [
+        throughput_profiles::display_p3(),
+        throughput_profiles::adobe_rgb(),
+        throughput_profiles::synthetic_rgb_icc(),
+    ] {
+        for (format, n) in [(Format::RGB_FLT, 3), (Format::RGBA_FLT, 4)] {
+            let input = packed_witness(n, |i| match i {
+                i if i < n => -0.0,
+                i if i < n * 2 => 1.0,
+                i if n == 4 && i % 4 == 3 => f32::from_bits(0x7fc1_a117),
+                _ => ((i * 37 + 17) % 1009) as f32 / 864.0 - 0.075,
+            });
+            for flags in [0, flags::COPY_ALPHA] {
+                check_packed_route(&profile, format, format, &input, pad, flags);
+            }
+        }
+    }
+    let profile = throughput_profiles::synthetic_cmyk_icc();
+    let input = packed_witness(4, |i| match i {
+        0..4 => -0.0,
+        4..8 => 100.0,
+        _ => ((i * 83 + 19) % 1009) as f32 / 10.0,
+    });
+    for flags in [0, flags::BLACK_POINT_COMPENSATION] {
+        check_packed_route(
+            &profile,
+            Format::CMYK_FLT,
+            Format::RGB_FLT,
+            &input,
+            pad,
+            flags,
+        );
+    }
+    let profile = lcms::api::Profile::srgb().save().unwrap();
+    let input = packed_witness(3, |i| {
+        [
+            f32::from_bits(0x7f81_2345),
+            f32::from_bits(0x7fc1_2345),
+            f32::NEG_INFINITY,
+            f32::INFINITY,
+            -0.0,
+            0.0,
+        ][i % 6]
+    });
+    check_packed_route(&profile, Format::RGB_FLT, Format::RGB_FLT, &input, pad, 0);
+}
 
 #[test]
 fn rgba_float_clut_copies_alpha() {

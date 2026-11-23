@@ -334,6 +334,25 @@ fn compute_component_increments(
     }
 }
 
+fn copy_packed_alpha<const PIXEL: usize, const SAMPLE: usize>(
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    let bytes = ppl as usize * PIXEL;
+    for row in 0..lines as usize {
+        let i = row * stride.bytes_per_line_in as usize;
+        let o = row * stride.bytes_per_line_out as usize;
+        let (src, _) = input[i..i + bytes].as_chunks::<PIXEL>();
+        let (dst, _) = output[o..o + bytes].as_chunks_mut::<PIXEL>();
+        for (src, dst) in src.iter().zip(dst) {
+            dst[PIXEL - SAMPLE..].copy_from_slice(&src[PIXEL - SAMPLE..]);
+        }
+    }
+}
+
 /// `_cmsHandleExtraChannels` — the real C version with formatter conversion
 pub fn handle_extra_channels(
     ctx: Option<&Context>,
@@ -380,6 +399,17 @@ pub fn handle_extra_channels(
         return;
     };
     if n_extra == 1 {
+        if ppl != 0 && src_order[0] == dst_order[0] && src_inc[0] == dst_inc[0] {
+            match (src_order[0], src_inc[0]) {
+                (3, 4) if std::ptr::fn_addr_eq(copy_value, copy8 as FormatterAlphaFn) => {
+                    return copy_packed_alpha::<4, 1>(input, output, ppl, lines, stride);
+                }
+                (12, 16) if std::ptr::fn_addr_eq(copy_value, copy32 as FormatterAlphaFn) => {
+                    return copy_packed_alpha::<16, 4>(input, output, ppl, lines, stride);
+                }
+                _ => {}
+            }
+        }
         let mut s_line = 0usize;
         let mut d_line = 0usize;
         for _ in 0..lines {

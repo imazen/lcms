@@ -888,8 +888,8 @@ where compiler_builtins' trig differs).
 - lcms-cref: same -lm musl gate; flag_if_supported for
   -fno-strict-aliasing.
 - lcms lib: all x64v3 SIMD dispatch arms cfg-gated to x86_64
-  (aarch64/musl use scalar fallbacks). `LCMS_DISABLE_V3` env
-  forces scalar on x86_64 for testing.
+  (aarch64/musl use scalar fallbacks). Set `LCMS_DISABLE_V3` before
+  launching a test process to force scalar interpolation on x86_64.
 - Windows: `cargo xwin test --target x86_64-pc-windows-msvc` builds
   via clang-cl/lld-link (cargo-xwin 0.23); run under portable wine
   (Kron4ek build). 35/51 — `Rust == C` holds under MSVCRT; cam02
