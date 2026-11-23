@@ -39,6 +39,13 @@ writable cases, typed refusals and unimplemented semantics in
 
 ## Known Bugs
 
+The release `c_parity_xform2` optimizer fixtures used to pass four pixels
+to C with buffers too short for their RGB16, Lab16, or CMYK16 formats.
+The out-of-bounds stores could show up later as a crash in `cmsCloseProfile`.
+Size these fixtures from the format and four-pixel count with native word
+alignment. A C `cmsCIExyYTRIPLE` also requires all nine doubles, including
+the three Y values.
+
 - Issue 3 exposed fused transform loops that bypassed formatter behavior.
   RGBA float CLUT writes must preserve the fourth lane after the extra-channel
   pass, including when alpha copy is disabled. CMYK float CLUTs use ink
