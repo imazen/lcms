@@ -129,8 +129,11 @@ fn srgb_crd() {
 #[test]
 fn cmyk_csa_crd() {
     let _g = PS_LOCK.lock().unwrap();
-    let bytes = std::fs::read("/home/lilith/work/zen/lcms/reference/lcms2/testbed/test1.icc")
-        .expect("test1.icc");
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../reference/lcms2/testbed/test1.icc"
+    ))
+    .expect("test1.icc");
     unsafe {
         let prof = c::cmsOpenProfileFromMem(bytes.as_ptr() as *const _, bytes.len() as u32);
         assert!(!prof.is_null());

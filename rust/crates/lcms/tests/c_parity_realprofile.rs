@@ -8,7 +8,10 @@ use lcms_cref as c;
 
 const TYPE_CMYK_8: u32 = 6 << 16 | 4 << 3 | 1;
 const TYPE_RGB_8: u32 = 4 << 16 | 3 << 3 | 1;
-const TESTBED: &str = "/home/lilith/work/zen/lcms/reference/lcms2/testbed";
+const TESTBED: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../reference/lcms2/testbed"
+);
 
 fn run_c(in_path: &str, in_fmt: u32, out_fmt: u32, intent: u32) -> Vec<u8> {
     let mut out = vec![0u8; 85 * 3];

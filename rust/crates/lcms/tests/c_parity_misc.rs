@@ -393,9 +393,26 @@ fn pipeline_check_retrieve() {
         c::cmsPipelineInsertStage(cp, 0, s1);
         c::cmsPipelineInsertStage(cp, 1, s2);
         // matching types: 'idn '(0x69646e20) + 'matf'(0x6d617466)
-        let ok = c::cmsPipelineCheckAndRetreiveStages(cp, 2, 0x69646e20u32, 0x6d617466u32);
+        let mut first = std::ptr::null_mut::<c_void>();
+        let mut last = std::ptr::null_mut::<c_void>();
+        let ok = c::cmsPipelineCheckAndRetreiveStages(
+            cp,
+            2,
+            0x69646e20i32,
+            0x6d617466i32,
+            &mut first as *mut *mut c_void,
+            &mut last as *mut *mut c_void,
+        );
         assert_ne!(ok, 0, "matching stages");
-        let bad = c::cmsPipelineCheckAndRetreiveStages(cp, 2, 0x69646e20u32, 0x69646e20u32);
+        assert_eq!([first, last], [s1, s2]);
+        let bad = c::cmsPipelineCheckAndRetreiveStages(
+            cp,
+            2,
+            0x69646e20i32,
+            0x69646e20i32,
+            std::ptr::null_mut::<*mut c_void>(),
+            std::ptr::null_mut::<*mut c_void>(),
+        );
         assert_eq!(bad, 0, "mismatched stages");
         // rust side — pipeline_check_and_retrieve_stages
         let mut rp = lut::pipeline_alloc(None, 3, 3).unwrap();
