@@ -20,6 +20,8 @@
 
 ### Fixed
 
+- Prepare the inverse type 4 cutoff once per curve while preserving mutable Little CMS evaluators. (9570acf721)
+- Precompute exact wrapping matrix-shaper products for packed RGB8 plans. (42ed35fc4b)
 - Speed up packed matrix-shaper and CLUT transforms and correct the final RGB8 CLUT corner lookup. (56bc4f4c)
 - Preserve RGBA float alpha, CMYK float ink units, and gray output formatting in fused transforms. (0596a24ea4)
 - Correct native date storage and planar stride buffer sizing in the C oracle tests. (929c4c0745)
