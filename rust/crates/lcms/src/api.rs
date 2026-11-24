@@ -1990,7 +1990,8 @@ impl Plan {
                 options.flags,
             )
         })?;
-        let xform::Transform { plan, .. } = *t;
+        let xform::Transform { mut plan, .. } = *t;
+        plan.prepare_packed_mat_shaper8();
         Ok(Plan { inner: plan })
     }
 
