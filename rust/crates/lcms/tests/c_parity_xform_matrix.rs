@@ -27,12 +27,24 @@ fn check_packed_route<T: bytemuck::Pod>(
     pad: T,
     flags: u32,
 ) {
+    let dst = lcms::api::Profile::srgb().save().unwrap();
+    check_packed_pair(src_bytes, src_format, &dst, dst_format, input, pad, flags);
+}
+
+fn check_packed_pair<T: bytemuck::Pod>(
+    src_bytes: &[u8],
+    src_format: Format,
+    dst_bytes: &[u8],
+    dst_format: Format,
+    input: &[T],
+    pad: T,
+    flags: u32,
+) {
     use lcms::api::{Intent, Plan, PlanOptions, Profile};
     let src = Profile::open(src_bytes).unwrap();
-    let dst = Profile::srgb().save().unwrap();
     let plan = Plan::with_options(
         &src,
-        &Profile::open(&dst).unwrap(),
+        &Profile::open(dst_bytes).unwrap(),
         src_format,
         dst_format,
         &PlanOptions::new()
@@ -47,7 +59,7 @@ fn check_packed_route<T: bytemuck::Pod>(
     let mut actual = expected.clone();
     unsafe {
         let src = c::cmsOpenProfileFromMem(src_bytes.as_ptr().cast(), src_bytes.len() as u32);
-        let dst = c::cmsOpenProfileFromMem(dst.as_ptr().cast(), dst.len() as u32);
+        let dst = c::cmsOpenProfileFromMem(dst_bytes.as_ptr().cast(), dst_bytes.len() as u32);
         assert!(!src.is_null() && !dst.is_null());
         let transform =
             c::cmsCreateTransform(src, src_format.code(), dst, dst_format.code(), 1, flags);
@@ -124,6 +136,143 @@ fn packed_matrix_shaper8_matches_c() {
                 check_packed_route(&profile, format, format, &input, 0xa7, flags);
             }
         }
+    }
+}
+
+#[test]
+fn packed_matrix_shaper8_matches_c_with_distinct_output_curves() {
+    use lcms::api::{CiexyY, CiexyYTriple, D65, Profile, ToneCurve};
+
+    let primary = |x, y| CiexyY { x, y, Y: 1.0 };
+    let primaries = CiexyYTriple {
+        Red: primary(0.64, 0.33),
+        Green: primary(0.30, 0.60),
+        Blue: primary(0.15, 0.06),
+    };
+    let [r, g, b] = [1.8, 2.2, 2.6].map(|gamma| ToneCurve::gamma(gamma).unwrap());
+    let dst = Profile::rgb(&D65, &primaries, [&r, &g, &b])
+        .unwrap()
+        .save()
+        .unwrap();
+    let src = throughput_profiles::display_p3();
+    let input = packed_witness(4, |i| ((i * 131 + i / 7) & 255) as u8);
+    check_packed_pair(
+        &src,
+        Format::BGRA_8,
+        &dst,
+        Format::BGRA_8,
+        &input,
+        0xa7,
+        flags::COPY_ALPHA,
+    );
+}
+
+#[test]
+fn sampled_float_matrix_shapers_preserve_alpha_and_extended_input() {
+    use lcms::api::{BehaviorMode, Format, Intent, Plan, PlanOptions, Profile, flags};
+
+    let width = 3839;
+    let height = 3;
+    let stride = (width + 2) * 4;
+    let pad = -99.0f32;
+    let mut input = vec![pad; stride * height];
+    let mut rng = 0x1234_5678u32;
+    for row in input.chunks_exact_mut(stride) {
+        for (i, pixel) in row[..width * 4].chunks_exact_mut(4).enumerate() {
+            for v in &mut *pixel {
+                rng ^= rng << 13;
+                rng ^= rng >> 17;
+                rng ^= rng << 5;
+                *v = (rng >> 8) as f32 / 16_777_216.0;
+            }
+            match i % 17 {
+                0 => pixel[0] = -0.1,
+                1 => pixel[1] = 1.1,
+                2 => pixel[2] = f32::INFINITY,
+                3 => pixel[0] = f32::from_bits(0x7fc0_1234),
+                _ => {}
+            }
+        }
+    }
+    let run = |src: &Profile, dst: &Profile, approximate, extra_flags| {
+        let fmt = Format::RGBA_FLT;
+        let plan = Plan::with_options(
+            src,
+            dst,
+            fmt,
+            fmt,
+            &PlanOptions::new()
+                .intent(Intent::RelativeColorimetric)
+                .flags(flags::COPY_ALPHA | extra_flags)
+                .approximate_float_curves(approximate),
+        )
+        .unwrap();
+        let mut output = vec![pad; input.len()];
+        plan.apply_strided(
+            &mut plan.scratch(),
+            bytemuck::cast_slice(&input),
+            stride * 4,
+            bytemuck::cast_slice_mut(&mut output),
+            stride * 4,
+            width,
+            height,
+        );
+        output
+    };
+    let dst_bytes = Profile::srgb().save().unwrap();
+    let dst = Profile::open(&dst_bytes).unwrap();
+    for bytes in [
+        throughput_profiles::display_p3(),
+        throughput_profiles::adobe_rgb(),
+    ] {
+        let src = Profile::open(&bytes).unwrap();
+        let exact = run(&src, &dst, false, 0);
+        let sampled = run(&src, &dst, true, 0);
+        let mut different = 0;
+        for ((src, exact), sampled) in input
+            .chunks_exact(4)
+            .zip(exact.chunks_exact(4))
+            .zip(sampled.chunks_exact(4))
+        {
+            assert_eq!(sampled[3].to_bits(), src[3].to_bits());
+            let normalized = src[..3].iter().all(|x| (0.0..=1.0).contains(x));
+            for (&a, &b) in sampled[..3].iter().zip(&exact[..3]) {
+                if normalized {
+                    assert!((a - b).abs() <= 4e-6, "sampled {a}, exact {b}");
+                    different += usize::from(a.to_bits() != b.to_bits());
+                } else {
+                    assert_eq!(a.to_bits(), b.to_bits());
+                }
+            }
+        }
+        assert!(
+            different > 0,
+            "normalized matrix-shaper must take the sampled path"
+        );
+        let exact = run(&src, &dst, false, flags::NO_OPTIMIZE);
+        let sampled = run(&src, &dst, true, flags::NO_OPTIMIZE);
+        assert_eq!(
+            bytemuck::cast_slice::<_, u32>(&sampled),
+            bytemuck::cast_slice::<_, u32>(&exact)
+        );
+    }
+    let clut = Profile::open(&throughput_profiles::synthetic_rgb_icc()).unwrap();
+    let exact = run(&clut, &dst, false, 0);
+    let sampled = run(&clut, &dst, true, 0);
+    assert_eq!(
+        bytemuck::cast_slice::<_, u32>(&sampled),
+        bytemuck::cast_slice::<_, u32>(&exact)
+    );
+    for mode in [BehaviorMode::SpecExact, BehaviorMode::SpecDefault] {
+        let factory = Profile::with_mode(mode);
+        let src = factory.open(&throughput_profiles::display_p3()).unwrap();
+        let dst = factory.open(&dst_bytes).unwrap();
+        let exact = run(&src, &dst, false, 0);
+        let sampled = run(&src, &dst, true, 0);
+        assert_eq!(
+            bytemuck::cast_slice::<_, u32>(&sampled),
+            bytemuck::cast_slice::<_, u32>(&exact)
+        );
     }
 }
 

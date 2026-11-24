@@ -169,6 +169,7 @@ pub mod cnvrt;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod cnvrt;
+mod float_lut;
 #[cfg(feature = "little-cms-api")]
 pub mod io1;
 #[cfg(not(feature = "little-cms-api"))]

@@ -1232,6 +1232,36 @@ pub fn pipeline_alloc(
 }
 
 impl Pipeline {
+    pub(crate) fn float_matrix_shaper(&self) -> Option<(&[ToneCurve; 3], &Stage, &[ToneCurve; 3])> {
+        if !self.uses_compact_float_eval() || self.input_channels != 3 || self.output_channels != 3
+        {
+            return None;
+        }
+        let first = self.elements.as_deref()?;
+        let matrix = first.next.as_deref()?;
+        let last = matrix.next.as_deref()?;
+        if last.next.is_some()
+            || !std::ptr::fn_addr_eq(first.eval_ptr, evaluate_curves as StageEvalFn)
+            || !std::ptr::fn_addr_eq(matrix.eval_ptr, evaluate_matrix as StageEvalFn)
+            || !std::ptr::fn_addr_eq(last.eval_ptr, evaluate_curves as StageEvalFn)
+            || [first, matrix, last]
+                .iter()
+                .any(|stage| stage.input_channels != 3 || stage.output_channels != 3)
+        {
+            return None;
+        }
+        let (StageData::ToneCurves(decode), StageData::ToneCurves(encode)) =
+            (&first.data, &last.data)
+        else {
+            return None;
+        };
+        Some((
+            decode.as_slice().try_into().ok()?,
+            matrix,
+            encode.as_slice().try_into().ok()?,
+        ))
+    }
+
     /// `cmsPipelineInputChannels`
     pub fn input_channels(&self) -> u32 {
         self.input_channels

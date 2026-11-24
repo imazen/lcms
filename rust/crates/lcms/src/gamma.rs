@@ -207,6 +207,21 @@ impl ToneCurve {
         self.spec_exact
     }
 
+    pub(crate) fn stock_parametric_segment(&self) -> Option<&CurveSegment> {
+        let ([segment], [Some(evaluate)]) = (self.segments.as_slice(), self.evals.as_slice())
+        else {
+            return None;
+        };
+        (!self.spec_exact
+            && segment.x0 == MINUS_INF
+            && segment.x1 == PLUS_INF
+            && std::ptr::fn_addr_eq(
+                *evaluate,
+                default_eval_parametric_fn as ParametricCurveEvaluator,
+            ))
+        .then_some(segment)
+    }
+
     fn eval_icc(&self, x: f64, float_query: bool) -> f64 {
         if x.is_nan() {
             return x;
@@ -572,7 +587,7 @@ fn inverse_sigmoid_factory(k: f64, t: f64) -> f64 {
     (isb + 1.0) / 2.0
 }
 
-struct InverseType4 {
+pub(crate) struct InverseType4 {
     key: [u64; 4],
     cutoff: f64,
     inverse_gamma: f64,

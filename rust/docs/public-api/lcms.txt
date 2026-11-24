@@ -6,13 +6,13 @@
 # impls omitted; re-export duplicates annotated `[also: path]`.
 # DO NOT EDIT BY HAND — commit regenerated changes with the code.
 #
-# files: lcms.txt 1062 lines (supported surface) | lcms.features.txt 2001 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 100 lines (100 hidden + 0 excluded-feature)
+# files: lcms.txt 1063 lines (supported surface) | lcms.features.txt 2001 added (features: lcms2-api,little-cms-api,math-libm) | lcms.internal.txt 100 lines (100 hidden + 0 excluded-feature)
 
 ## summary
 #
 #   pub modules                                17
 #   pub types (struct/enum/trait/alias)        69
-#   pub consts/statics                        472
+#   pub consts/statics                        473
 #   free functions                             30
 #   inherent methods                          210
 #   struct fields                             103
@@ -22,12 +22,12 @@
 #   auto-trait exceptions                       1
 #
 # per-module pub lines:
-#   (root)                           34
+#   (root)                           35
 #   api                             586
 #   signatures                      249
 #   types                           143
 
-## items (1004 lines)
+## items (1005 lines)
 
 pub mod lcms
 pub mod api
@@ -399,6 +399,7 @@ pub fn api::Plan::transform_pixels<I: bytemuck::pod::Pod, O: bytemuck::pod::Pod>
 pub fn api::Plan::with_options(&api::Profile, &api::Profile, api::Format, api::Format, &api::PlanOptions) -> api::Result<Self>
 pub struct api::PlanOptions
 pub const fn api::PlanOptions::adaptation_state(self, f64) -> api::PlanOptions
+pub const fn api::PlanOptions::approximate_float_curves(self, bool) -> api::PlanOptions
 pub const fn api::PlanOptions::black_point_compensation(self, bool) -> api::PlanOptions
 pub const fn api::PlanOptions::flags(self, u32) -> api::PlanOptions
 pub const fn api::PlanOptions::intent(self, api::Intent) -> api::PlanOptions

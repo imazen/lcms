@@ -2039,6 +2039,7 @@ pub struct PlanOptions {
     intent: Intent,
     flags: u32,
     adaptation_state: Option<f64>,
+    approximate_float_curves: bool,
 }
 
 impl PlanOptions {
@@ -2048,11 +2049,23 @@ impl PlanOptions {
             intent: Intent::Perceptual,
             flags: 0,
             adaptation_state: None,
+            approximate_float_curves: false,
         }
     }
     /// Set the rendering intent.
     pub const fn intent(mut self, intent: Intent) -> PlanOptions {
         self.intent = intent;
+        self
+    }
+    /// Allow sampled tone curves on eligible packed RGB32F and RGBA32F
+    /// matrix-shaper plans. This speeds up normalized float input at the
+    /// cost of small numerical differences from the exact transform.
+    ///
+    /// The default is exact evaluation. ICC specification modes,
+    /// unsupported pipelines and pixels outside [0, 1] use their original
+    /// evaluation paths. The option does not affect integer transforms.
+    pub const fn approximate_float_curves(mut self, allow: bool) -> PlanOptions {
+        self.approximate_float_curves = allow;
         self
     }
     /// Replace the `cmsFLAGS_*` bits ([`flags`]).
@@ -2255,6 +2268,9 @@ impl Plan {
         })?;
         let xform::Transform { mut plan, .. } = *t;
         plan.prepare_packed_mat_shaper8();
+        if options.approximate_float_curves {
+            plan.prepare_float_matrix_shaper();
+        }
         Ok(Plan { inner: plan })
     }
 

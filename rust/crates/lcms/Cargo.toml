@@ -42,7 +42,7 @@ archmage = { version = "0.9.33", features = ["avx512"] }
 [dev-dependencies]
 lcms-cref = { path = "../lcms-cref" }
 md-5 = "0.11.0"
-moxcms = "=0.9.2"
+moxcms = { version = "=0.9.2", features = ["extended_range"] }
 zenbench = "0.1.10"
 xxhash-rust = { version = "0.8.21", features = ["xxh3"] }
 
