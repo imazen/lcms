@@ -117,6 +117,12 @@ the Annex F.1 inverse. Explicit unbounded math and MPE formulas remain
 available. The [conformance audit](docs/CONFORMANCE.md#specexact-disposition)
 lists the supported ICC rules, refusals and validation scope.
 
+For normalized packed RGB and RGBA float input, callers can opt into
+sampled matrix-shaper curves with
+`PlanOptions::new().approximate_float_curves(true)`. Use exact evaluation
+for code-for-code compatibility, or the sampled option when the reported
+error fits the application. [Supported paths and measurements](docs/TRANSFORM-THROUGHPUT.md#sampled-float-curves-and-packed-byte-output)
+
 ### `lcms::lcms2` — drop-in migration from the `lcms2` crate
 
 ```toml
