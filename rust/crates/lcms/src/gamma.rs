@@ -87,6 +87,7 @@ pub struct ToneCurve {
     interp16: InterpFn16,
     /// `InterpParams.Domain[0]` — kept for `GetInterval` which reads it.
     domain0: u32,
+    inverse_type4: Option<InverseType4>,
 }
 }
 
@@ -211,7 +212,20 @@ fn eval_segmented_fn(g: &ToneCurve, r: f64) -> f64 {
                     0.0
                 }
             } else if let Some(eval) = g.evals[i as usize] {
-                eval(seg.r#type, &seg.params, r)
+                // The parity API also exposes the segment and evaluator for
+                // direct mutation. Only reuse a cutoff for the live inputs.
+                if let Some(prepared) = &g.inverse_type4
+                    && seg.r#type == -4
+                    && std::ptr::fn_addr_eq(
+                        eval,
+                        default_eval_parametric_fn as ParametricCurveEvaluator,
+                    )
+                    && prepared.key == InverseType4::key(&seg.params)
+                {
+                    eval_inverse_type4(&seg.params, r, prepared.cutoff, prepared.inverse_gamma)
+                } else {
+                    eval(seg.r#type, &seg.params, r)
+                }
             } else if let Some(ep) = g.c_evals.get(i as usize).copied().flatten() {
                 match PARAMETRIC_EVAL_HOOK.get() {
                     Some(h) => h(ep, seg.r#type, &seg.params, r),
@@ -356,6 +370,42 @@ fn inverse_sigmoid_factory(k: f64, t: f64) -> f64 {
     (isb + 1.0) / 2.0
 }
 
+struct InverseType4 {
+    key: [u64; 4],
+    cutoff: f64,
+    inverse_gamma: f64,
+}
+
+impl InverseType4 {
+    fn key(params: &[f64; 10]) -> [u64; 4] {
+        [params[0], params[1], params[2], params[4]].map(f64::to_bits)
+    }
+}
+
+fn inverse_type4_cutoff(params: &[f64; 10]) -> f64 {
+    let base = params[1] * params[4] + params[2];
+    if base < 0.0 {
+        0.0
+    } else {
+        base.cpow(params[0])
+    }
+}
+
+#[inline]
+fn eval_inverse_type4(params: &[f64; 10], r: f64, cutoff: f64, inverse_gamma: f64) -> f64 {
+    if r >= cutoff {
+        if params[0].abs() < MATRIX_DET_TOLERANCE || params[1].abs() < MATRIX_DET_TOLERANCE {
+            0.0
+        } else {
+            (r.cpow(inverse_gamma) - params[2]) / params[1]
+        }
+    } else if params[3].abs() < MATRIX_DET_TOLERANCE {
+        0.0
+    } else {
+        r / params[3]
+    }
+}
+
 /// `DefaultEvalParametricFn` — types 1..8, 108, 109 and their negatives.
 pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f64 {
     let (mut val, e, mut disc);
@@ -462,21 +512,7 @@ pub fn default_eval_parametric_fn(r#type: i32, params: &[f64; 10], r: f64) -> f6
         }
         // Type 4 reversed
         -4 => {
-            e = params[1] * params[4] + params[2];
-            disc = if e < 0.0 { 0.0 } else { e.cpow(params[0]) };
-            if r >= disc {
-                val = if params[0].abs() < MATRIX_DET_TOLERANCE
-                    || params[1].abs() < MATRIX_DET_TOLERANCE
-                {
-                    0.0
-                } else {
-                    (r.cpow(1.0 / params[0]) - params[2]) / params[1]
-                };
-            } else if params[3].abs() < MATRIX_DET_TOLERANCE {
-                val = 0.0;
-            } else {
-                val = r / params[3];
-            }
+            val = eval_inverse_type4(params, r, inverse_type4_cutoff(params), 1.0 / params[0]);
         }
         // Y = (aX + b)^Gamma + e | X >= d; Y = cX + f | X < d
         5 => {
@@ -705,6 +741,23 @@ fn allocate_tone_curve_struct(
         _ => unreachable!(),
     };
 
+    let inverse_type4 = match (segs.as_slice(), evals.as_slice()) {
+        ([seg], [Some(eval)])
+            if seg.r#type == -4
+                && std::ptr::fn_addr_eq(
+                    *eval,
+                    default_eval_parametric_fn as ParametricCurveEvaluator,
+                ) =>
+        {
+            Some(InverseType4 {
+                key: InverseType4::key(&seg.params),
+                cutoff: inverse_type4_cutoff(&seg.params),
+                inverse_gamma: 1.0 / seg.params[0],
+            })
+        }
+        _ => None,
+    };
+
     Some(ToneCurve {
         n_entries,
         table16,
@@ -714,6 +767,7 @@ fn allocate_tone_curve_struct(
         seg_interp,
         interp16,
         domain0,
+        inverse_type4,
     })
 }
 

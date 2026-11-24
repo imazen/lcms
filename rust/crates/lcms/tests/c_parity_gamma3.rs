@@ -4,6 +4,30 @@ use lcms::gamma;
 use lcms_cref as c;
 
 #[test]
+fn inverse_type4_uses_live_parameters_and_evaluator() {
+    let mut curve = gamma::build_parametric_tone_curve(
+        None,
+        -4,
+        &[2.4, 1.0 / 1.055, 0.055 / 1.055, 1.0 / 12.92, 0.04045],
+    )
+    .unwrap();
+    let input = 0.125f32;
+    let original = curve.eval_float(input);
+
+    // Move the cutoff above the sample via the mutable Little CMS API.
+    curve.segments[0].params[4] = 0.5;
+    let expected = (f64::from(input) / curve.segments[0].params[3]) as f32;
+    assert_ne!(original.to_bits(), expected.to_bits());
+    assert_eq!(curve.eval_float(input).to_bits(), expected.to_bits());
+
+    // Restore the cutoff inputs, so only the changed evaluator can force
+    // the fallback.
+    curve.segments[0].params[4] = 0.04045;
+    curve.evals[0] = Some(|_, _, _| 0.25);
+    assert_eq!(curve.eval_float(input).to_bits(), 0.25f32.to_bits());
+}
+
+#[test]
 fn tone_curve_predicates() {
     unsafe {
         // gamma, linear, descending, multisegment curves
