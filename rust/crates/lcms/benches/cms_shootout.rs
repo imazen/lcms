@@ -249,7 +249,7 @@ fn bench_with_samples<T: Sample>(
         allow_use_cicp_transfer: false,
         ..Default::default()
     };
-    let mox = T::mox(&m_src, &m_dst, route, mox_options.clone());
+    let mox = T::mox(&m_src, &m_dst, route, mox_options);
     let mox_extended = route.float_matrix.then(|| {
         T::mox(
             &m_src,

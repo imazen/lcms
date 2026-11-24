@@ -44,6 +44,10 @@ stage after the type arguments to `cmsPipelineCheckAndRetreiveStages`.
 The successful match reads those pointers and writes the retrieved stages.
 The gate now verifies both stage addresses and the mismatched-type result.
 
+All PostScript parity cases in one test binary must take `PS_LOCK` before
+calling the C emitters. The C oracle shares a current output column across
+calls, so concurrent emitters can change the hex wrapping of either call.
+
 The release `c_parity_xform2` optimizer fixtures used to pass four pixels
 to C with buffers too short for their RGB16, Lab16, or CMYK16 formats.
 The out-of-bounds stores could show up later as a crash in `cmsCloseProfile`.
