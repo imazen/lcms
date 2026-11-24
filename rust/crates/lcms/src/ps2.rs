@@ -462,15 +462,24 @@ fn format_g(v: f64) -> String {
 
 /// `ctime()` — "Www Mmm %2d hh:mm:ss yyyy\n" of the current time (UTC; the
 /// box runs TZ-naive for C either way — this matches glibc ctime's shape).
+/// Targets without a clock (`wasm32-unknown-unknown`, where
+/// `SystemTime::now` panics) get the Unix epoch, matching `profile::utc_now`.
 fn ctime_now() -> String {
-    const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0) as i64;
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    let secs = 0i64;
+    ctime_from_unix(secs)
+}
+
+fn ctime_from_unix(secs: i64) -> String {
+    const DAYS: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let days = secs.div_euclid(86400);
     let tod = secs.rem_euclid(86400);
     let (hh, mm, ss) = (tod / 3600, (tod % 3600) / 60, tod % 60);
@@ -1079,4 +1088,17 @@ pub fn get_post_script_csa(
     io: &mut IoHandler,
 ) -> u32 {
     get_post_script_color_resource(None, PS_RESOURCE_CSA, icc, intent, dw_flags, io)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ctime_from_unix_formats_epoch_and_now() {
+        assert_eq!(ctime_from_unix(0), "Thu Jan  1 00:00:00 1970\n");
+        let now = ctime_now();
+        assert_eq!(now.len(), 25, "unexpected ctime length: {now:?}");
+        assert!(now.ends_with('\n'));
+    }
 }
