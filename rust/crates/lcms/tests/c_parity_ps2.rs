@@ -129,8 +129,11 @@ fn srgb_crd() {
 #[test]
 fn cmyk_csa_crd() {
     let _g = PS_LOCK.lock().unwrap();
-    let bytes = std::fs::read("/home/lilith/work/zen/lcms/reference/lcms2/testbed/test1.icc")
-        .expect("test1.icc");
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../reference/lcms2/testbed/test1.icc"
+    ))
+    .expect("test1.icc");
     unsafe {
         let prof = c::cmsOpenProfileFromMem(bytes.as_ptr() as *const _, bytes.len() as u32);
         assert!(!prof.is_null());
@@ -254,6 +257,7 @@ fn named_csa_crd() {
 /// vary by intent.
 #[test]
 fn ps2_all_intents() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let prof = c::cmsCreate_sRGBProfile();
         let mut rp = virt::create_srgb_profile(None).unwrap();
@@ -543,6 +547,7 @@ fn gray_csa_named_crd() {
 /// the CR named-color write path.
 #[test]
 fn named_color_crd() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let ncl =
             c::cmsAllocNamedColorList(std::ptr::null_mut(), 2, 3, c"pre".as_ptr(), c"suf".as_ptr());
@@ -1004,6 +1009,7 @@ fn ps2_named_intent_arms() {
 ///   error-handler get/set round-trips.
 #[test]
 fn ps2_tail_arms() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());
@@ -1062,6 +1068,7 @@ fn ps2_tail_arms() {
 ///   output-flag internals.
 #[test]
 fn ps2_cpd_arms() {
+    let _g = PS_LOCK.lock().unwrap();
     unsafe {
         let srgb = c::cmsCreate_sRGBProfile();
         let lab4 = c::cmsCreateLab4Profile(std::ptr::null_mut());

@@ -9,13 +9,14 @@ modules and the gate for each.
 
 ## Conformance mandate
 
-**NEVER stop working while ANY parity issue remains.** If a differential test
-diverges from the C oracle — by one ulp or by a crash — investigate the root
-cause and fix it before committing docs or moving on. Divergence is BLOCKING.
+Lcms2Exact is the compatibility default. Keep each differential oracle
+gate bit-exact across its declared sweep. Investigate divergences at the
+first failing input and preserve established expectations.
 
-The definition of "done" for a module is: every function it ports matches the
-real C symbol bit-for-bit on the gate's whole sweep — or is explicitly pinned
-with the reason and the smallest failing input.
+SpecExact is the opt-in ICC.1 behavior. Test it against the normative
+clauses and the independent checker in `tests/support/icc_spec.rs`. Record
+writable cases, typed refusals and unimplemented semantics in
+[CONFORMANCE.md](docs/CONFORMANCE.md). Keep work bounded to the requested gate.
 
 ## Envelope guards (settled facts — don't re-derive)
 
@@ -37,6 +38,15 @@ with the reason and the smallest failing input.
    functions were removed. Check the header before declaring a symbol.
 
 ## Known Bugs
+
+The C stage-retrieval test must pass one output pointer for each expected
+stage after the type arguments to `cmsPipelineCheckAndRetreiveStages`.
+The successful match reads those pointers and writes the retrieved stages.
+The gate now verifies both stage addresses and the mismatched-type result.
+
+All PostScript parity cases in one test binary must take `PS_LOCK` before
+calling the C emitters. The C oracle shares a current output column across
+calls, so concurrent emitters can change the hex wrapping of either call.
 
 The release `c_parity_xform2` optimizer fixtures used to pass four pixels
 to C with buffers too short for their RGB16, Lab16, or CMYK16 formats.
@@ -63,3 +73,12 @@ path silently changes a stock-C benchmark to shared-math mode.
 - Report what you ran, not what you believe.
 - A gate that never saw a divergence is worth less than one that went red once.
 - When wrong, correct it in place — doc, comment, commit message.
+
+
+## Oracle harness bugs fixed after the SpecExact audit
+
+- `c_parity_io1e` passed a 12-byte ICC date record to a C API that copies a
+  native `struct tm`. The test shim now keeps native storage on the C side.
+- `c_parity_pack` passed an 8-byte buffer to a four-plane transform with
+  two pixels and a four-byte plane stride. The fixture now allocates every
+  plane and compares transformed bytes and padding.

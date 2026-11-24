@@ -88,6 +88,9 @@ pub struct ToneCurve {
     /// `InterpParams.Domain[0]` — kept for `GetInterval` which reads it.
     domain0: u32,
     inverse_type4: Option<InverseType4>,
+    spec_exact: bool,
+    // Keeping the forward function preserves jumps in the generalized inverse.
+    spec_inverse_of: Option<Box<ToneCurve>>,
 }
 }
 
@@ -106,6 +109,9 @@ impl ToneCurve {
 
     /// `cmsEvalToneCurve16`
     pub fn eval16(&self, v: u16) -> u16 {
+        if self.spec_exact {
+            return quick_saturate_word(self.eval_icc(f64::from(v) / 65535.0, false) * 65535.0);
+        }
         // Fast path — `LinLerp1D` over `table16`/`domain0` without building
         // a full `InterpParams` (C caches the params inside cmsToneCurve).
         if std::ptr::fn_addr_eq(self.interp16, crate::intrp::lin_lerp_1d as InterpFn16) {
@@ -140,6 +146,9 @@ impl ToneCurve {
     /// `cmsEvalToneCurveFloat` — uses the 16-bit table when there are no
     /// segments (limited-precision curve), else the segmented function.
     pub fn eval_float(&self, v: f32) -> f32 {
+        if self.spec_exact {
+            return self.eval_icc(f64::from(v), true) as f32;
+        }
         if self.segments.is_empty() {
             let i = quick_saturate_word(v as f64 * 65535.0);
             let out = self.eval16(i);
@@ -147,7 +156,215 @@ impl ToneCurve {
         }
         eval_segmented_fn(self, v as f64) as f32
     }
+    /// Binds curveType and parametricCurveType data. MPE curves use their own
+    /// domain and range and are deliberately left alone by this operation.
+    pub(crate) fn bind_icc(&mut self) -> bool {
+        self.spec_exact = self.spec_inverse_of.is_some() || self.icc_function_is_defined();
+        self.spec_exact
+    }
+
+    pub(crate) fn clear_icc_mode(&mut self) -> bool {
+        if self.spec_inverse_of.is_some() {
+            return false;
+        }
+        self.spec_exact = false;
+        true
+    }
+
+    pub(crate) fn icc_function_is_defined(&self) -> bool {
+        if self.segments.is_empty() {
+            return !self.table16.is_empty();
+        }
+        let Some(seg) = self.icc_parametric() else {
+            return false;
+        };
+        let n = parametric_param_count(seg.r#type).unwrap();
+        if !seg.params[..n].iter().all(|p| p.is_finite()) {
+            return false;
+        }
+        if matches!(seg.r#type, 2 | 3) && seg.params[1] == 0.0 {
+            return false;
+        }
+        icc_parametric_boundaries(seg)
+            .into_iter()
+            .all(|x| !eval_icc_parametric(seg, x).is_nan())
+    }
+
+    fn icc_parametric(&self) -> Option<&CurveSegment> {
+        match self.segments.as_slice() {
+            [seg] if (1..=5).contains(&seg.r#type) && seg.x0 == MINUS_INF && seg.x1 == PLUS_INF => {
+                Some(seg)
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn has_exact_inverse_representation(&self) -> bool {
+        self.spec_inverse_of.is_some()
+    }
+
+    pub(crate) fn behavior_is_spec(&self) -> bool {
+        self.spec_exact
+    }
+
+    pub(crate) fn stock_parametric_segment(&self) -> Option<&CurveSegment> {
+        let ([segment], [Some(evaluate)]) = (self.segments.as_slice(), self.evals.as_slice())
+        else {
+            return None;
+        };
+        (!self.spec_exact
+            && segment.x0 == MINUS_INF
+            && segment.x1 == PLUS_INF
+            && std::ptr::fn_addr_eq(
+                *evaluate,
+                default_eval_parametric_fn as ParametricCurveEvaluator,
+            ))
+        .then_some(segment)
+    }
+
+    fn eval_icc(&self, x: f64, float_query: bool) -> f64 {
+        if x.is_nan() {
+            return x;
+        }
+        let x = x.clamp(0.0, 1.0);
+        if let Some(forward) = self.spec_inverse_of.as_deref() {
+            return forward.inverse_icc_at(x, float_query);
+        }
+        if let Some(seg) = self.icc_parametric() {
+            return eval_icc_parametric(seg, x);
+        }
+        let index = x * f64::from(self.domain0);
+        let lo = index as usize;
+        let v0 = f64::from(self.table16[lo]);
+        let v1 = f64::from(self.table16[(lo + 1).min(self.domain0 as usize)]);
+        (v0 + (v1 - v0) * (index - lo as f64)) / 65535.0
+    }
+
+    fn inverse_icc_at(&self, y: f64, float_query: bool) -> f64 {
+        if self.segments.is_empty() {
+            let table = &self.table16;
+            let last = table.len() - 1;
+            let descending = table[0] > table[last];
+            let ordinate = |value: u16| f64::from(value) / 65535.0;
+            // A float caller can query the rounded representation of an
+            // encoded ordinate. Match it without rounding intermediate x.
+            let compare = |value| {
+                let v = ordinate(value);
+                if float_query { f64::from(v as f32) } else { v }
+            };
+            let before = |v: u16| {
+                if descending {
+                    compare(v) > y
+                } else {
+                    compare(v) < y
+                }
+            };
+            let first = table.partition_point(|&v| before(v));
+            if first == last + 1 || compare(table[first]) == y || first == 0 {
+                let value = table[first.min(last)];
+                let end =
+                    table.partition_point(|&v| if descending { v >= value } else { v <= value });
+                let start =
+                    table.partition_point(|&v| if descending { v > value } else { v < value });
+                return (if end == table.len() { start } else { end - 1 }) as f64 / last as f64;
+            }
+            let a = ordinate(table[first - 1]);
+            let b = ordinate(table[first]);
+            return (first as f64 - 1.0 + (y - a) / (b - a)) / last as f64;
+        }
+        self.inverse_icc_parametric(y)
+    }
+
+    fn inverse_icc_parametric(&self, y: f64) -> f64 {
+        if let Some(s) = self.icc_parametric() {
+            if s.r#type == 1 && s.params[0] > 0.0 {
+                return y.cpow(1.0 / s.params[0]);
+            }
+        }
+        let at = |x| self.eval_icc(x, false);
+        let start = at(0.0);
+        let end = at(1.0);
+        let ascending = start <= end;
+        let before = |a, b| if ascending { a < b } else { a > b };
+        let ordinate = y.clamp(start.min(end), start.max(end));
+        let boundary = |strict| {
+            let (mut lo, mut hi) = (0.0, 1.0);
+            for _ in 0..54 {
+                let mid = (lo + hi) * 0.5;
+                let v = at(mid);
+                if before(v, ordinate) || (strict && v == ordinate) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            (lo, hi)
+        };
+        if ordinate == end {
+            return boundary(false).1;
+        }
+        let (below, at_or_above) = boundary(false);
+        let (at_or_below, above) = boundary(true);
+        if at(at_or_below) == ordinate {
+            return at_or_below;
+        }
+        // Discontinuous functions can skip the requested ordinate. F.1(b)
+        // chooses the nearest attainable ordinate. Ties choose the higher x.
+        if (at(below) - ordinate).abs() < (at(above) - ordinate).abs() {
+            below
+        } else {
+            at_or_above
+        }
+    }
 }
+/// Include the piecewise join and the power base's zero, where an even
+/// power can change direction. Evaluate both sides of a join.
+fn icc_parametric_boundaries(seg: &CurveSegment) -> Vec<f64> {
+    let [_, a, b, _, d, ..] = seg.params;
+    let root = -b / a;
+    let split = match seg.r#type {
+        2 | 3 => root,
+        4 | 5 => d,
+        _ => 0.0,
+    };
+    let mut points = vec![0.0, 1.0];
+    if split > 0.0 && split <= 1.0 {
+        points.extend([f64::from_bits(split.to_bits() - 1), split]);
+    }
+    if root > split && root < 1.0 {
+        points.push(root);
+    }
+    points.sort_by(f64::total_cmp);
+    points
+}
+
+/// ICC.1:2022 Table 68. A zero base still carries the additive offset,
+/// and the low branch uses the boundary given in the table.
+fn eval_icc_parametric(seg: &CurveSegment, x: f64) -> f64 {
+    let [g, a, b, c, d, e, f, ..] = seg.params;
+    let power = || {
+        let base = if a != 0.0 && x == -b / a {
+            0.0
+        } else {
+            a * x + b
+        };
+        base.cpow(g)
+    };
+    let value = match seg.r#type {
+        1 => x.cpow(g),
+        2 if x < -b / a => 0.0,
+        2 => power(),
+        3 if x < -b / a => c,
+        3 => power() + c,
+        4 if x < d => c * x,
+        4 => power(),
+        5 if x < d => c * x + f,
+        5 => power() + e,
+        _ => unreachable!(),
+    };
+    value.clamp(0.0, 1.0)
+}
+
 parity_impl! {
 impl ToneCurve {
     /// `cmsGetToneCurveEstimatedTableEntries`
@@ -370,7 +587,7 @@ fn inverse_sigmoid_factory(k: f64, t: f64) -> f64 {
     (isb + 1.0) / 2.0
 }
 
-struct InverseType4 {
+pub(crate) struct InverseType4 {
     key: [u64; 4],
     cutoff: f64,
     inverse_gamma: f64,
@@ -768,6 +985,8 @@ fn allocate_tone_curve_struct(
         interp16,
         domain0,
         inverse_type4,
+        spec_exact: false,
+        spec_inverse_of: None,
     })
 }
 
@@ -926,7 +1145,7 @@ pub fn build_gamma(ctx: Option<&Context>, gamma: f64) -> Option<ToneCurve> {
 
 /// `cmsDupToneCurve`
 pub fn dup_tone_curve(c: &ToneCurve, ctx: Option<&Context>) -> Option<ToneCurve> {
-    allocate_tone_curve_struct(
+    let mut out = allocate_tone_curve_struct(
         ctx,
         c.n_entries,
         c.segments.len() as u32,
@@ -936,7 +1155,10 @@ pub fn dup_tone_curve(c: &ToneCurve, ctx: Option<&Context>) -> Option<ToneCurve>
             Some(&c.segments)
         },
         Some(&c.table16),
-    )
+    )?;
+    out.spec_exact = c.spec_exact;
+    out.spec_inverse_of = c.spec_inverse_of.clone();
+    Some(out)
 }
 
 /// `cmsJoinToneCurve` — y = Y^-1(X(t)); curves should be monotonic.
@@ -1009,6 +1231,9 @@ fn get_interval(i_n: f64, lut_table: &[u16], domain0: u32) -> i32 {
 
 /// `cmsReverseToneCurveEx`
 pub fn reverse_tone_curve_ex(n_result_samples: u32, in_curve: &ToneCurve) -> Option<ToneCurve> {
+    if in_curve.spec_exact {
+        return reverse_icc_curve(n_result_samples, in_curve);
+    }
     let ctx = None; // C carries the curve's context; plugin lists are global here
     let _ = ctx;
 
@@ -1062,6 +1287,47 @@ pub fn reverse_tone_curve_ex(n_result_samples: u32, in_curve: &ToneCurve) -> Opt
     }
 
     Some(out)
+}
+
+/// Annex F.1 permits nonconstant monotone curves. Each branch of Table 68
+/// is monotone on its real-valued domain, so include both sides of its join
+/// when checking the direction.
+fn reverse_icc_curve(samples: u32, forward: &ToneCurve) -> Option<ToneCurve> {
+    if samples < 2 || forward.spec_inverse_of.is_some() {
+        return None;
+    }
+    let valid = if let Some(seg) = forward.icc_parametric() {
+        let values: Vec<_> = icc_parametric_boundaries(seg)
+            .into_iter()
+            .map(|x| forward.eval_icc(x, false))
+            .collect();
+        monotone_nonconstant(&values)
+    } else {
+        monotone_nonconstant(&forward.table16)
+    };
+    if !valid {
+        return None;
+    }
+    let mut inverse = build_tabulated_tone_curve16(None, samples, None)?;
+    inverse.spec_exact = true;
+    inverse.spec_inverse_of = Some(Box::new(forward.clone()));
+    for i in 0..samples {
+        let y = f64::from(i) / f64::from(samples - 1);
+        inverse.table16[i as usize] =
+            quick_saturate_word(forward.inverse_icc_at(y, false) * 65535.0);
+    }
+    Some(inverse)
+}
+
+fn monotone_nonconstant<T: PartialOrd>(values: &[T]) -> bool {
+    let (Some(first), Some(last)) = (values.first(), values.last()) else {
+        return false;
+    };
+    match first.partial_cmp(last) {
+        Some(core::cmp::Ordering::Less) => values.windows(2).all(|pair| pair[0] <= pair[1]),
+        Some(core::cmp::Ordering::Greater) => values.windows(2).all(|pair| pair[0] >= pair[1]),
+        _ => false,
+    }
 }
 
 /// `cmsReverseToneCurve`
@@ -1124,6 +1390,10 @@ fn smooth2(w: &mut [f32], y: &mut [f32], z: &mut [f32], lambda: f32, m: usize) -
 /// `cmsSmoothToneCurve` — smooths a curve sampled at regular intervals.
 /// `&mut ToneCurve` mirrors the in-place C update.
 pub fn smooth_tone_curve(ctx: Option<&Context>, tab: &mut ToneCurve, mut lambda: f64) -> bool {
+    if tab.spec_inverse_of.is_some() {
+        return false;
+    }
+
     let mut success = true;
     let mut not_check = false;
 

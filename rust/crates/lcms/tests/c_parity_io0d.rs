@@ -3843,25 +3843,9 @@ fn save_two_phase_multiprofile() {
 fn header_datetime() {
     unsafe {
         let p = c::cmsCreate_sRGBProfile();
-        #[repr(C)]
-        struct Dt {
-            y: u16,
-            mo: u16,
-            d: u16,
-            h: u16,
-            mi: u16,
-            s: u16,
-        }
-        let mut dt = Dt {
-            y: 0,
-            mo: 0,
-            d: 0,
-            h: 0,
-            mi: 0,
-            s: 0,
-        };
-        let r = c::cmsGetHeaderCreationDateTime(p, &mut dt as *mut _ as *mut _);
-        eprintln!("created {r} {}-{}-{}", dt.y, dt.mo, dt.d);
+        let mut dt = c::HeaderCreationDateTime::default();
+        let r = c::cref_get_header_creation_datetime(p, &mut dt);
+        eprintln!("created {r} {}-{}-{}", dt.year, dt.month, dt.day);
         // no public setter — re-read after a header mutation via
         // SetHeaderFlags touches the header-write path too
         c::cmsCloseProfile(p);
@@ -7649,11 +7633,11 @@ fn io0_linked_headers() {
             let mut pid = [0u8; 16];
             let mut flags = 0u32;
             let mut attrs = [0u64; 2];
-            let mut dt = std::mem::zeroed::<[u16; 6]>();
+            let mut dt = c::HeaderCreationDateTime::default();
             c::cmsGetHeaderProfileID(rp, pid.as_mut_ptr());
             c::cmsGetHeaderFlags(rp, &mut flags);
             c::cmsGetHeaderAttributes(rp, attrs.as_mut_ptr());
-            let _ = c::cmsGetHeaderCreationDateTime(rp, dt.as_mut_ptr() as *mut _);
+            let _ = c::cref_get_header_creation_datetime(rp, &mut dt);
             let _ = c::cmsGetHeaderManufacturer(rp);
             let _ = c::cmsGetHeaderModel(rp);
             let _ = c::cmsGetHeaderRenderingIntent(rp);

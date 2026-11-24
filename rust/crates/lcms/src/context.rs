@@ -28,6 +28,9 @@ pub type ParametricCurveEvaluator = fn(r#type: i32, params: &[f64; 10], r: f64) 
 /// with Rust allocators, matching C semantics where the allocator is
 /// unobservable in outputs).
 pub struct Context {
+    /// ICC behavior selected by the Rust profile factory.
+    #[doc(hidden)]
+    pub behavior_mode: crate::api::BehaviorMode,
     /// `LogErrorHandler` plugin slot (cmserr.c)
     pub log_error_handler: Option<LogErrorHandler>,
     /// `_cmsInterpPluginChunkType.Interpolators` (cmsintrp.c)
@@ -189,6 +192,7 @@ pub const DEFAULT_ALARM_CODES: [u16; 16] = [
 impl Default for Context {
     fn default() -> Self {
         Context {
+            behavior_mode: Default::default(),
             log_error_handler: None,
             interpolators: None,
             parametric_curves: Vec::new(),
@@ -212,6 +216,7 @@ impl Default for Context {
 impl Clone for Context {
     fn clone(&self) -> Self {
         Context {
+            behavior_mode: self.behavior_mode,
             log_error_handler: self.log_error_handler,
             interpolators: self.interpolators,
             parametric_curves: self.parametric_curves.clone(),

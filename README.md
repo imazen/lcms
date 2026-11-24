@@ -1,30 +1,27 @@
 # lcms
 
-A pure-Rust port of [Little CMS](https://github.com/mm2/Little-CMS) **2.20** —
-algorithm-for-algorithm, verified **bit-exact** against the C library on the
-ported surface, `#![forbid(unsafe_code)]`, no C in the product path.
+A Rust port of [Little CMS](https://github.com/mm2/Little-CMS) 2.20 for
+reading ICC profiles and converting colors. The default Rust API tracks
+the behavior exercised by the pinned C oracle. The opt-in ICC.1 modes
+apply the implemented specification rules and report unsupported exports.
 
-The C tree lives in the `reference/lcms2` submodule (upstream, unmodified) and
-is compiled by the test-only `lcms-cref` crate as the **differential oracle**:
-every ported function is compared against the real exported C symbol (or a
-same-source shim for `static`/`cmsINLINE` code) over dense and edge-case sweeps.
+See the [Rust quickstart](rust/README.md#quickstart) for a runnable RGB
+to Lab example and the [conformance audit](rust/docs/CONFORMANCE.md)
+for the differences between modes. The core crate forbids unsafe Rust.
+The C ABI and compiled differential oracle live in separate crates.
 
 ## Status
 
-All lcms2 C modules are ported and byte-gated: `cmsio0` (profile I/O),
-`cmstypes` (tag handlers), `cmslut`/`cmsintrp`/`cmsgamma` (pipelines,
-interpolation, tone curves), `cmsopt`/`cmsxform`/`cmspack`/`cmsalpha`
-(transforms + optimizer), `cmscnvrt`/`cmssm`/`cmsgmt` (linking, gamut, black
-point), `cmsnamed`/`cmscgats`/`cmsio1`/`cmsmd5`/`cmsps2`/`cmssamp`/`cmscam02`/
-`cmsvirt`/`cmsmtrx`/`cmspcs`/`cmswtpnt`/`cmshalf`/`cmsplugin` helpers.
-`Transform` is `Send`. The upstream `testcms2` suite passes **144 checks, 0
-failures**; differential sweeps against the C oracle report **0 diffs** on
-every tested transform path. See `PORTING.md` for the module↔gate map.
+The Rust port covers profile I/O, curves and interpolation, pixel formatting,
+linking, black-point and gamut operations, and colorimetry. The
+[porting map](PORTING.md) shows the differential gates for each module.
+The [conformance audit](rust/docs/CONFORMANCE.md) records coverage limits
+and the opt-in ICC.1 behavior.
 
 ## Performance
 
-The common transform paths are faster than the C implementation at the same
-bit-exact output. Results from `just bench` (best of 10, `release` build):
+Historical results from `just bench` (best of 10, `release` build).
+Use the recorded benchmark commands below to measure your target.
 
 | path | Rust | C oracle | rust/c |
 |---|---|---|---|
@@ -43,6 +40,9 @@ built from `reference/lcms2/src/*.c` with `cc -O2 -fno-strict-aliasing` — the
 same flags the `lcms-cref` differential oracle uses). `just bench` builds
 both, runs each benchmark in the upstream testbed dir, and prints the
 side-by-side table plus the differential-dump counts.
+
+See [linked consumer code size](rust/docs/CODEGEN.md) for matching Rust and
+C executables on x86-64 Linux, Apple ARM64, and WASI.
 
 ## Testing on a fresh box
 

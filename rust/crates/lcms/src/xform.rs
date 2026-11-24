@@ -119,7 +119,8 @@ pub struct TransformPlan {
     /// `cmsFLAGS_KEEP_SEQUENCE` for `cmsTransform2DeviceLink`.
     pub sequence: Option<crate::named::ProfileSeqDesc>,
     // Only the high-level Plan freezes the matrix-shaper tables.
-    mat_shaper8_columns: Option<Box<MatShaper8Columns>>,
+    mat_shaper8: Option<PackedMatShaper8>,
+    float_matrix_shaper: Option<Box<crate::float_lut::FloatMatrixShaper>>,
 }
 
 /// `cmsTRANSFORM` — plan + per-run scratch. Field access resolves to
@@ -147,11 +148,74 @@ fn pixel_size(fmt: u32) -> u32 {
 }
 
 type MatShaper8Columns = [[[i32; 4]; 256]; 3];
+type ByteShaper = [u8; 16385];
+
+enum PackedMatShaper8Output {
+    Shared(Box<[u8]>),
+    Separate(Box<[u8]>),
+}
+
+impl PackedMatShaper8Output {
+    fn channels(&self) -> [&ByteShaper; 3] {
+        match self {
+            Self::Shared(table) => [table.as_ref().try_into().unwrap(); 3],
+            Self::Separate(tables) => {
+                let (channels, _) = tables.as_chunks::<16385>();
+                [&channels[0], &channels[1], &channels[2]]
+            }
+        }
+    }
+}
+
+struct PackedMatShaper8 {
+    columns: Box<MatShaper8Columns>,
+    output: PackedMatShaper8Output,
+    offset: [i32; 3],
+}
+
+fn packed_mat_shaper8_loop<const PIXEL: usize, const REVERSE: bool>(
+    prepared: &PackedMatShaper8,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    copy_alpha: bool,
+) {
+    let [r, g, b] = prepared.columns.as_ref();
+    let shaper = prepared.output.channels();
+    let (ri, bi) = if REVERSE { (2, 0) } else { (0, 2) };
+    let row_bytes = ppl as usize * PIXEL;
+    for row in 0..lines as usize {
+        let i = row * stride.bytes_per_line_in as usize;
+        let o = row * stride.bytes_per_line_out as usize;
+        let (src, _) = input[i..i + row_bytes].as_chunks::<PIXEL>();
+        let (dst, _) = output[o..o + row_bytes].as_chunks_mut::<PIXEL>();
+        for (src, dst) in src.iter().zip(dst) {
+            let red = r[src[ri] as usize];
+            let green = g[src[1] as usize];
+            let blue = b[src[bi] as usize];
+            let rgb: [u8; 3] = std::array::from_fn(|ch| {
+                let sum = red[ch]
+                    .wrapping_add(green[ch])
+                    .wrapping_add(blue[ch])
+                    .wrapping_add(prepared.offset[ch]);
+                let code = (sum >> 14).clamp(0, 16384) as usize;
+                shaper[ch][code]
+            });
+            dst[ri] = rgb[0];
+            dst[1] = rgb[1];
+            dst[bi] = rgb[2];
+            if PIXEL == 4 && copy_alpha {
+                dst[3] = src[3];
+            }
+        }
+    }
+}
 
 #[inline]
 fn mat_shaper8_loop<const PIXEL: usize, const REVERSE: bool>(
     p: &crate::opt::MatShaper8Data,
-    columns: Option<&MatShaper8Columns>,
     input: &[u8],
     output: &mut [u8],
     ppl: u32,
@@ -165,28 +229,6 @@ fn mat_shaper8_loop<const PIXEL: usize, const REVERSE: bool>(
         let o = row * stride.bytes_per_line_out as usize;
         let (src, _) = input[i..i + row_bytes].as_chunks::<PIXEL>();
         let (dst, _) = output[o..o + row_bytes].as_chunks_mut::<PIXEL>();
-        if let Some([r, g, b]) = columns {
-            let off = p.off.map(|o| o.wrapping_add(0x2000));
-            let (ri, bi) = if REVERSE { (2, 0) } else { (0, 2) };
-            for (src, dst) in src.iter().zip(dst) {
-                let red = r[src[ri] as usize];
-                let green = g[src[1] as usize];
-                let blue = b[src[bi] as usize];
-                let rgb: [u8; 3] = std::array::from_fn(|ch| {
-                    let sum = red[ch]
-                        .wrapping_add(green[ch])
-                        .wrapping_add(blue[ch])
-                        .wrapping_add(off[ch]);
-                    let code = (sum >> 14).clamp(0, 16384) as usize;
-                    // The frozen table contains FROM_8_TO_16 values.
-                    shaper2[ch * 16385 + code] as u8
-                });
-                dst[ri] = rgb[0];
-                dst[1] = rgb[1];
-                dst[bi] = rgb[2];
-            }
-            continue;
-        }
         for (src, dst) in src.iter().zip(dst) {
             let [r, g, b] = if REVERSE {
                 [src[2], src[1], src[0]]
@@ -659,11 +701,10 @@ fn clut16_tetra_loop_scalar(
     }
 }
 
-/// inlined, so no per-pixel `opt_data` match or `eval16_fn` indirection.
-/// `U`/`P` are generic so `xform16_run` can pass fn ITEMS (direct,
-/// inlinable calls) for the hot formatters instead of fn ptrs.
+/// Keep the evaluator and the selected formatter pair in the loop's type
+/// so the compiler can inline them. The shared path uses formatter pointers.
 #[allow(clippy::too_many_arguments)]
-#[archmage::autoversion]
+#[archmage::attune(dispatch)]
 fn xform16_eval_loop<E, U, P>(
     unroll: U,
     pack: P,
@@ -716,10 +757,9 @@ fn xform16_eval_loop<E, U, P>(
     }
 }
 
-/// Dispatch on the (unroll, pack) fn-ptr identity: for the hot
-/// channel/byte combos pass fn ITEMS so the calls inside the pixel loop
-/// are direct + inlinable (C's formatters are always indirect). Fallback
-/// keeps the fn-ptr path for every other formatter (incl. foreign).
+/// Specialize the packed RGB8, RGBA8, and CMYK8-to-RGB8 formatter
+/// pairs. Share one loop per evaluator and CPU tier for the other
+/// formatters, including callbacks supplied by plugins.
 #[allow(clippy::too_many_arguments)]
 fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     unroll: crate::pack::Unpack16Fn,
@@ -736,104 +776,77 @@ fn xform16_run<E: Fn(&[u16], &mut [u16])>(
     eval: E,
 ) {
     use crate::pack as pk;
-    type U16F = crate::pack::Unpack16Fn;
-    type P16F = crate::pack::Pack16Fn;
-    // chunky `ch`ch+ex1, no swap/reverse/endian/premul/planar — the shape
-    // the generic Any*/Chunky* formatters decode per pixel.
-    let is_ch_ex1 = |fmt: u32, ch: u32, bytes: u32| {
-        pk::t_channels(fmt) == ch
-            && pk::t_extra(fmt) == 1
-            && pk::t_bytes(fmt) == bytes
-            && pk::t_doswap(fmt) == 0
-            && pk::t_flavor(fmt) == 0
-            && pk::t_swapfirst(fmt) == 0
-            && pk::t_endian16(fmt) == 0
-            && pk::t_premul(fmt) == 0
-            && pk::t_planar(fmt) == 0
+    if std::ptr::fn_addr_eq(unroll, pk::unroll3_bytes as pk::Unpack16Fn)
+        && std::ptr::fn_addr_eq(pack, pk::pack3_bytes as pk::Pack16Fn)
+    {
+        return xform16_eval_loop(
+            pk::unroll3_bytes,
+            pk::pack3_bytes,
+            info,
+            input,
+            output,
+            ppl,
+            lines,
+            stride,
+            cache,
+            ci,
+            co,
+            eval,
+        );
+    }
+    let rgba_shape = |format| {
+        pk::t_channels(format) == 3
+            && pk::t_extra(format) == 1
+            && pk::t_bytes(format) == 1
+            && pk::t_doswap(format) == 0
+            && pk::t_flavor(format) == 0
+            && pk::t_swapfirst(format) == 0
+            && pk::t_endian16(format) == 0
+            && pk::t_premul(format) == 0
+            && pk::t_planar(format) == 0
     };
-    macro_rules! go {
-        ($u:expr, $p:expr) => {
-            return xform16_eval_loop(
-                $u, $p, info, input, output, ppl, lines, stride, cache, ci, co, eval,
-            )
-        };
-    }
-    macro_rules! with_pack {
-        ($u:expr) => {{
-            if std::ptr::fn_addr_eq(pack, pk::pack4_bytes as P16F) {
-                go!($u, pk::pack4_bytes);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_bytes as P16F) {
-                go!($u, pk::pack3_bytes);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack4_words as P16F) {
-                go!($u, pk::pack4_words);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_words as P16F) {
-                go!($u, pk::pack3_words);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_words_and_skip1 as P16F) {
-                go!($u, pk::pack3_words_and_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack3_bytes_and_skip1 as P16F) {
-                go!($u, pk::pack3_bytes_and_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F)
-                && is_ch_ex1(info.output_format, 4, 2)
-            {
-                go!($u, pk::pack4_words_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_words as P16F)
-                && is_ch_ex1(info.output_format, 3, 2)
-            {
-                go!($u, pk::pack3_words_and_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F)
-                && is_ch_ex1(info.output_format, 4, 1)
-            {
-                go!($u, pk::pack4_bytes_skip1);
-            }
-            if std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as P16F)
-                && is_ch_ex1(info.output_format, 3, 1)
-            {
-                go!($u, pk::pack3_bytes_and_skip1);
-            }
-            go!($u, pack);
-        }};
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll4_bytes as U16F) {
-        with_pack!(pk::unroll4_bytes);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll3_bytes as U16F) {
-        with_pack!(pk::unroll3_bytes);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll4_words as U16F) {
-        with_pack!(pk::unroll4_words);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll3_words as U16F) {
-        with_pack!(pk::unroll3_words);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F)
-        && is_ch_ex1(info.input_format, 4, 2)
+    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as pk::Unpack16Fn)
+        && rgba_shape(info.input_format)
+        && (std::ptr::fn_addr_eq(pack, pk::pack3_bytes_and_skip1 as pk::Pack16Fn)
+            || (std::ptr::fn_addr_eq(pack, pk::pack_chunky_bytes as pk::Pack16Fn)
+                && rgba_shape(info.output_format)))
     {
-        with_pack!(pk::unroll4_words_skip1);
+        return xform16_eval_loop(
+            pk::unroll3_bytes_skip1,
+            pk::pack3_bytes_and_skip1,
+            info,
+            input,
+            output,
+            ppl,
+            lines,
+            stride,
+            cache,
+            ci,
+            co,
+            eval,
+        );
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_any_words as U16F)
-        && is_ch_ex1(info.input_format, 3, 2)
+    if std::ptr::fn_addr_eq(unroll, pk::unroll4_bytes as pk::Unpack16Fn)
+        && std::ptr::fn_addr_eq(pack, pk::pack3_bytes as pk::Pack16Fn)
     {
-        with_pack!(pk::unroll3_words_skip1);
+        return xform16_eval_loop(
+            pk::unroll4_bytes,
+            pk::pack3_bytes,
+            info,
+            input,
+            output,
+            ppl,
+            lines,
+            stride,
+            cache,
+            ci,
+            co,
+            eval,
+        );
     }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F)
-        && is_ch_ex1(info.input_format, 4, 1)
-    {
-        with_pack!(pk::unroll4_bytes_skip1);
-    }
-    if std::ptr::fn_addr_eq(unroll, pk::unroll_chunky_bytes as U16F)
-        && is_ch_ex1(info.input_format, 3, 1)
-    {
-        with_pack!(pk::unroll3_bytes_skip1);
-    }
-    with_pack!(unroll);
+    xform16_eval_loop(
+        unroll, pack, info, input, output, ppl, lines, stride, cache, ci, co, eval,
+    )
 }
 
 /// Float twin of `xform16_eval_loop` — `OptData` arm evals monomorphized.
@@ -932,6 +945,7 @@ fn packed_float_to_rgb<const IN: usize, const OUT: usize>(
     ppl: u32,
     lines: u32,
     stride: &Stride,
+    evaluate: impl Fn(&Pipeline, [f32; 4]) -> [f32; 4],
 ) {
     let ink = IN == 4 && OUT == 3;
     let input_bytes = ppl as usize * IN * 4;
@@ -949,8 +963,7 @@ fn packed_float_to_rgb<const IN: usize, const OUT: usize>(
                 let v = f64::from(f32::from_le_bytes(*bytes));
                 *val = (v / if ink { 100.0 } else { 1.0 }) as f32;
             }
-            let mut rgb = [0.0; 4];
-            pipeline.eval_float_compact(&pixel, &mut rgb);
+            let rgb = evaluate(pipeline, pixel);
             let (dst, _) = dst[..12].as_chunks_mut::<4>();
             for (ch, val) in dst.iter_mut().zip(rgb) {
                 let v = (f64::from(val) * 1.0) as f32;
@@ -958,6 +971,12 @@ fn packed_float_to_rgb<const IN: usize, const OUT: usize>(
             }
         }
     }
+}
+
+fn eval_compact_float(pipeline: &Pipeline, pixel: [f32; 4]) -> [f32; 4] {
+    let mut output = [0.0; 4];
+    pipeline.eval_float_compact(&pixel, &mut output);
+    output
 }
 
 /// `IsProperColorSpace` — format's PT_* vs the profile-chain space
@@ -1104,8 +1123,22 @@ const RGB8: u32 = 4 << 16 | 3 << 3 | 1;
 const RGBA8: u32 = RGB8 | 1 << 7;
 const BGR8: u32 = RGB8 | 1 << 10;
 const BGRA8: u32 = RGBA8 | 1 << 10 | 1 << 14;
+const RGB_FLT: u32 = 1 << 22 | 4 << 16 | 3 << 3 | 4;
+const RGBA_FLT: u32 = RGB_FLT | 1 << 7;
 
 impl TransformPlan {
+    pub(crate) fn prepare_float_matrix_shaper(&mut self) {
+        if self.worker == Worker::Float
+            && self.dw_flags & (FLAGS_NOOPTIMIZE | FLAGS_GAMUTCHECK) == 0
+            && self.input_format == self.output_format
+            && matches!(self.input_format, RGB_FLT | RGBA_FLT)
+            && !crate::spec::enabled(self.ctx.as_ref())
+            && let Some(pipeline) = &self.lut
+        {
+            self.float_matrix_shaper = crate::float_lut::FloatMatrixShaper::new(pipeline);
+        }
+    }
+
     fn packed_mat_shaper8(&self) -> Option<&crate::opt::MatShaper8Data> {
         // The optimizer adds a hint bit to the output format.
         if self.input_format == (self.output_format & !(1 << 21))
@@ -1128,25 +1161,44 @@ impl TransformPlan {
         let Some(p) = self.packed_mat_shaper8() else {
             return;
         };
-        if !p.shaper2[..3 * 16385]
-            .iter()
-            .all(|&entry| entry == crate::pack::f8to16(entry as u8))
-        {
+        let Ok(mut columns) = bytemuck::try_zeroed_box::<MatShaper8Columns>() else {
             return;
-        }
+        };
+        let (words, _) = p.shaper2[..3 * 16385].as_chunks::<16385>();
+        let fill = |source: &[u16], target: &mut [u8]| {
+            for (&word, byte) in source.iter().zip(target) {
+                *byte = crate::pack::f16to8(word);
+            }
+        };
+        // The usual shared output TRC needs a single 16 KiB table.
+        let output = if words[0] == words[1] && words[0] == words[2] {
+            let Ok(mut table) = bytemuck::try_zeroed_vec::<u8>(16385) else {
+                return;
+            };
+            fill(&words[0], &mut table);
+            PackedMatShaper8Output::Shared(table.into_boxed_slice())
+        } else {
+            let Ok(mut tables) = bytemuck::try_zeroed_vec::<u8>(3 * 16385) else {
+                return;
+            };
+            fill(&p.shaper2[..3 * 16385], &mut tables);
+            PackedMatShaper8Output::Separate(tables.into_boxed_slice())
+        };
         // Bake the existing wrapping products for each input byte. Four
         // consecutive lanes let the compiler sum the three output channels
         // together. Keep the original output table for other plan consumers.
-        if let Ok(mut columns) = bytemuck::try_zeroed_box::<MatShaper8Columns>() {
-            for (ch, table) in columns.iter_mut().enumerate() {
-                for (code, cell) in table.iter_mut().enumerate() {
-                    for (out, lane) in cell[..3].iter_mut().enumerate() {
-                        *lane = p.shaper1[ch][code].wrapping_mul(p.mat[out][ch]);
-                    }
+        for (ch, table) in columns.iter_mut().enumerate() {
+            for (code, cell) in table.iter_mut().enumerate() {
+                for (out, lane) in cell[..3].iter_mut().enumerate() {
+                    *lane = p.shaper1[ch][code].wrapping_mul(p.mat[out][ch]);
                 }
             }
-            self.mat_shaper8_columns = Some(columns);
         }
+        self.mat_shaper8 = Some(PackedMatShaper8 {
+            columns,
+            output,
+            offset: p.off.map(|o| o.wrapping_add(0x2000)),
+        });
     }
     /// `cmsDoTransform` — n pixels, default stride
     /// Fresh per-run scratch — clones the seeded cache state.
@@ -1279,6 +1331,24 @@ impl TransformPlan {
         lines: u32,
         stride: &Stride,
     ) {
+        if let Some(p) = &self.mat_shaper8 {
+            let alpha = self.dw_flags & FLAGS_COPY_ALPHA != 0;
+            match self.input_format {
+                RGB8 => {
+                    packed_mat_shaper8_loop::<3, false>(p, input, output, ppl, lines, stride, alpha)
+                }
+                RGBA8 => {
+                    packed_mat_shaper8_loop::<4, false>(p, input, output, ppl, lines, stride, alpha)
+                }
+                BGR8 => {
+                    packed_mat_shaper8_loop::<3, true>(p, input, output, ppl, lines, stride, alpha)
+                }
+                _ => {
+                    packed_mat_shaper8_loop::<4, true>(p, input, output, ppl, lines, stride, alpha)
+                }
+            }
+            return;
+        }
         handle_extra_channels(
             input,
             output,
@@ -1419,14 +1489,11 @@ impl TransformPlan {
             && !gamut
             && let Some(p) = self.packed_mat_shaper8()
         {
-            let columns = self.mat_shaper8_columns.as_deref();
             match self.input_format {
-                RGB8 => mat_shaper8_loop::<3, false>(p, columns, input, output, ppl, lines, stride),
-                RGBA8 => {
-                    mat_shaper8_loop::<4, false>(p, columns, input, output, ppl, lines, stride)
-                }
-                BGR8 => mat_shaper8_loop::<3, true>(p, columns, input, output, ppl, lines, stride),
-                _ => mat_shaper8_loop::<4, true>(p, columns, input, output, ppl, lines, stride),
+                RGB8 => mat_shaper8_loop::<3, false>(p, input, output, ppl, lines, stride),
+                RGBA8 => mat_shaper8_loop::<4, false>(p, input, output, ppl, lines, stride),
+                BGR8 => mat_shaper8_loop::<3, true>(p, input, output, ppl, lines, stride),
+                _ => mat_shaper8_loop::<4, true>(p, input, output, ppl, lines, stride),
             }
             return;
         }
@@ -2376,7 +2443,6 @@ impl TransformPlan {
                 // Fused `unroll_floats`→u16-tetra→`pack_floats` for
                 // TYPE_RGBA_FLT. Store just the three color channels.
                 // The extra channel was handled before dispatch.
-                const RGBA_FLT: u32 = 1 << 22 | 4 << 16 | 1 << 7 | 3 << 3 | 4;
                 if self.input_format == RGBA_FLT && self.output_format == RGBA_FLT {
                     if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
                         if c.params_f.is_none()
@@ -2582,8 +2648,6 @@ impl TransformPlan {
                 }
             }
         }
-        const RGB_FLT: u32 = 1 << 22 | 4 << 16 | 3 << 3 | 4;
-        const RGBA_FLT: u32 = RGB_FLT | 1 << 7;
         const CMYK_FLT: u32 = 1 << 22 | 6 << 16 | 4 << 3 | 4;
         if !gamut
             && std::ptr::fn_addr_eq(
@@ -2599,15 +2663,55 @@ impl TransformPlan {
             && l.input_channels() == crate::pack::t_channels(self.input_format)
             && l.uses_compact_float_eval()
         {
+            if let Some(sampled) = &self.float_matrix_shaper {
+                let eval = |pipeline: &Pipeline, pixel| sampled.eval(pixel, pipeline);
+                match (self.input_format, self.output_format) {
+                    (RGB_FLT, RGB_FLT) => {
+                        return packed_float_to_rgb::<3, 3>(
+                            l, input, output, ppl, lines, stride, eval,
+                        );
+                    }
+                    (RGBA_FLT, RGBA_FLT) => {
+                        return packed_float_to_rgb::<4, 4>(
+                            l, input, output, ppl, lines, stride, eval,
+                        );
+                    }
+                    _ => {}
+                }
+            }
             match (self.input_format, self.output_format) {
                 (RGB_FLT, RGB_FLT) => {
-                    return packed_float_to_rgb::<3, 3>(l, input, output, ppl, lines, stride);
+                    return packed_float_to_rgb::<3, 3>(
+                        l,
+                        input,
+                        output,
+                        ppl,
+                        lines,
+                        stride,
+                        eval_compact_float,
+                    );
                 }
                 (RGBA_FLT, RGBA_FLT) => {
-                    return packed_float_to_rgb::<4, 4>(l, input, output, ppl, lines, stride);
+                    return packed_float_to_rgb::<4, 4>(
+                        l,
+                        input,
+                        output,
+                        ppl,
+                        lines,
+                        stride,
+                        eval_compact_float,
+                    );
                 }
                 (CMYK_FLT, RGB_FLT) => {
-                    return packed_float_to_rgb::<4, 3>(l, input, output, ppl, lines, stride);
+                    return packed_float_to_rgb::<4, 3>(
+                        l,
+                        input,
+                        output,
+                        ppl,
+                        lines,
+                        stride,
+                        eval_compact_float,
+                    );
                 }
                 _ => {}
             }
@@ -2688,6 +2792,8 @@ impl TransformPlan {
         };
         self.input_format = input_format;
         self.output_format = output_format;
+        self.mat_shaper8 = None;
+        self.float_matrix_shaper = None;
         // C writes only the 16-bit FromInput/ToOutput slots — on a float
         // transform (FloatXFORM uses FromInputFloat) the swap is stored
         // but never read by the worker, so keep the F32 pair here.
@@ -2869,7 +2975,8 @@ fn alloc_empty_transform(
             input_colorants: None,
             output_colorants: None,
             sequence: None,
-            mat_shaper8_columns: None,
+            mat_shaper8: None,
+            float_matrix_shaper: None,
         },
         scratch: TransformScratch {
             cache_in: [0; MAX_CHANNELS],
@@ -2953,6 +3060,23 @@ pub fn create_extended_transform(
     output_format: u32,
     dw_flags: u32,
 ) -> Option<Box<Transform>> {
+    let profile_ctx = profiles.first().and_then(|p| p.ctx.as_ref());
+    let ctx = ctx.or_else(|| {
+        profile_ctx
+            .filter(|c| crate::spec::enabled(Some(c)))
+            .cloned()
+    });
+    let exact = crate::spec::enabled(ctx.as_ref());
+    if profiles
+        .iter()
+        .any(|p| crate::spec::enabled(p.ctx.as_ref()) != exact)
+        || gamut_profile
+            .as_ref()
+            .is_some_and(|p| crate::spec::enabled(p.ctx.as_ref()) != exact)
+    {
+        crate::spec::refuse("profile and transform behavior modes differ");
+        return None;
+    }
     let mut flags = dw_flags;
     // C checks `cmsFLAGS_NULLTRANSFORM` before validating the profile array —
     // a null transform needs no profiles at all.
@@ -3041,7 +3165,7 @@ pub fn create_extended_transform(
     }
     // `_cmsOptimizePipeline` runs unconditionally in C's `AllocEmptyTransform`:
     // `PreOptimize` strips identity/inverse pairs even under NOOPTIMIZE.
-    {
+    if !exact {
         let mut infmt = input_format;
         let mut outfmt = output_format;
         crate::opt::optimize_pipeline(
@@ -3079,6 +3203,10 @@ pub fn create_extended_transform(
                 gamut_pcs_position,
                 gp,
             );
+            if exact && t.gamut_check.is_none() {
+                crate::spec::refuse("could not construct the SpecExact gamut check");
+                return None;
+            }
             // C seeds the cache after the gamut check exists.
             if t.gamut_check.is_some() {
                 let f = t.dw_flags;
@@ -3137,7 +3265,7 @@ pub fn create_extended_transform(
         }
     }
     // Store the sequence of profiles (cmsxform.c:1267)
-    t.sequence = if flags & crate::types::FLAGS_KEEP_SEQUENCE != 0 {
+    t.sequence = if exact || flags & crate::types::FLAGS_KEEP_SEQUENCE != 0 {
         crate::io1::compile_profile_sequence(profiles)
     } else {
         None

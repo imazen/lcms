@@ -107,6 +107,19 @@ const N: usize = 2000;
 
 fn check_pair(src: Src, in_fmt: Format, dst: Src, out_fmt: Format, intent: Intent, flags: u32) {
     let input = sweep(in_fmt, N);
+    check_pair_input(src, in_fmt, dst, out_fmt, intent, flags, &input);
+}
+
+fn check_pair_input(
+    src: Src,
+    in_fmt: Format,
+    dst: Src,
+    out_fmt: Format,
+    intent: Intent,
+    flags: u32,
+    input: &[u8],
+) {
+    let n = input.len() / in_fmt.pixel_size();
     let (rs, rd) = (src.rust(), dst.rust());
     let opts = PlanOptions::new().intent(intent).flags(flags);
     let plan = Plan::with_options(&rs, &rd, in_fmt, out_fmt, &opts);
@@ -134,9 +147,9 @@ fn check_pair(src: Src, in_fmt: Format, dst: Src, out_fmt: Format, intent: Inten
             );
         }
         Ok(plan) => {
-            let want = c_run(t, &input, N, out_fmt.pixel_size());
-            let mut got = vec![0u8; N * out_fmt.pixel_size()];
-            plan.transform(&input, &mut got);
+            let want = c_run(t, input, n, out_fmt.pixel_size());
+            let mut got = vec![0u8; n * out_fmt.pixel_size()];
+            plan.transform(input, &mut got);
             if got != want {
                 let i = got.iter().zip(&want).position(|(a, b)| a != b).unwrap();
                 panic!(
@@ -154,6 +167,32 @@ const INTENTS: [Intent; 4] = [
     Intent::Saturation,
     Intent::AbsoluteColorimetric,
 ];
+
+#[test]
+fn real_rgb_and_cmyk_to_srgb_match_c_on_nonuniform_pixels() {
+    for (profile, integer, float, scale) in [
+        ("test3.icc", Format::RGB_8, Format::RGB_FLT, 1.0),
+        ("test1.icc", Format::CMYK_8, Format::CMYK_FLT, 100.0),
+    ] {
+        let src = Src::File(profile);
+        let pixels: Vec<f32> = sweep(integer, 4096)
+            .into_iter()
+            .map(|code| f32::from(code) * (scale / 255.0))
+            .collect();
+        for intent in [Intent::Perceptual, Intent::RelativeColorimetric] {
+            check_pair(src, integer, Src::Srgb, Format::RGB_8, intent, 0);
+            check_pair_input(
+                src,
+                float,
+                Src::Srgb,
+                Format::RGB_FLT,
+                intent,
+                0,
+                bytemuck::cast_slice(&pixels),
+            );
+        }
+    }
+}
 
 #[test]
 fn rgb_to_rgb_all_intents_and_flags() {

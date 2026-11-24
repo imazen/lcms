@@ -1,13 +1,10 @@
-# lcms — pure-Rust Little CMS
+# lcms — Little CMS in Rust
 
-A bit-exact Rust port of Little CMS 2.20 (`reference/lcms2`, upstream
-`lcms2.20` @ `7717fce`), with a differential test suite that proves every
-exercised code path produces identical output to the C oracle — serialized
-profiles, transformed pixels, scalar conversions, rejection behavior —
-all driven through `cargo test` against the real compiled C library.
-
-`#![forbid(unsafe_code)]` — the shipped dependency tree is 100% safe Rust.
-The C oracle (`lcms-cref`, dev-only) never reaches the production deps.
+Open ICC profiles and build reusable color transforms with the Rust API.
+The default mode tracks the pinned Little CMS 2.20 implementation.
+`SpecExact` and `SpecDefault` apply the implemented ICC.1 transform and
+export rules. The Rust core forbids unsafe code. The optional C ABI and
+differential test oracle have separate crates.
 
 ## Quickstart
 
@@ -25,35 +22,34 @@ Pick the layer that matches what you're doing:
 ### `lcms::api` — the idiomatic face (recommended)
 
 ```rust
-use lcms::api::*;
+use lcms::api::{BehaviorMode, Format, Plan, Profile};
 
-// Profiles decode every tag at construction: `&Profile` reads are Sync.
-let srgb = Profile::srgb();
-let p3 = Profile::open_file("Display-P3.icc")?;
-
-// Link once — the expensive part. Plan is Sync: Arc-share it.
-let plan = Plan::new(&p3, &srgb, Format::RGB_8, Format::RGB_8)?;
-
-// One-off: the plan makes its own scratch.
-let mut out = [[0u8; 3]; 1];
-plan.transform_pixels(&[[255u8, 0, 0]], &mut out);
-
-// Hot loop: one ~64 B Scratch per thread.
-let mut sc = plan.scratch();
-plan.apply(&mut sc, &rgb_bytes, &mut out_bytes);             // packed
-plan.apply_strided(&mut sc, &src, src_stride, &mut dst, dst_stride, width, height);
-plan.apply_par(&rgb_bytes, &mut out_bytes, 8);               // scoped threads
-
-// Intent, black-point compensation, adaptation:
-let opts = PlanOptions::new().intent(Intent::RelativeColorimetric).black_point_compensation(true);
-let plan = Plan::with_options(&p3, &srgb, Format::RGBA_8, Format::RGBA_8, &opts)?;
+fn main() -> Result<(), lcms::api::Error> {
+    let profiles = Profile::with_mode(BehaviorMode::SpecDefault);
+    let plan = Plan::new(
+        &profiles.srgb(),
+        &profiles.lab4(),
+        Format::RGB_8,
+        Format::LAB_DBL,
+    )?;
+    let mut out = [[0.0_f64; 3]];
+    plan.transform_pixels(&[[255_u8, 0, 0]], &mut out);
+    assert!(out[0][1] > 60.0); // Red has a positive a* value.
+    Ok(())
+}
 ```
 
-Plans link exactly as C's `cmsCreateTransform` / multiprofile / proofing
-transforms do; `tests/api_c_parity.rs` checks the facade's output byte for
-byte against the C library across intents, BPC, formats and real profiles.
-Buffer sizes that don't match a plan's formats panic; anything that depends
-on input data returns `Result`.
+Use `profiles.open(&icc_bytes)` for embedded profiles.
+`SpecDefault` reports supported legacy recoveries through
+`Profile::read_warnings`. Use `SpecExact` when checking the supported ICC rules
+and `Lcms2Exact` when matching Little CMS 2.20 output. See
+[the ICC conformance audit](docs/CONFORMANCE.md) for the covered rules.
+The [quality review](docs/QUALITY.md) records packaging and toolchain limits.
+
+Link once and reuse a plan across workers. `Plan::apply_strided` handles
+caller-owned rows with padding. A buffer whose length disagrees with the
+selected format is a programming error and can panic. Profile reads,
+writes, and link construction return typed errors.
 
 Read/write tags, named colors, header fields:
 
@@ -84,6 +80,48 @@ They are the parity layer's own types with the C bookkeeping hidden: their
 fields and C-shaped methods are crate-private unless `little-cms-api` is on,
 so borrowing costs nothing and no `lcms::api` signature exposes an internal
 type (`docs/public-api/lcms.txt` is the checked snapshot).
+
+### Select ICC behavior
+
+Existing constructors, the `lcms::lcms2` migration facade, and the
+`lcms2-ffi` C ABI use `BehaviorMode::Lcms2Exact` for Little CMS 2.20
+compatibility. Rust-native callers can select `SpecExact` or `SpecDefault`
+with a `ProfileFactory`. A plan can link profiles from either ICC.1 mode.
+It retains the first profile's mode when it builds a DeviceLink. Reopen
+the saved bytes with a factory to select the behavior for subsequent
+operations.
+
+```rust
+use lcms::api::{BehaviorMode, Format, Plan, Profile, ToneCurve};
+
+let icc = Profile::with_mode(BehaviorMode::SpecExact);
+let source = icc.srgb();
+let destination = icc.lab4();
+let plan = Plan::new(&source, &destination, Format::RGB_8, Format::LAB_16)?;
+let link = plan.to_device_link(4.4)?;
+let bytes = link.save()?;
+let reopened = icc.open(&bytes)?;
+let inverse = ToneCurve::srgb().with_mode(BehaviorMode::SpecExact)?.inverse()?;
+# Ok::<(), lcms::api::Error>(())
+```
+
+The factory provides the standard built-ins, custom profiles, placeholders
+and file or memory open. `Profile::set_version` selects a v2 or v4 writer.
+If the target version cannot represent a tag, `save` returns
+`ErrorKind::NotSuitable`. Both ICC.1 modes calculate the profile ID on v4 save.
+Use `write_cicp_with_chromaticities` and `cicp_chromaticities` for amended
+CICP. The coordinates are the eight exact s15Fixed16 words.
+
+ICC `curveType` and `parametricCurveType` data use bounded evaluation and
+the Annex F.1 inverse. Explicit unbounded math and MPE formulas remain
+available. The [conformance audit](docs/CONFORMANCE.md#specexact-disposition)
+lists the supported ICC rules, refusals and validation scope.
+
+For normalized packed RGB and RGBA float input, callers can opt into
+sampled matrix-shaper curves with
+`PlanOptions::new().approximate_float_curves(true)`. Use exact evaluation
+for code-for-code compatibility, or the sampled option when the reported
+error fits the application. [Supported paths and measurements](docs/TRANSFORM-THROUGHPUT.md#sampled-float-curves-and-packed-byte-output)
 
 ### `lcms::lcms2` — drop-in migration from the `lcms2` crate
 
@@ -153,13 +191,17 @@ A proxy server does: profile cache (`Arc` by content-hash) → plan cache
 (`Arc<Plan>` by config key) → per-request `plan.scratch()` → `apply`. The
 whole pixel path is `&self` on shared state — no locks anywhere.
 
-## The math provider
+## Cargo features
 
-`lcms::math` selects the transcendental backend at compile time (default
-`math-libm` — the `libm` crate, deterministic on every platform).
-`math-rust` uses `f64` intrinsics; `math-zen` is a reserved slot for a
-future correctly-rounded implementation. The providers are mutually
-exclusive.
+Ordinary Rust consumers can use the default features. Cargo selects
+`math-libm` for the transcendental math backend. Builds that disable
+default features select one provider explicitly. `math-rust` uses
+`f64` methods, and `math-zen` currently uses the same implementation
+while reserving the feature name for a future provider.
+
+Use `little-cms-api` for the C-shaped Rust surface and `lcms2-api`
+for the migration facade. ICC behavior modes are runtime API choices.
+The integer transform loop selects its available SIMD tier automatically.
 
 ## Parity & determinism (development)
 

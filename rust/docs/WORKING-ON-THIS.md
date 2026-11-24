@@ -43,9 +43,13 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
 
 ## Port discipline
 
-- **1:1 with the C source.** Same operation order, same casts, same
-  constants. Where C is wrong, be wrong the same way (lcms has few genuine
-  bugs; record any in `docs/SUSPECTED-C-BUGS.md` and reproduce them).
+- **Lcms2Exact follows the C source.** Keep operation order, casts and
+  constants. Pin oracle behavior and record confirmed deviations in
+  [C-BUGS.md](C-BUGS.md) and [CONFORMANCE.md](CONFORMANCE.md).
+- **SpecExact follows the audited ICC.1 clauses.** Keep the choice attached
+  to each profile and plan. Test authored bytes, reopen behavior and curve
+  computation with clause-backed expectations. Keep foreign C ABI and
+  migration-facade callers on the default compatibility contract.
 - **No transcriptions of the oracle.** Never re-implement a C function on the
   *test* side; call the compiled symbol. Two transcriptions diverge.
 - **`Option<&Context>` = `cmsContext`**, `None` = NULL (global context).
@@ -69,6 +73,14 @@ The oracle rebuilds only when the submodule SHA changes (stamp in OUT_DIR).
   Oracle bindings in `lcms-cref` and the `extern "C"` exports in `lcms2-ffi`
   use `c_char`; tests pass `c"..".as_ptr()` and `.cast()` byte buffers.
   `just check-aarch64` catches a mismatch on an x86 box.
+
+The creation-date oracle uses `cref_get_header_creation_datetime`. The
+upstream API copies a full platform-native `struct tm`. The C shim owns
+that object and returns the six calendar fields in a fixed layout.
+For planar transform fixtures, size input and output buffers for the plane
+stride and every channel. In a single-line fixture the last sample starts
+at `(planes - 1) * plane_stride + (pixels - 1) * bytes_per_sample`.
+Include guards or padding in the comparison when the buffer has gaps.
 
 ## Numeric traps (each cost a bug)
 

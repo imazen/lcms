@@ -208,8 +208,77 @@ The contribution-table idea transfers to Little CMS while retaining
 its profile-dependent shapers, fixed-point arithmetic and quantization.
 An experimental byte-packed copy of the three output tables brought
 the standalone RGB8 row kernel to 21.4–21.9 ms in two exploratory 4K
-runs. The production kernel reuses the original output table and
-avoids another 48 KiB per eligible plan.
+runs. The initial production kernel reused the original output table.
 [Zenpixels row selection](https://github.com/imazen/zenpixels/blob/c4626b22eff6be78c30c4dfaeea082d709e68e96/zenpixels-convert/src/strip.rs#L711)
 [Zenpixels exhaustive witness](https://github.com/imazen/zenpixels/blob/c4626b22eff6be78c30c4dfaeea082d709e68e96/zenpixels-convert/tests/audit_05_regressions.rs#L1455)
 [MageMath profiles](https://docs.rs/magemath/0.1.1/magemath/powf/index.html)
+
+## Sampled float curves and packed byte output
+
+`PlanOptions::approximate_float_curves(true)` prepares sampled input and
+output curves for eligible `RGB_FLT` and `RGBA_FLT` matrix-shaper plans.
+The grid uses 1,024 intervals per binary exponent. Each table contains
+samples of the original curve, and the evaluator interpolates within
+the same analytic branch. The matrix still uses the original f64
+arithmetic. The existing pipeline handles any pixel with a color
+component outside [0, 1], including NaN and infinity. For a normalized
+input the linked matrix can still yield extended-range output. The
+sampled encoder preserves it and evaluates its original curve outside
+the table. Both ICC specification modes, explicitly unoptimized
+plans, and CLUT pipelines retain their corresponding evaluation paths.
+
+For exact 8-bit output, the prepared matrix-shaper plan stores the
+original quantized output codes in byte tables. Identical output
+curves share a 16 KiB table. Three distinct curves use 48 KiB.
+RGBA and BGRA copy alpha in the same row loop when requested.
+Before and after matched on the full 16,777,216-triplet RGB8 cube.
+Stock C differential tests also passed for all four packed layouts,
+strided rows, alpha copying and separate destination curves.
+
+The November 24 measurements use the same serialized Display P3 and
+Adobe RGB input fixtures, serialized sRGB output, 4K frame size,
+Ryzen 9 7900X pinned to logical CPU 6 and Rust 1.99.1. Float timings
+use six interleaved rounds on `61129f85` with the default pure Rust
+math provider. The RGB8 and RGBA8 comparison links `f6d7fe63` and
+`61129f85` into the same benchmark and interleaves 24 rounds per
+process, repeated twice. These are exploratory means with substantial
+variance in the fastest arms. Peak RSS was 1.46 GiB for the five-arm
+float benchmark and 0.30 GiB for the paired integer benchmark.
+[Timing data](../../benchmarks/cms-matrix_2026-11-24.csv)
+
+| ICC → sRGB at 4K | Exact Rust lcms | Sampled Rust lcms | C Little CMS 2.20 | moxcms default | moxcms extended range |
+|---|---:|---:|---:|---:|---:|
+| Display P3 RGBF32, 24-bit noise | 2,831 ms | 165 ms | 1,548 ms | 33 ms | 541 ms |
+| Adobe RGB RGBF32 | 2,591 ms | 146 ms | 1,505 ms | 46 ms | 486 ms |
+| Display P3 RGBAF32, alpha copied | 2,655 ms | 115 ms | 1,542 ms | 40 ms | 500 ms |
+
+| Exact Display P3 ICC → sRGB at 4K | Before | Packed byte output |
+|---|---:|---:|
+| RGB8 | 29.83–30.93 ms | 24.87–25.07 ms |
+| RGBA8, alpha copied | 34.03–34.24 ms | 28.26–28.31 ms |
+
+The first row of each float route matched stock C in exact mode. The
+sampled path changed zero codes after clipping and rounding each of
+those rows to u8. For P3 noise, 2,207 of the 11,520 C reference samples
+were outside [0, 1]. The maximum absolute error in that row was
+`4.77e-7` with sampled curves. moxcms 0.9.2 had maximum absolute
+error `2.81` with defaults and `2.56e-4` with extended range enabled.
+Over the reference samples within [0, 1], the corresponding maxima
+were `2.31e-7`, `1.67e-3` and `9.78e-5`.
+
+| First-row output vs stock C | P3 RGBF32 noise | Adobe RGBF32 | P3 RGBAF32 |
+|---|---:|---:|---:|
+| Sampled Rust lcms, differing u16 codes | 21 / 11,520 | 15 / 11,520 | 16 / 15,360 |
+| moxcms extended range, differing u16 codes | 3,721 / 11,520 | 621 / 11,520 | 3,725 / 15,360 |
+
+The rounding comparison describes the float result. Integer LCMS
+transforms use their own exact shapers and packing. The test suite
+also checks exact extended-input fallback and alpha preservation on
+strided rows with a non-vector-width tail.
+
+```sh
+LCMS_BENCH_COMPARE_OUTPUTS=1 just bench-cms --group=p3-noise-rgbf32
+LCMS_BENCH_COMPARE_OUTPUTS=1 just bench-cms --group=adobe-rgbf32
+```
+
+[moxcms 0.9.2 transform options](https://docs.rs/moxcms/0.9.2/moxcms/struct.TransformOptions.html)

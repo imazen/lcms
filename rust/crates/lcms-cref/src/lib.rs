@@ -27,6 +27,18 @@ pub type Handle = *mut c_void; // Handle
 pub type HProfile = *mut c_void; // cmsHPROFILE
 pub type ColorSpaceSignature = u32;
 
+/// Calendar fields from the C oracle. The shim owns the native `struct tm`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct HeaderCreationDateTime {
+    pub year: i32,
+    pub month: i32,
+    pub day: i32,
+    pub hours: i32,
+    pub minutes: i32,
+    pub seconds: i32,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Vec3 {
@@ -967,7 +979,10 @@ unsafe extern "C" {
     pub fn cmsGetHeaderModel(p: *mut c_void) -> u32;
     pub fn cmsGetHeaderProfileID(p: *mut c_void, id: *mut u8);
     pub fn cmsMD5computeID(p: *mut c_void) -> i32;
-    pub fn cmsGetHeaderCreationDateTime(p: *mut c_void, dt: *mut c_void) -> i32;
+    pub fn cref_get_header_creation_datetime(
+        p: HProfile,
+        date: *mut HeaderCreationDateTime,
+    ) -> Bool;
     pub fn cmsIsCLUT(prof: *mut c_void, intent: u32, direction: u32) -> i32;
     pub fn cmsGetInfo(p: *mut c_void, info: u32) -> *const u16;
     pub fn cmsSetEncodedICCversion(prof: *mut c_void, version: u32);

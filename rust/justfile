@@ -54,6 +54,16 @@ verify: test test-default determinism-gate testbed api-doc-check
 conformance:
     cargo test -p lcms --features "little-cms-api lcms2-api" --test conformance_icc
 
+# Inspect profile opening, saving, and rendered samples in each public mode.
+[positional-arguments]
+icc-readback *profiles:
+    cargo run --locked -p lcms --example icc_readback -- "$@"
+
+# Link matching Rust and C consumer programs for gcc, apple, or wasi.
+[positional-arguments]
+codegen toolchain output:
+    bash bench/codegen/build.sh "$@"
+
 # Validate the same profiles with ICC's iccDEV (`iccDumpProfile -v`) and check
 # the port and C get the same verdict. ICCDUMP = path to iccDumpProfile.
 icc-validate dir="target/icc-validate":

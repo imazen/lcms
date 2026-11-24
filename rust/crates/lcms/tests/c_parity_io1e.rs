@@ -214,26 +214,16 @@ fn header_setters2() {
 /// cmsGetHeaderCreationDateTime — the DateTimeNumber field reader.
 #[test]
 fn creation_datetime() {
-    #[repr(C)]
-    #[derive(Default)]
-    struct Cdt {
-        year: u16,
-        month: u16,
-        day: u16,
-        hours: u16,
-        minutes: u16,
-        seconds: u16,
-    }
     for data in corpus() {
         let rp = profile::open_profile_from_mem(None, &data).unwrap();
         unsafe {
             let h = c::cmsOpenProfileFromMem(data.as_ptr() as _, data.len() as u32);
-            let mut cdt = Cdt::default();
-            let ok = c::cmsGetHeaderCreationDateTime(h, &mut cdt as *mut _ as *mut _);
+            let mut cdt = c::HeaderCreationDateTime::default();
+            let ok = c::cref_get_header_creation_datetime(h, &mut cdt);
             assert_ne!(ok, 0);
-            assert_eq!(cdt.year, rp.created.year, "year");
-            assert_eq!(cdt.month, rp.created.month, "month");
-            assert_eq!(cdt.day, rp.created.day, "day");
+            assert_eq!(cdt.year, i32::from(rp.created.year), "year");
+            assert_eq!(cdt.month, i32::from(rp.created.month), "month");
+            assert_eq!(cdt.day, i32::from(rp.created.day), "day");
             c::cmsCloseProfile(h);
         }
     }
@@ -3445,9 +3435,9 @@ fn header_getters3() {
         let cmm = c::cmsGetHeaderCMM(h);
         let ver = c::cmsGetEncodedICCversion(h);
         eprintln!("cmm={cmm:#x} ver={ver:#x}");
-        let mut dt = [0u16; 6];
-        let r = c::cmsGetHeaderCreationDateTime(h, dt.as_mut_ptr() as *mut _);
-        eprintln!("dt r={r} y={} m={}", dt[0], dt[1]);
+        let mut dt = c::HeaderCreationDateTime::default();
+        let r = c::cref_get_header_creation_datetime(h, &mut dt);
+        eprintln!("dt r={r} y={} m={}", dt.year, dt.month);
         c::cmsSetEncodedICCversion(h, 0x04300000);
         let v2 = c::cmsGetEncodedICCversion(h);
         eprintln!("v2={v2:#x}");
