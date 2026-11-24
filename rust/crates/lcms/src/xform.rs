@@ -118,7 +118,8 @@ pub struct TransformPlan {
     /// `Sequence` — the linked profiles' descriptions, kept under
     /// `cmsFLAGS_KEEP_SEQUENCE` for `cmsTransform2DeviceLink`.
     pub sequence: Option<crate::named::ProfileSeqDesc>,
-    _pad: (),
+    // Only the high-level Plan freezes the matrix-shaper tables.
+    mat_shaper8_columns: Option<Box<MatShaper8Columns>>,
 }
 
 /// `cmsTRANSFORM` — plan + per-run scratch. Field access resolves to
@@ -145,9 +146,12 @@ fn pixel_size(fmt: u32) -> u32 {
     if b == 0 { 8 } else { b }
 }
 
+type MatShaper8Columns = [[[i32; 4]; 256]; 3];
+
 #[inline]
 fn mat_shaper8_loop<const PIXEL: usize, const REVERSE: bool>(
     p: &crate::opt::MatShaper8Data,
+    columns: Option<&MatShaper8Columns>,
     input: &[u8],
     output: &mut [u8],
     ppl: u32,
@@ -161,6 +165,28 @@ fn mat_shaper8_loop<const PIXEL: usize, const REVERSE: bool>(
         let o = row * stride.bytes_per_line_out as usize;
         let (src, _) = input[i..i + row_bytes].as_chunks::<PIXEL>();
         let (dst, _) = output[o..o + row_bytes].as_chunks_mut::<PIXEL>();
+        if let Some([r, g, b]) = columns {
+            let off = p.off.map(|o| o.wrapping_add(0x2000));
+            let (ri, bi) = if REVERSE { (2, 0) } else { (0, 2) };
+            for (src, dst) in src.iter().zip(dst) {
+                let red = r[src[ri] as usize];
+                let green = g[src[1] as usize];
+                let blue = b[src[bi] as usize];
+                let rgb: [u8; 3] = std::array::from_fn(|ch| {
+                    let sum = red[ch]
+                        .wrapping_add(green[ch])
+                        .wrapping_add(blue[ch])
+                        .wrapping_add(off[ch]);
+                    let code = (sum >> 14).clamp(0, 16384) as usize;
+                    // The frozen table contains FROM_8_TO_16 values.
+                    shaper2[ch * 16385 + code] as u8
+                });
+                dst[ri] = rgb[0];
+                dst[1] = rgb[1];
+                dst[bi] = rgb[2];
+            }
+            continue;
+        }
         for (src, dst) in src.iter().zip(dst) {
             let [r, g, b] = if REVERSE {
                 [src[2], src[1], src[0]]
@@ -1045,7 +1071,54 @@ impl Transform {
     }
 }
 
+const RGB8: u32 = 4 << 16 | 3 << 3 | 1;
+const RGBA8: u32 = RGB8 | 1 << 7;
+const BGR8: u32 = RGB8 | 1 << 10;
+const BGRA8: u32 = RGBA8 | 1 << 10 | 1 << 14;
+
 impl TransformPlan {
+    fn packed_mat_shaper8(&self) -> Option<&crate::opt::MatShaper8Data> {
+        // The optimizer adds a hint bit to the output format.
+        if self.input_format == (self.output_format & !(1 << 21))
+            && matches!(self.input_format, RGB8 | RGBA8 | BGR8 | BGRA8)
+            && self.uses_stock_16_formatters()
+            && let Some(crate::opt::OptData::MatShaper(p)) =
+                self.lut.as_ref().and_then(|l| l.opt_data.as_ref())
+            && p.shaper2.len() >= 3 * 16385
+        {
+            Some(p)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn prepare_packed_mat_shaper8(&mut self) {
+        if self.worker != Worker::Precalculated {
+            return;
+        }
+        let Some(p) = self.packed_mat_shaper8() else {
+            return;
+        };
+        if !p.shaper2[..3 * 16385]
+            .iter()
+            .all(|&entry| entry == crate::pack::f8to16(entry as u8))
+        {
+            return;
+        }
+        // Bake the existing wrapping products for each input byte. Four
+        // consecutive lanes let the compiler sum the three output channels
+        // together. Keep the original output table for other plan consumers.
+        if let Ok(mut columns) = bytemuck::try_zeroed_box::<MatShaper8Columns>() {
+            for (ch, table) in columns.iter_mut().enumerate() {
+                for (code, cell) in table.iter_mut().enumerate() {
+                    for (out, lane) in cell[..3].iter_mut().enumerate() {
+                        *lane = p.shaper1[ch][code].wrapping_mul(p.mat[out][ch]);
+                    }
+                }
+            }
+            self.mat_shaper8_columns = Some(columns);
+        }
+    }
     /// `cmsDoTransform` — n pixels, default stride
     /// Fresh per-run scratch — clones the seeded cache state.
     pub fn scratch(&self) -> TransformScratch {
@@ -1313,26 +1386,18 @@ impl TransformPlan {
     ) {
         // Fused fast paths — same math as the generic unroll→eval→pack
         // chain but with the whole pixel transform inlined.
-        const RGB8: u32 = 4 << 16 | 3 << 3 | 1;
-        const RGBA8: u32 = RGB8 | 1 << 7;
-        const BGR8: u32 = RGB8 | 1 << 10;
-        const BGRA8: u32 = RGBA8 | 1 << 10 | 1 << 14;
-        // The optimizer marks the output code, but stock formatters
-        // treat the flag as a hint and still write the same packed bytes.
         if !cache
             && !gamut
-            && self.input_format == (self.output_format & !(1 << 21))
-            && matches!(self.input_format, RGB8 | RGBA8 | BGR8 | BGRA8)
-            && self.uses_stock_16_formatters()
-            && let Some(crate::opt::OptData::MatShaper(p)) =
-                self.lut.as_ref().and_then(|l| l.opt_data.as_ref())
-            && p.shaper2.len() >= 3 * 16385
+            && let Some(p) = self.packed_mat_shaper8()
         {
+            let columns = self.mat_shaper8_columns.as_deref();
             match self.input_format {
-                RGB8 => mat_shaper8_loop::<3, false>(p, input, output, ppl, lines, stride),
-                RGBA8 => mat_shaper8_loop::<4, false>(p, input, output, ppl, lines, stride),
-                BGR8 => mat_shaper8_loop::<3, true>(p, input, output, ppl, lines, stride),
-                _ => mat_shaper8_loop::<4, true>(p, input, output, ppl, lines, stride),
+                RGB8 => mat_shaper8_loop::<3, false>(p, columns, input, output, ppl, lines, stride),
+                RGBA8 => {
+                    mat_shaper8_loop::<4, false>(p, columns, input, output, ppl, lines, stride)
+                }
+                BGR8 => mat_shaper8_loop::<3, true>(p, columns, input, output, ppl, lines, stride),
+                _ => mat_shaper8_loop::<4, true>(p, columns, input, output, ppl, lines, stride),
             }
             return;
         }
@@ -2775,7 +2840,7 @@ fn alloc_empty_transform(
             input_colorants: None,
             output_colorants: None,
             sequence: None,
-            _pad: (),
+            mat_shaper8_columns: None,
         },
         scratch: TransformScratch {
             cache_in: [0; MAX_CHANNELS],
