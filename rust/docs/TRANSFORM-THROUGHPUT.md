@@ -282,3 +282,28 @@ LCMS_BENCH_COMPARE_OUTPUTS=1 just bench-cms --group=adobe-rgbf32
 ```
 
 [moxcms 0.9.2 transform options](https://docs.rs/moxcms/0.9.2/moxcms/struct.TransformOptions.html)
+
+## Exact packed float device-link CLUTs
+
+The packed float worker handles a stock pipeline whose only stage is
+a u16 CLUT, as well as plans with precomputed CLUT optimization data.
+It selects the tetrahedral or four-dimensional kernel once per call.
+CMYK input still uses ink percentages, and the RGB output stays
+normalized. RGBA alpha is copied by the existing extra-channel path.
+Foreign interpolation and formatters keep their normal dispatch.
+
+On a Ryzen 9 7950X pinned to logical CPU 6, zenbench 0.1.11 interleaved
+18 rounds per arm using deterministic random samples in 64 rows of
+4,096 pixels. Both arms used the same 9-node-per-axis device link, Rust
+1.99.1, thin LTO and runtime SIMD selection. These exploratory timings
+had substantial variance. Peak benchmark RSS was 0.26 GiB.
+
+| 262,144 pixels | Before | Fused |
+|---|---:|---:|
+| RGBF32 → RGBF32 | 17.86 ms | 8.79 ms |
+| CMYKF32 → RGBF32 | 17.32 ms | 13.46 ms |
+
+The C parity tests cover both stock and preoptimized tables, strided
+rows and packed alpha, with AVX2 enabled and disabled. The multi-stage
+ICC routes in issue 3 continue to use their linked PCS and curve
+operations. [Timing data](../../benchmarks/float-device-link_2026-11-24.csv)

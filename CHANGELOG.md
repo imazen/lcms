@@ -16,6 +16,7 @@
 
 ### Changed
 
+- Fuse exact packed RGBF32 and CMYKF32 device-link CLUT transforms. (cab8ba28b5)
 - Pack exact byte output tables and copy alpha in the main RGB8 matrix-shaper loop. (61129f85)
 
 - Declare Rust 1.89 as the minimum supported version for the workspace. (171eeebcc9)
