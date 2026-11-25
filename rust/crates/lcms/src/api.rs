@@ -2268,6 +2268,8 @@ impl Plan {
         })?;
         let xform::Transform { mut plan, .. } = *t;
         plan.prepare_packed_mat_shaper8();
+        #[cfg(target_arch = "x86_64")]
+        plan.prepare_packed_rgb_clut();
         if options.approximate_float_curves {
             plan.prepare_float_matrix_shaper();
         }

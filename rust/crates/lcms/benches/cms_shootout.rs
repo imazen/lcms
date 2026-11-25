@@ -392,11 +392,15 @@ fn bench_with_samples<T: Sample>(
     });
 }
 
-fn noise_f32(i: usize) -> f32 {
+fn noise_bits(i: usize) -> u32 {
     let mut x = (i as u32).wrapping_add(0x9e37_79b9);
     x = (x ^ (x >> 16)).wrapping_mul(0x21f0_aaad);
     x = (x ^ (x >> 15)).wrapping_mul(0x735a_2d97);
-    ((x ^ (x >> 15)) >> 8) as f32 / 16_777_216.0
+    x ^ (x >> 15)
+}
+
+fn noise_f32(i: usize) -> f32 {
+    (noise_bits(i) >> 8) as f32 / 16_777_216.0
 }
 
 zenbench::main!(|suite| {
@@ -436,6 +440,21 @@ zenbench::main!(|suite| {
     );
     bench::<u8>(suite, Route::rgb("lut-rgb8", Format::RGB_8), &rgb, &dst);
     bench::<u16>(suite, Route::rgb("lut-rgb16", Format::RGB_16), &rgb, &dst);
+    for (rgb8, rgb16, profile) in [
+        ("p3-noise-rgb8", "p3-noise-rgb16", &p3),
+        ("lut-noise-rgb8", "lut-noise-rgb16", &rgb),
+    ] {
+        bench_with_samples(suite, Route::rgb(rgb8, Format::RGB_8), profile, &dst, |i| {
+            (noise_bits(i) >> 24) as u8
+        });
+        bench_with_samples(
+            suite,
+            Route::rgb(rgb16, Format::RGB_16),
+            profile,
+            &dst,
+            |i| (noise_bits(i) >> 16) as u16,
+        );
+    }
     bench::<f32>(suite, Route::rgb("lut-rgbf32", Format::RGB_FLT), &rgb, &dst);
     bench::<u8>(
         suite,

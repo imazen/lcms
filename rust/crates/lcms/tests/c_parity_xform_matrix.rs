@@ -284,8 +284,57 @@ fn packed_rgb_clut8_matches_c_at_endpoints_and_with_cache() {
         3..6 => 255,
         _ => (i * 113 + i / 7) as u8,
     });
-    for flags in [0, flags::NO_CACHE] {
-        check_packed_route(&profile, Format::RGB_8, Format::RGB_8, &input, 0xa7, flags);
+    for precalc in [0, flags::FORCE_CLUT | flags::gridpoints(19)] {
+        for cache in [0, flags::NO_CACHE] {
+            check_packed_route(
+                &profile,
+                Format::RGB_8,
+                Format::RGB_8,
+                &input,
+                0xa7,
+                precalc | cache,
+            );
+        }
+    }
+}
+
+#[test]
+fn packed_rgb16_matches_c_on_mixed_clut_cells() {
+    let mut state = 0x518f_a62eu32;
+    let mut input = packed_witness(3, |i| match i {
+        0..3 => 0,
+        3..6 => u16::MAX,
+        _ => {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            (state >> 16) as u16
+        }
+    });
+    // Include corners, mixed endpoints, cell boundaries and tied fractions.
+    let edge = [0, 1, 4095, 4096, 32767, 32768, 65534, 65535];
+    for (i, pixel) in input[12..].as_chunks_mut::<3>().0[..192]
+        .iter_mut()
+        .enumerate()
+    {
+        *pixel = [edge[i % 8], edge[(i / 8) % 8], edge[(i / 64) * 3 + 1]];
+    }
+    for profile in [
+        throughput_profiles::display_p3(),
+        throughput_profiles::synthetic_rgb_icc(),
+    ] {
+        for precalc in [0, flags::gridpoints(19), flags::HIGH_RES_PRECALC] {
+            for cache in [0, flags::NO_CACHE] {
+                check_packed_route(
+                    &profile,
+                    Format::RGB_16,
+                    Format::RGB_16,
+                    &input,
+                    0xa5a7,
+                    precalc | cache,
+                );
+            }
+        }
     }
 }
 

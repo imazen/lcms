@@ -185,6 +185,8 @@ pub mod pack;
 #[cfg(not(feature = "little-cms-api"))]
 #[allow(dead_code)]
 pub(crate) mod pack;
+#[cfg(target_arch = "x86_64")]
+mod packed_rgb_clut;
 #[cfg(feature = "little-cms-api")]
 pub mod profile;
 #[cfg(not(feature = "little-cms-api"))]

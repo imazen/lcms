@@ -119,6 +119,8 @@ pub struct TransformPlan {
     pub sequence: Option<crate::named::ProfileSeqDesc>,
     // Only the high-level Plan freezes the matrix-shaper tables.
     mat_shaper8: Option<PackedMatShaper8>,
+    #[cfg(target_arch = "x86_64")]
+    packed_rgb_clut: Option<Box<crate::packed_rgb_clut::PackedRgbClut>>,
     float_matrix_shaper: Option<Box<crate::float_lut::FloatMatrixShaper>>,
 }
 
@@ -170,6 +172,43 @@ struct PackedMatShaper8 {
     columns: Box<MatShaper8Columns>,
     output: PackedMatShaper8Output,
     offset: [i32; 3],
+}
+
+#[archmage::attune(wrap)]
+fn packed_mat_shaper_rgb8_v3(
+    token: archmage::X64V3Token,
+    prepared: &PackedMatShaper8,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    use magetypes::simd::generic::i32x4;
+    let [r, g, b] = prepared.columns.as_ref();
+    let [sr, sg, sb] = prepared.output.channels();
+    let [ro, go, bo] = prepared.offset;
+    let offset = i32x4::from_array_t(token, [ro, go, bo, 0]);
+    let zero = i32x4::splat_t(token, 0);
+    let max = i32x4::splat_t(token, 16384);
+    let row_bytes = ppl as usize * 3;
+    for row in 0..lines as usize {
+        let i = row * stride.bytes_per_line_in as usize;
+        let o = row * stride.bytes_per_line_out as usize;
+        let (src, _) = input[i..i + row_bytes].as_chunks::<3>();
+        let (dst, _) = output[o..o + row_bytes].as_chunks_mut::<3>();
+        for (&[ri, gi, bi], dst) in src.iter().zip(dst) {
+            let red = i32x4::load_t(token, &r[ri as usize]);
+            let green = i32x4::load_t(token, &g[gi as usize]);
+            let blue = i32x4::load_t(token, &b[bi as usize]);
+            let [ri, gi, bi, _] = (red + green + blue + offset)
+                .shr_arithmetic::<14>()
+                .max(zero)
+                .min(max)
+                .to_array();
+            *dst = [sr[ri as usize], sg[gi as usize], sb[bi as usize]];
+        }
+    }
 }
 
 fn packed_mat_shaper8_loop<const PIXEL: usize, const REVERSE: bool>(
@@ -531,37 +570,94 @@ fn packed_rgb8_eval_loop(
     lines: u32,
     stride: &Stride,
     cache: Option<&mut TransformScratch>,
-    eval: impl Fn([u16; 3]) -> [u16; 3],
+    eval: impl Fn([u8; 3]) -> ([u16; 3], [u8; 3]),
 ) {
-    let mut previous = None;
+    // The fourth byte distinguishes the unseeded state from all RGB keys.
+    let invalid = 1 << 24;
+    let mut previous = invalid;
     let mut result = [0; 3];
     if let Some(scratch) = cache.as_ref()
         && scratch.cache_in[3..].iter().all(|&x| x == 0)
     {
         let [r, g, b, ..] = scratch.cache_in;
-        previous = Some([r, g, b]);
-        result.copy_from_slice(&scratch.cache_out[..3]);
+        let words = [r, g, b];
+        let bytes = words.map(|word| word as u8);
+        if bytes.map(crate::pack::f8to16) == words {
+            previous = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], 0]);
+            result.copy_from_slice(&scratch.cache_out[..3]);
+        }
     }
+    let mut packed = result.map(crate::pack::f16to8);
     let row_bytes = ppl as usize * 3;
     for row in 0..lines as usize {
         let i = row * stride.bytes_per_line_in as usize;
         let o = row * stride.bytes_per_line_out as usize;
         let (src, _) = input[i..i + row_bytes].as_chunks::<3>();
         let (dst, _) = output[o..o + row_bytes].as_chunks_mut::<3>();
-        for (src, dst) in src.iter().zip(dst) {
-            let rgb = src.map(crate::pack::f8to16);
-            if cache.is_none() || previous != Some(rgb) {
-                result = eval(rgb);
-                previous = Some(rgb);
+        for (&[r, g, b], dst) in src.iter().zip(dst) {
+            let key = u32::from_le_bytes([r, g, b, 0]);
+            if cache.is_none() || key != previous {
+                (result, packed) = eval([r, g, b]);
+                previous = key;
             }
-            *dst = result.map(crate::pack::f16to8);
+            *dst = packed;
         }
     }
-    if let (Some(scratch), Some(previous)) = (cache, previous) {
-        scratch.cache_in[..3].copy_from_slice(&previous);
+    if let Some(scratch) = cache
+        && previous != invalid
+    {
+        let [r, g, b, _] = previous.to_le_bytes();
+        scratch.cache_in[..3].copy_from_slice(&[r, g, b].map(crate::pack::f8to16));
         scratch.cache_in[3..].fill(0);
         scratch.cache_out[..3].copy_from_slice(&result);
         scratch.cache_out[3..].fill(0);
+    }
+}
+
+#[inline]
+fn encode_rgb8(rgb: [u16; 3]) -> ([u16; 3], [u8; 3]) {
+    (rgb, rgb.map(crate::pack::f16to8))
+}
+
+#[archmage::attune(wrap)]
+#[allow(clippy::too_many_arguments)]
+fn apply_packed_rgb_clut_v3(
+    token: archmage::X64V3Token,
+    clut: &crate::packed_rgb_clut::PackedRgbClut,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    byte_input: bool,
+    cache: Option<&mut TransformScratch>,
+) {
+    if byte_input {
+        return packed_rgb8_eval_loop(input, output, ppl, lines, stride, cache, |rgb| {
+            clut.eval8(token, rgb)
+        });
+    }
+    let pack = |words: [u16; 3]| bytemuck::cast(words.map(u16::to_le_bytes));
+    let rgb = |words: &[u16; MAX_CHANNELS]| [words[0], words[1], words[2]];
+    let (mut previous, mut packed) = cache
+        .as_ref()
+        .map(|s| (pack(rgb(&s.cache_in)), pack(rgb(&s.cache_out))))
+        .unwrap_or(([0; 6], [0; 6]));
+    let row_bytes = ppl as usize * 6;
+    for row in 0..lines as usize {
+        let i = row * stride.bytes_per_line_in as usize;
+        let o = row * stride.bytes_per_line_out as usize;
+        let (src, _) = input[i..i + row_bytes].as_chunks::<6>();
+        let (dst, _) = output[o..o + row_bytes].as_chunks_mut::<6>();
+        for (&rgb, dst) in src.iter().zip(dst) {
+            if cache.is_none() || rgb != previous {
+                let [r0, r1, g0, g1, b0, b1] = rgb;
+                let words = [[r0, r1], [g0, g1], [b0, b1]].map(u16::from_le_bytes);
+                packed = pack(clut.eval16(token, words));
+                previous = rgb;
+            }
+            *dst = packed;
+        }
     }
 }
 
@@ -582,14 +678,14 @@ fn prelin8_rgb8_loop_v3(
     let tab = p8.clut.tab16.as_deref().unwrap_or(&[]);
     let [sz, sy, sx, ..] = p8.clut.opta;
     packed_rgb8_eval_loop(input, output, ppl, lines, stride, cache, |[r, g, b]| {
-        let (r, g, b) = ((r >> 8) as usize, (g >> 8) as usize, (b >> 8) as usize);
+        let (r, g, b) = (r as usize, g as usize, b as usize);
         let base = p8.x0[r] as usize + p8.y0[g] as usize + p8.z0[b] as usize;
         let fractions = [p8.rx[r] as i32, p8.ry[g] as i32, p8.rz[b] as i32];
         let steps = [sx, sy, sz].map(|x| x as usize);
         let steps = std::array::from_fn(|i| if fractions[i] == 0 { 0 } else { steps[i] });
         let weights = crate::intrp::Tetra16Weights::new(steps, fractions);
         let [r, g, b, _] = weights.interpolate(token, tab, base).to_array();
-        [r as u16, g as u16, b as u16]
+        encode_rgb8([r as u16, g as u16, b as u16])
     });
 }
 
@@ -608,7 +704,11 @@ fn clut8_tetra_loop_v3(
     cache: Option<&mut TransformScratch>,
 ) {
     packed_rgb8_eval_loop(input, output, ppl, lines, stride, cache, |rgb| {
-        crate::intrp::tetra3_i32x4(token, rgb, p)
+        encode_rgb8(crate::intrp::tetra3_i32x4(
+            token,
+            rgb.map(crate::pack::f8to16),
+            p,
+        ))
     });
 }
 
@@ -1121,6 +1221,8 @@ impl Transform {
 }
 
 const RGB8: u32 = 4 << 16 | 3 << 3 | 1;
+#[cfg(target_arch = "x86_64")]
+const RGB16: u32 = 4 << 16 | 3 << 3 | 2;
 const RGBA8: u32 = RGB8 | 1 << 7;
 const BGR8: u32 = RGB8 | 1 << 10;
 const BGRA8: u32 = RGBA8 | 1 << 10 | 1 << 14;
@@ -1129,6 +1231,29 @@ const RGBA_FLT: u32 = RGB_FLT | 1 << 7;
 const CMYK_FLT: u32 = 1 << 22 | 6 << 16 | 4 << 3 | 4;
 
 impl TransformPlan {
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn prepare_packed_rgb_clut(&mut self) {
+        if self.input_format != self.output_format
+            || !matches!(self.input_format, RGB8 | RGB16)
+            || !matches!(self.worker, Worker::Cached | Worker::Precalculated)
+            || !self.uses_stock_16_formatters()
+            || crate::intrp::x64v3_cached().is_none()
+        {
+            return;
+        }
+        let byte_input = self.input_format == RGB8;
+        let Some(opt) = self.lut.as_mut().and_then(|p| p.opt_data.as_mut()) else {
+            return;
+        };
+        use crate::packed_rgb_clut::PackedRgbClut;
+        self.packed_rgb_clut = match opt {
+            crate::opt::OptData::ClutOnly(c) => PackedRgbClut::direct(c, byte_input),
+            crate::opt::OptData::Prelin8(p) if byte_input => PackedRgbClut::prelinearized(p),
+            _ => None,
+        }
+        .map(Box::new);
+    }
+
     pub(crate) fn prepare_float_matrix_shaper(&mut self) {
         if self.worker == Worker::Float
             && self.dw_flags & (FLAGS_NOOPTIMIZE | FLAGS_GAMUTCHECK) == 0
@@ -1333,10 +1458,32 @@ impl TransformPlan {
         lines: u32,
         stride: &Stride,
     ) {
+        #[cfg(target_arch = "x86_64")]
+        if let Some(clut) = &self.packed_rgb_clut
+            && let Some(token) = crate::intrp::x64v3_cached()
+        {
+            return apply_packed_rgb_clut_v3(
+                token,
+                clut,
+                input,
+                output,
+                ppl,
+                lines,
+                stride,
+                self.input_format == RGB8,
+                (self.worker == Worker::Cached).then_some(scratch),
+            );
+        }
         if let Some(p) = &self.mat_shaper8 {
             let alpha = self.dw_flags & FLAGS_COPY_ALPHA != 0;
             match self.input_format {
                 RGB8 => {
+                    #[cfg(target_arch = "x86_64")]
+                    if let Some(token) = crate::intrp::x64v3_cached() {
+                        return packed_mat_shaper_rgb8_v3(
+                            token, p, input, output, ppl, lines, stride,
+                        );
+                    }
                     packed_mat_shaper8_loop::<3, false>(p, input, output, ppl, lines, stride, alpha)
                 }
                 RGBA8 => {
@@ -1592,7 +1739,12 @@ impl TransformPlan {
                         lines,
                         stride,
                         cache,
-                        |rgb| crate::intrp::tetra3_interp16(rgb, p),
+                        |rgb| {
+                            encode_rgb8(crate::intrp::tetra3_interp16(
+                                rgb.map(crate::pack::f8to16),
+                                p,
+                            ))
+                        },
                     );
                 }
                 _ => {}
@@ -2766,6 +2918,10 @@ impl TransformPlan {
         self.input_format = input_format;
         self.output_format = output_format;
         self.mat_shaper8 = None;
+        #[cfg(target_arch = "x86_64")]
+        {
+            self.packed_rgb_clut = None;
+        }
         self.float_matrix_shaper = None;
         // C writes only the 16-bit FromInput/ToOutput slots — on a float
         // transform (FloatXFORM uses FromInputFloat) the swap is stored
@@ -2949,6 +3105,8 @@ fn alloc_empty_transform(
             output_colorants: None,
             sequence: None,
             mat_shaper8: None,
+            #[cfg(target_arch = "x86_64")]
+            packed_rgb_clut: None,
             float_matrix_shaper: None,
         },
         scratch: TransformScratch {
