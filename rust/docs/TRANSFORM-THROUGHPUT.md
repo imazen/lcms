@@ -74,6 +74,57 @@ The table uses the default cache setting and no black-point compensation.
 [The timing data](../../benchmarks/cms-throughput_2026-11-23.csv) also records
 the explicit cache and black-point compensation arms.
 
+## Exact packed RGB8 and RGB16
+
+The November 25, 2026 benchmark interleaves `15e9947d`, `3dc4a616`,
+stock C Little CMS 2.20 and moxcms 0.9.2 for 12 rounds per case on a
+Ryzen 9 7900X pinned to logical CPU 6. It uses Rust 1.99.1 and
+zenbench 0.1.11 with thread CPU time enabled in the paired harness.
+All arms process a 3840 × 2160 frame through packed row APIs with
+reusable output. The noise cases use the upper 8 or 16 bits of the same
+deterministic mixer used for the float noise fixture. The Display P3
+profile is the issue 3 fixture identified above.
+
+The table reports mean thread CPU milliseconds per frame with default
+caching. Wall time was affected by scheduling on the shared host. The
+[timing data](../../benchmarks/packed-rgb-throughput_2026-11-25.csv)
+records both clocks and the no-cache arms. The benchmark processes
+peaked at 1.34 GiB RSS under `run-heavy`, including input and output
+buffers for the paired engines.
+
+| Input profile | Format and samples | Rust before | Rust after | C Little CMS 2.20 | moxcms 0.9.2 |
+|---|---|---:|---:|---:|---:|
+| Display P3 | RGB8, repeating | 17.9 | 10.9 | 52.1 | 8.7 |
+| Display P3 | RGB8, noise | 41.6 | 12.1 | 55.7 | 8.7 |
+| Display P3 | RGB16, repeating | 86.6 | 67.4 | 107.0 | 31.7 |
+| Display P3 | RGB16, noise | 133.0 | 71.3 | 137.3 | 33.5 |
+| RGB 17³ CLUT | RGB8, repeating | 73.5 | 61.7 | 120.3 | 21.9 |
+| RGB 17³ CLUT | RGB8, noise | 109.1 | 69.9 | 161.8 | 26.6 |
+| RGB 17³ CLUT | RGB16, repeating | 86.5 | 67.0 | 107.0 | 24.8 |
+| RGB 17³ CLUT | RGB16, noise | 133.1 | 71.4 | 136.9 | 30.6 |
+
+- The packed RGB8 matrix shaper adds its existing integer contribution
+  tables in SIMD lanes and applies the original clamp and encode tables.
+- The prepared RGB CLUTs load complete nodes and order the tetrahedron
+  corners by carrying each grid step with its fraction. They preserve
+  the wrapping fixed-point sum and rounding. RGB8 prepares the input
+  coordinates and quantizes output in SIMD. Its cache compares packed
+  byte keys and keeps the already encoded result for repeated pixels.
+- RGB16 uses exact shifts and adds for the default 33³ grid. Other
+  RGB16 grid sizes use the general evaluator. A 33³ direct CLUT adds
+  71,874 bytes of table storage after sharing the original table with
+  the fallback. RGB8 prelinearization can add up to 293,640 bytes of
+  prepared tables. The stripped x86-64 conversion consumer grew from
+  1,421,528 to 1,430,392 bytes.
+
+C differential checks matched all 16,777,216 RGB8 triplets for each of
+the Display P3 and RGB LUT fixtures with default caching and with
+caching disabled. The strided differential tests cover mixed RGB16
+endpoints, tied fractions, three grid resolutions, and scalar fallback.
+The shared-math determinism manifest matched all 51 C cells with
+digest `a0e0bf7ad99ca73d`. With system libm the differing cells were
+PCS, Delta E, and CIECAM02. All transform cells matched in both runs.
+
 ## Implementation
 
 - Use the packed RGB8, BGR8, RGBA8 and BGRA8 matrix-shaper loop when the

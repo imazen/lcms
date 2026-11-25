@@ -16,6 +16,7 @@
 
 ### Changed
 
+- Accelerate packed RGB8 matrix-shaper and CLUT transforms and default-grid RGB16 CLUT transforms on AVX2-capable x86-64 while preserving stock Little CMS output. (3dc4a616)
 - Fuse exact packed RGBF32 and CMYKF32 device-link CLUT transforms. (cab8ba28b5)
 - Pack exact byte output tables and copy alpha in the main RGB8 matrix-shaper loop. (61129f85)
 
