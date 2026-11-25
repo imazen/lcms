@@ -364,25 +364,26 @@ fn packed_rgb_and_cmyk_float_profiles_match_c() {
 
 #[test]
 fn rgba_float_clut_copies_alpha() {
-    check_float_clut_fusion(
-        colorspace::SigRgbData,
-        Format::RGBA_FLT,
-        3,
-        flags::COPY_ALPHA,
-    );
+    check_float_clut_fusion(Format::RGBA_FLT, Format::RGBA_FLT, flags::COPY_ALPHA);
 }
 
 #[test]
 fn rgba_float_clut_leaves_alpha_untouched() {
-    check_float_clut_fusion(colorspace::SigRgbData, Format::RGBA_FLT, 3, 0);
+    check_float_clut_fusion(Format::RGBA_FLT, Format::RGBA_FLT, 0);
+}
+
+#[test]
+fn rgb_float_clut_uses_normalized_samples() {
+    check_float_clut_fusion(Format::RGB_FLT, Format::RGB_FLT, 0);
 }
 
 #[test]
 fn cmyk_float_clut_uses_ink_percentages() {
-    check_float_clut_fusion(colorspace::SigCmykData, Format::CMYK_FLT, 4, 0);
+    check_float_clut_fusion(Format::CMYK_FLT, Format::CMYK_FLT, 0);
+    check_float_clut_fusion(Format::CMYK_FLT, Format::RGB_FLT, 0);
 }
 
-fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32) {
+fn check_float_clut_fusion(input_format: Format, output_format: Format, flags: u32) {
     use lcms::{
         intrp::{InterpTable, compute_interp_params},
         lut::{StageData, StageLoc, pipeline_alloc, stage_alloc_clut16bit},
@@ -392,6 +393,20 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
         tagtypes::TagObject,
     };
 
+    let source_cmyk = input_format == Format::CMYK_FLT;
+    let destination_cmyk = output_format == Format::CMYK_FLT;
+    let n_in = if source_cmyk { 4 } else { 3 };
+    let n_out = if destination_cmyk { 4 } else { 3 };
+    let source_space = if source_cmyk {
+        colorspace::SigCmykData
+    } else {
+        colorspace::SigRgbData
+    };
+    let destination_space = if destination_cmyk {
+        colorspace::SigCmykData
+    } else {
+        colorspace::SigRgbData
+    };
     const WIDTH: u32 = 2;
     const HEIGHT: u32 = 2;
     const IN_WORDS: usize = 12;
@@ -404,10 +419,10 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
             0.23, 0.08, 0.9, 0.875, 1.0, 0.0, 0.0, 0.125, 99.0, 99.0, 99.0, 99.0,
         ],
     ];
-    let samples: Vec<u16> = (0..1 << channels)
+    let samples: Vec<u16> = (0..1 << n_in)
         .flat_map(|corner| {
-            (0..channels).map(move |channel| {
-                let high = corner & (1 << (channels - channel - 1)) != 0;
+            (0..n_out).map(move |channel| {
+                let high = corner & (1 << (n_in - channel - 1)) != 0;
                 if high {
                     48_000 - channel as u16 * 2000
                 } else {
@@ -416,23 +431,23 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
             })
         })
         .collect();
-    let stage = stage_alloc_clut16bit(None, 2, channels, channels, Some(&samples)).unwrap();
+    let stage = stage_alloc_clut16bit(None, 2, n_in, n_out, Some(&samples)).unwrap();
     let StageData::CLut(clut) = stage.data.clone() else {
         panic!("expected CLUT");
     };
-    let mut pipeline = pipeline_alloc(None, channels, channels).unwrap();
+    let mut pipeline = pipeline_alloc(None, n_in, n_out).unwrap();
     assert!(pipeline.insert_stage(StageLoc::AtEnd, stage));
     let mut profile = create_profile_placeholder(None);
     profile.device_class = profileclass::SigLinkClass;
-    profile.color_space = space;
-    profile.pcs = space;
+    profile.color_space = source_space;
+    profile.pcs = destination_space;
     assert!(cms_write_tag(
         &mut profile,
         tag::SigAToB0Tag,
         Some(TagObject::Lut16(pipeline))
     ));
     let mut input = rows;
-    if channels == 4 {
+    if source_cmyk {
         for row in &mut input {
             for ink in &mut row[..WIDTH as usize * 4] {
                 *ink *= 100.0;
@@ -444,17 +459,12 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
         let handle = c::cmsCreateProfilePlaceholder(std::ptr::null_mut());
         assert!(!handle.is_null());
         c::cmsSetDeviceClass(handle, profileclass::SigLinkClass);
-        c::cmsSetColorSpace(handle, space);
-        c::cmsSetPCS(handle, space);
-        let pipeline = c::cmsPipelineAlloc(std::ptr::null_mut(), channels, channels);
+        c::cmsSetColorSpace(handle, source_space);
+        c::cmsSetPCS(handle, destination_space);
+        let pipeline = c::cmsPipelineAlloc(std::ptr::null_mut(), n_in, n_out);
         assert!(!pipeline.is_null());
-        let stage = c::cmsStageAllocCLut16bit(
-            std::ptr::null_mut(),
-            2,
-            channels,
-            channels,
-            samples.as_ptr(),
-        );
+        let stage =
+            c::cmsStageAllocCLut16bit(std::ptr::null_mut(), 2, n_in, n_out, samples.as_ptr());
         assert!(!stage.is_null());
         assert_ne!(c::cmsPipelineInsertStage(pipeline, 1, stage), 0);
         assert_ne!(c::cmsWriteTag(handle, tag::SigAToB0Tag, pipeline), 0);
@@ -469,8 +479,8 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
         &[1.0],
         None,
         0,
-        format.code(),
-        format.code(),
+        input_format.code(),
+        output_format.code(),
         flags,
     )
     .unwrap();
@@ -479,9 +489,9 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
     unsafe {
         let ct = c::cmsCreateTransform(
             c_profile,
-            format.code(),
+            input_format.code(),
             std::ptr::null_mut(),
-            format.code(),
+            output_format.code(),
             1,
             flags,
         );
@@ -499,7 +509,7 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
         );
         c::cmsDeleteTransform(ct);
     }
-    if format == Format::RGBA_FLT {
+    if output_format == Format::RGBA_FLT {
         for (src_row, dst_row) in input.iter().zip(expected.chunks_exact(OUT_WORDS)) {
             for alpha in (3..WIDTH as usize * 4).step_by(4) {
                 let want = if flags & flags::COPY_ALPHA != 0 {
@@ -524,20 +534,21 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
     assert_eq!(
         actual.map(f32::to_bits),
         expected.map(f32::to_bits),
-        "{format:?} stock flags={flags:#x}"
+        "{input_format:?} -> {output_format:?} stock flags={flags:#x}"
     );
 
     // The stock optimizer does not resample float formats. Attach the
     // same CLUT as an optimized table to exercise the fused worker.
     let lut = transform.plan.lut.as_mut().unwrap();
     assert!(lut.opt_data.is_none());
+    assert_eq!(lut.stage_count(), 1);
     lut.opt_data = Some(OptData::ClutOnly(Box::new(ClutOnly {
         clut: clut.as_ref().clone(),
         params16: compute_interp_params(
             None,
             2,
-            channels,
-            channels,
+            n_in,
+            n_out,
             InterpTable::U16Rc(samples.clone().into()),
             0,
         )
@@ -558,7 +569,7 @@ fn check_float_clut_fusion(space: u32, format: Format, channels: u32, flags: u32
     assert_eq!(
         actual.map(f32::to_bits),
         expected.map(f32::to_bits),
-        "{format:?} fused flags={flags:#x}"
+        "{input_format:?} -> {output_format:?} fused flags={flags:#x}"
     );
 
     unsafe { c::cmsCloseProfile(c_profile) };

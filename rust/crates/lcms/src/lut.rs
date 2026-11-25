@@ -1284,6 +1284,30 @@ impl Pipeline {
             && pipeline_max_channels(self) <= 4
     }
 
+    /// A normal float pipeline can link directly to a single u16 CLUT.
+    /// Stock Little CMS leaves its integer optimization data unset.
+    pub(crate) fn single_float_u16_clut(&self) -> Option<&InterpParams<'_>> {
+        if !std::ptr::fn_addr_eq(self.eval_float_fn, lut_eval_float as PipelineEvalFloatFn) {
+            return None;
+        }
+        let stage = self.elements.as_deref()?;
+        if stage.next.is_some()
+            || !std::ptr::fn_addr_eq(stage.eval_ptr, evaluate_clut_float_in16 as StageEvalFn)
+        {
+            return None;
+        }
+        let StageData::CLut(clut) = &stage.data else {
+            return None;
+        };
+        let params = clut.params16.as_deref()?;
+        (clut.foreign.is_none()
+            && stage.input_channels == params.n_inputs
+            && stage.output_channels == params.n_outputs
+            && self.input_channels == params.n_inputs
+            && self.output_channels == params.n_outputs)
+            .then_some(params)
+    }
+
     #[inline]
     pub(crate) fn eval_float_compact(&self, input: &[f32; 4], output: &mut [f32; 4]) {
         lut_eval_float_impl::<4>(input, output, self);

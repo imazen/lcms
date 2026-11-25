@@ -300,45 +300,6 @@ fn clut16_tetra_loop_v3(
     }
 }
 
-/// `clut16_tetra_loop_v3` for `TYPE_RGBA_FLT` — quick-saturate three
-/// f32s to u16, tetra3_i32x4 on the u16 table, back to f32. The caller
-/// has already handled the extra channel.
-#[archmage::arcane]
-#[allow(clippy::too_many_arguments)]
-fn clutflt_tetra_loop_v3(
-    token: archmage::X64V3Token,
-    p: &crate::intrp::InterpParams,
-    input: &[u8],
-    output: &mut [u8],
-    ppl: u32,
-    lines: u32,
-    stride: &Stride,
-) {
-    let ppl16 = ppl as usize * 16;
-    let mut i_off = 0usize;
-    let mut o_off = 0usize;
-    for _ in 0..lines {
-        let iline = &input[i_off..i_off + ppl16];
-        let oline = &mut output[o_off..o_off + ppl16];
-        for i in 0..ppl as usize {
-            let px = i * 16;
-            let rd = |o: usize| f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap());
-            let vin = [
-                crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
-                crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
-                crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
-            ];
-            let [r, g, b] = crate::intrp::tetra3_i32x4(token, vin, p);
-            let outv = [r as f32 / 65535.0, g as f32 / 65535.0, b as f32 / 65535.0];
-            for (cch, v) in outv.iter().enumerate() {
-                oline[px + cch * 4..px + cch * 4 + 4].copy_from_slice(&v.to_le_bytes());
-            }
-        }
-        i_off += stride.bytes_per_line_in as usize;
-        o_off += stride.bytes_per_line_out as usize;
-    }
-}
-
 // Match the float formatters' conversions between ink percentages and
 // normalized floats, including the intermediate rounding to f32.
 #[inline]
@@ -353,11 +314,52 @@ fn cmyk_word_to_float(value: u16) -> f32 {
     (normalized as f64 * 100.0) as f32
 }
 
-/// Fused CLUT evaluation for `TYPE_CMYK_FLT` with ink percentages on
-/// input and output and a normalized 16-bit CLUT.
+/// Packed float I/O around an exact u16 CLUT. RGBA routes leave the
+/// extra channel to the caller's alpha handling.
+#[inline]
+fn packed_float_clut<const IN: usize, const OUT: usize, const INK: bool>(
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+    eval: impl Fn([u16; 4]) -> [u16; 4],
+) {
+    let input_bytes = ppl as usize * IN * 4;
+    let output_bytes = ppl as usize * OUT * 4;
+    let channels_in = if INK { 4 } else { 3 };
+    let channels_out = if INK { OUT } else { 3 };
+    for row in 0..lines as usize {
+        let i = row * stride.bytes_per_line_in as usize;
+        let o = row * stride.bytes_per_line_out as usize;
+        let src = input[i..i + input_bytes].chunks_exact(IN * 4);
+        let dst = output[o..o + output_bytes].chunks_exact_mut(OUT * 4);
+        for (src, dst) in src.zip(dst) {
+            let (src, _) = src.as_chunks::<4>();
+            let mut values = [0u16; 4];
+            for (value, &bytes) in values.iter_mut().zip(&src[..channels_in]) {
+                let float = f32::from_le_bytes(bytes);
+                *value = if INK {
+                    cmyk_float_to_word(float)
+                } else {
+                    crate::fixed::quick_saturate_word(float as f64 * 65535.0)
+                };
+            }
+            let (dst, _) = dst[..channels_out * 4].as_chunks_mut::<4>();
+            for (bytes, word) in dst.iter_mut().zip(eval(values)) {
+                let float = if INK && OUT == 4 {
+                    cmyk_word_to_float(word)
+                } else {
+                    word as f32 / 65535.0
+                };
+                *bytes = float.to_le_bytes();
+            }
+        }
+    }
+}
+
 #[archmage::arcane]
-#[allow(clippy::too_many_arguments)]
-fn clutflt_eval4_loop_v3(
+fn clutflt_tetra_loop_v3<const PIXEL: usize>(
     token: archmage::X64V3Token,
     p: &crate::intrp::InterpParams,
     input: &[u8],
@@ -366,25 +368,25 @@ fn clutflt_eval4_loop_v3(
     lines: u32,
     stride: &Stride,
 ) {
-    let ppl16 = ppl as usize * 16;
-    let mut i_off = 0usize;
-    let mut o_off = 0usize;
-    for _ in 0..lines {
-        let iline = &input[i_off..i_off + ppl16];
-        let oline = &mut output[o_off..o_off + ppl16];
-        for i in 0..ppl as usize {
-            let px = i * 16;
-            let rd = |o: usize| f32::from_le_bytes(iline[px + o..px + o + 4].try_into().unwrap());
-            let vin = [0, 4, 8, 12].map(|offset| cmyk_float_to_word(rd(offset)));
-            let outv = crate::intrp::eval4_i32x4(token, vin, 4, p);
-            for (cch, v) in outv.iter().enumerate() {
-                let fv = cmyk_word_to_float(*v);
-                oline[px + cch * 4..px + cch * 4 + 4].copy_from_slice(&fv.to_le_bytes());
-            }
-        }
-        i_off += stride.bytes_per_line_in as usize;
-        o_off += stride.bytes_per_line_out as usize;
-    }
+    packed_float_clut::<PIXEL, PIXEL, false>(input, output, ppl, lines, stride, |[r, g, b, _]| {
+        let [r, g, b] = crate::intrp::tetra3_i32x4(token, [r, g, b], p);
+        [r, g, b, 0]
+    })
+}
+
+#[archmage::arcane]
+fn clutflt_eval4_loop_v3<const OUT: usize>(
+    token: archmage::X64V3Token,
+    p: &crate::intrp::InterpParams,
+    input: &[u8],
+    output: &mut [u8],
+    ppl: u32,
+    lines: u32,
+    stride: &Stride,
+) {
+    packed_float_clut::<4, OUT, true>(input, output, ppl, lines, stride, |values| {
+        crate::intrp::eval4_i32x4(token, values, OUT, p)
+    })
 }
 
 /// Fused 4D CLUT for packed CMYK input and packed RGB(A) or CMYK output.
@@ -1124,6 +1126,7 @@ const BGR8: u32 = RGB8 | 1 << 10;
 const BGRA8: u32 = RGBA8 | 1 << 10 | 1 << 14;
 const RGB_FLT: u32 = 1 << 22 | 4 << 16 | 3 << 3 | 4;
 const RGBA_FLT: u32 = RGB_FLT | 1 << 7;
+const CMYK_FLT: u32 = 1 << 22 | 6 << 16 | 4 << 3 | 4;
 
 impl TransformPlan {
     pub(crate) fn prepare_float_matrix_shaper(&mut self) {
@@ -2439,129 +2442,101 @@ impl TransformPlan {
         };
         if !gamut {
             if let Some(l) = self.lut.as_ref() {
-                // Fused `unroll_floats`→u16-tetra→`pack_floats` for
-                // TYPE_RGBA_FLT. Store just the three color channels.
-                // The extra channel was handled before dispatch.
-                if self.input_format == RGBA_FLT && self.output_format == RGBA_FLT {
-                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
-                        if c.params_f.is_none()
-                            && c.params16.n_outputs == 3
-                            && matches!(
-                                c.params16.interpolation,
-                                crate::intrp::Interpolation::Lerp16(f)
-                                    if std::ptr::fn_addr_eq(
-                                        f,
-                                        crate::intrp::tetrahedral_interp16
-                                            as crate::intrp::InterpFn16,
-                                    )
-                            )
-                        {
-                            #[cfg(target_arch = "x86_64")]
-                            if let Some(token) = crate::intrp::x64v3_cached() {
-                                return clutflt_tetra_loop_v3(
-                                    token,
-                                    &c.params16,
-                                    input,
-                                    output,
-                                    ppl,
-                                    lines,
-                                    stride,
-                                );
-                            }
-                            let p = &c.params16;
-                            let ppl16 = ppl as usize * 16;
-                            let mut i_off = 0usize;
-                            let mut o_off = 0usize;
-                            for _ in 0..lines {
-                                let iline = &input[i_off..i_off + ppl16];
-                                let oline = &mut output[o_off..o_off + ppl16];
-                                for i in 0..ppl as usize {
-                                    let px = i * 16;
-                                    let rd = |o: usize| {
-                                        f32::from_le_bytes(
-                                            iline[px + o..px + o + 4].try_into().unwrap(),
-                                        )
-                                    };
-                                    let vin = [
-                                        crate::fixed::quick_saturate_word(rd(0) as f64 * 65535.0),
-                                        crate::fixed::quick_saturate_word(rd(4) as f64 * 65535.0),
-                                        crate::fixed::quick_saturate_word(rd(8) as f64 * 65535.0),
-                                    ];
-                                    let [r, g, b] = crate::intrp::tetra3_interp16(vin, p);
-                                    let outv = [
-                                        r as f32 / 65535.0,
-                                        g as f32 / 65535.0,
-                                        b as f32 / 65535.0,
-                                    ];
-                                    for (cch, v) in outv.iter().enumerate() {
-                                        oline[px + cch * 4..px + cch * 4 + 4]
-                                            .copy_from_slice(&v.to_le_bytes());
-                                    }
-                                }
-                                i_off += stride.bytes_per_line_in as usize;
-                                o_off += stride.bytes_per_line_out as usize;
-                            }
-                            return;
-                        }
+                let direct_clut = match l.opt_data.as_ref() {
+                    Some(crate::opt::OptData::ClutOnly(c)) if c.params_f.is_none() => {
+                        Some(&c.params16)
                     }
-                }
-                // TYPE_CMYK_FLT uses ink percentages on input and output.
-                const CMYK_FLT: u32 = 1 << 22 | 6 << 16 | 4 << 3 | 4;
-                if self.input_format == CMYK_FLT && self.output_format == CMYK_FLT {
-                    if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
-                        if c.params_f.is_none()
-                            && c.params16.n_outputs == 4
-                            && matches!(
-                                c.params16.interpolation,
-                                crate::intrp::Interpolation::Lerp16(f)
-                                    if std::ptr::fn_addr_eq(
-                                        f,
-                                        crate::intrp::eval4_inputs
-                                            as crate::intrp::InterpFn16,
-                                    )
-                            )
-                        {
+                    None => l.single_float_u16_clut(),
+                    _ => None,
+                };
+                if let Some(p) = direct_clut
+                    && p.foreign.is_none()
+                    && std::ptr::fn_addr_eq(
+                        unroll,
+                        crate::pack::unroll_floats_to_float as crate::pack::UnpackF32Fn,
+                    )
+                    && std::ptr::fn_addr_eq(
+                        pack,
+                        crate::pack::pack_floats_from_float as crate::pack::PackF32Fn,
+                    )
+                {
+                    use crate::intrp::{self as ip, InterpFn16, Interpolation};
+                    let Interpolation::Lerp16(kernel) = p.interpolation else {
+                        unreachable!("u16 CLUT on float params");
+                    };
+                    macro_rules! tetra {
+                        ($pixel:literal) => {{
                             #[cfg(target_arch = "x86_64")]
-                            if let Some(token) = crate::intrp::x64v3_cached() {
-                                return clutflt_eval4_loop_v3(
-                                    token,
-                                    &c.params16,
-                                    input,
-                                    output,
-                                    ppl,
-                                    lines,
-                                    stride,
+                            if let Some(token) = ip::x64v3_cached() {
+                                return clutflt_tetra_loop_v3::<$pixel>(
+                                    token, p, input, output, ppl, lines, stride,
                                 );
                             }
-                            let p = &c.params16;
-                            let ppl16 = ppl as usize * 16;
-                            let mut i_off = 0usize;
-                            let mut o_off = 0usize;
-                            for _ in 0..lines {
-                                let iline = &input[i_off..i_off + ppl16];
-                                let oline = &mut output[o_off..o_off + ppl16];
-                                for i in 0..ppl as usize {
-                                    let px = i * 16;
-                                    let rd = |o: usize| {
-                                        f32::from_le_bytes(
-                                            iline[px + o..px + o + 4].try_into().unwrap(),
-                                        )
-                                    };
-                                    let vin =
-                                        [0, 4, 8, 12].map(|offset| cmyk_float_to_word(rd(offset)));
-                                    let mut w_out = [0u16; 4];
-                                    crate::intrp::eval4_inputs(&vin, &mut w_out, p);
-                                    for cch in 0..4 {
-                                        let fv = cmyk_word_to_float(w_out[cch]);
-                                        oline[px + cch * 4..px + cch * 4 + 4]
-                                            .copy_from_slice(&fv.to_le_bytes());
-                                    }
-                                }
-                                i_off += stride.bytes_per_line_in as usize;
-                                o_off += stride.bytes_per_line_out as usize;
+                            return packed_float_clut::<$pixel, $pixel, false>(
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                |[r, g, b, _]| {
+                                    let [r, g, b] = ip::tetra3_interp16([r, g, b], p);
+                                    [r, g, b, 0]
+                                },
+                            );
+                        }};
+                    }
+                    macro_rules! eval4 {
+                        ($out:literal) => {{
+                            #[cfg(target_arch = "x86_64")]
+                            if let Some(token) = ip::x64v3_cached() {
+                                return clutflt_eval4_loop_v3::<$out>(
+                                    token, p, input, output, ppl, lines, stride,
+                                );
                             }
-                            return;
+                            return packed_float_clut::<4, $out, true>(
+                                input,
+                                output,
+                                ppl,
+                                lines,
+                                stride,
+                                |values| {
+                                    let mut result = [0; 4];
+                                    ip::eval4_inputs(&values, &mut result[..$out], p);
+                                    result
+                                },
+                            );
+                        }};
+                    }
+                    match (
+                        self.input_format,
+                        self.output_format,
+                        p.n_inputs,
+                        p.n_outputs,
+                    ) {
+                        (src @ (RGB_FLT | RGBA_FLT), dst, 3, 3)
+                            if src == dst
+                                && std::ptr::fn_addr_eq(
+                                    kernel,
+                                    ip::tetrahedral_interp16 as InterpFn16,
+                                ) =>
+                        {
+                            if src == RGB_FLT {
+                                tetra!(3);
+                            } else {
+                                tetra!(4);
+                            }
                         }
+                        (CMYK_FLT, RGB_FLT, 4, 3)
+                            if std::ptr::fn_addr_eq(kernel, ip::eval4_inputs as InterpFn16) =>
+                        {
+                            eval4!(3);
+                        }
+                        (CMYK_FLT, CMYK_FLT, 4, 4)
+                            if std::ptr::fn_addr_eq(kernel, ip::eval4_inputs as InterpFn16) =>
+                        {
+                            eval4!(4);
+                        }
+                        _ => {}
                     }
                 }
                 if let Some(crate::opt::OptData::ClutOnly(c)) = l.opt_data.as_ref() {
@@ -2647,7 +2622,6 @@ impl TransformPlan {
                 }
             }
         }
-        const CMYK_FLT: u32 = 1 << 22 | 6 << 16 | 4 << 3 | 4;
         if !gamut
             && std::ptr::fn_addr_eq(
                 unroll,
