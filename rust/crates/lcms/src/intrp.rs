@@ -146,6 +146,7 @@ pub(crate) fn foreign_hooks() -> Option<ForeignHooks> {
 /// Cache both the CPU check and the process-start scalar override.
 /// Interpolators also call this on the per-pixel path.
 #[inline]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn x64v3_cached() -> Option<archmage::X64V3Token> {
     use archmage::SimdToken;
     static TOK: std::sync::OnceLock<Option<archmage::X64V3Token>> = std::sync::OnceLock::new();
@@ -1254,6 +1255,7 @@ pub(crate) fn tetra3_interp16(vin: [u16; 3], p: &InterpParams) -> [u16; 3] {
 /// i32 SIMD ops match the scalar `.wrapping_*` arithmetic exactly.
 /// Called once per pixel inside `#[rite]`/`#[arcane]` loop fns.
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn tetra3_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     token: T,
     vin: [u16; 3],
@@ -1383,6 +1385,7 @@ pub(crate) fn eval16_eval4_v3(
 /// IEEE-identical to the scalar ops (no FMA — the expression order is
 /// preserved); lanes beyond n_outputs are don't-care.
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn tetra3_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     token: T,
     input: &[f32; 3],
@@ -1489,6 +1492,7 @@ pub(crate) fn tetra3_f32x4<T: magetypes::simd::backends::F32x4Backend>(
 /// f32 corner block → `[f32; 4]` lanes with the same tail clamp as the
 /// scalar `w(off)` slices (lanes beyond the table end take `last`).
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 fn corner_f32x4(tab: &[f32], off: usize, last: usize) -> [f32; 4] {
     match tab.get(off..off + 4) {
         Some(s) => s.try_into().unwrap(),
@@ -1508,6 +1512,7 @@ fn corner_f32x4(tab: &[f32], off: usize, last: usize) -> [f32; 4] {
 /// evals + the rk blend, all lanes. Same bit-exactness argument as
 /// `tetra3_f32x4`; `y0 + (y1-y0)*rest` stays `mul` then `add` (no FMA).
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn eval4_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     token: T,
     input: &[f32; 4],
@@ -1590,6 +1595,7 @@ pub(crate) fn evalflt_tetra3_v3(
 
 /// u64 corner block → four i32 lanes (u16 zero-extend).
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn lanes_u64(v: u64) -> [i32; 4] {
     [
         (v & 0xffff) as i32,
@@ -1601,11 +1607,13 @@ pub(crate) fn lanes_u64(v: u64) -> [i32; 4] {
 
 /// The four corners and three fixed-point weights used by a 3D lookup.
 #[derive(Clone, Copy)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) struct Tetra16Weights {
     offsets: [usize; 3],
     fractions: [i32; 3],
 }
 
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 impl Tetra16Weights {
     #[inline(always)]
     pub(crate) fn new([x, y, z]: [usize; 3], [rx, ry, rz]: [i32; 3]) -> Self {
@@ -1656,6 +1664,7 @@ impl Tetra16Weights {
 /// For `n_outputs < 4` lanes beyond the count are don't-care (corner
 /// loads stay in-table; only the first n_outputs lanes are stored).
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn eval4_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     token: T,
     vin: [u16; 4],
@@ -1803,6 +1812,7 @@ pub(crate) fn eval4_i32x4<T: magetypes::simd::backends::I32x4Backend>(
 /// channels as vector lanes; the 3-level lerp chain is wrapping i32
 /// like the scalar (intermediate `as u16` truncation = `& 0xffff`).
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     token: T,
     vin: [u16; 3],
@@ -1889,6 +1899,7 @@ pub(crate) fn trilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
 /// blocks + `linear_interp` per lane. `linear_interp` uses a *logical*
 /// u32 shift — `shr_logical`, not the lerp's arithmetic one.
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn eval1_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     token: T,
     input: u16,
@@ -1941,6 +1952,7 @@ pub(crate) fn eval1_i32x4<T: magetypes::simd::backends::I32x4Backend>(
 
 /// `eval1_input_float` over `magetypes::f32x4`.
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn eval1_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     token: T,
     input: f32,
@@ -2009,6 +2021,7 @@ pub(crate) fn evalflt_eval1_v3(
 /// channels as vector lanes (same wrapping-lerp semantics as the
 /// scalar; intermediate `as u16` = `& 0xffff`).
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn bilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
     token: T,
     vin: [u16; 2],
@@ -2073,6 +2086,7 @@ pub(crate) fn bilinear_i32x4<T: magetypes::simd::backends::I32x4Backend>(
 /// `trilinear_interp_float` over `magetypes::f32x4` — ≤4 output
 /// channels as lanes; `l + (h-l)*a` per lane is IEEE-identical.
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn trilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     token: T,
     input: &[f32; 3],
@@ -2148,6 +2162,7 @@ pub(crate) fn trilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
 
 /// `bilinear_interp_float` over `magetypes::f32x4`.
 #[inline(always)]
+#[cfg_attr(not(target_arch = "x86_64"), allow(dead_code))]
 pub(crate) fn bilinear_f32x4<T: magetypes::simd::backends::F32x4Backend>(
     token: T,
     input: &[f32; 2],

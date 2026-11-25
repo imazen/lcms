@@ -11,7 +11,6 @@ use crate::pack::{
 };
 use crate::profile::IccProfile;
 use crate::types::{CieXyz, INTENT_PERCEPTUAL};
-use archmage::SimdToken;
 
 pub const FLAGS_NOOPTIMIZE: u32 = 0x0100;
 pub const FLAGS_NOCACHE: u32 = 0x0040;
@@ -1697,8 +1696,8 @@ impl TransformPlan {
                                     )
                             )
                         {
+                            #[cfg(target_arch = "x86_64")]
                             if let Some(token) = crate::intrp::x64v3_cached() {
-                                #[cfg(target_arch = "x86_64")]
                                 return clut16_tetra_loop_v3(
                                     token,
                                     &c.params16,
@@ -1774,8 +1773,8 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon() {
-                                #[cfg(target_arch = "x86_64")]
+                            #[cfg(target_arch = "x86_64")]
+                            if let Some(token) = crate::intrp::x64v3_cached() {
                                 return clut16_tetra_loop_v3(
                                     token,
                                     &c.params16,
@@ -2138,8 +2137,8 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon() {
-                                #[cfg(target_arch = "x86_64")]
+                            #[cfg(target_arch = "x86_64")]
+                            if let Some(token) = crate::intrp::x64v3_cached() {
                                 return clut16_tetra_cached_v3(
                                     token,
                                     &c.params16,
@@ -2457,8 +2456,8 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon() {
-                                #[cfg(target_arch = "x86_64")]
+                            #[cfg(target_arch = "x86_64")]
+                            if let Some(token) = crate::intrp::x64v3_cached() {
                                 return clutflt_tetra_loop_v3(
                                     token,
                                     &c.params16,
@@ -2522,8 +2521,8 @@ impl TransformPlan {
                                     )
                             )
                         {
-                            if let Some(token) = archmage::X64V3Token::summon() {
-                                #[cfg(target_arch = "x86_64")]
+                            #[cfg(target_arch = "x86_64")]
+                            if let Some(token) = crate::intrp::x64v3_cached() {
                                 return clutflt_eval4_loop_v3(
                                     token,
                                     &c.params16,
